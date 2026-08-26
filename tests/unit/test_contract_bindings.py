@@ -41,7 +41,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
     registry.clear()
     _load_module("contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py")
     bound = {
-        definition.string
+        definition.pattern
         for definitions in registry.steps.values()
         for definition in definitions
     }
