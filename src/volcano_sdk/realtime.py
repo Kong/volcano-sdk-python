@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import inspect
 from collections.abc import Awaitable, Callable
@@ -7,6 +8,7 @@ from typing import Any, Protocol, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
 MessageCallback = Callable[[Any], Any]
+CALLBACK_QUEUE_LIMIT = 128
 
 
 class RealtimeContext(Protocol):
@@ -145,6 +147,12 @@ class Channel:
         self._name = name
         self._message_callbacks: list[MessageCallback] = []
         self._subscription: CentrifugeSubscription | None = None
+        self._callback_queue: asyncio.Queue[Any] = asyncio.Queue(
+            maxsize=CALLBACK_QUEUE_LIMIT
+        )
+        self._callback_task: asyncio.Task[None] | None = None
+        self._active_callback_task: asyncio.Task[None] | None = None
+        self._callback_stop: asyncio.Event | None = None
 
     def on(self, event: str, callback: MessageCallback) -> Channel:
         if event != "message":
@@ -153,32 +161,86 @@ class Channel:
         return self
 
     async def subscribe(self) -> None:
-        connection = await self._realtime._connect()
-        if self._subscription is None:
-            self._subscription = connection.new_subscription(
-                self._name,
-                events=_ChannelEvents(self),
-            )
-        await self._subscription.subscribe()
+        await self._realtime._subscribe(self)
 
     async def send(self, data: Any) -> None:
-        if self._subscription is None:
-            raise RuntimeError("Channel must be subscribed before sending")
-        await self._subscription.publish(data)
+        await self._realtime._publish(self, data)
 
     async def unsubscribe(self) -> None:
-        if self._subscription is None:
-            return
-        await self._subscription.unsubscribe()
+        await self._realtime._unsubscribe(self)
 
     async def _emit(self, data: Any) -> None:
-        for callback in tuple(self._message_callbacks):
-            result = callback(data)
-            if inspect.isawaitable(result):
-                await result
+        task = self._callback_task
+        if task is None or task.done():
+            self._start_callback_dispatcher()
+        elif self._callback_stop is not None and self._callback_stop.is_set():
+            self._callback_task = asyncio.create_task(self._restart_callback_dispatcher(task))
+            self._callback_stop = None
+        try:
+            self._callback_queue.put_nowait(data)
+        except asyncio.QueueFull:
+            asyncio.get_running_loop().call_exception_handler(
+                {
+                    "message": "Volcano realtime callback queue is full; publication dropped",
+                    "channel": self._name,
+                }
+            )
 
-    def _reset(self) -> None:
+    def _start_callback_dispatcher(self) -> None:
+        stop = asyncio.Event()
+        self._callback_stop = stop
+        self._callback_task = asyncio.create_task(self._dispatch_callbacks(stop))
+
+    async def _restart_callback_dispatcher(self, previous: asyncio.Task[None]) -> None:
+        await asyncio.gather(previous, return_exceptions=True)
+        stop = asyncio.Event()
+        self._callback_stop = stop
+        await self._dispatch_callbacks(stop)
+
+    async def _dispatch_callbacks(self, stop: asyncio.Event) -> None:
+        while not stop.is_set():
+            data = await self._callback_queue.get()
+            try:
+                for callback in tuple(self._message_callbacks):
+                    active_task = asyncio.create_task(self._run_callback(callback, data))
+                    self._active_callback_task = active_task
+                    try:
+                        (error,) = await asyncio.gather(
+                            active_task, return_exceptions=True
+                        )
+                    finally:
+                        self._active_callback_task = None
+                    if isinstance(error, BaseException):
+                        asyncio.get_running_loop().call_exception_handler(
+                            {
+                                "message": "Volcano realtime callback failed",
+                                "exception": error,
+                                "channel": self._name,
+                            }
+                        )
+            finally:
+                self._callback_queue.task_done()
+
+    async def _run_callback(self, callback: MessageCallback, data: Any) -> None:
+        result = callback(data)
+        if inspect.isawaitable(result):
+            await result
+
+    async def _reset(self) -> None:
         self._subscription = None
+        task = self._callback_task
+        active_task = self._active_callback_task
+        if self._callback_stop is not None:
+            self._callback_stop.set()
+        current_task = asyncio.current_task()
+        called_from_dispatcher = current_task is task or current_task is active_task
+        if task is not None and not called_from_dispatcher:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            self._callback_task = None
+        while not self._callback_queue.empty():
+            self._callback_queue.get_nowait()
+            self._callback_queue.task_done()
 
 
 class Realtime:
@@ -193,6 +255,7 @@ class Realtime:
         self._api_url = api_url
         self._client_factory = client_factory
         self._connection: CentrifugeConnection | None = None
+        self._connection_lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
 
     def channel(self, name: str) -> Channel:
@@ -211,21 +274,49 @@ class Realtime:
         return urlunsplit((scheme, parsed.netloc, "/realtime/v1/websocket", query, ""))
 
     async def _connect(self) -> CentrifugeConnection:
-        if self._connection is None:
-            self._connection = _VolcanoCentrifugeConnection(
-                self._client_factory(
-                    self._address(),
-                    token=self._client_context._session_token(),
-                    get_token=self._token,
-                )
+        async with self._connection_lock:
+            return await self._connect_locked()
+
+    async def _connect_locked(self) -> CentrifugeConnection:
+        if self._connection is not None:
+            return self._connection
+        connection = _VolcanoCentrifugeConnection(
+            self._client_factory(
+                self._address(),
+                token=self._client_context._session_token(),
+                get_token=self._token,
             )
-            await self._connection.connect()
-        return self._connection
+        )
+        await connection.connect()
+        self._connection = connection
+        return connection
+
+    async def _subscribe(self, channel: Channel) -> None:
+        async with self._connection_lock:
+            connection = await self._connect_locked()
+            if channel._subscription is None:
+                channel._subscription = connection.new_subscription(
+                    channel._name,
+                    events=_ChannelEvents(channel),
+                )
+            await channel._subscription.subscribe()
+
+    async def _publish(self, channel: Channel, data: Any) -> None:
+        async with self._connection_lock:
+            if channel._subscription is None:
+                raise RuntimeError("Channel must be subscribed before sending")
+            await channel._subscription.publish(data)
+
+    async def _unsubscribe(self, channel: Channel) -> None:
+        async with self._connection_lock:
+            if channel._subscription is not None:
+                await channel._subscription.unsubscribe()
 
     async def disconnect(self) -> None:
-        if self._connection is None:
-            return
-        await self._connection.disconnect()
-        self._connection = None
-        for channel in self._channels.values():
-            channel._reset()
+        async with self._connection_lock:
+            connection = self._connection
+            self._connection = None
+            if connection is not None:
+                await connection.disconnect()
+            for channel in tuple(self._channels.values()):
+                await channel._reset()

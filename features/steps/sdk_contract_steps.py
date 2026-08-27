@@ -48,6 +48,15 @@ def session_belongs_to_contract_user(context: Any) -> None:
     assert world.client.current_session.user_id == world.fixture["user_id"]
 
 
+@then("the current session exposes access and refresh tokens")
+def session_exposes_tokens(context: Any) -> None:
+    world = _world(context)
+    session = world.client.current_session
+    assert session is not None
+    assert session.access_token
+    assert session.refresh_token
+
+
 @given("an authenticated client")
 def authenticated_client(context: Any) -> None:
     _world(context).authenticate()
@@ -76,10 +85,13 @@ def fixture_row_returned(context: Any) -> None:
 def upload_and_download(context: Any) -> None:
     world = _world(context)
 
-    def operation() -> bytes:
+    def operation() -> dict[str, Any]:
         bucket = world.client.storage.from_(world.fixture["bucket_name"])
-        bucket.upload(world.storage_path, world.storage_bytes)
-        return bucket.download(world.storage_path)
+        uploaded = bucket.upload(world.storage_path, world.storage_bytes)
+        return {
+            "bytes": bucket.download(world.storage_path),
+            "path": uploaded["name"],
+        }
 
     world.record(operation)
 
@@ -88,7 +100,14 @@ def upload_and_download(context: Any) -> None:
 def downloaded_bytes_match(context: Any) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.last_outcome.value == world.storage_bytes
+    assert world.last_outcome.value["bytes"] == world.storage_bytes
+
+
+@then("the stored object path equals the contract path")
+def stored_object_path_matches(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.last_outcome.value["path"] == world.storage_path
 
 
 @given("a service-role client")
