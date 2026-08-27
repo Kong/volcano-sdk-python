@@ -5,12 +5,12 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
+import pytest
+
 from volcano_sdk import VolcanoClient
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
-
-    import pytest
 
 UNEXPECTED_TRANSPORT_CALL = "unexpected transport operation"
 
@@ -459,6 +459,47 @@ def test_realtime_disconnect_excludes_a_concurrent_first_connect(
 
     asyncio.run(scenario())
     assert official.calls == ["connect", "channel:broadcast:contract", "disconnect"]
+
+
+def test_realtime_disconnect_resets_channels_after_transport_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = AuthTransport()
+    first = FakeCentrifugeClient()
+    second = FakeCentrifugeClient()
+    clients = iter((first, second))
+
+    async def failing_disconnect() -> None:
+        first.calls.append("disconnect")
+        message = "disconnect failed"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(first, "disconnect", failing_disconnect)
+
+    def factory(*args: Any, **kwargs: Any) -> FakeCentrifugeClient:
+        del args, kwargs
+        return next(clients)
+
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=factory,
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("contract")
+        await channel.subscribe()
+        with pytest.raises(RuntimeError, match="disconnect failed"):
+            await client.realtime.disconnect()
+
+        assert channel._subscription is None
+        await channel.subscribe()
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+    assert first.calls == ["connect", "channel:broadcast:contract", "disconnect"]
+    assert second.calls == ["connect", "channel:broadcast:contract", "disconnect"]
 
 
 def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(

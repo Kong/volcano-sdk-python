@@ -375,7 +375,9 @@ class Realtime:
         async with self._connection_lock:
             connection = self._connection
             self._connection = None
-            if connection is not None:
-                await connection.disconnect()
-            for channel in tuple(self._channels.values()):
-                await channel._reset()
+            try:
+                if connection is not None:
+                    await connection.disconnect()
+            finally:
+                for channel in tuple(self._channels.values()):
+                    await channel._reset()
