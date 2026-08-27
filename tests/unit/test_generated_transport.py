@@ -62,7 +62,8 @@ def test_generated_transport_calls_the_six_openapi_operations() -> None:
             )
         if request.method == "DELETE" and path == "/locks/build/lease":
             return httpx.Response(204)
-        raise AssertionError(f"unexpected request: {request.method} {path}")
+        message = f"unexpected request: {request.method} {path}"
+        raise AssertionError(message)
 
     transport = GeneratedTransport(
         api_url="https://api.test.volcano.dev",

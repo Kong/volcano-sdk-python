@@ -3,9 +3,8 @@ from __future__ import annotations
 import asyncio
 import os
 import secrets
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from centrifuge import CentrifugeError
 
@@ -20,8 +19,18 @@ from volcano_sdk import (
     VolcanoClient,
     VolcanoError,
 )
-from volcano_sdk.models import LockLease
-from volcano_sdk.realtime import Channel
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from volcano_sdk.models import LockLease
+    from volcano_sdk.realtime import Channel
+
+HTTP_NOT_FOUND = 404
+HTTP_CONFLICT = 409
+HTTP_RATE_LIMITED = 429
+HTTP_SERVER_ERROR_MIN = 500
+HTTP_SERVER_ERROR_MAX = 599
 
 CONTRACT_EXCEPTIONS = (
     CentrifugeError,
@@ -52,22 +61,33 @@ def classify_error(error: Exception) -> str:
         (ServerError, "server error"),
         (TransportError, "transport error"),
     )
-    for error_type, category in categories:
-        if isinstance(error, error_type):
-            return category
+    matched_category = next(
+        (
+            category
+            for error_type, category in categories
+            if isinstance(error, error_type)
+        ),
+        None,
+    )
+    if matched_category is not None:
+        return matched_category
     if isinstance(error, VolcanoError):
         status = error.status
         if status in (401, 403):
             return "authentication error"
         if status in (400, 422):
             return "validation error"
-        if status == 404:
-            return "not found"
-        if status == 409:
-            return "conflict"
-        if status == 429:
-            return "rate limited"
-        if status is not None and 500 <= status <= 599:
+        category_by_status = {
+            HTTP_NOT_FOUND: "not found",
+            HTTP_CONFLICT: "conflict",
+            HTTP_RATE_LIMITED: "rate limited",
+        }
+        if status in category_by_status:
+            return category_by_status[status]
+        if (
+            status is not None
+            and HTTP_SERVER_ERROR_MIN <= status <= HTTP_SERVER_ERROR_MAX
+        ):
             return "server error"
     return "transport error"
 
@@ -143,4 +163,5 @@ class ContractWorld:
         self.realtime_clients.clear()
         self.loop.close()
         if failures:
-            raise ExceptionGroup("Python contract cleanup failed", failures)
+            message = "Python contract cleanup failed"
+            raise ExceptionGroup(message, failures)

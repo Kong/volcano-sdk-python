@@ -1,3 +1,5 @@
+"""Realtime broadcast facade."""
+
 from __future__ import annotations
 
 import asyncio
@@ -9,60 +11,97 @@ from urllib.parse import quote, urlsplit, urlunsplit
 
 MessageCallback = Callable[[Any], Any]
 CALLBACK_QUEUE_LIMIT = 128
+CALLBACK_QUEUE_FULL_MESSAGE = (
+    "Volcano realtime callback queue is full; publication dropped"
+)
+CHANNEL_NOT_SUBSCRIBED = "Channel must be subscribed before sending"
+SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
+    "centrifuge client subscription registry is unavailable"
+)
 
 
 class RealtimeContext(Protocol):
+    """Client capabilities required by realtime connections."""
+
     def _anon_token(self) -> str: ...
 
     def _session_token(self) -> str: ...
 
 
 class CentrifugeSubscription(Protocol):
-    async def subscribe(self) -> None: ...
+    """Centrifuge subscription operations used by the SDK."""
 
-    async def publish(self, data: Any) -> Any: ...
+    async def subscribe(self) -> None:
+        """Subscribe to the remote channel."""
+        ...
 
-    async def unsubscribe(self) -> None: ...
+    async def publish(self, data: Any) -> Any:
+        """Publish a payload to the remote channel."""
+        ...
+
+    async def unsubscribe(self) -> None:
+        """Unsubscribe from the remote channel."""
+        ...
 
 
 class CentrifugeConnection(Protocol):
-    async def connect(self) -> None: ...
+    """Centrifuge connection operations used by the SDK."""
 
-    async def disconnect(self) -> None: ...
+    async def connect(self) -> None:
+        """Open the remote connection."""
+        ...
+
+    async def disconnect(self) -> None:
+        """Close the remote connection."""
+        ...
 
     def new_subscription(
         self,
         name: str,
         *,
         events: Any,
-    ) -> CentrifugeSubscription: ...
+    ) -> CentrifugeSubscription:
+        """Create a subscription for a remote channel."""
+        ...
 
 
 class CentrifugeFactory(Protocol):
+    """Construct a typed Centrifuge connection."""
+
     def __call__(
         self,
         address: str,
         *,
         token: str,
         get_token: Callable[[], Awaitable[str]],
-    ) -> CentrifugeConnection: ...
+    ) -> CentrifugeConnection:
+        """Construct a Centrifuge connection."""
+        ...
 
 
 class CentrifugeConstructor(Protocol):
+    """Describe the dynamically imported Centrifuge client constructor."""
+
     def __call__(
         self,
         address: str,
         *,
         token: str,
         get_token: Callable[[], Awaitable[str]],
-    ) -> object: ...
+    ) -> object:
+        """Construct the dynamically imported Centrifuge client."""
+        ...
 
 
 class Publication(Protocol):
+    """Publication payload received from Centrifuge."""
+
     data: Any
 
 
 class PublicationContext(Protocol):
+    """Centrifuge callback context containing a publication."""
+
     pub: Publication
 
 
@@ -73,9 +112,9 @@ def _centrifuge_client(
     get_token: Callable[[], Awaitable[str]],
 ) -> CentrifugeConnection:
     module = importlib.import_module("centrifuge")
-    constructor = cast(CentrifugeConstructor, module.Client)
+    constructor = cast("CentrifugeConstructor", module.Client)
     return cast(
-        CentrifugeConnection,
+        "CentrifugeConnection",
         constructor(address, token=token, get_token=get_token),
     )
 
@@ -99,8 +138,9 @@ class _VolcanoCentrifugeConnection:
         state = vars(connection)
         subscriptions = state.get("_subs")
         if not isinstance(subscriptions, dict):
-            raise TypeError("centrifuge client subscription registry is unavailable")
-        state["_subs"] = _ProjectAwareSubscriptions(subscriptions)
+            raise TypeError(SUBSCRIPTION_REGISTRY_UNAVAILABLE)
+        typed_subscriptions = cast("dict[str, Any]", subscriptions)
+        state["_subs"] = _ProjectAwareSubscriptions(typed_subscriptions)
 
     async def connect(self) -> None:
         await self._connection.connect()
@@ -144,7 +184,10 @@ class _ChannelEvents:
 
 
 class Channel:
+    """Realtime broadcast channel."""
+
     def __init__(self, realtime: Realtime, name: str) -> None:
+        """Create a channel managed by a realtime facade."""
         self._realtime = realtime
         self._name = name
         self._message_callbacks: list[MessageCallback] = []
@@ -157,18 +200,23 @@ class Channel:
         self._callback_stop: asyncio.Event | None = None
 
     def on(self, event: str, callback: MessageCallback) -> Channel:
+        """Register a callback for broadcast messages."""
         if event != "message":
-            raise ValueError(f"unsupported realtime event: {event}")
+            message = f"unsupported realtime event: {event}"
+            raise ValueError(message)
         self._message_callbacks.append(callback)
         return self
 
     async def subscribe(self) -> None:
+        """Subscribe to this channel."""
         await self._realtime._subscribe(self)
 
     async def send(self, data: Any) -> None:
+        """Publish a broadcast payload to this channel."""
         await self._realtime._publish(self, data)
 
     async def unsubscribe(self) -> None:
+        """Unsubscribe from this channel."""
         await self._realtime._unsubscribe(self)
 
     async def _emit(self, data: Any) -> None:
@@ -176,14 +224,16 @@ class Channel:
         if task is None or task.done():
             self._start_callback_dispatcher()
         elif self._callback_stop is not None and self._callback_stop.is_set():
-            self._callback_task = asyncio.create_task(self._restart_callback_dispatcher(task))
+            self._callback_task = asyncio.create_task(
+                self._restart_callback_dispatcher(task)
+            )
             self._callback_stop = None
         try:
             self._callback_queue.put_nowait(data)
         except asyncio.QueueFull:
             asyncio.get_running_loop().call_exception_handler(
                 {
-                    "message": "Volcano realtime callback queue is full; publication dropped",
+                    "message": CALLBACK_QUEUE_FULL_MESSAGE,
                     "channel": self._name,
                 }
             )
@@ -204,7 +254,9 @@ class Channel:
             data = await self._callback_queue.get()
             try:
                 for callback in tuple(self._message_callbacks):
-                    active_task = asyncio.create_task(self._run_callback(callback, data))
+                    active_task = asyncio.create_task(
+                        self._run_callback(callback, data)
+                    )
                     self._active_callback_task = active_task
                     try:
                         (error,) = await asyncio.gather(
@@ -246,6 +298,8 @@ class Channel:
 
 
 class Realtime:
+    """Manage project realtime connections and channels."""
+
     def __init__(
         self,
         client: RealtimeContext,
@@ -253,6 +307,7 @@ class Realtime:
         api_url: str,
         client_factory: CentrifugeFactory = _centrifuge_client,
     ) -> None:
+        """Create a lazily connected realtime facade."""
         self._client_context = client
         self._api_url = api_url
         self._client_factory = client_factory
@@ -261,6 +316,7 @@ class Realtime:
         self._channels: dict[str, Channel] = {}
 
     def channel(self, name: str) -> Channel:
+        """Return a stable channel facade for a broadcast name."""
         wire_name = f"broadcast:{name}"
         if wire_name not in self._channels:
             self._channels[wire_name] = Channel(self, wire_name)
@@ -306,7 +362,7 @@ class Realtime:
     async def _publish(self, channel: Channel, data: Any) -> None:
         async with self._connection_lock:
             if channel._subscription is None:
-                raise RuntimeError("Channel must be subscribed before sending")
+                raise RuntimeError(CHANNEL_NOT_SUBSCRIBED)
             await channel._subscription.publish(data)
 
     async def _unsubscribe(self, channel: Channel) -> None:
@@ -315,6 +371,7 @@ class Realtime:
                 await channel._subscription.unsubscribe()
 
     async def disconnect(self) -> None:
+        """Disconnect and reset every channel managed by this facade."""
         async with self._connection_lock:
             connection = self._connection
             self._connection = None

@@ -66,11 +66,13 @@ def authenticated_client(context: Any) -> None:
 def select_fixture_row(context: Any) -> None:
     world = _world(context)
     world.record(
-        lambda: world.client.database(world.fixture["database_name"])
-        .from_(world.fixture["table_name"])
-        .select("*")
-        .eq("slug", world.fixture["fixture_row"]["slug"])
-        .execute()
+        lambda: (
+            world.client.database(world.fixture["database_name"])
+            .from_(world.fixture["table_name"])
+            .select("*")
+            .eq("slug", world.fixture["fixture_row"]["slug"])
+            .execute()
+        )
     )
 
 
@@ -160,6 +162,7 @@ def two_realtime_clients(context: Any) -> None:
         world.realtime_clients = clients
         world.subscriber = clients[0].realtime.channel(world.realtime_channel)
         world.publisher = clients[1].realtime.channel(world.realtime_channel)
+
         async def subscribe() -> None:
             await asyncio.gather(
                 world.subscriber.subscribe(),

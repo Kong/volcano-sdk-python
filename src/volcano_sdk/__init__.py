@@ -1,3 +1,5 @@
+"""Public Volcano SDK facade."""
+
 from .client import VolcanoClient
 from .errors import (
     AuthenticationError,

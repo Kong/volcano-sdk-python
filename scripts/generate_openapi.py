@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Generate the internal Python client from the bundled OpenAPI document."""
+
 from __future__ import annotations
 
 import argparse
@@ -22,10 +24,11 @@ REQUIRED_OPERATION_MODULES = {
 
 
 def generate(output: Path) -> None:
+    """Generate the OpenAPI client into ``output`` and validate required operations."""
     if output.exists():
         shutil.rmtree(output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
+    subprocess.run(  # noqa: S603 - argv and executable are controlled by this script.
         [
             sys.executable,
             "-m",
@@ -47,10 +50,12 @@ def generate(output: Path) -> None:
     generated_operations = {path.name for path in (output / "api").rglob("*.py")}
     missing = REQUIRED_OPERATION_MODULES - generated_operations
     if missing:
-        raise RuntimeError(f"required OpenAPI operations were not generated: {sorted(missing)}")
+        message = f"required OpenAPI operations were not generated: {sorted(missing)}"
+        raise RuntimeError(message)
 
 
 def main() -> None:
+    """Parse command-line options and generate the internal client."""
     parser = argparse.ArgumentParser(description="Generate the internal OpenAPI client")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()

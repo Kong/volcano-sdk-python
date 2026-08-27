@@ -8,23 +8,29 @@ from typing import Any
 
 from contract_support import ContractWorld
 
+FIXTURE_MODE = 0o600
+FIXTURE_ABSOLUTE_PATH_ERROR = "VOLCANO_SDK_CONTRACT_FIXTURE must be an absolute path"
+FIXTURE_MODE_ERROR = "VOLCANO_SDK_CONTRACT_FIXTURE must have mode 0600"
+FIXTURE_OBJECT_ERROR = "VOLCANO_SDK_CONTRACT_FIXTURE must contain a JSON object"
+FIXTURE_REQUIRED_ERROR = "VOLCANO_SDK_CONTRACT_FIXTURE is required"
+
 
 def load_fixture(path: Path) -> dict[str, Any]:
     if not path.is_absolute():
-        raise ValueError("VOLCANO_SDK_CONTRACT_FIXTURE must be an absolute path")
+        raise ValueError(FIXTURE_ABSOLUTE_PATH_ERROR)
     mode = stat.S_IMODE(path.stat().st_mode)
-    if mode != 0o600:
-        raise PermissionError("VOLCANO_SDK_CONTRACT_FIXTURE must have mode 0600")
+    if mode != FIXTURE_MODE:
+        raise PermissionError(FIXTURE_MODE_ERROR)
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
-        raise TypeError("VOLCANO_SDK_CONTRACT_FIXTURE must contain a JSON object")
+        raise TypeError(FIXTURE_OBJECT_ERROR)
     return value
 
 
 def before_all(context: Any) -> None:
     fixture_path = os.environ.get("VOLCANO_SDK_CONTRACT_FIXTURE")
     if fixture_path is None:
-        raise RuntimeError("VOLCANO_SDK_CONTRACT_FIXTURE is required")
+        raise RuntimeError(FIXTURE_REQUIRED_ERROR)
     context.contract_fixture = load_fixture(Path(fixture_path))
 
 

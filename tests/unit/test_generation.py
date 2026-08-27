@@ -1,8 +1,10 @@
 import os
+import sys
 from pathlib import Path
 from runpy import run_path
 
 ROOT = Path(__file__).resolve().parents[2]
+
 
 def test_generate_emits_all_six_contract_operations(tmp_path: Path) -> None:
     script = run_path(str(ROOT / "scripts" / "generate_openapi.py"))
@@ -22,11 +24,14 @@ def test_generate_emits_all_six_contract_operations(tmp_path: Path) -> None:
 
 
 def test_generated_comparison_reads_file_bytes(
-    monkeypatch: object,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
-    script = run_path(str(ROOT / "scripts" / "check_openapi.py"))
+    scripts_path = str(ROOT / "scripts")
+    sys.path.insert(0, scripts_path)
+    try:
+        script = run_path(str(ROOT / "scripts" / "check_openapi.py"))
+    finally:
+        sys.path.remove(scripts_path)
     compared_files = script["compared_files"]
     expected = tmp_path / "expected"
     actual = tmp_path / "actual"

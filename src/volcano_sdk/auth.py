@@ -1,3 +1,5 @@
+"""Authentication facade."""
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -7,6 +9,8 @@ from .models import Session
 
 
 class AuthContext(Protocol):
+    """Client capabilities required by the authentication facade."""
+
     _transport: Transport
 
     def _anon_token(self) -> str: ...
@@ -15,10 +19,14 @@ class AuthContext(Protocol):
 
 
 class Auth:
+    """Authenticate users and update the client session."""
+
     def __init__(self, client: AuthContext) -> None:
+        """Create an authentication facade backed by a client."""
         self._client = client
 
     def sign_in(self, *, email: str, password: str) -> Session:
+        """Sign in a user and store the returned session."""
         response = invoke(
             self._client._transport.auth_signin,
             authorization=self._client._anon_token(),

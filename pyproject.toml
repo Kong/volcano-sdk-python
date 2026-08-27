@@ -32,20 +32,80 @@ dev = [
   "build>=1.5.0,<2.0.0",
   "mypy>=1.18.0",
   "openapi-python-client==0.29.0",
+  "pyright>=1.1.405",
   "pytest>=8.3.0",
   "ruff>=0.9.0",
   "types-python-dateutil>=2.9.0.20250822",
 ]
 
 [tool.mypy]
-files = ["src"]
+files = ["src", "tests/unit", "scripts"]
 python_version = "3.11"
 strict = true
 exclude = ["src/volcano_sdk/_generated/"]
+
+[[tool.mypy.overrides]]
+module = ["behave.*"]
+ignore_missing_imports = true
+
+[tool.pyright]
+include = ["src", "tests/unit", "scripts"]
+exclude = ["src/volcano_sdk/_generated"]
+pythonVersion = "3.11"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "strict"
+# Package-level collaborators intentionally share private implementation details;
+# Ruff still enforces private access everywhere else.
+reportPrivateUsage = false
 
 [tool.ruff]
 target-version = "py311"
 extend-exclude = ["src/volcano_sdk/_generated"]
 
 [tool.ruff.lint]
-extend-select = ["I"]
+select = ["ALL"]
+ignore = [
+  # The repository license covers source files without per-file headers.
+  "CPY001",
+  # Ruff format uses the opposite convention or supersedes these rules.
+  "COM812",
+  "COM819",
+  "D203",
+  "D206",
+  "D213",
+  "D300",
+  "E111",
+  "E114",
+  "E117",
+  "ISC001",
+  "ISC002",
+  "Q000",
+  "Q001",
+  "Q002",
+  "Q003",
+  "W191",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"features/**/*.py" = ["ANN401", "D", "INP001", "S101"]
+"scripts/*.py" = ["T201"]
+"src/volcano_sdk/_transport.py" = ["ANN401"]
+"src/volcano_sdk/auth.py" = ["SLF001"]
+"src/volcano_sdk/database.py" = ["SLF001"]
+"src/volcano_sdk/locks.py" = ["SLF001"]
+"src/volcano_sdk/realtime.py" = ["ANN401", "SLF001"]
+"src/volcano_sdk/storage.py" = ["SLF001"]
+"tests/**/*.py" = [
+  "ANN401",
+  "D",
+  "INP001",
+  "PLR2004",
+  "S101",
+  "S105",
+  "S106",
+  "SLF001",
+]
+
+[tool.pytest.ini_options]
+filterwarnings = ["error"]

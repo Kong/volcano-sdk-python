@@ -1,7 +1,11 @@
+"""Typed errors raised by the Volcano SDK."""
+
 from __future__ import annotations
 
 
 class VolcanoError(Exception):
+    """Base error containing structured Volcano response details."""
+
     def __init__(
         self,
         message: str,
@@ -10,6 +14,7 @@ class VolcanoError(Exception):
         code: str | None = None,
         retry_after: int | None = None,
     ) -> None:
+        """Create an error from an API or transport failure."""
         super().__init__(message)
         self.status = status
         self.code = code
@@ -17,28 +22,28 @@ class VolcanoError(Exception):
 
 
 class AuthenticationError(VolcanoError):
-    pass
+    """The supplied credentials are missing or invalid."""
 
 
 class ValidationError(VolcanoError):
-    pass
+    """The request failed API validation."""
 
 
 class NotFoundError(VolcanoError):
-    pass
+    """The requested resource does not exist."""
 
 
 class ConflictError(VolcanoError):
-    pass
+    """The request conflicts with the current resource state."""
 
 
 class RateLimitedError(VolcanoError):
-    pass
+    """The API rejected the request because of a rate limit."""
 
 
 class ServerError(VolcanoError):
-    pass
+    """The Volcano API failed to process the request."""
 
 
 class TransportError(VolcanoError):
-    pass
+    """The request failed before receiving an API response."""

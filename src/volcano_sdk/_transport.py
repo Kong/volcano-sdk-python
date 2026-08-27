@@ -1,11 +1,12 @@
+"""Internal transport boundary around the generated OpenAPI client."""
+
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
-from typing import Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 from uuid import UUID, uuid4
 
 import httpx
@@ -36,9 +37,41 @@ from .errors import (
     VolcanoError,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+HTTP_NOT_FOUND = 404
+HTTP_CONFLICT = 409
+HTTP_RATE_LIMITED = 429
+HTTP_SERVER_ERROR_MIN = 500
+HTTP_SERVER_ERROR_MAX = 599
+ERROR_TYPES_BY_STATUS: dict[int, type[VolcanoError]] = {
+    400: ValidationError,
+    401: AuthenticationError,
+    403: AuthenticationError,
+    HTTP_NOT_FOUND: NotFoundError,
+    HTTP_CONFLICT: ConflictError,
+    422: ValidationError,
+    HTTP_RATE_LIMITED: RateLimitedError,
+}
+
+
+class TransportResponse(Protocol):
+    @property
+    def status_code(self) -> int: ...
+
+    @property
+    def payload(self) -> Any: ...
+
+    @property
+    def content(self) -> bytes: ...
+
+    @property
+    def headers(self) -> Mapping[str, str] | None: ...
+
 
 @dataclass(frozen=True, slots=True)
-class TransportResponse:
+class _GeneratedTransportResponse:
     status_code: int
     payload: Any
     content: bytes
@@ -113,36 +146,39 @@ def _header(headers: Mapping[str, str] | None, name: str) -> str | None:
     return None
 
 
+def _error_type(status: int) -> type[VolcanoError]:
+    error_type = ERROR_TYPES_BY_STATUS.get(status)
+    if error_type is not None:
+        return error_type
+    if HTTP_SERVER_ERROR_MIN <= status <= HTTP_SERVER_ERROR_MAX:
+        return ServerError
+    return VolcanoError
+
+
 def response_payload(response: Any, expected_status: int) -> Any:
     status = int(response.status_code)
     if status != expected_status:
-        payload = response.payload if isinstance(response.payload, dict) else {}
-        message = str(payload.get("error") or payload.get("message") or "Volcano request failed")
+        payload: Mapping[str, object]
+        raw_payload = response.payload
+        if isinstance(raw_payload, dict):
+            payload = cast("Mapping[str, object]", raw_payload)
+        else:
+            payload = {}
+        message = str(
+            payload.get("error") or payload.get("message") or "Volcano request failed"
+        )
         code_value = payload.get("code")
         code = str(code_value) if code_value is not None else None
         retry_after = None
-        if status == 429:
+        if status == HTTP_RATE_LIMITED:
             retry_after_value = _header(response.headers, "Retry-After")
             try:
-                retry_after = int(retry_after_value) if retry_after_value is not None else None
+                retry_after = (
+                    int(retry_after_value) if retry_after_value is not None else None
+                )
             except ValueError:
                 retry_after = None
-        error_type: type[VolcanoError]
-        if status in (401, 403):
-            error_type = AuthenticationError
-        elif status in (400, 422):
-            error_type = ValidationError
-        elif status == 404:
-            error_type = NotFoundError
-        elif status == 409:
-            error_type = ConflictError
-        elif status == 429:
-            error_type = RateLimitedError
-        elif 500 <= status <= 599:
-            error_type = ServerError
-        else:
-            error_type = VolcanoError
-        raise error_type(
+        raise _error_type(status)(
             message,
             status=status,
             code=code,
@@ -186,7 +222,7 @@ class GeneratedTransport:
                 payload = json.loads(response.content)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 payload = None
-        return TransportResponse(
+        return _GeneratedTransportResponse(
             status_code=int(response.status_code),
             payload=payload,
             content=response.content,
@@ -275,8 +311,8 @@ class GeneratedTransport:
                 key,
                 client=client,
                 body=ProjectLockLeaseRequest(ttl_seconds=ttl),
-                x_volcano_lock_token=cast(UUID, token),
-                x_volcano_request_id=cast(UUID, str(uuid4())),
+                x_volcano_lock_token=cast("UUID", token),
+                x_volcano_request_id=cast("UUID", str(uuid4())),
             )
         return self._response(response)
 
@@ -291,7 +327,7 @@ class GeneratedTransport:
             response = release_project_lock.sync_detailed(
                 key,
                 client=client,
-                x_volcano_lock_token=cast(UUID, token),
-                x_volcano_request_id=cast(UUID, str(uuid4())),
+                x_volcano_lock_token=cast("UUID", token),
+                x_volcano_request_id=cast("UUID", str(uuid4())),
             )
         return self._response(response)

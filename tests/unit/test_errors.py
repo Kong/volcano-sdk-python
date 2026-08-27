@@ -18,6 +18,8 @@ from volcano_sdk.errors import (
     VolcanoError,
 )
 
+UNEXPECTED_TRANSPORT_CALL = "unexpected transport operation"
+
 
 @dataclass(frozen=True)
 class ErrorResponse:
@@ -31,11 +33,69 @@ class ErrorTransport:
     def __init__(self, failure: ErrorResponse | Exception) -> None:
         self.failure = failure
 
-    def auth_signin(self, **kwargs: Any) -> ErrorResponse:
-        del kwargs
+    def auth_signin(
+        self,
+        *,
+        authorization: str,
+        email: str,
+        password: str,
+    ) -> ErrorResponse:
+        del authorization, email, password
         if isinstance(self.failure, Exception):
             raise self.failure
         return self.failure
+
+    def query_database_select(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> ErrorResponse:
+        del authorization, database_name, body
+        raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
+
+    def upload_storage_object(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        path: str,
+        data: bytes,
+    ) -> ErrorResponse:
+        del authorization, bucket_name, path, data
+        raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
+
+    def download_storage_object(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        path: str,
+    ) -> ErrorResponse:
+        del authorization, bucket_name, path
+        raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
+
+    def acquire_project_lock(
+        self,
+        *,
+        authorization: str,
+        key: str,
+        ttl: int,
+        token: str,
+    ) -> ErrorResponse:
+        del authorization, key, ttl, token
+        raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
+
+    def release_project_lock(
+        self,
+        *,
+        authorization: str,
+        key: str,
+        token: str,
+    ) -> ErrorResponse:
+        del authorization, key, token
+        raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
 
 @pytest.mark.parametrize(
@@ -79,7 +139,9 @@ def test_network_failure_maps_to_transport_error() -> None:
     request = httpx.Request("POST", "https://api.test.volcano.dev/auth/signin")
     client = VolcanoClient(
         anon_key="anon-key",
-        _transport=ErrorTransport(httpx.ConnectError("connection failed", request=request)),
+        _transport=ErrorTransport(
+            httpx.ConnectError("connection failed", request=request)
+        ),
     )
 
     with pytest.raises(TransportError) as caught:

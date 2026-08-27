@@ -1,3 +1,5 @@
+"""Database query facade."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -7,6 +9,8 @@ from ._transport import Transport, invoke, response_payload
 
 
 class DatabaseContext(Protocol):
+    """Client capabilities required by database queries."""
+
     _transport: Transport
 
     def _session_token(self) -> str: ...
@@ -14,6 +18,8 @@ class DatabaseContext(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class QueryBuilder:
+    """Build and execute an immutable database select query."""
+
     _client: DatabaseContext
     _database_name: str
     _table: str
@@ -21,13 +27,16 @@ class QueryBuilder:
     _filters: tuple[dict[str, Any], ...] = ()
 
     def select(self, *columns: str) -> QueryBuilder:
+        """Select the requested columns."""
         return replace(self, _columns=columns)
 
-    def eq(self, column: str, value: Any) -> QueryBuilder:
+    def eq(self, column: str, value: object) -> QueryBuilder:
+        """Add an equality filter."""
         condition = {"column": column, "operator": "eq", "value": value}
         return replace(self, _filters=(*self._filters, condition))
 
     def execute(self) -> list[dict[str, Any]]:
+        """Execute the query and return its rows."""
         body: dict[str, Any] = {"table": self._table}
         if self._columns and self._columns != ("*",):
             body["select"] = list(self._columns)
@@ -45,8 +54,11 @@ class QueryBuilder:
 
 @dataclass(frozen=True, slots=True)
 class Database:
+    """Entry point for queries against one database."""
+
     _client: DatabaseContext
     _name: str
 
     def from_(self, table: str) -> QueryBuilder:
+        """Create a query builder for a table."""
         return QueryBuilder(self._client, self._name, table)

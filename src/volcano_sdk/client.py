@@ -1,12 +1,21 @@
+"""Top-level Volcano client."""
+
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
 from .database import Database
 from .locks import Locks
-from .models import Session
 from .realtime import CentrifugeFactory, Realtime
 from .storage import Storage
+
+if TYPE_CHECKING:
+    from .models import Session
+
+_NO_ACTIVE_SESSION = "No active session"
+_NO_SERVICE_KEY = "No service key configured"
 
 
 class VolcanoClient:
@@ -22,6 +31,7 @@ class VolcanoClient:
         _transport: Transport | None = None,
         _realtime_client_factory: CentrifugeFactory | None = None,
     ) -> None:
+        """Create a client for a Volcano project."""
         self._api_url = api_url.rstrip("/")
         self._anon_key = anon_key
         self._service_key = service_key
@@ -45,9 +55,11 @@ class VolcanoClient:
 
     @property
     def current_session(self) -> Session | None:
+        """Return the authenticated session, if one exists."""
         return self._current_session
 
     def database(self, name: str) -> Database:
+        """Create a query facade for a project database."""
         return Database(self, name)
 
     def _anon_token(self) -> str:
@@ -55,12 +67,12 @@ class VolcanoClient:
 
     def _session_token(self) -> str:
         if self._current_session is None:
-            raise RuntimeError("No active session")
+            raise RuntimeError(_NO_ACTIVE_SESSION)
         return self._current_session.access_token
 
     def _service_token(self) -> str:
         if self._service_key is None:
-            raise RuntimeError("No service key configured")
+            raise RuntimeError(_NO_SERVICE_KEY)
         return self._service_key
 
     def _set_session(self, session: Session) -> None:

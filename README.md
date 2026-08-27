@@ -19,13 +19,7 @@ client = VolcanoClient(
 
 session = client.auth.sign_in(email="user@example.com", password="secret")
 
-rows = (
-    client.database("main")
-    .from_("items")
-    .select("*")
-    .eq("slug", "a")
-    .execute()
-)
+rows = client.database("main").from_("items").select("*").eq("slug", "a").execute()
 
 bucket = client.storage.from_("assets")
 bucket.upload("a.txt", b"hello")
@@ -67,7 +61,9 @@ subscription, publish, and disconnect behavior to `centrifuge-python` 0.6.
 uv sync --frozen
 uv run python scripts/check_openapi.py
 uv run ruff check .
+uv run ruff format --check .
 uv run mypy
+uv run pyright
 uv run pytest tests/unit -q
 uv run python -m build
 ```

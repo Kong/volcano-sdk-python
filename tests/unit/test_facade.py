@@ -64,17 +64,11 @@ def test_public_facade_delegates_to_the_six_contract_operations() -> None:
     )
 
     session = client.auth.sign_in(email="user@example.com", password="secret")
-    rows = (
-        client.database("main")
-        .from_("items")
-        .select("*")
-        .eq("slug", "a")
-        .execute()
-    )
+    rows = client.database("main").from_("items").select("*").eq("slug", "a").execute()
     uploaded = client.storage.from_("assets").upload("a.txt", b"hello")
     downloaded = client.storage.from_("assets").download("a.txt")
     lease = client.locks.acquire("build", ttl=30)
-    released = client.locks.release("build", lease)
+    client.locks.release("build", lease)
 
     assert session == Session(
         access_token="access-token",
@@ -91,8 +85,6 @@ def test_public_facade_delegates_to_the_six_contract_operations() -> None:
         expires_at=datetime(2026, 8, 26, 12, 0, 30, tzinfo=UTC),
         fencing_token=7,
     )
-    assert released is None
-
     assert [name for name, _ in transport.calls] == [
         "authSignin",
         "queryDatabaseSelect",

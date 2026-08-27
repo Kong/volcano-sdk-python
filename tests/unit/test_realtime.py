@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from volcano_sdk import VolcanoClient
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    import pytest
+
+UNEXPECTED_TRANSPORT_CALL = "unexpected transport operation"
 
 
 @dataclass(frozen=True)
@@ -21,8 +27,14 @@ class AuthTransport:
     def __init__(self) -> None:
         self.access_token = "access-1"
 
-    def auth_signin(self, **kwargs: Any) -> Response:
-        del kwargs
+    def auth_signin(
+        self,
+        *,
+        authorization: str,
+        email: str,
+        password: str,
+    ) -> Response:
+        del authorization, email, password
         return Response(
             200,
             {
@@ -31,6 +43,58 @@ class AuthTransport:
                 "user": {"id": "user-123"},
             },
         )
+
+    def query_database_select(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> Response:
+        del authorization, database_name, body
+        raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
+
+    def upload_storage_object(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        path: str,
+        data: bytes,
+    ) -> Response:
+        del authorization, bucket_name, path, data
+        raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
+
+    def download_storage_object(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        path: str,
+    ) -> Response:
+        del authorization, bucket_name, path
+        raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
+
+    def acquire_project_lock(
+        self,
+        *,
+        authorization: str,
+        key: str,
+        ttl: int,
+        token: str,
+    ) -> Response:
+        del authorization, key, ttl, token
+        raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
+
+    def release_project_lock(
+        self,
+        *,
+        authorization: str,
+        key: str,
+        token: str,
+    ) -> Response:
+        del authorization, key, token
+        raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
 
 class FakeSubscription:
@@ -48,7 +112,9 @@ class FakeSubscription:
         self.calls.append(("unsubscribe", None))
 
     async def emit(self, data: Any) -> None:
-        await self.events.on_publication(SimpleNamespace(pub=SimpleNamespace(data=data)))
+        await self.events.on_publication(
+            SimpleNamespace(pub=SimpleNamespace(data=data))
+        )
 
 
 class FakeCentrifugeClient:
@@ -73,6 +139,21 @@ class FakeCentrifugeClient:
         subscription = self._subs.get(name)
         if subscription is not None:
             await subscription.emit(data)
+
+
+@dataclass(frozen=True)
+class FakeCentrifugeFactory:
+    client: FakeCentrifugeClient
+
+    def __call__(
+        self,
+        address: str,
+        *,
+        token: str,
+        get_token: Callable[[], Awaitable[str]],
+    ) -> FakeCentrifugeClient:
+        del address, token, get_token
+        return self.client
 
 
 def test_realtime_wraps_official_client_without_exposing_it() -> None:
@@ -105,7 +186,7 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
     async def scenario() -> None:
         channel = client.realtime.channel("contract")
         assert channel.on("message", received.append) is channel
-        assert await channel.subscribe() is None
+        await channel.subscribe()
         assert official.subscription is not None
         await official.emit_wire_publication(
             "project-id:broadcast:contract",
@@ -116,13 +197,13 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
                 break
             await asyncio.sleep(0)
         assert received == [{"event": "message", "value": "contract"}]
-        assert await channel.send({"event": "message", "value": "contract"}) is None
-        assert await channel.unsubscribe() is None
+        await channel.send({"event": "message", "value": "contract"})
+        await channel.unsubscribe()
 
         transport.access_token = "access-2"
         client.auth.sign_in(email="user@example.com", password="secret")
         assert await factory_arguments["get_token"]() == "access-2"
-        assert await client.realtime.disconnect() is None
+        await client.realtime.disconnect()
 
     asyncio.run(scenario())
 
@@ -146,7 +227,7 @@ def test_realtime_callbacks_run_outside_the_message_processor() -> None:
     client = VolcanoClient(
         anon_key="anon-key",
         _transport=transport,
-        _realtime_client_factory=lambda *args, **kwargs: official,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
     )
     client.auth.sign_in(email="user@example.com", password="secret")
 
@@ -182,7 +263,7 @@ def test_realtime_routes_overlapping_channel_suffixes_to_the_longest_match() -> 
     client = VolcanoClient(
         anon_key="anon-key",
         _transport=transport,
-        _realtime_client_factory=lambda *args, **kwargs: official,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
     )
     client.auth.sign_in(email="user@example.com", password="secret")
 
@@ -210,7 +291,9 @@ def test_realtime_routes_overlapping_channel_suffixes_to_the_longest_match() -> 
     asyncio.run(scenario())
 
 
-def test_realtime_opens_one_connection_when_first_used_concurrently() -> None:
+def test_realtime_opens_one_connection_when_first_used_concurrently(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     transport = AuthTransport()
     official = FakeCentrifugeClient()
     entered = asyncio.Event()
@@ -222,7 +305,7 @@ def test_realtime_opens_one_connection_when_first_used_concurrently() -> None:
         await release.wait()
         official.calls.append("connect")
 
-    official.connect = connect
+    monkeypatch.setattr(official, "connect", connect)
 
     def factory(*args: Any, **kwargs: Any) -> FakeCentrifugeClient:
         nonlocal created
@@ -256,7 +339,7 @@ def test_realtime_callback_failure_does_not_stop_later_callbacks() -> None:
     client = VolcanoClient(
         anon_key="anon-key",
         _transport=transport,
-        _realtime_client_factory=lambda *args, **kwargs: official,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
     )
     client.auth.sign_in(email="user@example.com", password="secret")
 
@@ -270,7 +353,8 @@ def test_realtime_callback_failure_does_not_stop_later_callbacks() -> None:
 
         def callback(data: dict[str, str]) -> None:
             if data["value"] == "first":
-                raise RuntimeError("callback failed")
+                message = "callback failed"
+                raise RuntimeError(message)
             received.append(data["value"])
 
         try:
@@ -304,7 +388,7 @@ def test_realtime_callback_can_disconnect_its_own_client() -> None:
     client = VolcanoClient(
         anon_key="anon-key",
         _transport=transport,
-        _realtime_client_factory=lambda *args, **kwargs: official,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
     )
     client.auth.sign_in(email="user@example.com", password="secret")
 
@@ -341,7 +425,9 @@ def test_realtime_callback_can_disconnect_its_own_client() -> None:
     ]
 
 
-def test_realtime_disconnect_excludes_a_concurrent_first_connect() -> None:
+def test_realtime_disconnect_excludes_a_concurrent_first_connect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     transport = AuthTransport()
     official = FakeCentrifugeClient()
     entered = asyncio.Event()
@@ -352,11 +438,11 @@ def test_realtime_disconnect_excludes_a_concurrent_first_connect() -> None:
         await release.wait()
         official.calls.append("connect")
 
-    official.connect = connect
+    monkeypatch.setattr(official, "connect", connect)
     client = VolcanoClient(
         anon_key="anon-key",
         _transport=transport,
-        _realtime_client_factory=lambda *args, **kwargs: official,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
     )
     client.auth.sign_in(email="user@example.com", password="secret")
 
@@ -375,7 +461,9 @@ def test_realtime_disconnect_excludes_a_concurrent_first_connect() -> None:
     assert official.calls == ["connect", "channel:broadcast:contract", "disconnect"]
 
 
-def test_realtime_disconnect_excludes_subscription_on_an_existing_connection() -> None:
+def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     transport = AuthTransport()
     official = FakeCentrifugeClient()
     entered = asyncio.Event()
@@ -393,11 +481,11 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection() -
         official._subs[name] = official.subscription
         return official.subscription
 
-    official.new_subscription = new_subscription
+    monkeypatch.setattr(official, "new_subscription", new_subscription)
     client = VolcanoClient(
         anon_key="anon-key",
         _transport=transport,
-        _realtime_client_factory=lambda *args, **kwargs: official,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
     )
     client.auth.sign_in(email="user@example.com", password="secret")
 
@@ -418,13 +506,15 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection() -
     assert official.calls == ["connect", "channel:broadcast:contract", "disconnect"]
 
 
-def test_realtime_disconnect_snapshots_channels_before_resetting() -> None:
+def test_realtime_disconnect_snapshots_channels_before_resetting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     transport = AuthTransport()
     official = FakeCentrifugeClient()
     client = VolcanoClient(
         anon_key="anon-key",
         _transport=transport,
-        _realtime_client_factory=lambda *args, **kwargs: official,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
     )
     client.auth.sign_in(email="user@example.com", password="secret")
 
@@ -440,7 +530,7 @@ def test_realtime_disconnect_snapshots_channels_before_resetting() -> None:
             await release.wait()
             await original_reset()
 
-        first._reset = blocking_reset
+        monkeypatch.setattr(first, "_reset", blocking_reset)
         disconnecting = asyncio.create_task(client.realtime.disconnect())
         await entered.wait()
         second = client.realtime.channel("second")
