@@ -85,10 +85,12 @@ class _ProjectAwareSubscriptions(dict[str, Any]):
         subscription = super().get(key)
         if subscription is not None:
             return subscription
-        for channel, candidate in self.items():
-            if key.endswith(f":{channel}"):
-                return candidate
-        return default
+        matches = [
+            (channel, candidate)
+            for channel, candidate in self.items()
+            if key.endswith(f":{channel}")
+        ]
+        return max(matches, key=lambda match: len(match[0]))[1] if matches else default
 
 
 class _VolcanoCentrifugeConnection:

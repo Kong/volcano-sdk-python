@@ -176,6 +176,40 @@ def test_realtime_callbacks_run_outside_the_message_processor() -> None:
     asyncio.run(scenario())
 
 
+def test_realtime_routes_overlapping_channel_suffixes_to_the_longest_match() -> None:
+    transport = AuthTransport()
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=lambda *args, **kwargs: official,
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        received: list[str] = []
+        short = client.realtime.channel("foo").on(
+            "message", lambda _data: received.append("short")
+        )
+        long = client.realtime.channel("x:broadcast:foo").on(
+            "message", lambda _data: received.append("long")
+        )
+        await short.subscribe()
+        await long.subscribe()
+        await official.emit_wire_publication(
+            "project-id:broadcast:x:broadcast:foo",
+            {"event": "message"},
+        )
+        for _ in range(10):
+            if received:
+                break
+            await asyncio.sleep(0)
+        assert received == ["long"]
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_opens_one_connection_when_first_used_concurrently() -> None:
     transport = AuthTransport()
     official = FakeCentrifugeClient()
