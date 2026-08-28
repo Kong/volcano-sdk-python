@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 _INVALID_AUTH_RESPONSE = "Authentication response is missing required fields"
 _MISSING_AUTH_STATE = "No refresh token available"
 _HTTP_UNAUTHORIZED = 401
+_PROVIDER_NOT_LINKED_CODE = "provider_not_linked"
 _INVALID_OAUTH_STATE = "OAuth state does not match"
 _INVALID_OAUTH_PROVIDER = "Unsupported OAuth provider"
 _MISSING_AUTHORIZATION_URL = "Authentication response is missing authorization URL"
@@ -678,7 +679,7 @@ class Auth:
                     error.status != _HTTP_UNAUTHORIZED
                     or session is None
                     or session.refresh_token is None
-                    or "not linked" in str(error).lower()
+                    or error.code == _PROVIDER_NOT_LINKED_CODE
                 ):
                     raise
                 self.refresh_session()

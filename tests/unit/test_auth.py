@@ -1441,21 +1441,26 @@ def test_delete_session_normalizes_current_uuid_before_matching() -> None:
     assert transport.calls[-1][1]["session_id"] == current_session_id
 
 
-def test_provider_401_preserves_access_only_session() -> None:
+def test_provider_401_uses_structured_code_to_preserve_session() -> None:
     transport = AuthTransport()
     transport.queue(
         "call_oauth_provider_api",
-        AuthResponse(401, {"error": "Provider is not linked"}),
+        AuthResponse(
+            401,
+            {"error": "Provider unavailable", "code": "provider_not_linked"},
+        ),
     )
     client = VolcanoClient(
         anon_key="anon-key",
         access_token="access-token",
+        refresh_token="refresh-token",
         _transport=transport,
     )
 
-    with pytest.raises(AuthenticationError, match="Provider is not linked"):
+    with pytest.raises(AuthenticationError, match="Provider unavailable") as raised:
         client.auth.call_oauth_api(provider="github", endpoint="/user")
 
+    assert raised.value.code == "provider_not_linked"
     assert client.current_session is not None
     assert client.current_session.access_token == "access-token"
 
