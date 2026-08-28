@@ -11,6 +11,8 @@ import pytest
 from typing_extensions import override
 
 from volcano_sdk import (
+    AuthIdentity,
+    AuthMethod,
     AuthorizationRequest,
     AuthSession,
     EmailChangeResult,
@@ -155,6 +157,18 @@ class AuthTransport:
     def auth_list_oauth_providers(self, **kwargs: Any) -> AuthResponse:
         return self._invoke("auth_list_oauth_providers", kwargs)
 
+    def auth_list_identities(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_list_identities", kwargs)
+
+    def auth_unlink_identity(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_unlink_identity", kwargs)
+
+    def auth_list_methods(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_list_methods", kwargs)
+
+    def auth_promote_method(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_promote_method", kwargs)
+
     def refresh_oauth_provider_token(self, **kwargs: Any) -> AuthResponse:
         return self._invoke("refresh_oauth_provider_token", kwargs)
 
@@ -226,6 +240,22 @@ def test_public_auth_values_are_frozen_and_slotted() -> None:
             provider="github",
             expires_in=3600,
             message="Refreshed",
+        ),
+        AuthIdentity(
+            id="identity-id",
+            email="user@example.com",
+            email_verified=True,
+            is_primary=True,
+            created_at=datetime(2026, 8, 27, tzinfo=UTC),
+        ),
+        AuthMethod(
+            id="method-id",
+            type="password",
+            identity_id="identity-id",
+            email="user@example.com",
+            is_primary=True,
+            created_at=datetime(2026, 8, 27, tzinfo=UTC),
+            updated_at=datetime(2026, 8, 28, tzinfo=UTC),
         ),
         AuthSession(
             id="session-123",
@@ -1294,6 +1324,72 @@ def test_oauth_exchange_rejects_non_ascii_state_without_calling_transport() -> N
         )
 
     assert transport.calls == []
+
+
+def test_identity_management_returns_public_immutable_values() -> None:
+    transport = AuthTransport()
+    identity_payload = {
+        "id": "3cd3e058-e3ff-42a5-ae4d-650ef9b45746",
+        "email": "user@example.com",
+        "email_verified": True,
+        "is_primary": True,
+        "created_at": "2026-08-27T12:00:00Z",
+    }
+    method_payload = {
+        "id": "7f518a4b-407b-4121-907b-d72a2c7c1ac6",
+        "type": "oauth",
+        "provider": "github",
+        "identity_id": identity_payload["id"],
+        "email": identity_payload["email"],
+        "is_primary": True,
+        "last_used_at": "2026-08-28T12:00:00Z",
+        "created_at": "2026-08-27T12:00:00Z",
+        "updated_at": "2026-08-28T12:00:00Z",
+    }
+    transport.queue(
+        "auth_list_identities",
+        AuthResponse(200, {"identities": [identity_payload]}),
+    )
+    transport.queue(
+        "auth_list_methods",
+        AuthResponse(200, {"methods": [method_payload]}),
+    )
+    transport.queue("auth_promote_method", AuthResponse(200, method_payload))
+    transport.queue("auth_unlink_identity", AuthResponse(204))
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        _transport=transport,
+    )
+
+    identities = client.auth.list_identities()
+    methods = client.auth.list_methods()
+    identity_id = cast("str", identity_payload["id"])
+    method_id = cast("str", method_payload["id"])
+    promoted = client.auth.promote_method(method_id=method_id)
+    client.auth.unlink_identity(identity_id=identity_id)
+
+    assert identities == (
+        AuthIdentity(
+            id=identity_id,
+            email="user@example.com",
+            email_verified=True,
+            is_primary=True,
+            created_at=datetime(2026, 8, 27, 12, tzinfo=UTC),
+        ),
+    )
+    assert methods == (promoted,)
+    assert promoted == AuthMethod(
+        id=method_id,
+        type="oauth",
+        provider="github",
+        identity_id=identity_id,
+        email="user@example.com",
+        is_primary=True,
+        last_used_at=datetime(2026, 8, 28, 12, tzinfo=UTC),
+        created_at=datetime(2026, 8, 27, 12, tzinfo=UTC),
+        updated_at=datetime(2026, 8, 28, 12, tzinfo=UTC),
+    )
 
 
 def test_provider_and_device_session_flows_return_public_values() -> None:

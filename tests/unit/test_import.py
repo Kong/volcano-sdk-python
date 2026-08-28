@@ -8,6 +8,9 @@ def test_package_exports_client() -> None:
 
 def test_package_exports_the_public_sdk_contract() -> None:
     assert volcano_sdk.__all__ == [
+        "AuthIdentity",
+        "AuthMethod",
+        "AuthMethodType",
         "AuthSession",
         "AuthenticationError",
         "AuthorizationRequest",

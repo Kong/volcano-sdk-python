@@ -18,6 +18,9 @@ from uuid import UUID
 from ._transport import Transport, TransportResponse, invoke, response_payload
 from .errors import AuthenticationError, ValidationError, VolcanoError
 from .models import (
+    AuthIdentity,
+    AuthMethod,
+    AuthMethodType,
     AuthorizationRequest,
     AuthSession,
     EmailChangeResult,
@@ -47,6 +50,7 @@ _MISSING_AUTHORIZATION_URL = "Authentication response is missing authorization U
 _INVALID_SESSION_ID = "session_id must be a valid UUID"
 _NO_ACTIVE_SESSION = "No active session"
 _SUPPORTED_OAUTH_PROVIDERS = frozenset({"google", "github", "microsoft", "apple"})
+_SUPPORTED_AUTH_METHODS = frozenset({"password", "oauth", "anonymous"})
 
 
 def _token_session_id(access_token: str) -> str | None:
@@ -209,6 +213,54 @@ def _auth_session(payload: Mapping[str, Any]) -> AuthSession:
         session_started_at=_optional_datetime(payload.get("session_started_at")),
         created_at=_optional_datetime(payload.get("created_at")),
         updated_at=_optional_datetime(payload.get("updated_at")),
+    )
+
+
+def _required_text(payload: Mapping[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str):
+        raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+    return value
+
+
+def _required_bool(payload: Mapping[str, Any], key: str) -> bool:
+    value = payload.get(key)
+    if not isinstance(value, bool):
+        raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+    return value
+
+
+def _required_datetime(payload: Mapping[str, Any], key: str) -> datetime:
+    value = _optional_datetime(payload.get(key))
+    if value is None:
+        raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+    return value
+
+
+def _auth_identity(payload: Mapping[str, Any]) -> AuthIdentity:
+    return AuthIdentity(
+        id=_required_text(payload, "id"),
+        email=_required_text(payload, "email"),
+        email_verified=_required_bool(payload, "email_verified"),
+        is_primary=_required_bool(payload, "is_primary"),
+        created_at=_required_datetime(payload, "created_at"),
+    )
+
+
+def _auth_method(payload: Mapping[str, Any]) -> AuthMethod:
+    method_type = _required_text(payload, "type")
+    if method_type not in _SUPPORTED_AUTH_METHODS:
+        raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+    return AuthMethod(
+        id=_required_text(payload, "id"),
+        type=cast("AuthMethodType", method_type),
+        provider=_optional_text(payload.get("provider")),
+        identity_id=_required_text(payload, "identity_id"),
+        email=_required_text(payload, "email"),
+        is_primary=_required_bool(payload, "is_primary"),
+        last_used_at=_optional_datetime(payload.get("last_used_at")),
+        created_at=_required_datetime(payload, "created_at"),
+        updated_at=_required_datetime(payload, "updated_at"),
     )
 
 
@@ -729,6 +781,51 @@ class Auth:
             retry_unauthorized=False,
             **arguments,
         )
+
+    def list_identities(self) -> tuple[AuthIdentity, ...]:
+        """Return verified email identities owned by the current user."""
+        payload = _mapping(
+            self._authenticated_payload(
+                self._client._transport.auth_list_identities,
+                expected_status=200,
+            )
+        )
+        identities = payload.get("identities")
+        if not isinstance(identities, list):
+            raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+        identity_values = cast("list[object]", identities)
+        return tuple(_auth_identity(_mapping(item)) for item in identity_values)
+
+    def unlink_identity(self, *, identity_id: str) -> None:
+        """Unlink a non-primary identity from the current user."""
+        self._authenticated_payload(
+            self._client._transport.auth_unlink_identity,
+            expected_status=204,
+            identity_id=identity_id,
+        )
+
+    def list_methods(self) -> tuple[AuthMethod, ...]:
+        """Return sign-in methods owned by the current user."""
+        payload = _mapping(
+            self._authenticated_payload(
+                self._client._transport.auth_list_methods,
+                expected_status=200,
+            )
+        )
+        methods = payload.get("methods")
+        if not isinstance(methods, list):
+            raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+        method_values = cast("list[object]", methods)
+        return tuple(_auth_method(_mapping(item)) for item in method_values)
+
+    def promote_method(self, *, method_id: str) -> AuthMethod:
+        """Make a sign-in method the account's primary method."""
+        payload = self._authenticated_payload(
+            self._client._transport.auth_promote_method,
+            expected_status=200,
+            method_id=method_id,
+        )
+        return _auth_method(_mapping(payload))
 
     def get_sessions(
         self,

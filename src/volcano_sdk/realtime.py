@@ -495,10 +495,7 @@ class Realtime:
             self._discard_closed_loop_authentication()
             return
         if loop is not None and _running_loop() is not loop:
-            if loop.is_running():
-                self._schedule_auth_invalidation(loop)
-            else:
-                self._discard_closed_loop_authentication()
+            self._schedule_auth_invalidation(loop)
             return
         self._invalidate_authentication()
 

@@ -12,6 +12,9 @@ from .errors import (
     VolcanoError,
 )
 from .models import (
+    AuthIdentity,
+    AuthMethod,
+    AuthMethodType,
     AuthorizationRequest,
     AuthSession,
     EmailChangeResult,
@@ -29,6 +32,9 @@ from .models import (
 )
 
 __all__ = [
+    "AuthIdentity",
+    "AuthMethod",
+    "AuthMethodType",
     "AuthSession",
     "AuthenticationError",
     "AuthorizationRequest",

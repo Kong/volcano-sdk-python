@@ -22,6 +22,7 @@ JSONValue: TypeAlias = (
     | None
 )
 OAuthProviderName: TypeAlias = Literal["google", "github", "microsoft", "apple"]
+AuthMethodType: TypeAlias = Literal["password", "oauth", "anonymous"]
 
 
 class SessionListOptions(TypedDict, total=False):
@@ -141,6 +142,32 @@ class OAuthTokenResult:
     provider: OAuthProviderName
     expires_in: int | None = None
     message: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AuthIdentity:
+    """Verified email identity owned by the current user."""
+
+    id: str
+    email: str
+    email_verified: bool
+    is_primary: bool
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class AuthMethod:
+    """Sign-in method owned by the current user."""
+
+    id: str
+    type: AuthMethodType
+    identity_id: str
+    email: str
+    is_primary: bool
+    created_at: datetime
+    updated_at: datetime
+    provider: str | None = None
+    last_used_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)

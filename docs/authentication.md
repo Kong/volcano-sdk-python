@@ -193,5 +193,30 @@ profile = client.auth.call_oauth_api(
 client.auth.unlink_oauth_provider(provider="github")
 ```
 
+## Manage identities and sign-in methods
+
+List the email identities and sign-in methods owned by the current account:
+
+```python
+identities = client.auth.list_identities()
+methods = client.auth.list_methods()
+
+for identity in identities:
+    print(identity.email, identity.is_primary)
+
+for method in methods:
+    print(method.type, method.provider, method.is_primary)
+```
+
+Promote a sign-in method or unlink a non-primary identity by its ID:
+
+```python
+promoted = client.auth.promote_method(method_id="method-uuid")
+client.auth.unlink_identity(identity_id="identity-uuid")
+```
+
+The API refuses to unlink a primary or last identity, or an identity whose
+removal would leave the account without a sign-in method.
+
 Keep generated state values and provider tokens secret. Navigate to the returned
 authorization URL only after storing its matching state value.

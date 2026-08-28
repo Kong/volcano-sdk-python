@@ -446,6 +446,30 @@ def test_auth_change_discards_state_owned_by_a_closed_realtime_loop() -> None:
     assert received == ["first", "second"]
 
 
+def test_auth_change_queues_cleanup_on_a_stopped_reusable_loop() -> None:
+    transport = AuthTransport()
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    channel = client.realtime.channel("contract")
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(channel.subscribe())
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="next@example.com", password="secret")
+        loop.run_until_complete(asyncio.sleep(0))
+
+        assert official.calls[-1] == "disconnect"
+        assert channel._subscription is None
+        loop.run_until_complete(client.realtime.disconnect())
+    finally:
+        loop.close()
+
+
 def test_auth_change_retries_an_existing_subscription_in_flight(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -24,7 +24,10 @@ from ._generated.api.authentication import (
     auth_forgot_password,
     auth_get_my_sessions,
     auth_get_user,
+    auth_list_identities,
+    auth_list_methods,
     auth_logout,
+    auth_promote_method,
     auth_refresh,
     auth_request_email_change,
     auth_resend_confirmation,
@@ -32,6 +35,7 @@ from ._generated.api.authentication import (
     auth_signin,
     auth_signup,
     auth_signup_anonymous,
+    auth_unlink_identity,
     auth_update_user,
 )
 from ._generated.api.database_queries import query_database_select
@@ -330,6 +334,24 @@ class Transport(Protocol):
         self,
         *,
         authorization: str,
+    ) -> TransportResponse: ...
+
+    def auth_list_identities(self, *, authorization: str) -> TransportResponse: ...
+
+    def auth_unlink_identity(
+        self,
+        *,
+        authorization: str,
+        identity_id: str,
+    ) -> TransportResponse: ...
+
+    def auth_list_methods(self, *, authorization: str) -> TransportResponse: ...
+
+    def auth_promote_method(
+        self,
+        *,
+        authorization: str,
+        method_id: str,
     ) -> TransportResponse: ...
 
     def query_database_select(
@@ -861,6 +883,42 @@ class GeneratedTransport:
     ) -> TransportResponse:
         with self._auth_client(authorization) as client:
             response = auth_delete_all_my_sessions.sync_detailed(client=client)
+        return self._response(response)
+
+    def auth_list_identities(self, *, authorization: str) -> TransportResponse:
+        with self._auth_client(authorization) as client:
+            response = auth_list_identities.sync_detailed(client=client)
+        return self._response(response)
+
+    def auth_unlink_identity(
+        self,
+        *,
+        authorization: str,
+        identity_id: str,
+    ) -> TransportResponse:
+        with self._auth_client(authorization) as client:
+            response = auth_unlink_identity.sync_detailed(
+                UUID(identity_id),
+                client=client,
+            )
+        return self._response(response)
+
+    def auth_list_methods(self, *, authorization: str) -> TransportResponse:
+        with self._auth_client(authorization) as client:
+            response = auth_list_methods.sync_detailed(client=client)
+        return self._response(response)
+
+    def auth_promote_method(
+        self,
+        *,
+        authorization: str,
+        method_id: str,
+    ) -> TransportResponse:
+        with self._auth_client(authorization) as client:
+            response = auth_promote_method.sync_detailed(
+                UUID(method_id),
+                client=client,
+            )
         return self._response(response)
 
     def query_database_select(
