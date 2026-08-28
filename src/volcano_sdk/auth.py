@@ -251,9 +251,10 @@ class Auth:
             user_metadata=user_metadata,
         )
         payload = _mapping(response_payload(response, 201))
-        confirmation_required = payload.get("confirmation_required") is True
-        message_value = payload.get("message")
-        message = message_value if isinstance(message_value, str) else ""
+        confirmation_required = payload.get("confirmation_required")
+        message = payload.get("message")
+        if not isinstance(confirmation_required, bool) or not isinstance(message, str):
+            raise AuthenticationError(_INVALID_AUTH_RESPONSE)
         if sign_in and not confirmation_required:
             session = self.sign_in(email=email, password=password)
             return SignUpResult(
@@ -334,7 +335,9 @@ class Auth:
 
     def _refresh_session(self) -> Session:
         session = self._client.current_session
-        if session is None or session.refresh_token is None:
+        if session is None:
+            raise AuthenticationError(_MISSING_AUTH_STATE)
+        if session.refresh_token is None:
             self._clear_auth()
             raise AuthenticationError(_MISSING_AUTH_STATE)
 
@@ -350,7 +353,7 @@ class Auth:
             )
             if refreshed.refresh_token is None:
                 raise AuthenticationError(_INVALID_AUTH_RESPONSE)
-            self._replace_auth(refreshed, user)
+            self._replace_auth(refreshed, user, preserve_device_sessions=True)
             succeeded = True
             return refreshed
         finally:
@@ -786,9 +789,16 @@ class Auth:
                 self._clear_auth()
             raise
 
-    def _replace_auth(self, session: Session, user: User) -> None:
+    def _replace_auth(
+        self,
+        session: Session,
+        user: User,
+        *,
+        preserve_device_sessions: bool = False,
+    ) -> None:
         with self._operation_lock:
-            self._current_device_session_ids.clear()
+            if not preserve_device_sessions:
+                self._current_device_session_ids.clear()
             self._client._commit_auth(session, user)
 
     def _clear_auth(self) -> None:

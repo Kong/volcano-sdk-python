@@ -333,6 +333,7 @@ class Realtime:
         self._auth_generation = 0
         self._channels: dict[str, Channel] = {}
         self._auth_cleanup_tasks: set[asyncio.Task[None]] = set()
+        self._in_flight_publishes: set[asyncio.Task[Any]] = set()
 
     def channel(self, name: str) -> Channel:
         """Return a stable channel facade for a broadcast name."""
@@ -387,7 +388,14 @@ class Realtime:
         async with self._connection_lock:
             if channel._subscription is None:
                 raise RuntimeError(CHANNEL_NOT_SUBSCRIBED)
-            await channel._subscription.publish(data)
+            task = asyncio.current_task()
+            if task is not None:
+                self._in_flight_publishes.add(task)
+            try:
+                await channel._subscription.publish(data)
+            finally:
+                if task is not None:
+                    self._in_flight_publishes.discard(task)
 
     async def _unsubscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
@@ -412,6 +420,8 @@ class Realtime:
         connection = self._connection
         self._connection = None
         channels = tuple(self._channels.values())
+        for task in tuple(self._in_flight_publishes):
+            task.cancel()
         for channel in channels:
             channel._invalidate_authentication()
         if connection is None:

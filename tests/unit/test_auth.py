@@ -242,6 +242,17 @@ def test_public_auth_values_are_frozen_and_slotted() -> None:
             setattr(value, first_field, None)
 
 
+def test_user_metadata_is_defensively_deeply_frozen() -> None:
+    metadata: dict[str, Any] = {"nested": [{"value": "kept"}]}
+    user = User(id="user-123", email="user@example.com", user_metadata=metadata)
+    metadata["nested"][0]["value"] = "changed"
+
+    nested = cast("Any", user.user_metadata)["nested"]
+    assert nested[0]["value"] == "kept"
+    with pytest.raises(TypeError):
+        nested[0]["value"] = "changed"
+
+
 def test_public_auth_value_annotations_do_not_expose_generated_models() -> None:
     public_values = (
         User,
@@ -330,6 +341,23 @@ def test_sign_up_returns_a_sessionless_result() -> None:
             },
         )
     ]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"message": "Check your email"},
+        {"confirmation_required": True},
+        {"confirmation_required": "yes", "message": "Check your email"},
+    ],
+)
+def test_sign_up_rejects_malformed_acknowledgements(payload: dict[str, Any]) -> None:
+    transport = AuthTransport()
+    transport.queue("auth_signup", AuthResponse(201, payload))
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="missing required fields"):
+        client.auth.sign_up(email="user@example.com", password="secret")
 
 
 def test_sign_up_can_sign_in_immediately_when_confirmation_is_not_required() -> None:
@@ -635,6 +663,18 @@ def test_rejected_post_refresh_retry_clears_rotated_auth() -> None:
 
     assert client.current_session is None
     assert client.current_user is None
+
+
+def test_refresh_without_local_auth_does_not_emit_another_signed_out_event() -> None:
+    client = VolcanoClient(anon_key="anon-key")
+    observations: list[User | None] = []
+    client.auth.on_auth_state_change(observations.append)
+    observations.clear()
+
+    with pytest.raises(AuthenticationError, match="No refresh token available"):
+        client.auth.refresh_session()
+
+    assert observations == []
 
 
 def test_sign_out_always_clears_local_auth() -> None:
@@ -1532,3 +1572,49 @@ def test_session_listing_serializes_replacement_auth() -> None:
 
     assert client.current_session is not None
     assert client.current_session.access_token == "replacement-access"
+
+
+def test_refresh_preserves_cached_current_device_identity() -> None:
+    current_id = "3cd3e058-e3ff-42a5-ae4d-650ef9b45746"
+    transport = AuthTransport()
+    transport.queue(
+        "auth_get_my_sessions",
+        AuthResponse(
+            200,
+            {
+                "sessions": [
+                    {
+                        "id": current_id,
+                        "user_id": "user-123",
+                        "provider": "email",
+                        "expires_at": "2026-08-29T12:00:00Z",
+                        "is_active": True,
+                        "is_current": True,
+                    }
+                ]
+            },
+        ),
+    )
+    transport.queue(
+        "auth_refresh",
+        AuthResponse(
+            200,
+            _token_payload(
+                access_token="rotated-access",
+                refresh_token="rotated-refresh",
+            ),
+        ),
+    )
+    transport.queue("auth_delete_my_session", AuthResponse(204))
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        refresh_token="refresh-token",
+        _transport=transport,
+    )
+
+    client.auth.get_sessions()
+    client.auth.refresh_session()
+    client.auth.delete_session(session_id=current_id)
+
+    assert client.current_session is None

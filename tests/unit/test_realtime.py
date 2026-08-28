@@ -450,6 +450,43 @@ def test_auth_change_replaces_an_in_flight_realtime_connection(
     assert second.calls == ["connect", "disconnect"]
 
 
+def test_auth_change_cancels_an_in_flight_realtime_publish(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = AuthTransport()
+    official = FakeCentrifugeClient()
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("contract")
+        await channel.subscribe()
+        assert official.subscription is not None
+
+        async def publish(data: Any) -> None:
+            del data
+            entered.set()
+            await release.wait()
+
+        monkeypatch.setattr(official.subscription, "publish", publish)
+        publishing = asyncio.create_task(channel.send({"value": "old-session"}))
+        await entered.wait()
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="user@example.com", password="secret")
+        with pytest.raises(asyncio.CancelledError):
+            await publishing
+        await asyncio.sleep(0)
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 @dataclass
 class FailingFirstCallback:
     received: list[str]
