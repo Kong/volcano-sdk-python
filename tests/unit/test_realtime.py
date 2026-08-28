@@ -408,6 +408,48 @@ def test_event_loop_listener_does_not_block_a_worker_auth_change() -> None:
     assert outcomes == [True]
 
 
+def test_worker_auth_change_invalidates_a_publish_queued_before_loop_cleanup() -> None:
+    transport = AuthTransport()
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    completed = Event()
+    workers: list[Thread] = []
+
+    def replace_auth() -> None:
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="next@example.com", password="secret")
+        completed.set()
+
+    def listener(user: Any | None) -> None:
+        if user is None or workers:
+            return
+        worker = Thread(target=replace_auth)
+        workers.append(worker)
+        worker.start()
+        assert completed.wait(1)
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("contract")
+        await channel.subscribe()
+        await client.realtime._connection_lock.acquire()
+        publishing = asyncio.create_task(channel.send({"value": "old-session"}))
+        await asyncio.sleep(0)
+        client.realtime._connection_lock.release()
+        client.auth.on_auth_state_change(listener)
+        with pytest.raises(RuntimeError, match="subscribed"):
+            await publishing
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+    assert official.subscription is not None
+    assert ("publish", {"value": "old-session"}) not in official.subscription.calls
+
+
 def test_auth_change_discards_state_owned_by_a_closed_realtime_loop() -> None:
     transport = AuthTransport()
     official = FakeCentrifugeClient()

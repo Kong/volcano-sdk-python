@@ -7,6 +7,7 @@ import importlib
 import inspect
 import logging
 from collections.abc import Awaitable, Callable
+from threading import Lock
 from typing import Any, Protocol, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
@@ -213,6 +214,7 @@ class Channel:
         self._name = name
         self._message_callbacks: list[MessageCallback] = []
         self._subscription: CentrifugeSubscription | None = None
+        self._subscription_auth_generation: int | None = None
         self._callback_queue: asyncio.Queue[tuple[int, Any]] = asyncio.Queue(
             maxsize=CALLBACK_QUEUE_LIMIT
         )
@@ -331,6 +333,7 @@ class Channel:
     def _invalidate_authentication(self) -> None:
         self._auth_generation += 1
         self._subscription = None
+        self._subscription_auth_generation = None
         if (
             self._active_callback_task is not None
             and self._active_callback_task is not _current_task()
@@ -343,6 +346,7 @@ class Channel:
     def _discard_closed_loop_authentication(self) -> None:
         self._auth_generation += 1
         self._subscription = None
+        self._subscription_auth_generation = None
         self._callback_task = None
         self._active_callback_task = None
         self._callback_stop = None
@@ -367,6 +371,7 @@ class Realtime:
         self._connection_lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._auth_generation = 0
+        self._auth_generation_lock = Lock()
         self._channels: dict[str, Channel] = {}
         self._auth_cleanup_tasks: set[asyncio.Task[None]] = set()
         self._in_flight_publishes: set[asyncio.Task[Any]] = set()
@@ -396,7 +401,7 @@ class Realtime:
             return self._connection
         self._loop = asyncio.get_running_loop()
         while self._connection is None:
-            generation = self._auth_generation
+            generation = self._auth_generation_snapshot()
             connection = _VolcanoCentrifugeConnection(
                 self._client_factory(
                     self._address(),
@@ -405,7 +410,7 @@ class Realtime:
                 )
             )
             await connection.connect()
-            if generation == self._auth_generation:
+            if generation == self._auth_generation_snapshot():
                 self._connection = connection
             else:
                 await self._close_invalidated(connection)
@@ -426,6 +431,7 @@ class Realtime:
                     events=_ChannelEvents(channel, generation),
                 )
                 channel._subscription = subscription
+                channel._subscription_auth_generation = self._auth_generation_snapshot()
             if await self._subscribe_current_generation(
                 channel, subscription, generation
             ):
@@ -458,8 +464,13 @@ class Realtime:
         )
 
     async def _publish(self, channel: Channel, data: Any) -> None:
+        generation = self._auth_generation_snapshot()
         async with self._connection_lock:
-            if channel._subscription is None:
+            if (
+                generation != self._auth_generation_snapshot()
+                or channel._subscription is None
+                or channel._subscription_auth_generation != generation
+            ):
                 raise RuntimeError(CHANNEL_NOT_SUBSCRIBED)
             task = asyncio.current_task()
             if task is not None:
@@ -490,6 +501,7 @@ class Realtime:
 
     def on_auth_change(self) -> None:
         """Immediately invalidate work authenticated by the previous session."""
+        self._advance_auth_generation()
         loop = self._loop
         if loop is not None and loop.is_closed():
             self._discard_closed_loop_authentication()
@@ -509,7 +521,6 @@ class Realtime:
             self._discard_closed_loop_authentication()
 
     def _invalidate_authentication(self) -> None:
-        self._auth_generation += 1
         connection = self._connection
         self._connection = None
         channels = tuple(self._channels.values())
@@ -524,7 +535,6 @@ class Realtime:
         task.add_done_callback(self._auth_cleanup_tasks.discard)
 
     def _discard_closed_loop_authentication(self) -> None:
-        self._auth_generation += 1
         self._connection = None
         self._connection_lock = asyncio.Lock()
         self._loop = None
@@ -532,6 +542,14 @@ class Realtime:
         self._in_flight_publishes.clear()
         for channel in tuple(self._channels.values()):
             channel._discard_closed_loop_authentication()
+
+    def _advance_auth_generation(self) -> None:
+        with self._auth_generation_lock:
+            self._auth_generation += 1
+
+    def _auth_generation_snapshot(self) -> int:
+        with self._auth_generation_lock:
+            return self._auth_generation
 
     async def _close_invalidated(
         self,
