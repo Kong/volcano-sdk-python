@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from base64 import urlsafe_b64encode
 from dataclasses import FrozenInstanceError, dataclass, fields
 from datetime import UTC, datetime
 from threading import Event, Thread
@@ -68,6 +70,13 @@ def _token_payload(
         "expires_in": 3600,
         "user": _user_payload(email=email),
     }
+
+
+def _access_token_for_session(session_id: str) -> str:
+    payload = urlsafe_b64encode(
+        json.dumps({"session_id": session_id}).encode()
+    ).decode()
+    return f"header.{payload.rstrip('=')}.signature"
 
 
 class AuthTransport:
@@ -1492,6 +1501,24 @@ def test_delete_session_rejects_a_malformed_identifier() -> None:
 
     with pytest.raises(ValidationError, match="session_id must be a valid UUID"):
         client.auth.delete_session(session_id="not-a-uuid")
+
+
+def test_direct_current_session_deletion_clears_restored_auth() -> None:
+    current_id = "3cd3e058-e3ff-42a5-ae4d-650ef9b45746"
+    transport = AuthTransport()
+    transport.queue("auth_delete_my_session", AuthResponse(204))
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token=_access_token_for_session(current_id),
+        refresh_token="refresh-token",
+        _transport=transport,
+    )
+    client._set_user(User(id="user-123", email="user@example.com"))
+
+    client.auth.delete_session(session_id=current_id)
+
+    assert client.current_session is None
+    assert client.current_user is None
 
 
 def test_replacing_auth_invalidates_cached_current_device_ids() -> None:

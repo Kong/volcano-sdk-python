@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import binascii
+import json
+from base64 import urlsafe_b64decode
 from collections.abc import Mapping
 from contextlib import suppress
 from datetime import datetime
@@ -41,6 +44,20 @@ _INVALID_OAUTH_PROVIDER = "Unsupported OAuth provider"
 _MISSING_AUTHORIZATION_URL = "Authentication response is missing authorization URL"
 _INVALID_SESSION_ID = "session_id must be a valid UUID"
 _SUPPORTED_OAUTH_PROVIDERS = frozenset({"google", "github", "microsoft", "apple"})
+
+
+def _token_session_id(access_token: str) -> str | None:
+    try:
+        encoded = access_token.split(".")[1]
+        padding = "=" * (-len(encoded) % 4)
+        parsed = cast("object", json.loads(urlsafe_b64decode(encoded + padding)))
+        payload: Mapping[str, object] = (
+            cast("Mapping[str, object]", parsed) if isinstance(parsed, Mapping) else {}
+        )
+        value = payload.get("session_id")
+        return str(UUID(value)) if isinstance(value, str) else None
+    except (ValueError, IndexError, UnicodeDecodeError, binascii.Error):
+        return None
 
 
 class AuthContext(Protocol):
@@ -712,6 +729,8 @@ class Auth:
                 raise ValidationError(_INVALID_SESSION_ID) from error
             deletes_current_session = (
                 normalized_session_id in self._current_device_session_ids
+                or normalized_session_id
+                == _token_session_id(self._client._session_token())
             )
             self._authenticated_payload(
                 self._client._transport.auth_delete_my_session,
