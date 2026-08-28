@@ -812,7 +812,7 @@ class Auth:
                 expected_status=200,
             )
         )
-        providers_value = payload.get("providers")
+        providers_value = payload.get("providers", [])
         if not isinstance(providers_value, list):
             raise AuthenticationError(_INVALID_AUTH_RESPONSE)
         providers = cast("list[object]", providers_value)
@@ -942,18 +942,19 @@ class Auth:
 
     def promote_method(self, *, method_id: str) -> AuthMethod:
         """Make a sign-in method the account's primary method."""
-        normalized_method_id = _validated_uuid(method_id, _INVALID_METHOD_ID)
-        payload = self._authenticated_payload(
-            self._client._transport.auth_promote_method,
-            expected_status=200,
-            method_id=normalized_method_id,
-        )
-        method = _auth_method(_mapping(payload))
-        current_user = self._client.current_user
-        if current_user is not None:
-            self._client._set_user(replace(current_user, email=method.email))
-        self._refresh_user_best_effort()
-        return method
+        with self._operation():
+            normalized_method_id = _validated_uuid(method_id, _INVALID_METHOD_ID)
+            payload = self._authenticated_payload(
+                self._client._transport.auth_promote_method,
+                expected_status=200,
+                method_id=normalized_method_id,
+            )
+            method = _auth_method(_mapping(payload))
+            current_user = self._client.current_user
+            if current_user is not None:
+                self._client._set_user(replace(current_user, email=method.email))
+            self._refresh_user_best_effort()
+            return method
 
     def get_sessions(
         self,

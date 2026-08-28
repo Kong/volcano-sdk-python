@@ -178,12 +178,22 @@ class _VolcanoCentrifugeConnection:
 
 
 class _ChannelEvents:
-    def __init__(self, channel: Channel, generation: int) -> None:
+    def __init__(
+        self,
+        channel: Channel,
+        channel_generation: int,
+        auth_generation: int,
+    ) -> None:
         self._channel = channel
-        self._generation = generation
+        self._channel_generation = channel_generation
+        self._auth_generation = auth_generation
 
     async def on_publication(self, ctx: PublicationContext) -> None:
-        if self._generation == self._channel._auth_generation:
+        if (
+            self._channel_generation == self._channel._auth_generation
+            and self._auth_generation
+            == self._channel._realtime._auth_generation_snapshot()
+        ):
             await self._channel._emit(ctx.pub.data)
 
     async def on_subscribing(self, ctx: Any) -> None:
@@ -426,12 +436,13 @@ class Realtime:
             subscription = channel._subscription
             if subscription is None:
                 connection = await self._connect_locked()
+                auth_generation = self._auth_generation_snapshot()
                 subscription = connection.new_subscription(
                     channel._name,
-                    events=_ChannelEvents(channel, generation),
+                    events=_ChannelEvents(channel, generation, auth_generation),
                 )
                 channel._subscription = subscription
-                channel._subscription_auth_generation = self._auth_generation_snapshot()
+                channel._subscription_auth_generation = auth_generation
             if await self._subscribe_current_generation(
                 channel, subscription, generation
             ):

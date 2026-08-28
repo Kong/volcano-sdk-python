@@ -1573,6 +1573,72 @@ def test_identity_management_rejects_malformed_ids_before_transport() -> None:
     assert transport.calls == []
 
 
+def test_promotion_cache_update_is_serialized_with_sign_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = AuthTransport()
+    method = {
+        "id": "7f518a4b-407b-4121-907b-d72a2c7c1ac6",
+        "type": "oauth",
+        "provider": "github",
+        "identity_id": "3cd3e058-e3ff-42a5-ae4d-650ef9b45746",
+        "email": "primary@example.com",
+        "is_primary": True,
+        "created_at": "2026-08-27T12:00:00Z",
+        "updated_at": "2026-08-28T12:00:00Z",
+    }
+    transport.queue("auth_promote_method", AuthResponse(200, method))
+    transport.queue("auth_get_user", AuthResponse(503, {"error": "unavailable"}))
+    transport.queue("auth_logout", AuthResponse(204))
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        refresh_token="refresh-token",
+        _transport=transport,
+    )
+    client._set_user(User(id="user-123", email="previous@example.com"))
+    entered, release, sign_out_started, sign_out_completed = (Event() for _ in range(4))
+    original_set_user = client._set_user
+
+    def blocked_set_user(user: User) -> None:
+        entered.set()
+        assert release.wait(1)
+        original_set_user(user)
+
+    monkeypatch.setattr(client, "_set_user", blocked_set_user)
+    promotion = Thread(
+        target=client.auth.promote_method, kwargs={"method_id": method["id"]}
+    )
+    promotion.start()
+    assert entered.wait(1)
+
+    def sign_out() -> None:
+        sign_out_started.set()
+        client.auth.sign_out()
+        sign_out_completed.set()
+
+    signing_out = Thread(target=sign_out)
+    signing_out.start()
+    assert sign_out_started.wait(1)
+    assert not sign_out_completed.wait(0.1)
+    release.set()
+    promotion.join(timeout=1)
+    signing_out.join(timeout=1)
+
+    assert client.current_session is None
+    assert client.current_user is None
+
+
+def test_omitted_oauth_provider_list_is_empty() -> None:
+    transport = AuthTransport()
+    transport.queue("auth_list_oauth_providers", AuthResponse(200, {}))
+    client = VolcanoClient(
+        anon_key="anon-key", access_token="access-token", _transport=transport
+    )
+
+    assert client.auth.get_linked_oauth_providers() == ()
+
+
 def test_provider_and_device_session_flows_return_public_values() -> None:
     transport = AuthTransport()
     transport.queue("auth_unlink_oauth_provider", AuthResponse(204))

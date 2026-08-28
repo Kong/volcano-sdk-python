@@ -450,6 +450,51 @@ def test_worker_auth_change_invalidates_a_publish_queued_before_loop_cleanup() -
     assert ("publish", {"value": "old-session"}) not in official.subscription.calls
 
 
+def test_worker_auth_change_fences_a_publication_queued_before_loop_cleanup() -> None:
+    transport = AuthTransport()
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    completed = Event()
+    workers: list[Thread] = []
+
+    def replace_auth() -> None:
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="next@example.com", password="secret")
+        completed.set()
+
+    def listener(user: Any | None) -> None:
+        if user is None or workers:
+            return
+        worker = Thread(target=replace_auth)
+        workers.append(worker)
+        worker.start()
+        assert completed.wait(1)
+
+    async def scenario() -> None:
+        received: list[str] = []
+        channel = client.realtime.channel("contract").on(
+            "message", lambda data: received.append(data["value"])
+        )
+        await channel.subscribe()
+        emitting = asyncio.create_task(
+            official.emit_wire_publication(
+                "broadcast:contract", {"value": "old-session"}
+            )
+        )
+        client.auth.on_auth_state_change(listener)
+        await emitting
+        await asyncio.sleep(0)
+        assert received == []
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_auth_change_discards_state_owned_by_a_closed_realtime_loop() -> None:
     transport = AuthTransport()
     official = FakeCentrifugeClient()
