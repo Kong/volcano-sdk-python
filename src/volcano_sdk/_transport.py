@@ -789,7 +789,7 @@ class GeneratedTransport:
     ) -> TransportResponse:
         body_data: dict[str, Any] = {"endpoint": endpoint, "method": method}
         if body is not None:
-            body_data["body"] = body
+            body_data["body"] = _mutable_json(body)
         with self._client(authorization) as client:
             response = client.get_httpx_client().post(
                 f"/auth/oauth/{quote(provider, safe='')}/call-api",

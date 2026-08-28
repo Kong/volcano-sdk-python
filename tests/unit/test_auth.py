@@ -777,6 +777,31 @@ def test_immediate_auth_listener_does_not_invert_auth_state_locks() -> None:
     assert not subscribing.is_alive()
 
 
+def test_auth_listener_subscription_preserves_transition_order() -> None:
+    client = VolcanoClient(anon_key="anon-key")
+    user = User(id="user-123", email="user@example.com")
+    client._set_user(user)
+    initial_entered = Event()
+    release_initial = Event()
+    observations: list[User | None] = []
+
+    def listener(current_user: User | None) -> None:
+        if current_user is user:
+            initial_entered.set()
+            assert release_initial.wait(timeout=1)
+        observations.append(current_user)
+
+    subscribing = Thread(target=lambda: client.auth.on_auth_state_change(listener))
+    subscribing.start()
+    assert initial_entered.wait(timeout=1)
+    client._clear_auth()
+    release_initial.set()
+    subscribing.join(timeout=1)
+
+    assert not subscribing.is_alive()
+    assert observations == [user, None]
+
+
 def test_restored_session_listener_waits_for_user_hydration() -> None:
     transport = AuthTransport()
     transport.queue("auth_get_user", AuthResponse(200, {"user": _user_payload()}))

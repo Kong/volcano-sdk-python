@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import deque
 from contextlib import suppress
 from threading import RLock
 from typing import TYPE_CHECKING, TypedDict, Unpack, cast
@@ -30,6 +31,13 @@ _AUTH_BOOTSTRAP_KEYS = frozenset({"access_token", "refresh_token"})
 class _AuthBootstrap(TypedDict, total=False):
     access_token: str | None
     refresh_token: str | None
+
+
+class _AuthListener:
+    def __init__(self, callback: Callable[[User | None], None]) -> None:
+        self.callback = callback
+        self.pending: deque[User | None] = deque()
+        self.dispatching = False
 
 
 class VolcanoClient:
@@ -66,7 +74,7 @@ class VolcanoClient:
         )
         self._current_user: User | None = None
         self._auth_state_lock = RLock()
-        self._auth_listeners: dict[int, Callable[[User | None], None]] = {}
+        self._auth_listeners: dict[int, _AuthListener] = {}
         self._next_auth_listener_id = 0
         self._transport: Transport = (
             cast("Transport", _transport)
@@ -118,26 +126,29 @@ class VolcanoClient:
     def _set_session(self, session: Session) -> None:
         with self._auth_state_lock:
             self._current_session = session
-            self.realtime.on_auth_change()
+        self.realtime.on_auth_change()
 
     def _commit_auth(self, session: Session, user: User) -> None:
         with self._auth_state_lock:
             self._current_session = session
             self._current_user = user
-            self.realtime.on_auth_change()
-            self._notify_auth_listeners()
+            listeners = self._queue_auth_notifications()
+        self.realtime.on_auth_change()
+        self._notify_auth_listeners(listeners)
 
     def _set_user(self, user: User) -> None:
         with self._auth_state_lock:
             self._current_user = user
-            self._notify_auth_listeners()
+            listeners = self._queue_auth_notifications()
+        self._notify_auth_listeners(listeners)
 
     def _clear_auth(self) -> None:
         with self._auth_state_lock:
             self._current_session = None
             self._current_user = None
-            self.realtime.on_auth_change()
-            self._notify_auth_listeners()
+            listeners = self._queue_auth_notifications()
+        self.realtime.on_auth_change()
+        self._notify_auth_listeners(listeners)
 
     def _subscribe_auth(
         self,
@@ -146,13 +157,17 @@ class VolcanoClient:
         with self._auth_state_lock:
             listener_id = self._next_auth_listener_id
             self._next_auth_listener_id += 1
-            self._auth_listeners[listener_id] = listener
+            registration = _AuthListener(listener)
+            self._auth_listeners[listener_id] = registration
             notify_immediately = (
                 self._current_session is None or self._current_user is not None
             )
-            current_user = self._current_user
-        if notify_immediately:
-            self._invoke_auth_listener(listener, current_user)
+            should_dispatch = notify_immediately and self._queue_auth_listener(
+                registration,
+                self._current_user,
+            )
+        if should_dispatch:
+            self._drain_auth_listener(registration)
 
         def unsubscribe() -> None:
             with self._auth_state_lock:
@@ -160,10 +175,37 @@ class VolcanoClient:
 
         return unsubscribe
 
-    def _notify_auth_listeners(self) -> None:
-        current_user = self._current_user
-        for listener in tuple(self._auth_listeners.values()):
-            self._invoke_auth_listener(listener, current_user)
+    def _queue_auth_notifications(self) -> tuple[_AuthListener, ...]:
+        listeners = tuple(self._auth_listeners.values())
+        return tuple(
+            listener
+            for listener in listeners
+            if self._queue_auth_listener(listener, self._current_user)
+        )
+
+    @staticmethod
+    def _queue_auth_listener(
+        listener: _AuthListener,
+        current_user: User | None,
+    ) -> bool:
+        listener.pending.append(current_user)
+        if listener.dispatching:
+            return False
+        listener.dispatching = True
+        return True
+
+    def _notify_auth_listeners(self, listeners: tuple[_AuthListener, ...]) -> None:
+        for listener in listeners:
+            self._drain_auth_listener(listener)
+
+    def _drain_auth_listener(self, listener: _AuthListener) -> None:
+        while True:
+            with self._auth_state_lock:
+                if not listener.pending:
+                    listener.dispatching = False
+                    return
+                current_user = listener.pending.popleft()
+            self._invoke_auth_listener(listener.callback, current_user)
 
     def _invoke_auth_listener(
         self,

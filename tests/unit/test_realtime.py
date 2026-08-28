@@ -145,6 +145,22 @@ class FakeCentrifugeClient:
             await subscription.emit(data)
 
 
+class LoopBoundFakeCentrifugeClient(FakeCentrifugeClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.owning_loop: asyncio.AbstractEventLoop | None = None
+
+    @override
+    async def connect(self) -> None:
+        self.owning_loop = asyncio.get_running_loop()
+        await super().connect()
+
+    @override
+    async def disconnect(self) -> None:
+        assert asyncio.get_running_loop() is self.owning_loop
+        await super().disconnect()
+
+
 @dataclass(frozen=True)
 class FakeCentrifugeFactory:
     client: FakeCentrifugeClient
@@ -286,6 +302,64 @@ def test_auth_replacement_invalidates_the_connected_realtime_identity() -> None:
 
     asyncio.run(scenario())
     assert first.calls[-1] == "disconnect"
+
+
+def test_worker_thread_auth_change_uses_the_realtime_owning_loop() -> None:
+    transport = AuthTransport()
+    first = LoopBoundFakeCentrifugeClient()
+    second = FakeCentrifugeClient()
+    clients = iter((first, second))
+
+    def factory(
+        address: str,
+        *,
+        token: str,
+        get_token: Callable[[], Awaitable[str]],
+    ) -> FakeCentrifugeClient:
+        del address, token, get_token
+        return next(clients)
+
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=factory,
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("contract")
+        await channel.subscribe()
+        transport.access_token = "access-2"
+        await asyncio.to_thread(
+            client.auth.sign_in,
+            email="next@example.com",
+            password="secret",
+        )
+        await asyncio.sleep(0)
+        assert channel._subscription is None
+        assert first.calls[-1] == "disconnect"
+        await channel.subscribe()
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_auth_change_discards_state_owned_by_a_closed_realtime_loop() -> None:
+    transport = AuthTransport()
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    channel = client.realtime.channel("contract")
+    asyncio.run(channel.subscribe())
+
+    transport.access_token = "access-2"
+    client.auth.sign_in(email="next@example.com", password="secret")
+
+    assert channel._subscription is None
 
 
 def test_realtime_callbacks_run_outside_the_message_processor() -> None:

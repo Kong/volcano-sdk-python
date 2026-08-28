@@ -463,6 +463,27 @@ def test_generated_transport_preserves_provider_api_array_responses() -> None:
     assert requests[0].headers["authorization"] == "Bearer access-token"
 
 
+def test_generated_transport_thaws_provider_api_request_metadata() -> None:
+    transport, requests = _recording_transport()
+    user = User(
+        id="user-123",
+        email="user@example.com",
+        user_metadata={"nested": [{"enabled": True}]},
+    )
+
+    transport.call_oauth_provider_api(
+        authorization="access-token",
+        provider="github",
+        endpoint="/user",
+        method="POST",
+        body={"metadata": user.user_metadata},
+    )
+
+    assert json.loads(requests[0].content)["body"] == {
+        "metadata": {"nested": [{"enabled": True}]}
+    }
+
+
 def test_generated_transport_calls_device_session_operations() -> None:
     transport, requests = _recording_transport()
 

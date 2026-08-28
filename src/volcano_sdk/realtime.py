@@ -7,6 +7,7 @@ import importlib
 import inspect
 import logging
 from collections.abc import Awaitable, Callable
+from threading import Event as ThreadEvent
 from typing import Any, Protocol, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
@@ -27,6 +28,13 @@ _LOGGER = logging.getLogger(__name__)
 def _current_task() -> asyncio.Task[Any] | None:
     try:
         return asyncio.current_task()
+    except RuntimeError:
+        return None
+
+
+def _running_loop() -> asyncio.AbstractEventLoop | None:
+    try:
+        return asyncio.get_running_loop()
     except RuntimeError:
         return None
 
@@ -323,6 +331,16 @@ class Channel:
             self._callback_queue.get_nowait()
             self._callback_queue.task_done()
 
+    def _discard_closed_loop_authentication(self) -> None:
+        self._auth_generation += 1
+        self._subscription = None
+        self._callback_task = None
+        self._active_callback_task = None
+        self._callback_stop = None
+        while not self._callback_queue.empty():
+            self._callback_queue.get_nowait()
+            self._callback_queue.task_done()
+
 
 class Realtime:
     """Manage project realtime connections and channels."""
@@ -340,6 +358,7 @@ class Realtime:
         self._client_factory = client_factory
         self._connection: CentrifugeConnection | None = None
         self._connection_lock = asyncio.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._auth_generation = 0
         self._channels: dict[str, Channel] = {}
         self._auth_cleanup_tasks: set[asyncio.Task[None]] = set()
@@ -368,6 +387,7 @@ class Realtime:
     async def _connect_locked(self) -> CentrifugeConnection:
         if self._connection is not None:
             return self._connection
+        self._loop = asyncio.get_running_loop()
         while self._connection is None:
             generation = self._auth_generation
             connection = _VolcanoCentrifugeConnection(
@@ -433,9 +453,35 @@ class Realtime:
             finally:
                 for channel in tuple(self._channels.values()):
                     await channel._reset()
+            self._loop = None
 
     def on_auth_change(self) -> None:
         """Immediately invalidate work authenticated by the previous session."""
+        loop = self._loop
+        if loop is not None and loop.is_closed():
+            self._discard_closed_loop_authentication()
+            return
+        if loop is not None and _running_loop() is not loop:
+            self._schedule_auth_invalidation(loop)
+            return
+        self._invalidate_authentication()
+
+    def _schedule_auth_invalidation(
+        self,
+        loop: asyncio.AbstractEventLoop,
+    ) -> None:
+        completed = ThreadEvent()
+        loop.call_soon_threadsafe(self._invalidate_and_signal, completed)
+        if loop.is_running():
+            completed.wait()
+
+    def _invalidate_and_signal(self, completed: ThreadEvent) -> None:
+        try:
+            self._invalidate_authentication()
+        finally:
+            completed.set()
+
+    def _invalidate_authentication(self) -> None:
         self._auth_generation += 1
         connection = self._connection
         self._connection = None
@@ -444,16 +490,20 @@ class Realtime:
             task.cancel()
         for channel in channels:
             channel._invalidate_authentication()
-        if connection is None:
+        if connection is None or self._loop is None:
             return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            asyncio.run(self._close_invalidated(connection))
-        else:
-            task = loop.create_task(self._close_invalidated(connection))
-            self._auth_cleanup_tasks.add(task)
-            task.add_done_callback(self._auth_cleanup_tasks.discard)
+        task = self._loop.create_task(self._close_invalidated(connection))
+        self._auth_cleanup_tasks.add(task)
+        task.add_done_callback(self._auth_cleanup_tasks.discard)
+
+    def _discard_closed_loop_authentication(self) -> None:
+        self._auth_generation += 1
+        self._connection = None
+        self._loop = None
+        self._auth_cleanup_tasks.clear()
+        self._in_flight_publishes.clear()
+        for channel in tuple(self._channels.values()):
+            channel._discard_closed_loop_authentication()
 
     async def _close_invalidated(
         self,
