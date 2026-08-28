@@ -1057,6 +1057,30 @@ def test_auth_listener_subscription_preserves_transition_order() -> None:
     assert observations == [user, None]
 
 
+def test_unsubscribe_discards_notifications_queued_during_callback() -> None:
+    client = VolcanoClient(anon_key="anon-key", access_token="access-token")
+    entered = Event()
+    release = Event()
+    observations: list[User | None] = []
+
+    def listener(current_user: User | None) -> None:
+        observations.append(current_user)
+        entered.set()
+        assert release.wait(timeout=1)
+
+    unsubscribe = client.auth.on_auth_state_change(listener)
+    user = User(id="user-123", email="user@example.com")
+    notifying = Thread(target=client._set_user, args=(user,))
+    notifying.start()
+    assert entered.wait(timeout=1)
+    client._clear_auth()
+    unsubscribe()
+    release.set()
+    notifying.join(timeout=1)
+
+    assert observations == [user]
+
+
 def test_restored_session_listener_waits_for_user_hydration() -> None:
     transport = AuthTransport()
     transport.queue("auth_get_user", AuthResponse(200, {"user": _user_payload()}))

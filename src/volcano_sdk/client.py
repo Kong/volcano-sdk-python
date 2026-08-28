@@ -38,6 +38,8 @@ class _AuthListener:
         self.callback = callback
         self.pending: deque[User | None] = deque()
         self.dispatching = False
+        self.subscribed = True
+        self.callback_running = False
 
 
 class _AuthNotificationState(local):
@@ -178,7 +180,10 @@ class VolcanoClient:
 
         def unsubscribe() -> None:
             with self._auth_state_lock:
-                self._auth_listeners.pop(listener_id, None)
+                if self._auth_listeners.pop(listener_id, None) is registration:
+                    registration.subscribed = False
+                    if registration.callback_running:
+                        registration.pending.clear()
 
         return unsubscribe
 
@@ -195,6 +200,8 @@ class VolcanoClient:
         listener: _AuthListener,
         current_user: User | None,
     ) -> bool:
+        if not listener.subscribed:
+            return False
         listener.pending.append(current_user)
         if listener.dispatching:
             return False
@@ -228,7 +235,12 @@ class VolcanoClient:
                     listener.dispatching = False
                     return
                 current_user = listener.pending.popleft()
+                listener.callback_running = True
             self._invoke_auth_listener(listener.callback, current_user)
+            with self._auth_state_lock:
+                listener.callback_running = False
+                if not listener.subscribed:
+                    listener.pending.clear()
 
     def _invoke_auth_listener(
         self,

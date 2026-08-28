@@ -165,6 +165,17 @@ class FakeCentrifugeClient:
             await subscription.emit(data)
 
 
+def _assert_publish_uses_new_connection(
+    first: FakeCentrifugeClient,
+    second: FakeCentrifugeClient,
+) -> None:
+    assert first.subscription is not None
+    assert second.subscription is not None
+    publish = ("publish", {"value": "new-session"})
+    assert publish not in first.subscription.calls
+    assert publish in second.subscription.calls
+
+
 class LoopBoundFakeCentrifugeClient(FakeCentrifugeClient):
     def __init__(self) -> None:
         super().__init__()
@@ -277,8 +288,7 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
 
 def test_auth_replacement_invalidates_the_connected_realtime_identity() -> None:
     transport = AuthTransport()
-    first = FakeCentrifugeClient()
-    second = FakeCentrifugeClient()
+    first, second = FakeCentrifugeClient(), FakeCentrifugeClient()
     clients = iter((first, second))
 
     def factory(*args: Any, **kwargs: Any) -> FakeCentrifugeClient:
@@ -493,6 +503,48 @@ def test_worker_auth_change_fences_a_publication_queued_before_loop_cleanup() ->
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
+
+
+def test_worker_auth_change_replaces_connection_before_queued_cleanup() -> None:
+    transport = AuthTransport()
+    first, second = FakeCentrifugeClient(), FakeCentrifugeClient()
+    clients = iter((first, second))
+    completed = Event()
+    workers: list[Thread] = []
+
+    def factory(*args: Any, **kwargs: Any) -> FakeCentrifugeClient:
+        del args, kwargs
+        return next(clients)
+
+    client = VolcanoClient(
+        anon_key="anon-key", _transport=transport, _realtime_client_factory=factory
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    def replace_auth() -> None:
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="next@example.com", password="secret")
+        completed.set()
+
+    def listener(user: Any | None) -> None:
+        if user is None or workers:
+            return
+        worker = Thread(target=replace_auth)
+        workers.append(worker)
+        worker.start()
+        assert completed.wait(1)
+
+    async def scenario() -> None:
+        await client.realtime.channel("old").subscribe()
+        next_channel = client.realtime.channel("next")
+        subscribing = asyncio.create_task(next_channel.subscribe())
+        client.auth.on_auth_state_change(listener)
+        await subscribing
+        await next_channel.send({"value": "new-session"})
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+    _assert_publish_uses_new_connection(first, second)
 
 
 def test_auth_change_discards_state_owned_by_a_closed_realtime_loop() -> None:
