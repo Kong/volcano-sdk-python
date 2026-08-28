@@ -107,7 +107,7 @@ class SignUpResult:
 class MessageResult:
     """Acknowledgement returned by an authentication operation."""
 
-    message: str
+    message: str | None
 
 
 @dataclass(frozen=True, slots=True)

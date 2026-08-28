@@ -108,7 +108,7 @@ class AuthContext(Protocol):
 
     def _set_user(self, user: User) -> None: ...
 
-    def _clear_user(self) -> None: ...
+    def _invalidate_user(self) -> None: ...
 
     def _clear_auth(self) -> None: ...
 
@@ -185,10 +185,7 @@ def _provider_not_linked(error: AuthenticationError) -> bool:
 
 
 def _message(payload: Mapping[str, Any]) -> MessageResult:
-    message = payload.get("message")
-    if not isinstance(message, str):
-        raise AuthenticationError(_INVALID_AUTH_RESPONSE)
-    return MessageResult(message=message)
+    return MessageResult(message=_optional_text(payload.get("message")))
 
 
 def _oauth_token(
@@ -676,7 +673,7 @@ class Auth:
         try:
             return self.get_user()
         except VolcanoError:
-            self._client._clear_user()
+            self._client._invalidate_user()
             return None
 
     def _reconcile_user_payload(self, payload: Mapping[str, Any]) -> User | None:

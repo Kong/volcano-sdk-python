@@ -1398,11 +1398,25 @@ def test_confirm_email_preserves_success_when_user_refresh_fails() -> None:
         _transport=transport,
     )
     client._set_user(User(id="user-123", email="stale@example.com"))
+    observations: list[User | None] = []
+    client.auth.on_auth_state_change(observations.append)
+    observations.clear()
 
     result = client.auth.confirm_email(token="confirmation-token")
 
     assert result == MessageResult(message="Done")
     assert client.current_user is None
+    assert observations == []
+
+
+def test_acknowledgements_accept_an_omitted_message() -> None:
+    transport = AuthTransport()
+    transport.queue("auth_reset_password", AuthResponse(200, {}))
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+
+    result = client.auth.reset_password(token="recovery-token", new_password="next")
+
+    assert result == MessageResult(message=None)
 
 
 def test_token_responses_reject_unusable_optional_refresh_tokens() -> None:
