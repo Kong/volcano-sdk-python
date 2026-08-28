@@ -43,6 +43,16 @@ files = ["src", "tests/unit", "scripts"]
 python_version = "3.11"
 strict = true
 exclude = ["src/volcano_sdk/_generated/"]
+enable_error_code = [
+  "explicit-override",
+  "ignore-without-code",
+  "mutable-override",
+  "possibly-undefined",
+  "redundant-expr",
+  "truthy-bool",
+  "truthy-iterable",
+  "unused-awaitable",
+]
 
 [[tool.mypy.overrides]]
 module = ["behave.*"]
@@ -58,6 +68,11 @@ typeCheckingMode = "strict"
 # Package-level collaborators intentionally share private implementation details;
 # Ruff still enforces private access everywhere else.
 reportPrivateUsage = false
+reportImplicitOverride = "error"
+reportMatchNotExhaustive = "error"
+reportPropertyTypeMismatch = "error"
+reportUnnecessaryTypeIgnoreComment = "error"
+reportUnreachable = "error"
 
 [tool.ruff]
 target-version = "py311"
@@ -86,6 +101,18 @@ ignore = [
   "Q003",
   "W191",
 ]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 6
+
+[tool.ruff.lint.pylint]
+max-bool-expr = 3
+max-branches = 6
+max-locals = 10
+max-nested-blocks = 3
+max-returns = 4
+max-statements = 30
+max-statements-in-try = 3
 
 [tool.ruff.lint.per-file-ignores]
 "features/**/*.py" = ["ANN401", "D", "INP001", "S101"]

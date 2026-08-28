@@ -9,6 +9,8 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Protocol, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
+from typing_extensions import override
+
 MessageCallback = Callable[[Any], Any]
 CALLBACK_QUEUE_LIMIT = 128
 CALLBACK_QUEUE_FULL_MESSAGE = (
@@ -120,6 +122,7 @@ def _centrifuge_client(
 
 
 class _ProjectAwareSubscriptions(dict[str, Any]):
+    @override
     def get(self, key: str, default: Any = None) -> Any:
         subscription = super().get(key)
         if subscription is not None:

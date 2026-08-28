@@ -4,7 +4,7 @@ import json
 
 import httpx
 
-from volcano_sdk._transport import GeneratedTransport
+from volcano_sdk._transport import GeneratedTransport, TransportResponse
 
 
 def _recording_transport() -> tuple[GeneratedTransport, list[httpx.Request]]:
@@ -23,69 +23,86 @@ def _recording_transport() -> tuple[GeneratedTransport, list[httpx.Request]]:
     )
 
 
-def test_generated_transport_calls_the_six_openapi_operations() -> None:
+def _auth_response() -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "access_token": "access-token",
+            "refresh_token": "refresh-token",
+            "user": {
+                "id": "00000000-0000-4000-8000-000000000010",
+                "email": "user@example.com",
+                "status": "active",
+                "email_confirmed": True,
+                "created_at": "2026-08-26T12:00:00Z",
+                "updated_at": "2026-08-26T12:00:00Z",
+            },
+            "expires_in": 3600,
+            "token_type": "bearer",
+        },
+    )
+
+
+def _upload_response() -> httpx.Response:
+    return httpx.Response(
+        201,
+        json={
+            "id": "00000000-0000-4000-8000-000000000020",
+            "bucket_id": "00000000-0000-4000-8000-000000000030",
+            "name": "a.txt",
+            "is_public": False,
+            "size": 5,
+            "mime_type": "application/octet-stream",
+            "metadata": {},
+            "owner_id": "00000000-0000-4000-8000-000000000010",
+            "created_at": "2026-08-26T12:00:00Z",
+            "updated_at": "2026-08-26T12:00:00Z",
+        },
+    )
+
+
+def _successful_response(request: httpx.Request) -> httpx.Response:
+    response_by_operation = {
+        ("POST", "/auth/signin"): _auth_response(),
+        ("POST", "/databases/main/query/select"): httpx.Response(
+            200, json={"data": [{"slug": "a"}], "count": 1}
+        ),
+        ("POST", "/storage/assets/a.txt"): _upload_response(),
+        ("GET", "/storage/assets/a.txt"): httpx.Response(200, content=b"hello"),
+        ("POST", "/locks/build/lease"): httpx.Response(
+            201,
+            json={
+                "key": "build",
+                "expires_at": "2026-08-26T12:00:30Z",
+                "fencing_token": 7,
+            },
+        ),
+        ("DELETE", "/locks/build/lease"): httpx.Response(204),
+    }
+    response = response_by_operation.get((request.method, request.url.path))
+    if response is None:
+        message = f"unexpected request: {request.method} {request.url.path}"
+        raise AssertionError(message)
+    return response
+
+
+def _successful_transport() -> tuple[GeneratedTransport, list[httpx.Request]]:
     requests: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        path = request.url.path
-        if path == "/auth/signin":
-            return httpx.Response(
-                200,
-                json={
-                    "access_token": "access-token",
-                    "refresh_token": "refresh-token",
-                    "user": {
-                        "id": "00000000-0000-4000-8000-000000000010",
-                        "email": "user@example.com",
-                        "status": "active",
-                        "email_confirmed": True,
-                        "created_at": "2026-08-26T12:00:00Z",
-                        "updated_at": "2026-08-26T12:00:00Z",
-                    },
-                    "expires_in": 3600,
-                    "token_type": "bearer",
-                },
-            )
-        if path == "/databases/main/query/select":
-            return httpx.Response(200, json={"data": [{"slug": "a"}], "count": 1})
-        if request.method == "POST" and path == "/storage/assets/a.txt":
-            return httpx.Response(
-                201,
-                json={
-                    "id": "00000000-0000-4000-8000-000000000020",
-                    "bucket_id": "00000000-0000-4000-8000-000000000030",
-                    "name": "a.txt",
-                    "is_public": False,
-                    "size": 5,
-                    "mime_type": "application/octet-stream",
-                    "metadata": {},
-                    "owner_id": "00000000-0000-4000-8000-000000000010",
-                    "created_at": "2026-08-26T12:00:00Z",
-                    "updated_at": "2026-08-26T12:00:00Z",
-                },
-            )
-        if request.method == "GET" and path == "/storage/assets/a.txt":
-            return httpx.Response(200, content=b"hello")
-        if request.method == "POST" and path == "/locks/build/lease":
-            return httpx.Response(
-                201,
-                json={
-                    "key": "build",
-                    "expires_at": "2026-08-26T12:00:30Z",
-                    "fencing_token": 7,
-                },
-            )
-        if request.method == "DELETE" and path == "/locks/build/lease":
-            return httpx.Response(204)
-        message = f"unexpected request: {request.method} {path}"
-        raise AssertionError(message)
+        return _successful_response(request)
 
     transport = GeneratedTransport(
         api_url="https://api.test.volcano.dev",
         httpx_transport=httpx.MockTransport(handle),
     )
+    return transport, requests
 
+
+def _call_six_operations(
+    transport: GeneratedTransport,
+) -> tuple[TransportResponse, ...]:
     auth = transport.auth_signin(
         authorization="anon-key",
         email="user@example.com",
@@ -122,13 +139,10 @@ def test_generated_transport_calls_the_six_openapi_operations() -> None:
         key="build",
         token="00000000-0000-4000-8000-000000000001",
     )
+    return auth, query, upload, download, acquire, release
 
-    assert auth.payload["user"]["id"] == "00000000-0000-4000-8000-000000000010"
-    assert query.payload == {"data": [{"slug": "a"}], "count": 1}
-    assert upload.payload["name"] == "a.txt"
-    assert download.content == b"hello"
-    assert acquire.payload["fencing_token"] == 7
-    assert release.status_code == 204
+
+def _assert_request_metadata(requests: list[httpx.Request]) -> None:
     assert [request.method for request in requests] == [
         "POST",
         "POST",
@@ -162,6 +176,19 @@ def test_generated_transport_calls_the_six_openapi_operations() -> None:
     assert requests[5].headers["x-volcano-lock-token"] == (
         "00000000-0000-4000-8000-000000000001"
     )
+
+
+def test_generated_transport_calls_the_six_openapi_operations() -> None:
+    transport, requests = _successful_transport()
+    auth, query, upload, download, acquire, release = _call_six_operations(transport)
+
+    assert auth.payload["user"]["id"] == "00000000-0000-4000-8000-000000000010"
+    assert query.payload == {"data": [{"slug": "a"}], "count": 1}
+    assert upload.payload["name"] == "a.txt"
+    assert download.content == b"hello"
+    assert acquire.payload["fencing_token"] == 7
+    assert release.status_code == 204
+    _assert_request_metadata(requests)
 
 
 def test_generated_transport_calls_session_core_operations() -> None:

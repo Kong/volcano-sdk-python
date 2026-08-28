@@ -61,34 +61,29 @@ def classify_error(error: Exception) -> str:
         (ServerError, "server error"),
         (TransportError, "transport error"),
     )
-    matched_category = next(
-        (
-            category
-            for error_type, category in categories
-            if isinstance(error, error_type)
-        ),
-        None,
-    )
-    if matched_category is not None:
-        return matched_category
+    for error_type, category in categories:
+        if isinstance(error, error_type):
+            return category
     if isinstance(error, VolcanoError):
-        status = error.status
-        if status in (401, 403):
-            return "authentication error"
-        if status in (400, 422):
-            return "validation error"
-        category_by_status = {
-            HTTP_NOT_FOUND: "not found",
-            HTTP_CONFLICT: "conflict",
-            HTTP_RATE_LIMITED: "rate limited",
-        }
-        if status in category_by_status:
-            return category_by_status[status]
-        if (
-            status is not None
-            and HTTP_SERVER_ERROR_MIN <= status <= HTTP_SERVER_ERROR_MAX
-        ):
-            return "server error"
+        return _classify_volcano_status(error.status)
+    return "transport error"
+
+
+def _classify_volcano_status(status: int | None) -> str:
+    category_by_status = {
+        400: "validation error",
+        401: "authentication error",
+        403: "authentication error",
+        422: "validation error",
+        HTTP_NOT_FOUND: "not found",
+        HTTP_CONFLICT: "conflict",
+        HTTP_RATE_LIMITED: "rate limited",
+    }
+    category = category_by_status.get(status)
+    if category is not None:
+        return category
+    if status is not None and HTTP_SERVER_ERROR_MIN <= status <= HTTP_SERVER_ERROR_MAX:
+        return "server error"
     return "transport error"
 
 

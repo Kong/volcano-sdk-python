@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from typing_extensions import override
 
 from volcano_sdk import VolcanoClient
 
@@ -159,24 +160,59 @@ class FakeCentrifugeFactory:
         return self.client
 
 
-def test_realtime_wraps_official_client_without_exposing_it() -> None:
-    transport = AuthTransport()
-    official = FakeCentrifugeClient()
-    factory_arguments: dict[str, Any] = {}
+@dataclass
+class CapturingCentrifugeFactory:
+    client: FakeCentrifugeClient
+    address: str | None = field(default=None, init=False)
+    token: str | None = field(default=None, init=False)
+    get_token: Callable[[], Awaitable[str]] | None = field(default=None, init=False)
 
-    def factory(
+    def __call__(
+        self,
         address: str,
         *,
         token: str,
         get_token: Callable[[], Awaitable[str]],
     ) -> FakeCentrifugeClient:
-        factory_arguments.update(
-            address=address,
-            token=token,
-            get_token=get_token,
-        )
-        return official
+        self.address = address
+        self.token = token
+        self.get_token = get_token
+        return self.client
 
+
+async def _exercise_realtime_facade(
+    client: VolcanoClient,
+    official: FakeCentrifugeClient,
+    transport: AuthTransport,
+    received: list[dict[str, str]],
+    factory: CapturingCentrifugeFactory,
+) -> None:
+    channel = client.realtime.channel("contract")
+    assert channel.on("message", received.append) is channel
+    await channel.subscribe()
+    assert official.subscription is not None
+    await official.emit_wire_publication(
+        "project-id:broadcast:contract",
+        {"event": "message", "value": "contract"},
+    )
+    for _ in range(10):
+        if received:
+            break
+        await asyncio.sleep(0)
+    assert received == [{"event": "message", "value": "contract"}]
+    await channel.send({"event": "message", "value": "contract"})
+    await channel.unsubscribe()
+    transport.access_token = "access-2"
+    client.auth.sign_in(email="user@example.com", password="secret")
+    assert factory.get_token is not None
+    assert await factory.get_token() == "access-2"
+    await client.realtime.disconnect()
+
+
+def test_realtime_wraps_official_client_without_exposing_it() -> None:
+    transport = AuthTransport()
+    official = FakeCentrifugeClient()
+    factory = CapturingCentrifugeFactory(official)
     client = VolcanoClient(
         api_url="https://api.test.volcano.dev",
         anon_key="anon key",
@@ -185,35 +221,14 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
     )
     client.auth.sign_in(email="user@example.com", password="secret")
     received: list[dict[str, str]] = []
+    asyncio.run(
+        _exercise_realtime_facade(client, official, transport, received, factory)
+    )
 
-    async def scenario() -> None:
-        channel = client.realtime.channel("contract")
-        assert channel.on("message", received.append) is channel
-        await channel.subscribe()
-        assert official.subscription is not None
-        await official.emit_wire_publication(
-            "project-id:broadcast:contract",
-            {"event": "message", "value": "contract"},
-        )
-        for _ in range(10):
-            if received:
-                break
-            await asyncio.sleep(0)
-        assert received == [{"event": "message", "value": "contract"}]
-        await channel.send({"event": "message", "value": "contract"})
-        await channel.unsubscribe()
-
-        transport.access_token = "access-2"
-        client.auth.sign_in(email="user@example.com", password="secret")
-        assert await factory_arguments["get_token"]() == "access-2"
-        await client.realtime.disconnect()
-
-    asyncio.run(scenario())
-
-    assert factory_arguments["address"] == (
+    assert factory.address == (
         "wss://api.test.volcano.dev/realtime/v1/websocket?apikey=anon%20key"
     )
-    assert factory_arguments["token"] == "access-1"
+    assert factory.token == "access-1"
     assert official.calls == ["connect", "channel:broadcast:contract", "disconnect"]
     assert official.subscription is not None
     assert official.subscription.calls == [
@@ -336,6 +351,50 @@ def test_realtime_opens_one_connection_when_first_used_concurrently(
     asyncio.run(scenario())
 
 
+@dataclass
+class FailingFirstCallback:
+    received: list[str]
+
+    def __call__(self, data: dict[str, str]) -> None:
+        if data["value"] == "first":
+            message = "callback failed"
+            raise RuntimeError(message)
+        self.received.append(data["value"])
+
+
+async def _exercise_callback_failure(
+    client: VolcanoClient,
+    official: FakeCentrifugeClient,
+) -> None:
+    channel = client.realtime.channel("contract")
+    received: list[str] = []
+    errors: list[dict[str, Any]] = []
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+    loop.set_exception_handler(lambda _loop, context: errors.append(context))
+    try:
+        channel.on("message", FailingFirstCallback(received))
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "broadcast:contract",
+            {"event": "message", "value": "first"},
+        )
+        await official.emit_wire_publication(
+            "broadcast:contract",
+            {"event": "message", "value": "second"},
+        )
+        for _ in range(10):
+            if received:
+                break
+            await asyncio.sleep(0)
+        assert received == ["second"]
+        assert len(errors) == 1
+        assert isinstance(errors[0].get("exception"), RuntimeError)
+    finally:
+        loop.set_exception_handler(previous_handler)
+        await client.realtime.disconnect()
+
+
 def test_realtime_callback_failure_does_not_stop_later_callbacks() -> None:
     transport = AuthTransport()
     official = FakeCentrifugeClient()
@@ -345,44 +404,7 @@ def test_realtime_callback_failure_does_not_stop_later_callbacks() -> None:
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
     client.auth.sign_in(email="user@example.com", password="secret")
-
-    async def scenario() -> None:
-        channel = client.realtime.channel("contract")
-        received: list[str] = []
-        errors: list[dict[str, Any]] = []
-        loop = asyncio.get_running_loop()
-        previous_handler = loop.get_exception_handler()
-        loop.set_exception_handler(lambda _loop, context: errors.append(context))
-
-        def callback(data: dict[str, str]) -> None:
-            if data["value"] == "first":
-                message = "callback failed"
-                raise RuntimeError(message)
-            received.append(data["value"])
-
-        try:
-            channel.on("message", callback)
-            await channel.subscribe()
-            await official.emit_wire_publication(
-                "broadcast:contract",
-                {"event": "message", "value": "first"},
-            )
-            await official.emit_wire_publication(
-                "broadcast:contract",
-                {"event": "message", "value": "second"},
-            )
-            for _ in range(10):
-                if received:
-                    break
-                await asyncio.sleep(0)
-            assert received == ["second"]
-            assert len(errors) == 1
-            assert isinstance(errors[0].get("exception"), RuntimeError)
-        finally:
-            loop.set_exception_handler(previous_handler)
-            await client.realtime.disconnect()
-
-    asyncio.run(scenario())
+    asyncio.run(_exercise_callback_failure(client, official))
 
 
 def test_realtime_callback_can_disconnect_its_own_client() -> None:
@@ -514,6 +536,7 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
     release = asyncio.Event()
 
     class BlockingSubscription(FakeSubscription):
+        @override
         async def subscribe(self) -> None:
             entered.set()
             await release.wait()
