@@ -599,6 +599,7 @@ class Realtime:
         while self._auth_cleanup_tasks:
             tasks = tuple(self._auth_cleanup_tasks)
             await asyncio.gather(*tasks, return_exceptions=True)
+            self._auth_cleanup_tasks.difference_update(tasks)
 
     def on_auth_change(self) -> None:
         """Immediately invalidate work authenticated by the previous session."""
