@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TypedDict, Unpack
+from typing import TypedDict, Unpack, cast
 
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
@@ -32,7 +32,7 @@ class VolcanoClient:
         api_url: str = "https://api.volcano.dev",
         service_key: str | None = None,
         timeout: float = 60.0,
-        _transport: Transport | None = None,
+        _transport: object | None = None,
         _realtime_client_factory: CentrifugeFactory | None = None,
         **auth_bootstrap: Unpack[_AuthBootstrap],
     ) -> None:
@@ -51,7 +51,7 @@ class VolcanoClient:
         )
         self._current_user: User | None = None
         self._transport: Transport = (
-            _transport
+            cast("Transport", _transport)
             if _transport is not None
             else GeneratedTransport(api_url=self._api_url, timeout=timeout)
         )

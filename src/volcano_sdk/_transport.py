@@ -6,20 +6,69 @@ import json
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 from uuid import UUID, uuid4
 
 import httpx
 
-from ._generated.api.authentication import auth_signin
+from ._generated.api.authentication import (
+    auth_cancel_email_change,
+    auth_confirm_email,
+    auth_confirm_email_change,
+    auth_convert_anonymous,
+    auth_delete_all_my_sessions,
+    auth_delete_my_session,
+    auth_forgot_password,
+    auth_get_my_sessions,
+    auth_get_user,
+    auth_logout,
+    auth_refresh,
+    auth_request_email_change,
+    auth_resend_confirmation,
+    auth_reset_password,
+    auth_signin,
+    auth_signup,
+    auth_signup_anonymous,
+    auth_update_user,
+)
 from ._generated.api.database_queries import query_database_select
 from ._generated.api.locks import acquire_project_lock, release_project_lock
+from ._generated.api.o_auth_authentication import (
+    auth_link_o_auth_provider,
+    auth_list_o_auth_providers,
+    auth_o_auth_authorize,
+    auth_o_auth_exchange,
+    auth_unlink_o_auth_provider,
+    call_o_auth_provider_api,
+    get_o_auth_provider_token,
+    refresh_o_auth_provider_token,
+)
 from ._generated.api.storage_objects import (
     download_storage_object,
     upload_storage_object,
 )
 from ._generated.client import AuthenticatedClient
+from ._generated.models.auth_confirm_email_body import AuthConfirmEmailBody
+from ._generated.models.auth_confirm_email_change_body import (
+    AuthConfirmEmailChangeBody,
+)
+from ._generated.models.auth_convert_anonymous_body import AuthConvertAnonymousBody
+from ._generated.models.auth_forgot_password_body import AuthForgotPasswordBody
+from ._generated.models.auth_logout_body import AuthLogoutBody
+from ._generated.models.auth_o_auth_exchange_body import AuthOAuthExchangeBody
+from ._generated.models.auth_refresh_body import AuthRefreshBody
+from ._generated.models.auth_request_email_change_body import (
+    AuthRequestEmailChangeBody,
+)
+from ._generated.models.auth_resend_confirmation_body import (
+    AuthResendConfirmationBody,
+)
+from ._generated.models.auth_reset_password_body import AuthResetPasswordBody
 from ._generated.models.auth_signin_body import AuthSigninBody
+from ._generated.models.auth_signup_anonymous_body import AuthSignupAnonymousBody
+from ._generated.models.auth_signup_body import AuthSignupBody
+from ._generated.models.auth_update_user_body import AuthUpdateUserBody
+from ._generated.models.call_o_auth_provider_api_body import CallOAuthProviderAPIBody
 from ._generated.models.database_select_request import DatabaseSelectRequest
 from ._generated.models.project_lock_lease_request import ProjectLockLeaseRequest
 from ._generated.models.upload_storage_object_files_body import (
@@ -39,6 +88,8 @@ from .errors import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+
+    from .models import JSONValue, OAuthProviderName
 
 HTTP_NOT_FOUND = 404
 HTTP_CONFLICT = 409
@@ -79,12 +130,194 @@ class _GeneratedTransportResponse:
 
 
 class Transport(Protocol):
+    def auth_signup(
+        self,
+        *,
+        authorization: str,
+        email: str,
+        password: str,
+        user_metadata: dict[str, JSONValue] | None = None,
+    ) -> TransportResponse: ...
+
     def auth_signin(
         self,
         *,
         authorization: str,
         email: str,
         password: str,
+    ) -> TransportResponse: ...
+
+    def auth_refresh(
+        self,
+        *,
+        authorization: str,
+        refresh_token: str,
+    ) -> TransportResponse: ...
+
+    def auth_logout(
+        self,
+        *,
+        authorization: str,
+        refresh_token: str,
+    ) -> TransportResponse: ...
+
+    def auth_get_user(self, *, authorization: str) -> TransportResponse: ...
+
+    def auth_update_user(
+        self,
+        *,
+        authorization: str,
+        password: str | None = None,
+        user_metadata: dict[str, JSONValue] | None = None,
+    ) -> TransportResponse: ...
+
+    def auth_signup_anonymous(
+        self,
+        *,
+        authorization: str,
+        user_metadata: dict[str, JSONValue] | None = None,
+    ) -> TransportResponse: ...
+
+    def auth_convert_anonymous(
+        self,
+        *,
+        authorization: str,
+        email: str,
+        password: str,
+        user_metadata: dict[str, JSONValue] | None = None,
+    ) -> TransportResponse: ...
+
+    def auth_confirm_email(
+        self,
+        *,
+        authorization: str,
+        token: str,
+    ) -> TransportResponse: ...
+
+    def auth_resend_confirmation(
+        self,
+        *,
+        authorization: str,
+        email: str,
+    ) -> TransportResponse: ...
+
+    def auth_forgot_password(
+        self,
+        *,
+        authorization: str,
+        email: str,
+    ) -> TransportResponse: ...
+
+    def auth_reset_password(
+        self,
+        *,
+        authorization: str,
+        token: str,
+        new_password: str,
+    ) -> TransportResponse: ...
+
+    def auth_request_email_change(
+        self,
+        *,
+        authorization: str,
+        new_email: str,
+    ) -> TransportResponse: ...
+
+    def auth_confirm_email_change(
+        self,
+        *,
+        authorization: str,
+        email_change_token: str,
+    ) -> TransportResponse: ...
+
+    def auth_cancel_email_change(
+        self,
+        *,
+        authorization: str,
+    ) -> TransportResponse: ...
+
+    def auth_oauth_authorize(
+        self,
+        *,
+        authorization: str,
+        provider: OAuthProviderName,
+        redirect_url: str,
+        state: str,
+    ) -> TransportResponse: ...
+
+    def auth_oauth_exchange(
+        self,
+        *,
+        authorization: str,
+        code: str,
+        redirect_url: str,
+    ) -> TransportResponse: ...
+
+    def auth_link_oauth_provider(
+        self,
+        *,
+        authorization: str,
+        provider: OAuthProviderName,
+        redirect_url: str,
+        state: str,
+    ) -> TransportResponse: ...
+
+    def auth_unlink_oauth_provider(
+        self,
+        *,
+        authorization: str,
+        provider: OAuthProviderName,
+    ) -> TransportResponse: ...
+
+    def auth_list_oauth_providers(
+        self,
+        *,
+        authorization: str,
+    ) -> TransportResponse: ...
+
+    def refresh_oauth_provider_token(
+        self,
+        *,
+        authorization: str,
+        provider: OAuthProviderName,
+    ) -> TransportResponse: ...
+
+    def get_oauth_provider_token(
+        self,
+        *,
+        authorization: str,
+        provider: OAuthProviderName,
+    ) -> TransportResponse: ...
+
+    def call_oauth_provider_api(
+        self,
+        *,
+        authorization: str,
+        provider: OAuthProviderName,
+        endpoint: str,
+        method: Literal["GET", "POST"] = "GET",
+        body: dict[str, JSONValue] | None = None,
+    ) -> TransportResponse: ...
+
+    def auth_get_my_sessions(
+        self,
+        *,
+        authorization: str,
+        page: int = 1,
+        limit: int = 20,
+    ) -> TransportResponse: ...
+
+    def auth_delete_my_session(
+        self,
+        *,
+        authorization: str,
+        session_id: str,
+    ) -> TransportResponse: ...
+
+    def auth_delete_all_my_sessions(
+        self,
+        *,
+        authorization: str,
     ) -> TransportResponse: ...
 
     def query_database_select(
@@ -241,6 +474,354 @@ class GeneratedTransport:
                 client=client,
                 body=AuthSigninBody(email=email, password=password),
             )
+        return self._response(response)
+
+    def auth_signup(
+        self,
+        *,
+        authorization: str,
+        email: str,
+        password: str,
+        user_metadata: dict[str, JSONValue] | None = None,
+    ) -> TransportResponse:
+        body_data: dict[str, Any] = {"email": email, "password": password}
+        if user_metadata is not None:
+            body_data["user_metadata"] = user_metadata
+        with self._client(authorization) as client:
+            response = auth_signup.sync_detailed(
+                client=client,
+                body=AuthSignupBody.from_dict(body_data),
+            )
+        return self._response(response)
+
+    def auth_refresh(
+        self,
+        *,
+        authorization: str,
+        refresh_token: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_refresh.sync_detailed(
+                client=client,
+                body=AuthRefreshBody(refresh_token=refresh_token),
+            )
+        return self._response(response)
+
+    def auth_logout(
+        self,
+        *,
+        authorization: str,
+        refresh_token: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_logout.sync_detailed(
+                client=client,
+                body=AuthLogoutBody(refresh_token=refresh_token),
+            )
+        return self._response(response)
+
+    def auth_get_user(self, *, authorization: str) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_get_user.sync_detailed(client=client)
+        return self._response(response)
+
+    def auth_update_user(
+        self,
+        *,
+        authorization: str,
+        password: str | None = None,
+        user_metadata: dict[str, JSONValue] | None = None,
+    ) -> TransportResponse:
+        body_data: dict[str, Any] = {}
+        if password is not None:
+            body_data["password"] = password
+        if user_metadata is not None:
+            body_data["user_metadata"] = user_metadata
+        with self._client(authorization) as client:
+            response = auth_update_user.sync_detailed(
+                client=client,
+                body=AuthUpdateUserBody.from_dict(body_data),
+            )
+        return self._response(response)
+
+    def auth_signup_anonymous(
+        self,
+        *,
+        authorization: str,
+        user_metadata: dict[str, JSONValue] | None = None,
+    ) -> TransportResponse:
+        body_data = (
+            {"user_metadata": user_metadata} if user_metadata is not None else {}
+        )
+        with self._client(authorization) as client:
+            response = auth_signup_anonymous.sync_detailed(
+                client=client,
+                body=AuthSignupAnonymousBody.from_dict(body_data),
+            )
+        return self._response(response)
+
+    def auth_convert_anonymous(
+        self,
+        *,
+        authorization: str,
+        email: str,
+        password: str,
+        user_metadata: dict[str, JSONValue] | None = None,
+    ) -> TransportResponse:
+        body_data: dict[str, Any] = {"email": email, "password": password}
+        if user_metadata is not None:
+            body_data["user_metadata"] = user_metadata
+        with self._client(authorization) as client:
+            response = auth_convert_anonymous.sync_detailed(
+                client=client,
+                body=AuthConvertAnonymousBody.from_dict(body_data),
+            )
+        return self._response(response)
+
+    def auth_confirm_email(
+        self,
+        *,
+        authorization: str,
+        token: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_confirm_email.sync_detailed(
+                client=client,
+                body=AuthConfirmEmailBody(token=token),
+            )
+        return self._response(response)
+
+    def auth_resend_confirmation(
+        self,
+        *,
+        authorization: str,
+        email: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_resend_confirmation.sync_detailed(
+                client=client,
+                body=AuthResendConfirmationBody(email=email),
+            )
+        return self._response(response)
+
+    def auth_forgot_password(
+        self,
+        *,
+        authorization: str,
+        email: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_forgot_password.sync_detailed(
+                client=client,
+                body=AuthForgotPasswordBody(email=email),
+            )
+        return self._response(response)
+
+    def auth_reset_password(
+        self,
+        *,
+        authorization: str,
+        token: str,
+        new_password: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_reset_password.sync_detailed(
+                client=client,
+                body=AuthResetPasswordBody(token=token, new_password=new_password),
+            )
+        return self._response(response)
+
+    def auth_request_email_change(
+        self,
+        *,
+        authorization: str,
+        new_email: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_request_email_change.sync_detailed(
+                client=client,
+                body=AuthRequestEmailChangeBody(new_email=new_email),
+            )
+        return self._response(response)
+
+    def auth_confirm_email_change(
+        self,
+        *,
+        authorization: str,
+        email_change_token: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_confirm_email_change.sync_detailed(
+                client=client,
+                body=AuthConfirmEmailChangeBody(
+                    email_change_token=email_change_token,
+                ),
+            )
+        return self._response(response)
+
+    def auth_cancel_email_change(
+        self,
+        *,
+        authorization: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_cancel_email_change.sync_detailed(client=client)
+        return self._response(response)
+
+    def auth_oauth_authorize(
+        self,
+        *,
+        authorization: str,
+        provider: OAuthProviderName,
+        redirect_url: str,
+        state: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_o_auth_authorize.sync_detailed(
+                provider,
+                client=client,
+                anon_key=authorization,
+                redirect_url=redirect_url,
+                client_state=state,
+                response_mode="code",
+            )
+        return self._response(response)
+
+    def auth_oauth_exchange(
+        self,
+        *,
+        authorization: str,
+        code: str,
+        redirect_url: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_o_auth_exchange.sync_detailed(
+                client=client,
+                body=AuthOAuthExchangeBody(code=code, redirect_url=redirect_url),
+            )
+        return self._response(response)
+
+    def auth_link_oauth_provider(
+        self,
+        *,
+        authorization: str,
+        provider: OAuthProviderName,
+        redirect_url: str,
+        state: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_link_o_auth_provider.sync_detailed(
+                provider,
+                client=client,
+                redirect_url=redirect_url,
+                client_state=state,
+                response_mode="code",
+            )
+        return self._response(response)
+
+    def auth_unlink_oauth_provider(
+        self,
+        *,
+        authorization: str,
+        provider: OAuthProviderName,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_unlink_o_auth_provider.sync_detailed(
+                provider,
+                client=client,
+            )
+        return self._response(response)
+
+    def auth_list_oauth_providers(
+        self,
+        *,
+        authorization: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_list_o_auth_providers.sync_detailed(client=client)
+        return self._response(response)
+
+    def refresh_oauth_provider_token(
+        self,
+        *,
+        authorization: str,
+        provider: OAuthProviderName,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = refresh_o_auth_provider_token.sync_detailed(
+                provider,
+                client=client,
+            )
+        return self._response(response)
+
+    def get_oauth_provider_token(
+        self,
+        *,
+        authorization: str,
+        provider: OAuthProviderName,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = get_o_auth_provider_token.sync_detailed(
+                provider,
+                client=client,
+            )
+        return self._response(response)
+
+    def call_oauth_provider_api(
+        self,
+        *,
+        authorization: str,
+        provider: OAuthProviderName,
+        endpoint: str,
+        method: Literal["GET", "POST"] = "GET",
+        body: dict[str, JSONValue] | None = None,
+    ) -> TransportResponse:
+        body_data: dict[str, Any] = {"endpoint": endpoint, "method": method}
+        if body is not None:
+            body_data["body"] = body
+        with self._client(authorization) as client:
+            response = call_o_auth_provider_api.sync_detailed(
+                provider,
+                client=client,
+                body=CallOAuthProviderAPIBody.from_dict(body_data),
+            )
+        return self._response(response)
+
+    def auth_get_my_sessions(
+        self,
+        *,
+        authorization: str,
+        page: int = 1,
+        limit: int = 20,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_get_my_sessions.sync_detailed(
+                client=client,
+                page=page,
+                limit=limit,
+            )
+        return self._response(response)
+
+    def auth_delete_my_session(
+        self,
+        *,
+        authorization: str,
+        session_id: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_delete_my_session.sync_detailed(
+                UUID(session_id),
+                client=client,
+            )
+        return self._response(response)
+
+    def auth_delete_all_my_sessions(
+        self,
+        *,
+        authorization: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_delete_all_my_sessions.sync_detailed(client=client)
         return self._response(response)
 
     def query_database_select(
