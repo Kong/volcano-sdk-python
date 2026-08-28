@@ -487,6 +487,57 @@ def test_auth_change_cancels_an_in_flight_realtime_publish(
     asyncio.run(scenario())
 
 
+def test_auth_change_retries_an_in_flight_realtime_subscription(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = AuthTransport()
+    first = FakeCentrifugeClient()
+    second = FakeCentrifugeClient()
+    clients = iter((first, second))
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    subscribe_count = 0
+
+    async def subscribe(subscription: FakeSubscription) -> None:
+        nonlocal subscribe_count
+        subscribe_count += 1
+        if subscribe_count == 1:
+            entered.set()
+            await release.wait()
+        subscription.calls.append(("subscribe", None))
+
+    monkeypatch.setattr(FakeSubscription, "subscribe", subscribe)
+
+    def factory(
+        address: str,
+        *,
+        token: str,
+        get_token: Callable[[], Awaitable[str]],
+    ) -> FakeCentrifugeClient:
+        del address, token, get_token
+        return next(clients)
+
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=factory,
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("contract")
+        subscribing = asyncio.create_task(channel.subscribe())
+        await entered.wait()
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="user@example.com", password="secret")
+        release.set()
+        await subscribing
+        assert channel._subscription is second.subscription
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 @dataclass
 class FailingFirstCallback:
     received: list[str]

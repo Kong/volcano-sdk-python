@@ -4,6 +4,7 @@ import json
 
 import httpx
 
+from volcano_sdk import User
 from volcano_sdk._transport import GeneratedTransport, TransportResponse
 
 
@@ -254,6 +255,24 @@ def test_generated_transport_calls_session_core_operations() -> None:
             "user_metadata": {"display_name": "Updated"},
         },
     ]
+
+
+def test_generated_transport_thaws_frozen_user_metadata() -> None:
+    transport, requests = _recording_transport()
+    user = User(
+        id="user-123",
+        email="user@example.com",
+        user_metadata={"nested": [{"value": "kept"}]},
+    )
+
+    transport.auth_update_user(
+        authorization="access-token",
+        user_metadata=user.user_metadata,
+    )
+
+    assert json.loads(requests[0].content) == {
+        "user_metadata": {"nested": [{"value": "kept"}]}
+    }
 
 
 def test_generated_transport_calls_account_operations() -> None:

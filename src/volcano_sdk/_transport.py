@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
@@ -86,9 +87,18 @@ from .errors import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable
 
     from .models import JSONValue, OAuthProviderName
+
+
+def _mutable_json(value: JSONValue) -> JSONValue:
+    if isinstance(value, Mapping):
+        return {key: _mutable_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_mutable_json(item) for item in value]
+    return value
+
 
 HTTP_NOT_FOUND = 404
 HTTP_CONFLICT = 409
@@ -135,7 +145,7 @@ class Transport(Protocol):
         authorization: str,
         email: str,
         password: str,
-        user_metadata: dict[str, JSONValue] | None = None,
+        user_metadata: Mapping[str, JSONValue] | None = None,
     ) -> TransportResponse: ...
 
     def auth_signin(
@@ -167,14 +177,14 @@ class Transport(Protocol):
         *,
         authorization: str,
         password: str | None = None,
-        user_metadata: dict[str, JSONValue] | None = None,
+        user_metadata: Mapping[str, JSONValue] | None = None,
     ) -> TransportResponse: ...
 
     def auth_signup_anonymous(
         self,
         *,
         authorization: str,
-        user_metadata: dict[str, JSONValue] | None = None,
+        user_metadata: Mapping[str, JSONValue] | None = None,
     ) -> TransportResponse: ...
 
     def auth_convert_anonymous(
@@ -183,7 +193,7 @@ class Transport(Protocol):
         authorization: str,
         email: str,
         password: str,
-        user_metadata: dict[str, JSONValue] | None = None,
+        user_metadata: Mapping[str, JSONValue] | None = None,
     ) -> TransportResponse: ...
 
     def auth_confirm_email(
@@ -481,11 +491,11 @@ class GeneratedTransport:
         authorization: str,
         email: str,
         password: str,
-        user_metadata: dict[str, JSONValue] | None = None,
+        user_metadata: Mapping[str, JSONValue] | None = None,
     ) -> TransportResponse:
         body_data: dict[str, Any] = {"email": email, "password": password}
         if user_metadata is not None:
-            body_data["user_metadata"] = user_metadata
+            body_data["user_metadata"] = _mutable_json(user_metadata)
         with self._client(authorization) as client:
             response = auth_signup.sync_detailed(
                 client=client,
@@ -529,13 +539,13 @@ class GeneratedTransport:
         *,
         authorization: str,
         password: str | None = None,
-        user_metadata: dict[str, JSONValue] | None = None,
+        user_metadata: Mapping[str, JSONValue] | None = None,
     ) -> TransportResponse:
         body_data: dict[str, Any] = {}
         if password is not None:
             body_data["password"] = password
         if user_metadata is not None:
-            body_data["user_metadata"] = user_metadata
+            body_data["user_metadata"] = _mutable_json(user_metadata)
         with self._client(authorization) as client:
             response = auth_update_user.sync_detailed(
                 client=client,
@@ -547,10 +557,12 @@ class GeneratedTransport:
         self,
         *,
         authorization: str,
-        user_metadata: dict[str, JSONValue] | None = None,
+        user_metadata: Mapping[str, JSONValue] | None = None,
     ) -> TransportResponse:
         body_data = (
-            {"user_metadata": user_metadata} if user_metadata is not None else {}
+            {"user_metadata": _mutable_json(user_metadata)}
+            if user_metadata is not None
+            else {}
         )
         with self._client(authorization) as client:
             response = auth_signup_anonymous.sync_detailed(
@@ -565,11 +577,11 @@ class GeneratedTransport:
         authorization: str,
         email: str,
         password: str,
-        user_metadata: dict[str, JSONValue] | None = None,
+        user_metadata: Mapping[str, JSONValue] | None = None,
     ) -> TransportResponse:
         body_data: dict[str, Any] = {"email": email, "password": password}
         if user_metadata is not None:
-            body_data["user_metadata"] = user_metadata
+            body_data["user_metadata"] = _mutable_json(user_metadata)
         with self._client(authorization) as client:
             response = auth_convert_anonymous.sync_detailed(
                 client=client,

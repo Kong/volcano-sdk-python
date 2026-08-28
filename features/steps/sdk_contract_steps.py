@@ -301,9 +301,24 @@ def deleted_session_is_absent(context: Any) -> None:
 @when("the client deletes all current-user sessions")
 def delete_all_current_user_sessions(context: Any) -> None:
     world = _world(context)
+    verification_client = type(world.client)(
+        api_url=world.fixture["api_url"],
+        anon_key=world.fixture["anon_key"],
+    )
+    verification_client.auth.sign_in(
+        email=world.fixture["user_email"],
+        password=world.fixture["user_password"],
+    )
 
     def operation() -> None:
         world.client.auth.delete_all_other_sessions()
+        try:
+            verification_client.auth.get_user()
+        except CONTRACT_EXCEPTIONS:
+            pass
+        else:
+            message = "bulk session deletion left another session active"
+            raise AssertionError(message)
         world.client.auth.sign_out()
 
     world.record(operation)

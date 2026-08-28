@@ -239,7 +239,7 @@ class Auth:
         *,
         email: str,
         password: str,
-        user_metadata: dict[str, JSONValue] | None = None,
+        user_metadata: Mapping[str, JSONValue] | None = None,
         sign_in: bool = False,
     ) -> SignUpResult:
         """Create an account and optionally sign in when policy permits."""
@@ -312,7 +312,7 @@ class Auth:
         self,
         *,
         password: str | None = None,
-        user_metadata: dict[str, JSONValue] | None = None,
+        user_metadata: Mapping[str, JSONValue] | None = None,
     ) -> User:
         """Update the current user's password or metadata."""
         with self._operation_lock:
@@ -370,7 +370,7 @@ class Auth:
     def sign_up_anonymous(
         self,
         *,
-        user_metadata: dict[str, JSONValue] | None = None,
+        user_metadata: Mapping[str, JSONValue] | None = None,
     ) -> Session:
         """Create an anonymous user and replace client-owned auth state."""
         response = invoke(
@@ -387,7 +387,7 @@ class Auth:
         *,
         email: str,
         password: str,
-        user_metadata: dict[str, JSONValue] | None = None,
+        user_metadata: Mapping[str, JSONValue] | None = None,
     ) -> User:
         """Convert the current anonymous user to an email account."""
         with self._operation_lock:
@@ -413,9 +413,7 @@ class Auth:
             token=token,
         )
         result = _message(_mapping(response_payload(response, 200)))
-        if self._client.current_session is not None:
-            with suppress(VolcanoError):
-                self.get_user()
+        self._refresh_user_best_effort()
         return result
 
     def resend_confirmation(self, *, email: str) -> MessageResult:
@@ -445,10 +443,15 @@ class Auth:
             new_password=new_password,
         )
         result = _message(_mapping(response_payload(response, 200)))
-        if self._client.current_session is not None:
+        self._refresh_user_best_effort()
+        return result
+
+    def _refresh_user_best_effort(self) -> None:
+        with self._operation_lock:
+            if self._client.current_session is None:
+                return
             with suppress(VolcanoError):
                 self.get_user()
-        return result
 
     def request_email_change(self, *, new_email: str) -> EmailChangeResult:
         """Request a change to the current user's email address."""

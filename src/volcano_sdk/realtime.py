@@ -24,6 +24,13 @@ SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _current_task() -> asyncio.Task[Any] | None:
+    try:
+        return asyncio.current_task()
+    except RuntimeError:
+        return None
+
+
 class RealtimeContext(Protocol):
     """Client capabilities required by realtime connections."""
 
@@ -307,7 +314,10 @@ class Channel:
     def _invalidate_authentication(self) -> None:
         self._auth_generation += 1
         self._subscription = None
-        if self._active_callback_task is not None:
+        if (
+            self._active_callback_task is not None
+            and self._active_callback_task is not _current_task()
+        ):
             self._active_callback_task.cancel()
         while not self._callback_queue.empty():
             self._callback_queue.get_nowait()
@@ -376,13 +386,23 @@ class Realtime:
 
     async def _subscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
-            connection = await self._connect_locked()
-            if channel._subscription is None:
-                channel._subscription = connection.new_subscription(
-                    channel._name,
-                    events=_ChannelEvents(channel, channel._auth_generation),
-                )
+            await self._subscribe_locked(channel)
+
+    async def _subscribe_locked(self, channel: Channel) -> None:
+        if channel._subscription is not None:
             await channel._subscription.subscribe()
+            return
+        while channel._subscription is None:
+            generation = channel._auth_generation
+            connection = await self._connect_locked()
+            subscription = connection.new_subscription(
+                channel._name,
+                events=_ChannelEvents(channel, generation),
+            )
+            channel._subscription = subscription
+            await subscription.subscribe()
+            if generation != channel._auth_generation:
+                channel._subscription = None
 
     async def _publish(self, channel: Channel, data: Any) -> None:
         async with self._connection_lock:
