@@ -105,6 +105,9 @@ class ContractWorld:
             service_key=fixture["service_key"],
         )
         suffix = f"py-{os.getpid()}-{secrets.token_hex(5)}"
+        self.unique_email = f"{suffix}@example.com"
+        self.unique_password = f"Sdk-{suffix}!123"
+        self.metadata_marker = f"updated-{suffix}"
         self.storage_path = f"{fixture['storage_path']}.{suffix}"
         self.realtime_channel = f"{fixture['realtime_channel']}-{suffix}"
         self.lock_key = f"{fixture['lock_key']}-{suffix}"
@@ -117,6 +120,14 @@ class ContractWorld:
         self.subscriber: Channel | None = None
         self.publisher: Channel | None = None
         self.realtime_clients: list[VolcanoClient] = []
+        self.secondary_client: VolcanoClient | None = None
+        self.listener_events: list[str | None] = []
+        self.listener_event_count = 0
+        self.unsubscribe_auth: Callable[[], None] | None = None
+        self.previous_access_token: str | None = None
+        self.previous_refresh_token: str | None = None
+        self.anonymous_user_id: str | None = None
+        self.deleted_session_id: str | None = None
         self.cleanup_callbacks: list[Callable[[], None]] = []
         self.loop = asyncio.new_event_loop()
 

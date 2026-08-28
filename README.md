@@ -77,3 +77,6 @@ VOLCANO_SDK_CONTRACT_FIXTURE=/absolute/path/to/fixture.json \
 ```
 
 The fixture must be an absolute path to a mode-`0600` JSON file.
+
+See [Authentication](docs/authentication.md) for account, session, hosted auth,
+and OAuth examples.
