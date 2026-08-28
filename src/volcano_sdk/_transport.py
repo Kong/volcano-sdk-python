@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
+from urllib.parse import quote
 from uuid import UUID, uuid4
 
 import httpx
@@ -39,7 +40,6 @@ from ._generated.api.o_auth_authentication import (
     auth_o_auth_authorize,
     auth_o_auth_exchange,
     auth_unlink_o_auth_provider,
-    call_o_auth_provider_api,
     get_o_auth_provider_token,
     refresh_o_auth_provider_token,
 )
@@ -68,7 +68,6 @@ from ._generated.models.auth_signin_body import AuthSigninBody
 from ._generated.models.auth_signup_anonymous_body import AuthSignupAnonymousBody
 from ._generated.models.auth_signup_body import AuthSignupBody
 from ._generated.models.auth_update_user_body import AuthUpdateUserBody
-from ._generated.models.call_o_auth_provider_api_body import CallOAuthProviderAPIBody
 from ._generated.models.database_select_request import DatabaseSelectRequest
 from ._generated.models.project_lock_lease_request import ProjectLockLeaseRequest
 from ._generated.models.upload_storage_object_files_body import (
@@ -780,12 +779,20 @@ class GeneratedTransport:
         if body is not None:
             body_data["body"] = body
         with self._client(authorization) as client:
-            response = call_o_auth_provider_api.sync_detailed(
-                provider,
-                client=client,
-                body=CallOAuthProviderAPIBody.from_dict(body_data),
+            response = client.get_httpx_client().post(
+                f"/auth/oauth/{quote(provider, safe='')}/call-api",
+                json=body_data,
             )
-        return self._response(response)
+        try:
+            payload = response.json()
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            payload = None
+        return _GeneratedTransportResponse(
+            status_code=response.status_code,
+            payload=payload,
+            content=response.content,
+            headers=dict(response.headers),
+        )
 
     def auth_get_my_sessions(
         self,

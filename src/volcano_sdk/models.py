@@ -38,8 +38,8 @@ class Session:
 
     access_token: str = field(repr=False)
     refresh_token: str | None = field(default=None, repr=False)
-    expires_in: int | None = None
     user_id: str | None = None
+    expires_in: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

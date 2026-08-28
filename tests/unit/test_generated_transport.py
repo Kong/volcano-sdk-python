@@ -421,6 +421,29 @@ def test_generated_transport_calls_oauth_operations() -> None:
     }
 
 
+def test_generated_transport_preserves_provider_api_array_responses() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=[{"id": 1}, {"id": 2}])
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.call_oauth_provider_api(
+        authorization="access-token",
+        provider="github",
+        endpoint="/user/repos",
+    )
+
+    assert response.payload == [{"id": 1}, {"id": 2}]
+    assert len(requests) == 1
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
 def test_generated_transport_calls_device_session_operations() -> None:
     transport, requests = _recording_transport()
 

@@ -998,6 +998,21 @@ def test_oauth_exchange_validates_state_before_committing() -> None:
     ]
 
 
+def test_oauth_exchange_rejects_non_ascii_state_without_calling_transport() -> None:
+    transport = AuthTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+
+    with pytest.raises(ValidationError, match="OAuth state does not match"):
+        client.auth.exchange_oauth_code(
+            code="oauth-code",
+            redirect_url="https://app.example/callback",
+            state="café",
+            expected_state="cafe",
+        )
+
+    assert transport.calls == []
+
+
 def test_provider_and_device_session_flows_return_public_values() -> None:
     transport = AuthTransport()
     transport.queue("auth_unlink_oauth_provider", AuthResponse(204))

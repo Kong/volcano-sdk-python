@@ -467,14 +467,15 @@ class Auth:
 
     def confirm_email_change(self, *, token: str) -> MessageResult:
         """Confirm a pending email change."""
-        payload = self._authenticated_payload(
-            self._client._transport.auth_confirm_email_change,
-            expected_status=200,
-            email_change_token=token,
-        )
-        response = _mapping(payload)
-        self._client._set_user(_user(_mapping(response.get("user"))))
-        return _message(response)
+        with self._operation_lock:
+            payload = self._authenticated_payload(
+                self._client._transport.auth_confirm_email_change,
+                expected_status=200,
+                email_change_token=token,
+            )
+            response = _mapping(payload)
+            self._client._set_user(_user(_mapping(response.get("user"))))
+            return _message(response)
 
     def cancel_email_change(self) -> MessageResult:
         """Cancel the current user's pending email change."""
@@ -536,7 +537,7 @@ class Auth:
         expected_state: str,
     ) -> Session:
         """Validate caller state and exchange an OAuth code for a session."""
-        if not compare_digest(state, expected_state):
+        if not compare_digest(state.encode(), expected_state.encode()):
             raise ValidationError(_INVALID_OAUTH_STATE)
         response = invoke(
             self._client._transport.auth_oauth_exchange,
@@ -696,20 +697,21 @@ class Auth:
 
     def delete_session(self, *, session_id: str) -> None:
         """Delete one device session."""
-        try:
-            normalized_session_id = str(UUID(session_id))
-        except (TypeError, ValueError, AttributeError) as error:
-            raise ValidationError(_INVALID_SESSION_ID) from error
-        deletes_current_session = (
-            normalized_session_id in self._current_device_session_ids
-        )
-        self._authenticated_payload(
-            self._client._transport.auth_delete_my_session,
-            expected_status=204,
-            session_id=normalized_session_id,
-        )
-        if deletes_current_session:
-            self._clear_auth()
+        with self._operation_lock:
+            try:
+                normalized_session_id = str(UUID(session_id))
+            except (TypeError, ValueError, AttributeError) as error:
+                raise ValidationError(_INVALID_SESSION_ID) from error
+            deletes_current_session = (
+                normalized_session_id in self._current_device_session_ids
+            )
+            self._authenticated_payload(
+                self._client._transport.auth_delete_my_session,
+                expected_status=204,
+                session_id=normalized_session_id,
+            )
+            if deletes_current_session:
+                self._clear_auth()
 
     def delete_all_other_sessions(self) -> None:
         """Delete every device session except the current one."""

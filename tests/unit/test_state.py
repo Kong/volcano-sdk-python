@@ -79,6 +79,13 @@ def test_constructor_accepts_an_access_and_refresh_token() -> None:
     assert client.current_user is None
 
 
+def test_session_preserves_the_original_positional_argument_order() -> None:
+    session = Session("access-token", "refresh-token", "user-123")
+
+    assert session.user_id == "user-123"
+    assert session.expires_in is None
+
+
 def test_constructor_rejects_a_refresh_token_without_an_access_token() -> None:
     with pytest.raises(
         ValueError,
