@@ -638,16 +638,35 @@ class Auth:
         body: dict[str, JSONValue] | None = None,
     ) -> JSONValue:
         """Call a provider API through Volcano's fixed-host proxy."""
-        payload = self._authenticated_payload(
+        with self._operation_lock:
+            arguments = {
+                "provider": _provider(provider),
+                "endpoint": endpoint,
+                "method": method,
+                "body": body,
+            }
+            try:
+                payload = self._provider_api_payload(arguments)
+            except AuthenticationError as error:
+                session = self._client.current_session
+                if (
+                    error.status != _HTTP_UNAUTHORIZED
+                    or session is None
+                    or session.refresh_token is None
+                    or "not linked" in str(error).lower()
+                ):
+                    raise
+                self.refresh_session()
+                payload = self._provider_api_payload(arguments)
+        return _json_value(payload)
+
+    def _provider_api_payload(self, arguments: Mapping[str, object]) -> object:
+        return self._authenticated_payload(
             self._client._transport.call_oauth_provider_api,
             expected_status=200,
             retry_unauthorized=False,
-            provider=_provider(provider),
-            endpoint=endpoint,
-            method=method,
-            body=body,
+            **arguments,
         )
-        return _json_value(payload)
 
     def get_sessions(self, *, page: int = 1, limit: int = 20) -> SessionPage:
         """Return a page of the current user's device sessions."""

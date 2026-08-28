@@ -42,8 +42,11 @@ place them in source control.
 ## Manage the session
 
 Subscribe to auth-state changes when application state must follow the client.
-The listener runs immediately with the current user and after committed auth
-changes. Call the returned function to unsubscribe.
+The listener runs immediately when the client is signed out or already has a
+resolved user, then after committed auth changes. For restored tokens without a
+loaded profile, the first event waits for `get_user()` or `refresh_session()` so
+the client does not report a valid session as signed out. Call the returned
+function to unsubscribe.
 
 ```python
 unsubscribe = client.auth.on_auth_state_change(
@@ -122,6 +125,10 @@ client.auth.confirm_email_change(token="email-change-token")
 # Or cancel a pending request:
 client.auth.cancel_email_change()
 ```
+
+Password reset revokes the reset account's existing sessions. If this client is
+using one of them, `reset_password()` clears it before returning; sign in with
+the new password to continue.
 
 ## Open hosted auth and OAuth
 

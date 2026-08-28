@@ -1220,6 +1220,37 @@ def test_provider_401_preserves_access_only_session() -> None:
     assert client.current_session.access_token == "access-token"
 
 
+def test_provider_api_refreshes_an_expired_session_once() -> None:
+    transport = AuthTransport()
+    transport.queue(
+        "call_oauth_provider_api",
+        AuthResponse(401, {"error": "Not authenticated"}),
+        AuthResponse(200, {"login": "octocat"}),
+    )
+    transport.queue(
+        "auth_refresh",
+        AuthResponse(
+            200,
+            _token_payload(
+                access_token="rotated-access",
+                refresh_token="rotated-refresh",
+            ),
+        ),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="expired-access",
+        refresh_token="refresh-token",
+        _transport=transport,
+    )
+
+    result = client.auth.call_oauth_api(provider="github", endpoint="/user")
+
+    assert result == {"login": "octocat"}
+    assert client.current_session is not None
+    assert client.current_session.access_token == "rotated-access"
+
+
 def test_delete_session_rejects_a_malformed_identifier() -> None:
     client = VolcanoClient(
         anon_key="anon-key",
