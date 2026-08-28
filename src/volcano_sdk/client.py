@@ -147,7 +147,8 @@ class VolcanoClient:
             listener_id = self._next_auth_listener_id
             self._next_auth_listener_id += 1
             self._auth_listeners[listener_id] = listener
-            self._invoke_auth_listener(listener)
+            if self._current_session is None or self._current_user is not None:
+                self._invoke_auth_listener(listener)
 
         def unsubscribe() -> None:
             with self._auth_state_lock:

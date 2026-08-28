@@ -7,6 +7,7 @@ from contextlib import suppress
 from datetime import datetime
 from hmac import compare_digest
 from secrets import token_urlsafe
+from threading import RLock
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 from urllib.parse import quote, urlencode
 from uuid import UUID
@@ -230,6 +231,7 @@ class Auth:
     def __init__(self, client: AuthContext) -> None:
         """Create an authentication facade backed by a client."""
         self._client = client
+        self._operation_lock = RLock()
         self._current_device_session_ids: set[str] = set()
 
     def sign_up(
@@ -279,29 +281,31 @@ class Auth:
 
     def sign_out(self) -> None:
         """Revoke the refresh token and always clear local auth state."""
-        session = self._client.current_session
-        try:
-            if session is not None and session.refresh_token is not None:
-                response = invoke(
-                    self._client._transport.auth_logout,
-                    authorization=self._client._anon_token(),
-                    refresh_token=session.refresh_token,
-                )
-                response_payload(response, 204)
-        finally:
-            self._clear_auth()
+        with self._operation_lock:
+            session = self._client.current_session
+            try:
+                if session is not None and session.refresh_token is not None:
+                    response = invoke(
+                        self._client._transport.auth_logout,
+                        authorization=self._client._anon_token(),
+                        refresh_token=session.refresh_token,
+                    )
+                    response_payload(response, 204)
+            finally:
+                self._clear_auth()
 
     def get_user(self) -> User:
         """Load the current user from the API."""
-        payload = _mapping(
-            self._authenticated_payload(
-                self._client._transport.auth_get_user,
-                expected_status=200,
+        with self._operation_lock:
+            payload = _mapping(
+                self._authenticated_payload(
+                    self._client._transport.auth_get_user,
+                    expected_status=200,
+                )
             )
-        )
-        user = _user(_mapping(payload.get("user")))
-        self._client._set_user(user)
-        return user
+            user = _user(_mapping(payload.get("user")))
+            self._client._set_user(user)
+            return user
 
     def update_user(
         self,
@@ -310,20 +314,25 @@ class Auth:
         user_metadata: dict[str, JSONValue] | None = None,
     ) -> User:
         """Update the current user's password or metadata."""
-        payload = _mapping(
-            self._authenticated_payload(
-                self._client._transport.auth_update_user,
-                expected_status=200,
-                password=password,
-                user_metadata=user_metadata,
+        with self._operation_lock:
+            payload = _mapping(
+                self._authenticated_payload(
+                    self._client._transport.auth_update_user,
+                    expected_status=200,
+                    password=password,
+                    user_metadata=user_metadata,
+                )
             )
-        )
-        user = _user(_mapping(payload.get("user")))
-        self._client._set_user(user)
-        return user
+            user = _user(_mapping(payload.get("user")))
+            self._client._set_user(user)
+            return user
 
     def refresh_session(self) -> Session:
         """Rotate the current refresh token and replace local auth state."""
+        with self._operation_lock:
+            return self._refresh_session()
+
+    def _refresh_session(self) -> Session:
         session = self._client.current_session
         if session is None or session.refresh_token is None:
             self._clear_auth()
@@ -388,7 +397,8 @@ class Auth:
             )
         )
         converted_user = _user(_mapping(payload.get("user")))
-        self.refresh_session()
+        with suppress(VolcanoError):
+            self.refresh_session()
         return self._client.current_user or converted_user
 
     def confirm_email(self, *, token: str) -> MessageResult:
@@ -430,7 +440,11 @@ class Auth:
             token=token,
             new_password=new_password,
         )
-        return _message(_mapping(response_payload(response, 200)))
+        result = _message(_mapping(response_payload(response, 200)))
+        if self._client.current_session is not None:
+            with suppress(VolcanoError):
+                self.get_user()
+        return result
 
     def request_email_change(self, *, new_email: str) -> EmailChangeResult:
         """Request a change to the current user's email address."""
@@ -627,6 +641,7 @@ class Auth:
         payload = self._authenticated_payload(
             self._client._transport.call_oauth_provider_api,
             expected_status=200,
+            retry_unauthorized=False,
             provider=_provider(provider),
             endpoint=endpoint,
             method=method,
@@ -663,15 +678,18 @@ class Auth:
     def delete_session(self, *, session_id: str) -> None:
         """Delete one device session."""
         try:
-            UUID(session_id)
+            normalized_session_id = str(UUID(session_id))
         except (TypeError, ValueError, AttributeError) as error:
             raise ValidationError(_INVALID_SESSION_ID) from error
+        deletes_current_session = (
+            normalized_session_id in self._current_device_session_ids
+        )
         self._authenticated_payload(
             self._client._transport.auth_delete_my_session,
             expected_status=204,
-            session_id=session_id,
+            session_id=normalized_session_id,
         )
-        if session_id in self._current_device_session_ids:
+        if deletes_current_session:
             self._clear_auth()
 
     def delete_all_other_sessions(self) -> None:
@@ -695,6 +713,23 @@ class Auth:
         operation: Callable[..., TransportResponse],
         *,
         expected_status: int,
+        retry_unauthorized: bool = True,
+        **kwargs: object,
+    ) -> object:
+        with self._operation_lock:
+            return self._authenticated_payload_locked(
+                operation,
+                expected_status=expected_status,
+                retry_unauthorized=retry_unauthorized,
+                **kwargs,
+            )
+
+    def _authenticated_payload_locked(
+        self,
+        operation: Callable[..., TransportResponse],
+        *,
+        expected_status: int,
+        retry_unauthorized: bool,
         **kwargs: object,
     ) -> object:
         try:
@@ -706,7 +741,11 @@ class Auth:
             return response_payload(response, expected_status)
         except AuthenticationError as error:
             session = self._client.current_session
-            if error.status != _HTTP_UNAUTHORIZED or session is None:
+            if (
+                error.status != _HTTP_UNAUTHORIZED
+                or session is None
+                or not retry_unauthorized
+            ):
                 raise
             if session.refresh_token is None:
                 self._clear_auth()
@@ -720,9 +759,11 @@ class Auth:
         return response_payload(response, expected_status)
 
     def _replace_auth(self, session: Session, user: User) -> None:
-        self._current_device_session_ids.clear()
-        self._client._commit_auth(session, user)
+        with self._operation_lock:
+            self._current_device_session_ids.clear()
+            self._client._commit_auth(session, user)
 
     def _clear_auth(self) -> None:
-        self._current_device_session_ids.clear()
-        self._client._clear_auth()
+        with self._operation_lock:
+            self._current_device_session_ids.clear()
+            self._client._clear_auth()

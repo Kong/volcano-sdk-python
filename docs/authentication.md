@@ -102,6 +102,10 @@ converted = client.auth.convert_anonymous(
 assert converted.id == anonymous_id
 ```
 
+Conversion is permanent once the API accepts it. If the follow-up token rotation
+fails, the method still returns the converted user and clears the local session;
+sign in with the new credentials to continue.
+
 Email workflows are available as explicit operations:
 
 ```python

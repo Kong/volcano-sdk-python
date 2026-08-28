@@ -649,6 +649,23 @@ def test_auth_state_listeners_are_immediate_isolated_and_idempotent(
     assert observed == [("first", user), ("second", user)]
 
 
+def test_restored_session_listener_waits_for_user_hydration() -> None:
+    transport = AuthTransport()
+    transport.queue("auth_get_user", AuthResponse(200, {"user": _user_payload()}))
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="restored-access",
+        _transport=transport,
+    )
+    observations: list[User | None] = []
+
+    client.auth.on_auth_state_change(observations.append)
+    assert observations == []
+
+    user = client.auth.get_user()
+    assert observations == [user]
+
+
 def test_anonymous_and_email_account_flows_return_public_values() -> None:
     transport = AuthTransport()
     transport.queue(
@@ -697,6 +714,7 @@ def test_anonymous_and_email_account_flows_return_public_values() -> None:
             },
         ),
     )
+    transport.queue("auth_get_user", AuthResponse(200, {"user": _user_payload()}))
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
 
     anonymous = client.auth.sign_up_anonymous(user_metadata={"display_name": "Guest"})
@@ -779,6 +797,56 @@ def test_confirm_email_refreshes_current_user_and_notifies_listeners() -> None:
     assert client.current_user is not None
     assert client.current_user.email_confirmed is True
     assert observations[-1] is client.current_user
+
+
+def test_password_reset_clears_a_revoked_current_session() -> None:
+    transport = AuthTransport()
+    transport.queue("auth_reset_password", AuthResponse(200, {"message": "Done"}))
+    transport.queue(
+        "auth_get_user",
+        AuthResponse(401, {"error": "Access token expired"}),
+    )
+    transport.queue(
+        "auth_refresh",
+        AuthResponse(401, {"error": "Refresh token expired"}),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        refresh_token="refresh-token",
+        _transport=transport,
+    )
+
+    result = client.auth.reset_password(token="recovery-token", new_password="next")
+
+    assert result == MessageResult(message="Done")
+    assert client.current_session is None
+
+
+def test_convert_anonymous_preserves_success_when_session_refresh_fails() -> None:
+    transport = AuthTransport()
+    transport.queue(
+        "auth_convert_anonymous",
+        AuthResponse(200, {"user": _user_payload(email="converted@example.com")}),
+    )
+    transport.queue(
+        "auth_refresh",
+        AuthResponse(503, {"error": "Temporarily unavailable"}),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="anonymous-access",
+        refresh_token="anonymous-refresh",
+        _transport=transport,
+    )
+
+    converted = client.auth.convert_anonymous(
+        email="converted@example.com",
+        password="secret",
+    )
+
+    assert converted.email == "converted@example.com"
+    assert client.current_session is None
 
 
 def test_confirm_email_preserves_success_when_user_refresh_fails() -> None:
@@ -1043,7 +1111,113 @@ def test_provider_and_device_session_flows_return_public_values() -> None:
         limit=20,
         total_pages=1,
     )
+
+
+def test_deleting_current_session_survives_automatic_refresh() -> None:
+    current_session_id = "3cd3e058-e3ff-42a5-ae4d-650ef9b45746"
+    transport = AuthTransport()
+    transport.queue(
+        "auth_get_my_sessions",
+        AuthResponse(
+            200,
+            {
+                "sessions": [
+                    {
+                        "id": current_session_id,
+                        "user_id": "user-123",
+                        "provider": "email",
+                        "expires_at": "2026-08-29T12:00:00Z",
+                        "is_active": True,
+                        "is_current": True,
+                    }
+                ],
+                "total": 1,
+                "page": 1,
+                "limit": 20,
+                "total_pages": 1,
+            },
+        ),
+    )
+    transport.queue(
+        "auth_delete_my_session",
+        AuthResponse(401, {"error": "Access token expired"}),
+        AuthResponse(204),
+    )
+    transport.queue(
+        "auth_refresh",
+        AuthResponse(
+            200,
+            _token_payload(
+                access_token="rotated-access",
+                refresh_token="rotated-refresh",
+            ),
+        ),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        refresh_token="refresh-token",
+        _transport=transport,
+    )
+
+    client.auth.get_sessions()
+    client.auth.delete_session(session_id=current_session_id)
+
     assert client.current_session is None
+
+
+def test_delete_session_normalizes_current_uuid_before_matching() -> None:
+    current_session_id = "3cd3e058-e3ff-42a5-ae4d-650ef9b45746"
+    transport = AuthTransport()
+    transport.queue(
+        "auth_get_my_sessions",
+        AuthResponse(
+            200,
+            {
+                "sessions": [
+                    {
+                        "id": current_session_id,
+                        "user_id": "user-123",
+                        "provider": "email",
+                        "expires_at": "2026-08-29T12:00:00Z",
+                        "is_active": True,
+                        "is_current": True,
+                    }
+                ]
+            },
+        ),
+    )
+    transport.queue("auth_delete_my_session", AuthResponse(204))
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        _transport=transport,
+    )
+
+    client.auth.get_sessions()
+    client.auth.delete_session(session_id=f"{{{current_session_id.upper()}}}")
+
+    assert client.current_session is None
+    assert transport.calls[-1][1]["session_id"] == current_session_id
+
+
+def test_provider_401_preserves_access_only_session() -> None:
+    transport = AuthTransport()
+    transport.queue(
+        "call_oauth_provider_api",
+        AuthResponse(401, {"error": "Provider is not linked"}),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        _transport=transport,
+    )
+
+    with pytest.raises(AuthenticationError, match="Provider is not linked"):
+        client.auth.call_oauth_api(provider="github", endpoint="/user")
+
+    assert client.current_session is not None
+    assert client.current_session.access_token == "access-token"
 
 
 def test_delete_session_rejects_a_malformed_identifier() -> None:
