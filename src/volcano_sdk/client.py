@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TypedDict, Unpack
 
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
 from .database import Database
 from .locks import Locks
+from .models import Session, User
 from .realtime import CentrifugeFactory, Realtime
 from .storage import Storage
 
-if TYPE_CHECKING:
-    from .models import Session
-
 _NO_ACTIVE_SESSION = "No active session"
 _NO_SERVICE_KEY = "No service key configured"
+_REFRESH_WITHOUT_ACCESS = "refresh_token requires access_token"
+
+
+class _AuthBootstrap(TypedDict, total=False):
+    access_token: str | None
+    refresh_token: str | None
 
 
 class VolcanoClient:
@@ -30,12 +34,22 @@ class VolcanoClient:
         timeout: float = 60.0,
         _transport: Transport | None = None,
         _realtime_client_factory: CentrifugeFactory | None = None,
+        **auth_bootstrap: Unpack[_AuthBootstrap],
     ) -> None:
         """Create a client for a Volcano project."""
         self._api_url = api_url.rstrip("/")
         self._anon_key = anon_key
         self._service_key = service_key
-        self._current_session: Session | None = None
+        access_token = auth_bootstrap.get("access_token")
+        refresh_token = auth_bootstrap.get("refresh_token")
+        if access_token is None and refresh_token is not None:
+            raise ValueError(_REFRESH_WITHOUT_ACCESS)
+        self._current_session = (
+            Session(access_token=access_token, refresh_token=refresh_token)
+            if access_token is not None
+            else None
+        )
+        self._current_user: User | None = None
         self._transport: Transport = (
             _transport
             if _transport is not None
@@ -58,6 +72,11 @@ class VolcanoClient:
         """Return the authenticated session, if one exists."""
         return self._current_session
 
+    @property
+    def current_user(self) -> User | None:
+        """Return the authenticated user, if one has been loaded."""
+        return self._current_user
+
     def database(self, name: str) -> Database:
         """Create a query facade for a project database."""
         return Database(self, name)
@@ -77,3 +96,14 @@ class VolcanoClient:
 
     def _set_session(self, session: Session) -> None:
         self._current_session = session
+
+    def _commit_auth(self, session: Session, user: User) -> None:
+        self._current_session = session
+        self._current_user = user
+
+    def _set_user(self, user: User) -> None:
+        self._current_user = user
+
+    def _clear_auth(self) -> None:
+        self._current_session = None
+        self._current_user = None

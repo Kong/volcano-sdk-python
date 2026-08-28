@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from volcano_sdk import VolcanoClient
+import pytest
+
+from volcano_sdk import Session, User, VolcanoClient
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,62 @@ class StateTransport:
     def release_project_lock(self, **kwargs: Any) -> Response:
         self.authorizations.append(("release", kwargs["authorization"]))
         return Response(204)
+
+
+def test_constructor_accepts_an_access_token_only() -> None:
+    client = VolcanoClient(anon_key="anon", access_token="access-token")
+
+    assert client.current_session == Session(access_token="access-token")
+    assert client.current_user is None
+
+
+def test_constructor_accepts_an_access_and_refresh_token() -> None:
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access-token",
+        refresh_token="refresh-token",
+    )
+
+    assert client.current_session == Session(
+        access_token="access-token",
+        refresh_token="refresh-token",
+    )
+    assert client.current_user is None
+
+
+def test_constructor_rejects_a_refresh_token_without_an_access_token() -> None:
+    with pytest.raises(
+        ValueError,
+        match="refresh_token requires access_token",
+    ):
+        VolcanoClient(anon_key="anon", refresh_token="refresh-token")
+
+
+def test_auth_state_can_be_replaced_and_cleared() -> None:
+    client = VolcanoClient(anon_key="anon")
+    session = Session(
+        access_token="access-token",
+        refresh_token="refresh-token",
+        expires_in=3600,
+        user_id="user-123",
+    )
+    user = User(id="user-123", email="user@example.com")
+
+    client._commit_auth(session, user)
+
+    assert client.current_session is session
+    assert client.current_user is user
+
+    replacement = User(id="user-123", email="updated@example.com")
+    client._set_user(replacement)
+
+    assert client.current_session is session
+    assert client.current_user is replacement
+
+    client._clear_auth()
+
+    assert client.current_session is None
+    assert client.current_user is None
 
 
 def test_query_builder_chains_are_immutable() -> None:
