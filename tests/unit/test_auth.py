@@ -564,6 +564,13 @@ def test_get_and_update_user_preserve_the_current_session() -> None:
     ]
 
 
+def test_authenticated_facade_normalizes_a_missing_session() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
+
+    with pytest.raises(AuthenticationError, match="No active session"):
+        client.auth.get_user()
+
+
 def test_refresh_rotates_tokens_and_replaces_user_state() -> None:
     transport = AuthTransport()
     transport.queue(
@@ -1584,6 +1591,24 @@ def test_provider_401_without_optional_code_preserves_session() -> None:
     assert client.current_session.access_token == "access-token"
 
 
+def test_provider_401_clears_an_access_only_session() -> None:
+    transport = AuthTransport()
+    transport.queue(
+        "call_oauth_provider_api",
+        AuthResponse(401, {"error": "Session expired"}),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        _transport=transport,
+    )
+
+    with pytest.raises(AuthenticationError, match="Session expired"):
+        client.auth.call_oauth_api(provider="github", endpoint="/user")
+
+    assert client.current_session is None
+
+
 def test_provider_api_refreshes_an_expired_session_once() -> None:
     transport = AuthTransport()
     transport.queue(
@@ -1613,6 +1638,36 @@ def test_provider_api_refreshes_an_expired_session_once() -> None:
     assert result == {"login": "octocat"}
     assert client.current_session is not None
     assert client.current_session.access_token == "rotated-access"
+
+
+def test_provider_api_clears_auth_after_a_rejected_retry() -> None:
+    transport = AuthTransport()
+    transport.queue(
+        "call_oauth_provider_api",
+        AuthResponse(401, {"error": "Expired"}),
+        AuthResponse(401, {"error": "Session revoked"}),
+    )
+    transport.queue(
+        "auth_refresh",
+        AuthResponse(
+            200,
+            _token_payload(
+                access_token="rotated-access",
+                refresh_token="rotated-refresh",
+            ),
+        ),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="expired-access",
+        refresh_token="refresh-token",
+        _transport=transport,
+    )
+
+    with pytest.raises(AuthenticationError, match="Session revoked"):
+        client.auth.call_oauth_api(provider="github", endpoint="/user")
+
+    assert client.current_session is None
 
 
 def test_delete_session_rejects_a_malformed_identifier() -> None:

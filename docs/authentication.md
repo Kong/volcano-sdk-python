@@ -64,7 +64,7 @@ reused. `sign_out()` also clears local state if the remote revoke fails.
 List and revoke device sessions through the same facade:
 
 ```python
-page = client.auth.get_sessions(page=1, limit=20)
+page = client.auth.get_sessions(sort="created_at", status="active", limit=20)
 
 for device_session in page.sessions:
     print(device_session.id, device_session.last_activity_at)

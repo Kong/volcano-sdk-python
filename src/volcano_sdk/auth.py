@@ -45,6 +45,7 @@ _INVALID_OAUTH_STATE = "OAuth state does not match"
 _INVALID_OAUTH_PROVIDER = "Unsupported OAuth provider"
 _MISSING_AUTHORIZATION_URL = "Authentication response is missing authorization URL"
 _INVALID_SESSION_ID = "session_id must be a valid UUID"
+_NO_ACTIVE_SESSION = "No active session"
 _SUPPORTED_OAUTH_PROVIDERS = frozenset({"google", "github", "microsoft", "apple"})
 
 
@@ -152,6 +153,12 @@ def _provider(value: str) -> OAuthProviderName:
     if value not in _SUPPORTED_OAUTH_PROVIDERS:
         raise ValidationError(_INVALID_OAUTH_PROVIDER)
     return cast("OAuthProviderName", value)
+
+
+def _provider_not_linked(error: AuthenticationError) -> bool:
+    return error.code == _PROVIDER_NOT_LINKED_CODE or (
+        not error.code and "not linked" in str(error).lower()
+    )
 
 
 def _message(payload: Mapping[str, Any]) -> MessageResult:
@@ -687,21 +694,33 @@ class Auth:
                 "method": method,
                 "body": body,
             }
-            try:
-                payload = self._provider_api_payload(arguments)
-            except AuthenticationError as error:
-                session = self._client.current_session
-                if (
-                    error.status != _HTTP_UNAUTHORIZED
-                    or session is None
-                    or session.refresh_token is None
-                    or error.code == _PROVIDER_NOT_LINKED_CODE
-                    or (not error.code and "not linked" in str(error).lower())
-                ):
-                    raise
-                self.refresh_session()
-                payload = self._provider_api_payload(arguments)
+            payload = self._provider_api_payload_with_refresh(arguments)
         return _json_value(payload)
+
+    def _provider_api_payload_with_refresh(
+        self,
+        arguments: Mapping[str, object],
+    ) -> object:
+        try:
+            return self._provider_api_payload(arguments)
+        except AuthenticationError as error:
+            session = self._client.current_session
+            if (
+                error.status != _HTTP_UNAUTHORIZED
+                or session is None
+                or _provider_not_linked(error)
+            ):
+                raise
+            if session.refresh_token is None:
+                self._clear_auth()
+                raise
+        self.refresh_session()
+        try:
+            return self._provider_api_payload(arguments)
+        except AuthenticationError as error:
+            if error.status == _HTTP_UNAUTHORIZED and not _provider_not_linked(error):
+                self._clear_auth()
+            raise
 
     def _provider_api_payload(self, arguments: Mapping[str, object]) -> object:
         return self._authenticated_payload(
@@ -757,8 +776,7 @@ class Auth:
                 raise ValidationError(_INVALID_SESSION_ID) from error
             deletes_current_session = (
                 normalized_session_id in self._current_device_session_ids
-                or normalized_session_id
-                == _token_session_id(self._client._session_token())
+                or normalized_session_id == _token_session_id(self._session_token())
             )
             self._authenticated_payload(
                 self._client._transport.auth_delete_my_session,
@@ -811,7 +829,7 @@ class Auth:
         try:
             response = invoke(
                 operation,
-                authorization=self._client._session_token(),
+                authorization=self._session_token(),
                 **kwargs,
             )
             return response_payload(response, expected_status)
@@ -829,7 +847,7 @@ class Auth:
         self.refresh_session()
         response = invoke(
             operation,
-            authorization=self._client._session_token(),
+            authorization=self._session_token(),
             **kwargs,
         )
         try:
@@ -838,6 +856,12 @@ class Auth:
             if error.status == _HTTP_UNAUTHORIZED:
                 self._clear_auth()
             raise
+
+    def _session_token(self) -> str:
+        session = self._client.current_session
+        if session is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        return session.access_token
 
     def _replace_auth(
         self,
