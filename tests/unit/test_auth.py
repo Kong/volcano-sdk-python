@@ -422,6 +422,7 @@ def test_get_and_update_user_preserve_the_current_session() -> None:
         refresh_token="refresh-token",
         _transport=transport,
     )
+
     session = client.current_session
 
     fetched = client.auth.get_user()
@@ -645,10 +646,13 @@ def test_anonymous_and_email_account_flows_return_public_values() -> None:
         "auth_resend_confirmation",
         "auth_forgot_password",
         "auth_reset_password",
-        "auth_confirm_email_change",
         "auth_cancel_email_change",
     ):
         transport.queue(operation, AuthResponse(200, {"message": "Done"}))
+    transport.queue(
+        "auth_confirm_email_change",
+        AuthResponse(200, {"message": "Done", "user": _user_payload()}),
+    )
     transport.queue(
         "auth_request_email_change",
         AuthResponse(
@@ -672,18 +676,19 @@ def test_anonymous_and_email_account_flows_return_public_values() -> None:
         client.auth.confirm_email(token="confirmation-token"),
         client.auth.resend_confirmation(email="user@example.com"),
         client.auth.forgot_password(email="user@example.com"),
-        client.auth.reset_password(
-            token="recovery-token",
-            new_password="new-password",
-        ),
     )
     email_change = client.auth.request_email_change(new_email="new@example.com")
     confirm_change = client.auth.confirm_email_change(token="email-change-token")
     cancel_change = client.auth.cancel_email_change()
+    user_before_reset = client.current_user
+    password_reset = client.auth.reset_password(
+        token="recovery-token",
+        new_password="new-password",
+    )
 
     assert anonymous is not None
     assert anonymous.access_token == "anonymous-access"
-    assert converted is client.current_user
+    assert user_before_reset == converted
     assert all(result == MessageResult(message="Done") for result in messages)
     assert email_change == EmailChangeResult(
         message="Check your email",
@@ -693,6 +698,8 @@ def test_anonymous_and_email_account_flows_return_public_values() -> None:
     assert "development-token" not in repr(email_change)
     assert confirm_change == MessageResult(message="Done")
     assert cancel_change == MessageResult(message="Done")
+    assert password_reset == MessageResult(message="Done")
+    assert client.current_session is None
     assert transport.calls[:2] == [
         (
             "auth_signup_anonymous",
@@ -724,7 +731,7 @@ def test_hosted_and_oauth_authorization_urls_bind_caller_state(
     transport.queue(
         "auth_oauth_authorize",
         AuthResponse(
-            302,
+            307,
             headers={"Location": "https://github.com/login/oauth/authorize"},
         ),
     )
@@ -879,7 +886,7 @@ def test_provider_and_device_session_flows_return_public_values() -> None:
             {
                 "sessions": [
                     {
-                        "id": "session-123",
+                        "id": "3cd3e058-e3ff-42a5-ae4d-650ef9b45746",
                         "user_id": "user-123",
                         "provider": "email",
                         "expires_at": "2026-08-29T12:00:00Z",
@@ -912,8 +919,8 @@ def test_provider_and_device_session_flows_return_public_values() -> None:
         endpoint="/user",
     )
     sessions = client.auth.get_sessions(page=1, limit=20)
-    client.auth.delete_session(session_id="session-123")
     client.auth.delete_all_other_sessions()
+    client.auth.delete_session(session_id="3cd3e058-e3ff-42a5-ae4d-650ef9b45746")
 
     assert providers == (
         OAuthProvider(
@@ -932,7 +939,7 @@ def test_provider_and_device_session_flows_return_public_values() -> None:
     assert sessions == SessionPage(
         sessions=(
             AuthSession(
-                id="session-123",
+                id="3cd3e058-e3ff-42a5-ae4d-650ef9b45746",
                 user_id="user-123",
                 provider="email",
                 expires_at=datetime(2026, 8, 29, 12, tzinfo=UTC),
@@ -945,3 +952,16 @@ def test_provider_and_device_session_flows_return_public_values() -> None:
         limit=20,
         total_pages=1,
     )
+    assert client.current_session is None
+
+
+def test_delete_session_rejects_a_malformed_identifier() -> None:
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        refresh_token="refresh-token",
+        _transport=AuthTransport(),
+    )
+
+    with pytest.raises(ValidationError, match="session_id must be a valid UUID"):
+        client.auth.delete_session(session_id="not-a-uuid")

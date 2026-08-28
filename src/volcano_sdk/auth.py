@@ -8,6 +8,7 @@ from hmac import compare_digest
 from secrets import token_urlsafe
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 from urllib.parse import quote, urlencode
+from uuid import UUID
 
 from ._transport import Transport, TransportResponse, invoke, response_payload
 from .errors import AuthenticationError, ValidationError
@@ -36,6 +37,7 @@ _HTTP_UNAUTHORIZED = 401
 _INVALID_OAUTH_STATE = "OAuth state does not match"
 _INVALID_OAUTH_PROVIDER = "Unsupported OAuth provider"
 _MISSING_AUTHORIZATION_URL = "Authentication response is missing authorization URL"
+_INVALID_SESSION_ID = "session_id must be a valid UUID"
 _SUPPORTED_OAUTH_PROVIDERS = frozenset({"google", "github", "microsoft", "apple"})
 
 
@@ -227,6 +229,7 @@ class Auth:
     def __init__(self, client: AuthContext) -> None:
         """Create an authentication facade backed by a client."""
         self._client = client
+        self._current_device_session_ids: set[str] = set()
 
     def sign_up(
         self,
@@ -422,7 +425,9 @@ class Auth:
             token=token,
             new_password=new_password,
         )
-        return _message(_mapping(response_payload(response, 200)))
+        result = _message(_mapping(response_payload(response, 200)))
+        self._client._clear_auth()
+        return result
 
     def request_email_change(self, *, new_email: str) -> EmailChangeResult:
         """Request a change to the current user's email address."""
@@ -450,7 +455,9 @@ class Auth:
             expected_status=200,
             email_change_token=token,
         )
-        return _message(_mapping(payload))
+        response = _mapping(payload)
+        self._client._set_user(_user(_mapping(response.get("user"))))
+        return _message(response)
 
     def cancel_email_change(self) -> MessageResult:
         """Cancel the current user's pending email change."""
@@ -494,7 +501,7 @@ class Auth:
             redirect_url=redirect_url,
             state=state,
         )
-        response_payload(response, 302)
+        response_payload(response, 307)
         authorization_url = self._response_header(response, "Location")
         if authorization_url is None:
             raise AuthenticationError(_MISSING_AUTHORIZATION_URL)
@@ -638,8 +645,12 @@ class Auth:
         if not isinstance(sessions_value, list):
             raise AuthenticationError(_INVALID_AUTH_RESPONSE)
         sessions = cast("list[object]", sessions_value)
+        mapped_sessions = tuple(_auth_session(_mapping(item)) for item in sessions)
+        self._current_device_session_ids = {
+            session.id for session in mapped_sessions if session.is_current
+        }
         return SessionPage(
-            sessions=tuple(_auth_session(_mapping(item)) for item in sessions),
+            sessions=mapped_sessions,
             total=_optional_int(payload.get("total")),
             page=_optional_int(payload.get("page")),
             limit=_optional_int(payload.get("limit")),
@@ -648,11 +659,18 @@ class Auth:
 
     def delete_session(self, *, session_id: str) -> None:
         """Delete one device session."""
+        try:
+            UUID(session_id)
+        except (TypeError, ValueError, AttributeError) as error:
+            raise ValidationError(_INVALID_SESSION_ID) from error
         self._authenticated_payload(
             self._client._transport.auth_delete_my_session,
             expected_status=204,
             session_id=session_id,
         )
+        if session_id in self._current_device_session_ids:
+            self._current_device_session_ids.clear()
+            self._client._clear_auth()
 
     def delete_all_other_sessions(self) -> None:
         """Delete every device session except the current one."""

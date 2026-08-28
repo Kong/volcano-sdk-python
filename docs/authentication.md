@@ -17,7 +17,7 @@ session = client.auth.sign_in(
 )
 
 print(client.current_user.id)
-print(session.expires_at)
+print(session.expires_in)
 ```
 
 The client keeps the active `current_user` and `current_session` in memory.
@@ -131,6 +131,10 @@ request = client.auth.get_hosted_auth_url(
 )
 print(request.authorization_url)
 ```
+
+When hosted auth redirects back, compare the returned state with
+`request.state` before adopting any returned credentials. The Python SDK does
+not consume browser callbacks automatically.
 
 OAuth authorization follows the same pattern. Preserve `request.state` and
 pass it as `expected_state` during exchange; the SDK rejects a mismatch before
