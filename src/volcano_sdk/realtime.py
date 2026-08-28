@@ -420,7 +420,13 @@ class Realtime:
                 events=_ChannelEvents(channel, generation),
             )
             channel._subscription = subscription
-            await subscription.subscribe()
+            try:
+                await subscription.subscribe()
+            except Exception:
+                if generation == channel._auth_generation:
+                    raise
+                channel._subscription = None
+                continue
             if generation != channel._auth_generation:
                 channel._subscription = None
 

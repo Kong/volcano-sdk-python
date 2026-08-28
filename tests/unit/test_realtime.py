@@ -121,6 +121,25 @@ class FakeSubscription:
         )
 
 
+def _failing_first_subscribe(
+    entered: asyncio.Event,
+    release: asyncio.Event,
+) -> Callable[[FakeSubscription], Awaitable[None]]:
+    attempts = 0
+
+    async def subscribe(subscription: FakeSubscription) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            entered.set()
+            await release.wait()
+            message = "old connection closed"
+            raise RuntimeError(message)
+        subscription.calls.append(("subscribe", None))
+
+    return subscribe
+
+
 class FakeCentrifugeClient:
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -570,17 +589,11 @@ def test_auth_change_retries_an_in_flight_realtime_subscription(
     clients = iter((first, second))
     entered = asyncio.Event()
     release = asyncio.Event()
-    subscribe_count = 0
-
-    async def subscribe(subscription: FakeSubscription) -> None:
-        nonlocal subscribe_count
-        subscribe_count += 1
-        if subscribe_count == 1:
-            entered.set()
-            await release.wait()
-        subscription.calls.append(("subscribe", None))
-
-    monkeypatch.setattr(FakeSubscription, "subscribe", subscribe)
+    monkeypatch.setattr(
+        FakeSubscription,
+        "subscribe",
+        _failing_first_subscribe(entered, release),
+    )
 
     def factory(
         address: str,
