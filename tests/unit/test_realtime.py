@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from threading import Event, Thread
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -363,6 +364,49 @@ def test_worker_thread_auth_change_uses_the_realtime_owning_loop() -> None:
     asyncio.run(scenario())
 
 
+def test_event_loop_listener_does_not_block_a_worker_auth_change() -> None:
+    transport = AuthTransport()
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    completed = Event()
+    outcomes: list[bool] = []
+    workers: list[Thread] = []
+    started = False
+
+    def replace_auth() -> None:
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="next@example.com", password="secret")
+        completed.set()
+
+    def listener(user: Any | None) -> None:
+        nonlocal started
+        if user is None or started:
+            return
+        started = True
+        worker = Thread(target=replace_auth)
+        workers.append(worker)
+        worker.start()
+        outcomes.append(completed.wait(1))
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("contract")
+        await channel.subscribe()
+        client.auth.on_auth_state_change(listener)
+        await asyncio.sleep(0)
+        assert channel._subscription is None
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+    workers[0].join(timeout=1)
+
+    assert outcomes == [True]
+
+
 def test_auth_change_discards_state_owned_by_a_closed_realtime_loop() -> None:
     transport = AuthTransport()
     official = FakeCentrifugeClient()
@@ -378,7 +422,12 @@ def test_auth_change_discards_state_owned_by_a_closed_realtime_loop() -> None:
     )
 
     async def exercise(value: str) -> None:
-        await channel.subscribe()
+        connection_lock = client.realtime._connection_lock
+        await connection_lock.acquire()
+        subscribing = asyncio.create_task(channel.subscribe())
+        await asyncio.sleep(0)
+        connection_lock.release()
+        await subscribing
         await official.emit_wire_publication("broadcast:contract", {"value": value})
         for _ in range(10):
             if received and received[-1] == value:
@@ -475,6 +524,46 @@ def test_realtime_callbacks_run_outside_the_message_processor() -> None:
         )
         await asyncio.wait_for(started.wait(), timeout=0.1)
         release.set()
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_auth_change_stops_the_current_publication_callback_chain() -> None:
+    transport = AuthTransport()
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("contract")
+        started = asyncio.Event()
+        release = asyncio.Event()
+        later_callbacks: list[str] = []
+
+        async def first_callback(data: dict[str, str]) -> None:
+            del data
+            started.set()
+            await release.wait()
+
+        channel.on("message", first_callback)
+        channel.on("message", lambda data: later_callbacks.append(data["value"]))
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "broadcast:contract",
+            {"value": "stale"},
+        )
+        await asyncio.wait_for(started.wait(), timeout=0.1)
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="next@example.com", password="secret")
+        release.set()
+        await asyncio.sleep(0)
+
+        assert later_callbacks == []
         await client.realtime.disconnect()
 
     asyncio.run(scenario())

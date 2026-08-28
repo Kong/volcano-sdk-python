@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Generator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
@@ -454,6 +455,17 @@ class GeneratedTransport:
             httpx_args=httpx_args,
         )
 
+    @contextmanager
+    def _auth_client(
+        self,
+        authorization: str,
+    ) -> Generator[AuthenticatedClient, None, None]:
+        try:
+            with self._client(authorization) as client:
+                yield client
+        except (KeyError, TypeError, ValueError):
+            raise AuthenticationError(_INVALID_AUTH_RESPONSE) from None
+
     @staticmethod
     def _response(response: Any) -> TransportResponse:
         parsed = response.parsed
@@ -480,7 +492,7 @@ class GeneratedTransport:
         email: str,
         password: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_signin.sync_detailed(
                 client=client,
                 body=AuthSigninBody(email=email, password=password),
@@ -498,14 +510,11 @@ class GeneratedTransport:
         body_data: dict[str, Any] = {"email": email, "password": password}
         if user_metadata is not None:
             body_data["user_metadata"] = _mutable_json(user_metadata)
-        try:
-            with self._client(authorization) as client:
-                response = auth_signup.sync_detailed(
-                    client=client,
-                    body=AuthSignupBody.from_dict(body_data),
-                )
-        except (KeyError, TypeError, ValueError):
-            raise AuthenticationError(_INVALID_AUTH_RESPONSE) from None
+        with self._auth_client(authorization) as client:
+            response = auth_signup.sync_detailed(
+                client=client,
+                body=AuthSignupBody.from_dict(body_data),
+            )
         return self._response(response)
 
     def auth_refresh(
@@ -514,7 +523,7 @@ class GeneratedTransport:
         authorization: str,
         refresh_token: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_refresh.sync_detailed(
                 client=client,
                 body=AuthRefreshBody(refresh_token=refresh_token),
@@ -527,7 +536,7 @@ class GeneratedTransport:
         authorization: str,
         refresh_token: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_logout.sync_detailed(
                 client=client,
                 body=AuthLogoutBody(refresh_token=refresh_token),
@@ -535,7 +544,7 @@ class GeneratedTransport:
         return self._response(response)
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_get_user.sync_detailed(client=client)
         return self._response(response)
 
@@ -551,7 +560,7 @@ class GeneratedTransport:
             body_data["password"] = password
         if user_metadata is not None:
             body_data["user_metadata"] = _mutable_json(user_metadata)
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_update_user.sync_detailed(
                 client=client,
                 body=AuthUpdateUserBody.from_dict(body_data),
@@ -569,7 +578,7 @@ class GeneratedTransport:
             if user_metadata is not None
             else {}
         )
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_signup_anonymous.sync_detailed(
                 client=client,
                 body=AuthSignupAnonymousBody.from_dict(body_data),
@@ -587,7 +596,7 @@ class GeneratedTransport:
         body_data: dict[str, Any] = {"email": email, "password": password}
         if user_metadata is not None:
             body_data["user_metadata"] = _mutable_json(user_metadata)
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_convert_anonymous.sync_detailed(
                 client=client,
                 body=AuthConvertAnonymousBody.from_dict(body_data),
@@ -600,7 +609,7 @@ class GeneratedTransport:
         authorization: str,
         token: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_confirm_email.sync_detailed(
                 client=client,
                 body=AuthConfirmEmailBody(token=token),
@@ -613,7 +622,7 @@ class GeneratedTransport:
         authorization: str,
         email: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_resend_confirmation.sync_detailed(
                 client=client,
                 body=AuthResendConfirmationBody(email=email),
@@ -626,7 +635,7 @@ class GeneratedTransport:
         authorization: str,
         email: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_forgot_password.sync_detailed(
                 client=client,
                 body=AuthForgotPasswordBody(email=email),
@@ -640,7 +649,7 @@ class GeneratedTransport:
         token: str,
         new_password: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_reset_password.sync_detailed(
                 client=client,
                 body=AuthResetPasswordBody(token=token, new_password=new_password),
@@ -653,7 +662,7 @@ class GeneratedTransport:
         authorization: str,
         new_email: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_request_email_change.sync_detailed(
                 client=client,
                 body=AuthRequestEmailChangeBody(new_email=new_email),
@@ -666,7 +675,7 @@ class GeneratedTransport:
         authorization: str,
         email_change_token: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_confirm_email_change.sync_detailed(
                 client=client,
                 body=AuthConfirmEmailChangeBody(
@@ -680,7 +689,7 @@ class GeneratedTransport:
         *,
         authorization: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_cancel_email_change.sync_detailed(client=client)
         return self._response(response)
 
@@ -692,7 +701,7 @@ class GeneratedTransport:
         redirect_url: str,
         state: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_o_auth_authorize.sync_detailed(
                 provider,
                 client=client,
@@ -710,7 +719,7 @@ class GeneratedTransport:
         code: str,
         redirect_url: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_o_auth_exchange.sync_detailed(
                 client=client,
                 body=AuthOAuthExchangeBody(code=code, redirect_url=redirect_url),
@@ -725,7 +734,7 @@ class GeneratedTransport:
         redirect_url: str,
         state: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_link_o_auth_provider.sync_detailed(
                 provider,
                 client=client,
@@ -741,7 +750,7 @@ class GeneratedTransport:
         authorization: str,
         provider: OAuthProviderName,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_unlink_o_auth_provider.sync_detailed(
                 provider,
                 client=client,
@@ -753,7 +762,7 @@ class GeneratedTransport:
         *,
         authorization: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_list_o_auth_providers.sync_detailed(client=client)
         return self._response(response)
 
@@ -763,7 +772,7 @@ class GeneratedTransport:
         authorization: str,
         provider: OAuthProviderName,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = refresh_o_auth_provider_token.sync_detailed(
                 provider,
                 client=client,
@@ -776,7 +785,7 @@ class GeneratedTransport:
         authorization: str,
         provider: OAuthProviderName,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = get_o_auth_provider_token.sync_detailed(
                 provider,
                 client=client,
@@ -795,7 +804,7 @@ class GeneratedTransport:
         body_data: dict[str, Any] = {"endpoint": endpoint, "method": method}
         if body is not None:
             body_data["body"] = _mutable_json(body)
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = client.get_httpx_client().post(
                 f"/auth/oauth/{quote(provider, safe='')}/call-api",
                 json=body_data,
@@ -819,7 +828,7 @@ class GeneratedTransport:
         limit: int = 20,
         **options: Unpack[SessionListOptions],
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_get_my_sessions.sync_detailed(
                 client=client,
                 page=page if page is not None else UNSET,
@@ -838,7 +847,7 @@ class GeneratedTransport:
         authorization: str,
         session_id: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_delete_my_session.sync_detailed(
                 UUID(session_id),
                 client=client,
@@ -850,7 +859,7 @@ class GeneratedTransport:
         *,
         authorization: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
+        with self._auth_client(authorization) as client:
             response = auth_delete_all_my_sessions.sync_detailed(client=client)
         return self._response(response)
 

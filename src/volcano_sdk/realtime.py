@@ -7,7 +7,6 @@ import importlib
 import inspect
 import logging
 from collections.abc import Awaitable, Callable
-from threading import Event as ThreadEvent
 from typing import Any, Protocol, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
@@ -214,7 +213,7 @@ class Channel:
         self._name = name
         self._message_callbacks: list[MessageCallback] = []
         self._subscription: CentrifugeSubscription | None = None
-        self._callback_queue: asyncio.Queue[Any] = asyncio.Queue(
+        self._callback_queue: asyncio.Queue[tuple[int, Any]] = asyncio.Queue(
             maxsize=CALLBACK_QUEUE_LIMIT
         )
         self._callback_task: asyncio.Task[None] | None = None
@@ -252,7 +251,7 @@ class Channel:
             )
             self._callback_stop = None
         try:
-            self._callback_queue.put_nowait(data)
+            self._callback_queue.put_nowait((self._auth_generation, data))
         except asyncio.QueueFull:
             asyncio.get_running_loop().call_exception_handler(
                 {
@@ -274,29 +273,39 @@ class Channel:
 
     async def _dispatch_callbacks(self, stop: asyncio.Event) -> None:
         while not stop.is_set():
-            data = await self._callback_queue.get()
+            generation, data = await self._callback_queue.get()
             try:
                 for callback in tuple(self._message_callbacks):
-                    active_task = asyncio.create_task(
-                        self._run_callback(callback, data)
-                    )
-                    self._active_callback_task = active_task
-                    try:
-                        (error,) = await asyncio.gather(
-                            active_task, return_exceptions=True
-                        )
-                    finally:
-                        self._active_callback_task = None
-                    if isinstance(error, BaseException):
-                        asyncio.get_running_loop().call_exception_handler(
-                            {
-                                "message": "Volcano realtime callback failed",
-                                "exception": error,
-                                "channel": self._name,
-                            }
-                        )
+                    if not await self._dispatch_callback(callback, data, generation):
+                        break
             finally:
                 self._callback_queue.task_done()
+
+    async def _dispatch_callback(
+        self,
+        callback: MessageCallback,
+        data: Any,
+        generation: int,
+    ) -> bool:
+        if generation != self._auth_generation:
+            return False
+        active_task = asyncio.create_task(self._run_callback(callback, data))
+        self._active_callback_task = active_task
+        try:
+            (error,) = await asyncio.gather(active_task, return_exceptions=True)
+        finally:
+            self._active_callback_task = None
+        if generation != self._auth_generation:
+            return False
+        if isinstance(error, BaseException):
+            asyncio.get_running_loop().call_exception_handler(
+                {
+                    "message": "Volcano realtime callback failed",
+                    "exception": error,
+                    "channel": self._name,
+                }
+            )
+        return True
 
     async def _run_callback(self, callback: MessageCallback, data: Any) -> None:
         result = callback(data)
@@ -486,7 +495,10 @@ class Realtime:
             self._discard_closed_loop_authentication()
             return
         if loop is not None and _running_loop() is not loop:
-            self._schedule_auth_invalidation(loop)
+            if loop.is_running():
+                self._schedule_auth_invalidation(loop)
+            else:
+                self._discard_closed_loop_authentication()
             return
         self._invalidate_authentication()
 
@@ -494,16 +506,10 @@ class Realtime:
         self,
         loop: asyncio.AbstractEventLoop,
     ) -> None:
-        completed = ThreadEvent()
-        loop.call_soon_threadsafe(self._invalidate_and_signal, completed)
-        if loop.is_running():
-            completed.wait()
-
-    def _invalidate_and_signal(self, completed: ThreadEvent) -> None:
         try:
-            self._invalidate_authentication()
-        finally:
-            completed.set()
+            loop.call_soon_threadsafe(self._invalidate_authentication)
+        except RuntimeError:
+            self._discard_closed_loop_authentication()
 
     def _invalidate_authentication(self) -> None:
         self._auth_generation += 1
@@ -523,6 +529,7 @@ class Realtime:
     def _discard_closed_loop_authentication(self) -> None:
         self._auth_generation += 1
         self._connection = None
+        self._connection_lock = asyncio.Lock()
         self._loop = None
         self._auth_cleanup_tasks.clear()
         self._in_flight_publishes.clear()

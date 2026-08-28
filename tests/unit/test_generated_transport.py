@@ -39,6 +39,22 @@ def test_generated_transport_normalizes_malformed_signup_payloads() -> None:
         client.auth.sign_up(email="user@example.com", password="secret")
 
 
+def test_generated_transport_normalizes_malformed_signin_payloads() -> None:
+    def handle(_request: httpx.Request) -> httpx.Response:
+        payload = _auth_response().json()
+        del payload["token_type"]
+        return httpx.Response(200, json=payload)
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="Invalid authentication response"):
+        client.auth.sign_in(email="user@example.com", password="secret")
+
+
 def _auth_response() -> httpx.Response:
     return httpx.Response(
         200,
