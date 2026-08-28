@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, Unpack, cast
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
@@ -74,7 +74,7 @@ from ._generated.models.project_lock_lease_request import ProjectLockLeaseReques
 from ._generated.models.upload_storage_object_files_body import (
     UploadStorageObjectFilesBody,
 )
-from ._generated.types import File
+from ._generated.types import UNSET, File
 from .errors import (
     AuthenticationError,
     ConflictError,
@@ -89,7 +89,7 @@ from .errors import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from .models import JSONValue, OAuthProviderName
+    from .models import JSONValue, OAuthProviderName, SessionListOptions
 
 
 def _mutable_json(value: JSONValue) -> JSONValue:
@@ -312,8 +312,9 @@ class Transport(Protocol):
         self,
         *,
         authorization: str,
-        page: int = 1,
+        page: int | None = None,
         limit: int = 20,
+        **options: Unpack[SessionListOptions],
     ) -> TransportResponse: ...
 
     def auth_delete_my_session(
@@ -810,14 +811,20 @@ class GeneratedTransport:
         self,
         *,
         authorization: str,
-        page: int = 1,
+        page: int | None = None,
         limit: int = 20,
+        **options: Unpack[SessionListOptions],
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = auth_get_my_sessions.sync_detailed(
                 client=client,
-                page=page,
+                page=page if page is not None else UNSET,
                 limit=limit,
+                sort=options.get("sort", UNSET),
+                status=options.get("status", UNSET),
+                cursor=options.get("cursor", UNSET),
+                ending_before=options.get("ending_before", UNSET),
+                offset=options.get("offset", UNSET),
             )
         return self._response(response)
 

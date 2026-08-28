@@ -23,6 +23,7 @@ def test_package_exports_the_public_sdk_contract() -> None:
         "RateLimitedError",
         "ServerError",
         "Session",
+        "SessionListOptions",
         "SessionPage",
         "SignUpResult",
         "TransportError",

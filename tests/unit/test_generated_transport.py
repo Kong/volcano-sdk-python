@@ -489,8 +489,11 @@ def test_generated_transport_calls_device_session_operations() -> None:
 
     transport.auth_get_my_sessions(
         authorization="access-token",
-        page=2,
         limit=10,
+        sort="created_at",
+        status="active",
+        cursor="next-page",
+        offset=20,
     )
     transport.auth_delete_my_session(
         authorization="access-token",
@@ -507,9 +510,11 @@ def test_generated_transport_calls_device_session_operations() -> None:
         ("DELETE", "/auth/user/sessions"),
     ]
     assert dict(requests[0].url.params) == {
-        "page": "2",
         "limit": "10",
-        "sort": "last_activity",
+        "sort": "created_at",
+        "status": "active",
+        "cursor": "next-page",
+        "offset": "20",
     }
     assert [request.headers["authorization"] for request in requests] == [
         "Bearer access-token",

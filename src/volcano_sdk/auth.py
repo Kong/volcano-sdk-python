@@ -11,7 +11,7 @@ from datetime import datetime
 from hmac import compare_digest
 from secrets import token_urlsafe
 from threading import RLock
-from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, Unpack, cast
 from urllib.parse import quote, urlencode
 from uuid import UUID
 
@@ -26,6 +26,7 @@ from .models import (
     OAuthProviderName,
     OAuthTokenResult,
     Session,
+    SessionListOptions,
     SessionPage,
     SignUpResult,
     User,
@@ -694,7 +695,13 @@ class Auth:
             **arguments,
         )
 
-    def get_sessions(self, *, page: int = 1, limit: int = 20) -> SessionPage:
+    def get_sessions(
+        self,
+        *,
+        page: int | None = None,
+        limit: int = 20,
+        **options: Unpack[SessionListOptions],
+    ) -> SessionPage:
         """Return a page of the current user's device sessions."""
         with self._operation_lock:
             payload = _mapping(
@@ -703,6 +710,7 @@ class Auth:
                     expected_status=200,
                     page=page,
                     limit=limit,
+                    **options,
                 )
             )
             sessions_value = payload.get("sessions", payload.get("data"))
@@ -719,6 +727,9 @@ class Auth:
                 page=_optional_int(payload.get("page")),
                 limit=_optional_int(payload.get("limit")),
                 total_pages=_optional_int(payload.get("total_pages")),
+                has_more=_optional_bool(payload.get("has_more")),
+                next_cursor=_optional_text(payload.get("next_cursor")),
+                prev_cursor=_optional_text(payload.get("prev_cursor")),
             )
 
     def delete_session(self, *, session_id: str) -> None:

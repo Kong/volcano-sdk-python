@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Literal, TypeAlias
+from typing import TYPE_CHECKING, Literal, TypeAlias, TypedDict
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -22,6 +22,16 @@ JSONValue: TypeAlias = (
     | None
 )
 OAuthProviderName: TypeAlias = Literal["google", "github", "microsoft", "apple"]
+
+
+class SessionListOptions(TypedDict, total=False):
+    """Optional filters and cursor controls for listing device sessions."""
+
+    sort: Literal["last_activity", "created_at"]
+    status: Literal["active", "expired"]
+    cursor: str
+    ending_before: str
+    offset: int
 
 
 def _freeze_json(value: JSONValue) -> JSONValue:
@@ -161,6 +171,9 @@ class SessionPage:
     page: int | None = None
     limit: int | None = None
     total_pages: int | None = None
+    has_more: bool | None = None
+    next_cursor: str | None = None
+    prev_cursor: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

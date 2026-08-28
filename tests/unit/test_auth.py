@@ -1353,6 +1353,54 @@ def test_provider_and_device_session_flows_return_public_values() -> None:
     )
 
 
+def test_session_listing_exposes_filters_and_cursor_navigation() -> None:
+    transport = AuthTransport()
+    transport.queue(
+        "auth_get_my_sessions",
+        AuthResponse(
+            200,
+            {
+                "data": [],
+                "total": 3,
+                "limit": 1,
+                "has_more": True,
+                "next_cursor": "next",
+                "prev_cursor": "previous",
+            },
+        ),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        _transport=transport,
+    )
+
+    page = client.auth.get_sessions(
+        sort="created_at",
+        status="active",
+        cursor="cursor",
+        offset=1,
+        limit=1,
+    )
+
+    assert page == SessionPage(
+        total=3,
+        limit=1,
+        has_more=True,
+        next_cursor="next",
+        prev_cursor="previous",
+    )
+    assert transport.calls[-1][1] == {
+        "authorization": "access-token",
+        "page": None,
+        "limit": 1,
+        "sort": "created_at",
+        "status": "active",
+        "cursor": "cursor",
+        "offset": 1,
+    }
+
+
 def test_deleting_current_session_survives_automatic_refresh() -> None:
     current_session_id = "3cd3e058-e3ff-42a5-ae4d-650ef9b45746"
     transport = AuthTransport()

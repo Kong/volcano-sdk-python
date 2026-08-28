@@ -69,6 +69,14 @@ page = client.auth.get_sessions(page=1, limit=20)
 for device_session in page.sessions:
     print(device_session.id, device_session.last_activity_at)
 
+if page.next_cursor:
+    cursor_page = client.auth.get_sessions(
+        sort="created_at",
+        status="active",
+        cursor=page.next_cursor,
+        limit=20,
+    )
+
 client.auth.delete_session(session_id="session-id")
 client.auth.delete_all_other_sessions()
 ```
