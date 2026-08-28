@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError, dataclass, fields
 from datetime import UTC, datetime
+from threading import Event, Thread
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from typing_extensions import override
 
 from volcano_sdk import (
     AuthorizationRequest,
@@ -161,6 +163,28 @@ class AuthTransport:
 
     def auth_delete_all_my_sessions(self, **kwargs: Any) -> AuthResponse:
         return self._invoke("auth_delete_all_my_sessions", kwargs)
+
+
+class BlockingAuthTransport(AuthTransport):
+    def __init__(self, operation: str) -> None:
+        super().__init__()
+        self._operation = operation
+        self._blocked = False
+        self.entered = Event()
+        self.release = Event()
+        self.called = Event()
+
+    @override
+    def _invoke(self, operation: str, kwargs: dict[str, Any]) -> AuthResponse:
+        response = super()._invoke(operation, kwargs)
+        self.called.set()
+        if operation == self._operation and not self._blocked:
+            self._blocked = True
+            self.entered.set()
+            if not self.release.wait(timeout=1):
+                message = "timed out waiting to release auth transport"
+                raise AssertionError(message)
+        return response
 
 
 def test_public_auth_values_are_frozen_and_slotted() -> None:
@@ -582,6 +606,37 @@ def test_rejected_access_only_session_clears_local_auth() -> None:
     assert client.current_user is None
 
 
+def test_rejected_post_refresh_retry_clears_rotated_auth() -> None:
+    transport = AuthTransport()
+    transport.queue(
+        "auth_get_user",
+        AuthResponse(401, {"error": "Access token expired"}),
+        AuthResponse(401, {"error": "Session revoked"}),
+    )
+    transport.queue(
+        "auth_refresh",
+        AuthResponse(
+            200,
+            _token_payload(
+                access_token="rotated-access",
+                refresh_token="rotated-refresh",
+            ),
+        ),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="expired-access",
+        refresh_token="refresh-token",
+        _transport=transport,
+    )
+
+    with pytest.raises(AuthenticationError, match="Session revoked"):
+        client.auth.get_user()
+
+    assert client.current_session is None
+    assert client.current_user is None
+
+
 def test_sign_out_always_clears_local_auth() -> None:
     transport = AuthTransport()
     transport.queue("auth_logout", AuthResponse(204))
@@ -647,6 +702,39 @@ def test_auth_state_listeners_are_immediate_isolated_and_idempotent(
     client._clear_auth()
 
     assert observed == [("first", user), ("second", user)]
+
+
+def test_immediate_auth_listener_does_not_invert_auth_state_locks() -> None:
+    transport = BlockingAuthTransport("auth_get_user")
+    transport.queue(
+        "auth_get_user",
+        AuthResponse(200, {"user": _user_payload()}),
+        AuthResponse(200, {"user": _user_payload()}),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        _transport=transport,
+    )
+    client._set_user(User(id="user-123", email="user@example.com"))
+    loading = Thread(target=client.auth.get_user)
+    loading.start()
+    assert transport.entered.wait(timeout=1)
+    callback_entered = Event()
+
+    def listener(_user: User | None) -> None:
+        callback_entered.set()
+        client.auth.get_user()
+
+    subscribing = Thread(target=lambda: client.auth.on_auth_state_change(listener))
+    subscribing.start()
+    assert callback_entered.wait(timeout=1)
+    transport.release.set()
+    loading.join(timeout=1)
+    subscribing.join(timeout=1)
+
+    assert not loading.is_alive()
+    assert not subscribing.is_alive()
 
 
 def test_restored_session_listener_waits_for_user_hydration() -> None:
@@ -847,6 +935,69 @@ def test_convert_anonymous_preserves_success_when_session_refresh_fails() -> Non
 
     assert converted.email == "converted@example.com"
     assert client.current_session is None
+
+
+def test_convert_anonymous_serializes_replacement_auth() -> None:
+    transport = BlockingAuthTransport("auth_convert_anonymous")
+    transport.queue(
+        "auth_convert_anonymous",
+        AuthResponse(200, {"user": _user_payload(email="converted@example.com")}),
+    )
+    transport.queue(
+        "auth_refresh",
+        AuthResponse(
+            200,
+            _token_payload(
+                access_token="converted-access",
+                refresh_token="converted-refresh",
+                email="converted@example.com",
+            ),
+        ),
+    )
+    transport.queue(
+        "auth_signin",
+        AuthResponse(
+            200,
+            _token_payload(
+                access_token="replacement-access",
+                refresh_token="replacement-refresh",
+                email="replacement@example.com",
+            ),
+        ),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="anonymous-access",
+        refresh_token="anonymous-refresh",
+        _transport=transport,
+    )
+    converted: list[User] = []
+    conversion = Thread(
+        target=lambda: converted.append(
+            client.auth.convert_anonymous(
+                email="converted@example.com",
+                password="secret",
+            )
+        )
+    )
+    conversion.start()
+    assert transport.entered.wait(timeout=1)
+    transport.called.clear()
+    replacement = Thread(
+        target=lambda: client.auth.sign_in(
+            email="replacement@example.com",
+            password="secret",
+        )
+    )
+    replacement.start()
+    assert transport.called.wait(timeout=1)
+    transport.release.set()
+    conversion.join(timeout=1)
+    replacement.join(timeout=1)
+
+    assert converted[0].email == "converted@example.com"
+    assert client.current_user is not None
+    assert client.current_user.email == "replacement@example.com"
 
 
 def test_confirm_email_preserves_success_when_user_refresh_fails() -> None:
@@ -1322,3 +1473,62 @@ def test_replacing_auth_invalidates_cached_current_device_ids() -> None:
     client.auth.delete_session(session_id=previous_id)
 
     assert client.current_session is replacement
+
+
+def test_session_listing_serializes_replacement_auth() -> None:
+    previous_id = "3cd3e058-e3ff-42a5-ae4d-650ef9b45746"
+    transport = BlockingAuthTransport("auth_get_my_sessions")
+    transport.queue(
+        "auth_get_my_sessions",
+        AuthResponse(
+            200,
+            {
+                "sessions": [
+                    {
+                        "id": previous_id,
+                        "user_id": "user-123",
+                        "provider": "email",
+                        "expires_at": "2026-08-29T12:00:00Z",
+                        "is_active": True,
+                        "is_current": True,
+                    }
+                ]
+            },
+        ),
+    )
+    transport.queue(
+        "auth_signin",
+        AuthResponse(
+            200,
+            _token_payload(
+                access_token="replacement-access",
+                refresh_token="replacement-refresh",
+            ),
+        ),
+    )
+    transport.queue("auth_delete_my_session", AuthResponse(204))
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="previous-access",
+        refresh_token="previous-refresh",
+        _transport=transport,
+    )
+    listing = Thread(target=client.auth.get_sessions)
+    listing.start()
+    assert transport.entered.wait(timeout=1)
+    transport.called.clear()
+    replacement = Thread(
+        target=lambda: client.auth.sign_in(
+            email="user@example.com",
+            password="secret",
+        )
+    )
+    replacement.start()
+    assert transport.called.wait(timeout=1)
+    transport.release.set()
+    listing.join(timeout=1)
+    replacement.join(timeout=1)
+    client.auth.delete_session(session_id=previous_id)
+
+    assert client.current_session is not None
+    assert client.current_session.access_token == "replacement-access"

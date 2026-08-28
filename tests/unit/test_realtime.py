@@ -400,6 +400,56 @@ def test_realtime_opens_one_connection_when_first_used_concurrently(
     asyncio.run(scenario())
 
 
+def test_auth_change_replaces_an_in_flight_realtime_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = AuthTransport()
+    first = FakeCentrifugeClient()
+    second = FakeCentrifugeClient()
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    clients = iter((first, second))
+    tokens: list[str] = []
+
+    async def connect() -> None:
+        entered.set()
+        await release.wait()
+        first.calls.append("connect")
+
+    monkeypatch.setattr(first, "connect", connect)
+
+    def factory(
+        address: str,
+        *,
+        token: str,
+        get_token: Callable[[], Awaitable[str]],
+    ) -> FakeCentrifugeClient:
+        del address, get_token
+        tokens.append(token)
+        return next(clients)
+
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=factory,
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        connecting = asyncio.create_task(client.realtime._connect())
+        await entered.wait()
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="user@example.com", password="secret")
+        release.set()
+        assert await connecting is not first
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+    assert tokens == ["access-1", "access-2"]
+    assert first.calls == ["connect", "disconnect"]
+    assert second.calls == ["connect", "disconnect"]
+
+
 @dataclass
 class FailingFirstCallback:
     received: list[str]

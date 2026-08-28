@@ -330,6 +330,7 @@ class Realtime:
         self._client_factory = client_factory
         self._connection: CentrifugeConnection | None = None
         self._connection_lock = asyncio.Lock()
+        self._auth_generation = 0
         self._channels: dict[str, Channel] = {}
         self._auth_cleanup_tasks: set[asyncio.Task[None]] = set()
 
@@ -356,16 +357,21 @@ class Realtime:
     async def _connect_locked(self) -> CentrifugeConnection:
         if self._connection is not None:
             return self._connection
-        connection = _VolcanoCentrifugeConnection(
-            self._client_factory(
-                self._address(),
-                token=self._client_context._session_token(),
-                get_token=self._token,
+        while self._connection is None:
+            generation = self._auth_generation
+            connection = _VolcanoCentrifugeConnection(
+                self._client_factory(
+                    self._address(),
+                    token=self._client_context._session_token(),
+                    get_token=self._token,
+                )
             )
-        )
-        await connection.connect()
-        self._connection = connection
-        return connection
+            await connection.connect()
+            if generation == self._auth_generation:
+                self._connection = connection
+            else:
+                await self._close_invalidated(connection)
+        return self._connection
 
     async def _subscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
@@ -402,6 +408,7 @@ class Realtime:
 
     def on_auth_change(self) -> None:
         """Immediately invalidate work authenticated by the previous session."""
+        self._auth_generation += 1
         connection = self._connection
         self._connection = None
         channels = tuple(self._channels.values())

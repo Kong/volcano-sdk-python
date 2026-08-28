@@ -147,8 +147,12 @@ class VolcanoClient:
             listener_id = self._next_auth_listener_id
             self._next_auth_listener_id += 1
             self._auth_listeners[listener_id] = listener
-            if self._current_session is None or self._current_user is not None:
-                self._invoke_auth_listener(listener)
+            notify_immediately = (
+                self._current_session is None or self._current_user is not None
+            )
+            current_user = self._current_user
+        if notify_immediately:
+            self._invoke_auth_listener(listener, current_user)
 
         def unsubscribe() -> None:
             with self._auth_state_lock:
@@ -157,16 +161,18 @@ class VolcanoClient:
         return unsubscribe
 
     def _notify_auth_listeners(self) -> None:
+        current_user = self._current_user
         for listener in tuple(self._auth_listeners.values()):
-            self._invoke_auth_listener(listener)
+            self._invoke_auth_listener(listener, current_user)
 
     def _invoke_auth_listener(
         self,
         listener: Callable[[User | None], None],
+        current_user: User | None,
     ) -> None:
         completed = False
         with suppress(Exception):
-            listener(self._current_user)
+            listener(current_user)
             completed = True
         if not completed:
             _LOGGER.error(_AUTH_LISTENER_FAILED)

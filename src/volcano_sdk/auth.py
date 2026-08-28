@@ -387,19 +387,20 @@ class Auth:
         user_metadata: dict[str, JSONValue] | None = None,
     ) -> User:
         """Convert the current anonymous user to an email account."""
-        payload = _mapping(
-            self._authenticated_payload(
-                self._client._transport.auth_convert_anonymous,
-                expected_status=200,
-                email=email,
-                password=password,
-                user_metadata=user_metadata,
+        with self._operation_lock:
+            payload = _mapping(
+                self._authenticated_payload(
+                    self._client._transport.auth_convert_anonymous,
+                    expected_status=200,
+                    email=email,
+                    password=password,
+                    user_metadata=user_metadata,
+                )
             )
-        )
-        converted_user = _user(_mapping(payload.get("user")))
-        with suppress(VolcanoError):
-            self.refresh_session()
-        return self._client.current_user or converted_user
+            converted_user = _user(_mapping(payload.get("user")))
+            with suppress(VolcanoError):
+                self.refresh_session()
+            return self._client.current_user or converted_user
 
     def confirm_email(self, *, token: str) -> MessageResult:
         """Confirm an email address with its one-time token."""
@@ -671,29 +672,30 @@ class Auth:
 
     def get_sessions(self, *, page: int = 1, limit: int = 20) -> SessionPage:
         """Return a page of the current user's device sessions."""
-        payload = _mapping(
-            self._authenticated_payload(
-                self._client._transport.auth_get_my_sessions,
-                expected_status=200,
-                page=page,
-                limit=limit,
+        with self._operation_lock:
+            payload = _mapping(
+                self._authenticated_payload(
+                    self._client._transport.auth_get_my_sessions,
+                    expected_status=200,
+                    page=page,
+                    limit=limit,
+                )
             )
-        )
-        sessions_value = payload.get("sessions", payload.get("data"))
-        if not isinstance(sessions_value, list):
-            raise AuthenticationError(_INVALID_AUTH_RESPONSE)
-        sessions = cast("list[object]", sessions_value)
-        mapped_sessions = tuple(_auth_session(_mapping(item)) for item in sessions)
-        self._current_device_session_ids.update(
-            session.id for session in mapped_sessions if session.is_current
-        )
-        return SessionPage(
-            sessions=mapped_sessions,
-            total=_optional_int(payload.get("total")),
-            page=_optional_int(payload.get("page")),
-            limit=_optional_int(payload.get("limit")),
-            total_pages=_optional_int(payload.get("total_pages")),
-        )
+            sessions_value = payload.get("sessions", payload.get("data"))
+            if not isinstance(sessions_value, list):
+                raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+            sessions = cast("list[object]", sessions_value)
+            mapped_sessions = tuple(_auth_session(_mapping(item)) for item in sessions)
+            self._current_device_session_ids.update(
+                session.id for session in mapped_sessions if session.is_current
+            )
+            return SessionPage(
+                sessions=mapped_sessions,
+                total=_optional_int(payload.get("total")),
+                page=_optional_int(payload.get("page")),
+                limit=_optional_int(payload.get("limit")),
+                total_pages=_optional_int(payload.get("total_pages")),
+            )
 
     def delete_session(self, *, session_id: str) -> None:
         """Delete one device session."""
@@ -777,7 +779,12 @@ class Auth:
             authorization=self._client._session_token(),
             **kwargs,
         )
-        return response_payload(response, expected_status)
+        try:
+            return response_payload(response, expected_status)
+        except AuthenticationError as error:
+            if error.status == _HTTP_UNAUTHORIZED:
+                self._clear_auth()
+            raise
 
     def _replace_auth(self, session: Session, user: User) -> None:
         with self._operation_lock:
