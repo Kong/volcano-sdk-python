@@ -189,8 +189,11 @@ def _message(payload: Mapping[str, Any]) -> MessageResult:
     return MessageResult(message=message)
 
 
-def _oauth_token(payload: Mapping[str, Any]) -> OAuthTokenResult:
-    provider_value = payload.get("provider")
+def _oauth_token(
+    payload: Mapping[str, Any],
+    provider: OAuthProviderName,
+) -> OAuthTokenResult:
+    provider_value = payload.get("provider", provider)
     if not isinstance(provider_value, str):
         raise AuthenticationError(_INVALID_AUTH_RESPONSE)
     return OAuthTokenResult(
@@ -831,12 +834,13 @@ class Auth:
         provider: OAuthProviderName,
     ) -> OAuthTokenResult:
         """Refresh the stored access token for an OAuth provider."""
+        normalized_provider = _provider(provider)
         payload = self._authenticated_payload(
             self._client._transport.refresh_oauth_provider_token,
             expected_status=200,
-            provider=_provider(provider),
+            provider=normalized_provider,
         )
-        return _oauth_token(_mapping(payload))
+        return _oauth_token(_mapping(payload), normalized_provider)
 
     def get_oauth_provider_token(
         self,
@@ -844,12 +848,13 @@ class Auth:
         provider: OAuthProviderName,
     ) -> OAuthTokenResult:
         """Get metadata for the current OAuth provider token."""
+        normalized_provider = _provider(provider)
         payload = self._authenticated_payload(
             self._client._transport.get_oauth_provider_token,
             expected_status=200,
-            provider=_provider(provider),
+            provider=normalized_provider,
         )
-        return _oauth_token(_mapping(payload))
+        return _oauth_token(_mapping(payload), normalized_provider)
 
     def call_oauth_api(
         self,

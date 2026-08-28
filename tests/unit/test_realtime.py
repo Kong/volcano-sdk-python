@@ -12,7 +12,9 @@ from typing_extensions import override
 from volcano_sdk import VolcanoClient
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Iterator
+
+    from volcano_sdk.realtime import CentrifugeFactory
 
 UNEXPECTED_TRANSPORT_CALL = "unexpected transport operation"
 
@@ -174,6 +176,21 @@ def _assert_publish_uses_new_connection(
     publish = ("publish", {"value": "new-session"})
     assert publish not in first.subscription.calls
     assert publish in second.subscription.calls
+
+
+def _sequential_factory(
+    clients: Iterator[FakeCentrifugeClient],
+) -> CentrifugeFactory:
+    def factory(
+        address: str,
+        *,
+        token: str,
+        get_token: Callable[[], Awaitable[str]],
+    ) -> FakeCentrifugeClient:
+        del address, token, get_token
+        return next(clients)
+
+    return factory
 
 
 class LoopBoundFakeCentrifugeClient(FakeCentrifugeClient):
@@ -859,6 +876,42 @@ def test_auth_change_replaces_an_in_flight_realtime_connection(
     assert second.calls == ["connect", "disconnect"]
 
 
+def test_auth_change_retries_an_obsolete_failed_realtime_connect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = AuthTransport()
+    first, second = FakeCentrifugeClient(), FakeCentrifugeClient()
+    entered, release = asyncio.Event(), asyncio.Event()
+    clients = iter((first, second))
+
+    async def connect() -> None:
+        entered.set()
+        await release.wait()
+        message = "old credentials rejected"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(first, "connect", connect)
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=_sequential_factory(clients),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        connecting = asyncio.create_task(client.realtime._connect())
+        await entered.wait()
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="next@example.com", password="secret")
+        release.set()
+        assert await connecting is not first
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+    assert first.calls == ["disconnect"]
+    assert second.calls == ["connect", "disconnect"]
+
+
 def test_auth_change_cancels_an_in_flight_realtime_publish(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1074,6 +1127,41 @@ def test_realtime_disconnect_excludes_a_concurrent_first_connect(
 
     asyncio.run(scenario())
     assert official.calls == ["connect", "channel:broadcast:contract", "disconnect"]
+
+
+def test_realtime_disconnect_waits_for_auth_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = AuthTransport()
+    official = FakeCentrifugeClient()
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def disconnect() -> None:
+        entered.set()
+        await release.wait()
+        official.calls.append("disconnect")
+
+    monkeypatch.setattr(official, "disconnect", disconnect)
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        await client.realtime.channel("contract").subscribe()
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="next@example.com", password="secret")
+        await entered.wait()
+        disconnecting = asyncio.create_task(client.realtime.disconnect())
+        await asyncio.sleep(0)
+        assert not disconnecting.done()
+        release.set()
+        await disconnecting
+
+    asyncio.run(scenario())
+    assert official.calls[-1] == "disconnect"
 
 
 def test_realtime_disconnect_resets_channels_after_transport_failure(

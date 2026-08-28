@@ -460,33 +460,52 @@ class Realtime:
 
     async def _connect_locked(self) -> CentrifugeConnection:
         generation = self._auth_generation_snapshot()
-        if (
-            self._connection is not None
-            and self._connection_auth_generation == generation
-        ):
-            return self._connection
-        if self._connection is not None:
-            stale_connection = self._connection
-            self._connection = None
-            self._connection_auth_generation = None
-            await self._close_invalidated(stale_connection)
+        existing_connection = await self._connection_for_generation(generation)
+        if existing_connection is not None:
+            return existing_connection
         self._loop = asyncio.get_running_loop()
         while self._connection is None:
             generation = self._auth_generation_snapshot()
-            connection = _VolcanoCentrifugeConnection(
-                self._client_factory(
-                    self._address(),
-                    token=self._client_context._session_token(),
-                    get_token=self._token,
-                )
-            )
-            await connection.connect()
-            if generation == self._auth_generation_snapshot():
+            connection = await self._open_connection(generation)
+            if connection is not None:
                 self._connection = connection
                 self._connection_auth_generation = generation
-            else:
-                await self._close_invalidated(connection)
         return self._connection
+
+    async def _connection_for_generation(
+        self,
+        generation: int,
+    ) -> CentrifugeConnection | None:
+        connection = self._connection
+        if connection is None or self._connection_auth_generation == generation:
+            return connection
+        self._connection = None
+        self._connection_auth_generation = None
+        await self._close_invalidated(connection)
+        return None
+
+    async def _open_connection(
+        self,
+        generation: int,
+    ) -> CentrifugeConnection | None:
+        connection = _VolcanoCentrifugeConnection(
+            self._client_factory(
+                self._address(),
+                token=self._client_context._session_token(),
+                get_token=self._token,
+            )
+        )
+        try:
+            await connection.connect()
+        except Exception:
+            if generation == self._auth_generation_snapshot():
+                raise
+            await self._close_invalidated(connection)
+            return None
+        if generation == self._auth_generation_snapshot():
+            return connection
+        await self._close_invalidated(connection)
+        return None
 
     async def _subscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
@@ -571,9 +590,15 @@ class Realtime:
                 if connection is not None:
                     await connection.disconnect()
             finally:
+                await self._await_auth_cleanup()
                 for channel in tuple(self._channels.values()):
                     await channel._reset()
             self._loop = None
+
+    async def _await_auth_cleanup(self) -> None:
+        while self._auth_cleanup_tasks:
+            tasks = tuple(self._auth_cleanup_tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     def on_auth_change(self) -> None:
         """Immediately invalidate work authenticated by the previous session."""

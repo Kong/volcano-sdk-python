@@ -1663,6 +1663,22 @@ def test_omitted_oauth_provider_list_is_empty() -> None:
     assert client.auth.get_linked_oauth_providers() == ()
 
 
+def test_oauth_token_responses_may_omit_the_requested_provider() -> None:
+    transport = AuthTransport()
+    payload = {"expires_in": 3600, "message": "Ready"}
+    transport.queue("refresh_oauth_provider_token", AuthResponse(200, payload))
+    transport.queue("get_oauth_provider_token", AuthResponse(200, payload))
+    client = VolcanoClient(
+        anon_key="anon-key", access_token="access-token", _transport=transport
+    )
+
+    refreshed = client.auth.refresh_oauth_token(provider="github")
+    current = client.auth.get_oauth_provider_token(provider="github")
+
+    assert refreshed.provider == "github"
+    assert current.provider == "github"
+
+
 def test_provider_and_device_session_flows_return_public_values() -> None:
     transport = AuthTransport()
     transport.queue("auth_unlink_oauth_provider", AuthResponse(204))
