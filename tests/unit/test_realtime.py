@@ -357,6 +357,7 @@ def test_worker_thread_auth_change_uses_the_realtime_owning_loop() -> None:
         )
         await asyncio.sleep(0)
         assert channel._subscription is None
+        await asyncio.gather(*tuple(client.realtime._auth_cleanup_tasks))
         assert first.calls[-1] == "disconnect"
         await channel.subscribe()
         await client.realtime.disconnect()
