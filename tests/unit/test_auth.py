@@ -1355,6 +1355,10 @@ def test_identity_management_returns_public_immutable_values() -> None:
         AuthResponse(200, {"methods": [method_payload]}),
     )
     transport.queue("auth_promote_method", AuthResponse(200, method_payload))
+    transport.queue(
+        "auth_get_user",
+        AuthResponse(200, {"user": _user_payload(email="primary@example.com")}),
+    )
     transport.queue("auth_unlink_identity", AuthResponse(204))
     client = VolcanoClient(
         anon_key="anon-key",
@@ -1390,6 +1394,24 @@ def test_identity_management_returns_public_immutable_values() -> None:
         created_at=datetime(2026, 8, 27, 12, tzinfo=UTC),
         updated_at=datetime(2026, 8, 28, 12, tzinfo=UTC),
     )
+    assert client.current_user is not None
+    assert client.current_user.email == "primary@example.com"
+
+
+def test_identity_management_rejects_malformed_ids_before_transport() -> None:
+    transport = AuthTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        _transport=transport,
+    )
+
+    with pytest.raises(ValidationError, match="identity_id must be a valid UUID"):
+        client.auth.unlink_identity(identity_id="not-a-uuid")
+    with pytest.raises(ValidationError, match="method_id must be a valid UUID"):
+        client.auth.promote_method(method_id="not-a-uuid")
+
+    assert transport.calls == []
 
 
 def test_provider_and_device_session_flows_return_public_values() -> None:

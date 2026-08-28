@@ -48,6 +48,8 @@ _INVALID_OAUTH_STATE = "OAuth state does not match"
 _INVALID_OAUTH_PROVIDER = "Unsupported OAuth provider"
 _MISSING_AUTHORIZATION_URL = "Authentication response is missing authorization URL"
 _INVALID_SESSION_ID = "session_id must be a valid UUID"
+_INVALID_IDENTITY_ID = "identity_id must be a valid UUID"
+_INVALID_METHOD_ID = "method_id must be a valid UUID"
 _NO_ACTIVE_SESSION = "No active session"
 _SUPPORTED_OAUTH_PROVIDERS = frozenset({"google", "github", "microsoft", "apple"})
 _SUPPORTED_AUTH_METHODS = frozenset({"password", "oauth", "anonymous"})
@@ -65,6 +67,13 @@ def _token_session_id(access_token: str) -> str | None:
         return str(UUID(value)) if isinstance(value, str) else None
     except (ValueError, IndexError, UnicodeDecodeError, binascii.Error):
         return None
+
+
+def _validated_uuid(value: str, message: str) -> str:
+    try:
+        return str(UUID(value))
+    except (TypeError, ValueError, AttributeError) as error:
+        raise ValidationError(message) from error
 
 
 class AuthContext(Protocol):
@@ -798,10 +807,11 @@ class Auth:
 
     def unlink_identity(self, *, identity_id: str) -> None:
         """Unlink a non-primary identity from the current user."""
+        normalized_identity_id = _validated_uuid(identity_id, _INVALID_IDENTITY_ID)
         self._authenticated_payload(
             self._client._transport.auth_unlink_identity,
             expected_status=204,
-            identity_id=identity_id,
+            identity_id=normalized_identity_id,
         )
 
     def list_methods(self) -> tuple[AuthMethod, ...]:
@@ -820,12 +830,15 @@ class Auth:
 
     def promote_method(self, *, method_id: str) -> AuthMethod:
         """Make a sign-in method the account's primary method."""
+        normalized_method_id = _validated_uuid(method_id, _INVALID_METHOD_ID)
         payload = self._authenticated_payload(
             self._client._transport.auth_promote_method,
             expected_status=200,
-            method_id=method_id,
+            method_id=normalized_method_id,
         )
-        return _auth_method(_mapping(payload))
+        method = _auth_method(_mapping(payload))
+        self._refresh_user_best_effort()
+        return method
 
     def get_sessions(
         self,
