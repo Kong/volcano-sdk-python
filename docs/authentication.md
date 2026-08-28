@@ -64,7 +64,7 @@ List and revoke device sessions through the same facade:
 page = client.auth.get_sessions(page=1, limit=20)
 
 for device_session in page.sessions:
-    print(device_session.id, device_session.last_seen_at)
+    print(device_session.id, device_session.last_activity_at)
 
 client.auth.delete_session(session_id="session-id")
 client.auth.delete_all_other_sessions()

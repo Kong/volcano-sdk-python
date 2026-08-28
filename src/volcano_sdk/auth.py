@@ -397,7 +397,10 @@ class Auth:
             authorization=self._client._anon_token(),
             token=token,
         )
-        return _message(_mapping(response_payload(response, 200)))
+        result = _message(_mapping(response_payload(response, 200)))
+        if self._client.current_session is not None:
+            self.get_user()
+        return result
 
     def resend_confirmation(self, *, email: str) -> MessageResult:
         """Request another email-confirmation message."""
@@ -704,11 +707,10 @@ class Auth:
             return response_payload(response, expected_status)
         except AuthenticationError as error:
             session = self._client.current_session
-            if (
-                error.status != _HTTP_UNAUTHORIZED
-                or session is None
-                or session.refresh_token is None
-            ):
+            if error.status != _HTTP_UNAUTHORIZED or session is None:
+                raise
+            if session.refresh_token is None:
+                self._client._clear_auth()
                 raise
         self.refresh_session()
         response = invoke(

@@ -34,12 +34,16 @@ class AuthResponse:
     headers: dict[str, str] | None = None
 
 
-def _user_payload(*, email: str = "user@example.com") -> dict[str, Any]:
+def _user_payload(
+    *,
+    email: str = "user@example.com",
+    email_confirmed: bool = True,
+) -> dict[str, Any]:
     return {
         "id": "user-123",
         "email": email,
         "project_id": "project-123",
-        "email_confirmed": True,
+        "email_confirmed": email_confirmed,
         "user_metadata": {"display_name": "User"},
         "app_metadata": {"role": "developer"},
         "avatar_url": "https://example.com/avatar.png",
@@ -558,6 +562,26 @@ def test_authenticated_request_refreshes_once_and_replays() -> None:
     ]
 
 
+def test_rejected_access_only_session_clears_local_auth() -> None:
+    transport = AuthTransport()
+    transport.queue(
+        "auth_get_user",
+        AuthResponse(401, {"error": "Access token expired"}),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        _transport=transport,
+    )
+    client._set_user(User(id="user-123", email="user@example.com"))
+
+    with pytest.raises(AuthenticationError, match="Access token expired"):
+        client.auth.get_user()
+
+    assert client.current_session is None
+    assert client.current_user is None
+
+
 def test_sign_out_always_clears_local_auth() -> None:
     transport = AuthTransport()
     transport.queue("auth_logout", AuthResponse(204))
@@ -642,7 +666,6 @@ def test_anonymous_and_email_account_flows_return_public_values() -> None:
         AuthResponse(200, {"user": _user_payload()}),
     )
     for operation in (
-        "auth_confirm_email",
         "auth_resend_confirmation",
         "auth_forgot_password",
         "auth_reset_password",
@@ -673,7 +696,6 @@ def test_anonymous_and_email_account_flows_return_public_values() -> None:
         user_metadata={"plan": "developer"},
     )
     messages = (
-        client.auth.confirm_email(token="confirmation-token"),
         client.auth.resend_confirmation(email="user@example.com"),
         client.auth.forgot_password(email="user@example.com"),
     )
@@ -718,6 +740,33 @@ def test_anonymous_and_email_account_flows_return_public_values() -> None:
             },
         ),
     ]
+
+
+def test_confirm_email_refreshes_current_user_and_notifies_listeners() -> None:
+    transport = AuthTransport()
+    transport.queue("auth_confirm_email", AuthResponse(200, {"message": "Done"}))
+    transport.queue(
+        "auth_get_user",
+        AuthResponse(200, {"user": _user_payload(email_confirmed=True)}),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        refresh_token="refresh-token",
+        _transport=transport,
+    )
+    client._set_user(
+        User(id="user-123", email="user@example.com", email_confirmed=False)
+    )
+    observations: list[User | None] = []
+    client.auth.on_auth_state_change(observations.append)
+
+    result = client.auth.confirm_email(token="confirmation-token")
+
+    assert result == MessageResult(message="Done")
+    assert client.current_user is not None
+    assert client.current_user.email_confirmed is True
+    assert observations[-1] is client.current_user
 
 
 def test_hosted_and_oauth_authorization_urls_bind_caller_state(
