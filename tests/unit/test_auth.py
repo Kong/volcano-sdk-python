@@ -471,6 +471,57 @@ def test_sign_in_commits_session_and_user_before_notifying_listeners() -> None:
     )
 
 
+def test_auth_listener_can_wait_for_an_operation_on_another_thread() -> None:
+    transport = AuthTransport()
+    transport.queue(
+        "auth_signin",
+        AuthResponse(
+            200,
+            _token_payload(
+                access_token="access-token",
+                refresh_token="refresh-token",
+            ),
+        ),
+    )
+    transport.queue(
+        "auth_get_user",
+        AuthResponse(
+            200,
+            {
+                "user": _token_payload(
+                    access_token="access-token",
+                    refresh_token="refresh-token",
+                )["user"]
+            },
+        ),
+    )
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    completed = Event()
+    outcomes: list[bool] = []
+    workers: list[Thread] = []
+    started = False
+
+    def load_user() -> None:
+        client.auth.get_user()
+        completed.set()
+
+    def listener(user: User | None) -> None:
+        nonlocal started
+        if user is None or started:
+            return
+        started = True
+        worker = Thread(target=load_user)
+        workers.append(worker)
+        worker.start()
+        outcomes.append(completed.wait(0.2))
+
+    client.auth.on_auth_state_change(listener)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    workers[0].join(timeout=1)
+
+    assert outcomes == [True]
+
+
 def test_get_and_update_user_preserve_the_current_session() -> None:
     transport = AuthTransport()
     transport.queue("auth_get_user", AuthResponse(200, {"user": _user_payload()}))
@@ -1509,6 +1560,26 @@ def test_provider_401_uses_structured_code_to_preserve_session() -> None:
         client.auth.call_oauth_api(provider="github", endpoint="/user")
 
     assert raised.value.code == "provider_not_linked"
+    assert client.current_session is not None
+    assert client.current_session.access_token == "access-token"
+
+
+def test_provider_401_without_optional_code_preserves_session() -> None:
+    transport = AuthTransport()
+    transport.queue(
+        "call_oauth_provider_api",
+        AuthResponse(401, {"error": "Provider is not linked"}),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        refresh_token="refresh-token",
+        _transport=transport,
+    )
+
+    with pytest.raises(AuthenticationError, match="Provider is not linked"):
+        client.auth.call_oauth_api(provider="github", endpoint="/user")
+
     assert client.current_session is not None
     assert client.current_session.access_token == "access-token"
 

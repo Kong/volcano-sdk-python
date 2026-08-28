@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 
-from volcano_sdk import User
+from volcano_sdk import AuthenticationError, User, VolcanoClient
 from volcano_sdk._transport import GeneratedTransport, TransportResponse
 
 
@@ -22,6 +23,20 @@ def _recording_transport() -> tuple[GeneratedTransport, list[httpx.Request]]:
         ),
         requests,
     )
+
+
+def test_generated_transport_normalizes_malformed_signup_payloads() -> None:
+    def handle(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(201, json={"message": "created"})
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="Invalid authentication response"):
+        client.auth.sign_up(email="user@example.com", password="secret")
 
 
 def _auth_response() -> httpx.Response:

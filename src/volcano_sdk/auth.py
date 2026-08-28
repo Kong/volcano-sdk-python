@@ -5,8 +5,8 @@ from __future__ import annotations
 import binascii
 import json
 from base64 import urlsafe_b64decode
-from collections.abc import Mapping
-from contextlib import suppress
+from collections.abc import Generator, Mapping
+from contextlib import contextmanager, suppress
 from datetime import datetime
 from hmac import compare_digest
 from secrets import token_urlsafe
@@ -92,6 +92,10 @@ class AuthContext(Protocol):
         self,
         listener: Callable[[User | None], None],
     ) -> Callable[[], None]: ...
+
+    def _begin_auth_notification_deferral(self) -> None: ...
+
+    def _finish_auth_notification_deferral(self) -> Callable[[], None]: ...
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
@@ -253,6 +257,17 @@ class Auth:
         self._operation_lock = RLock()
         self._current_device_session_ids: set[str] = set()
 
+    @contextmanager
+    def _operation(self) -> Generator[None, None, None]:
+        self._operation_lock.acquire()
+        self._client._begin_auth_notification_deferral()
+        try:
+            yield
+        finally:
+            dispatch = self._client._finish_auth_notification_deferral()
+            self._operation_lock.release()
+            dispatch()
+
     def sign_up(
         self,
         *,
@@ -301,7 +316,7 @@ class Auth:
 
     def sign_out(self) -> None:
         """Revoke the refresh token and always clear local auth state."""
-        with self._operation_lock:
+        with self._operation():
             session = self._client.current_session
             try:
                 if session is not None and session.refresh_token is not None:
@@ -316,7 +331,7 @@ class Auth:
 
     def get_user(self) -> User:
         """Load the current user from the API."""
-        with self._operation_lock:
+        with self._operation():
             payload = _mapping(
                 self._authenticated_payload(
                     self._client._transport.auth_get_user,
@@ -334,7 +349,7 @@ class Auth:
         user_metadata: Mapping[str, JSONValue] | None = None,
     ) -> User:
         """Update the current user's password or metadata."""
-        with self._operation_lock:
+        with self._operation():
             payload = _mapping(
                 self._authenticated_payload(
                     self._client._transport.auth_update_user,
@@ -349,7 +364,7 @@ class Auth:
 
     def refresh_session(self) -> Session:
         """Rotate the current refresh token and replace local auth state."""
-        with self._operation_lock:
+        with self._operation():
             return self._refresh_session()
 
     def _refresh_session(self) -> Session:
@@ -409,7 +424,7 @@ class Auth:
         user_metadata: Mapping[str, JSONValue] | None = None,
     ) -> User:
         """Convert the current anonymous user to an email account."""
-        with self._operation_lock:
+        with self._operation():
             payload = _mapping(
                 self._authenticated_payload(
                     self._client._transport.auth_convert_anonymous,
@@ -466,7 +481,7 @@ class Auth:
         return result
 
     def _refresh_user_best_effort(self) -> None:
-        with self._operation_lock:
+        with self._operation():
             if self._client.current_session is None:
                 return
             with suppress(VolcanoError):
@@ -493,7 +508,7 @@ class Auth:
 
     def confirm_email_change(self, *, token: str) -> MessageResult:
         """Confirm a pending email change."""
-        with self._operation_lock:
+        with self._operation():
             payload = self._authenticated_payload(
                 self._client._transport.auth_confirm_email_change,
                 expected_status=200,
@@ -665,7 +680,7 @@ class Auth:
         body: dict[str, JSONValue] | None = None,
     ) -> JSONValue:
         """Call a provider API through Volcano's fixed-host proxy."""
-        with self._operation_lock:
+        with self._operation():
             arguments = {
                 "provider": _provider(provider),
                 "endpoint": endpoint,
@@ -681,6 +696,7 @@ class Auth:
                     or session is None
                     or session.refresh_token is None
                     or error.code == _PROVIDER_NOT_LINKED_CODE
+                    or (not error.code and "not linked" in str(error).lower())
                 ):
                     raise
                 self.refresh_session()
@@ -703,7 +719,7 @@ class Auth:
         **options: Unpack[SessionListOptions],
     ) -> SessionPage:
         """Return a page of the current user's device sessions."""
-        with self._operation_lock:
+        with self._operation():
             payload = _mapping(
                 self._authenticated_payload(
                     self._client._transport.auth_get_my_sessions,
@@ -734,7 +750,7 @@ class Auth:
 
     def delete_session(self, *, session_id: str) -> None:
         """Delete one device session."""
-        with self._operation_lock:
+        with self._operation():
             try:
                 normalized_session_id = str(UUID(session_id))
             except (TypeError, ValueError, AttributeError) as error:
@@ -776,7 +792,7 @@ class Auth:
         retry_unauthorized: bool = True,
         **kwargs: object,
     ) -> object:
-        with self._operation_lock:
+        with self._operation():
             return self._authenticated_payload_locked(
                 operation,
                 expected_status=expected_status,
@@ -830,12 +846,12 @@ class Auth:
         *,
         preserve_device_sessions: bool = False,
     ) -> None:
-        with self._operation_lock:
+        with self._operation():
             if not preserve_device_sessions:
                 self._current_device_session_ids.clear()
             self._client._commit_auth(session, user)
 
     def _clear_auth(self) -> None:
-        with self._operation_lock:
+        with self._operation():
             self._current_device_session_ids.clear()
             self._client._clear_auth()

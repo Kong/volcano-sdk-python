@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections import deque
 from contextlib import suppress
-from threading import RLock
+from threading import RLock, local
 from typing import TYPE_CHECKING, TypedDict, Unpack, cast
 
 from ._transport import GeneratedTransport, Transport
@@ -38,6 +38,12 @@ class _AuthListener:
         self.callback = callback
         self.pending: deque[User | None] = deque()
         self.dispatching = False
+
+
+class _AuthNotificationState(local):
+    def __init__(self) -> None:
+        self.depth = 0
+        self.listeners: list[_AuthListener] = []
 
 
 class VolcanoClient:
@@ -76,6 +82,7 @@ class VolcanoClient:
         self._auth_state_lock = RLock()
         self._auth_listeners: dict[int, _AuthListener] = {}
         self._next_auth_listener_id = 0
+        self._auth_notification_state = _AuthNotificationState()
         self._transport: Transport = (
             cast("Transport", _transport)
             if _transport is not None
@@ -195,8 +202,24 @@ class VolcanoClient:
         return True
 
     def _notify_auth_listeners(self, listeners: tuple[_AuthListener, ...]) -> None:
+        state = self._auth_notification_state
+        if state.depth:
+            state.listeners.extend(listeners)
+            return
         for listener in listeners:
             self._drain_auth_listener(listener)
+
+    def _begin_auth_notification_deferral(self) -> None:
+        self._auth_notification_state.depth += 1
+
+    def _finish_auth_notification_deferral(self) -> Callable[[], None]:
+        state = self._auth_notification_state
+        state.depth -= 1
+        if state.depth:
+            return lambda: None
+        listeners = tuple(state.listeners)
+        state.listeners.clear()
+        return lambda: self._notify_auth_listeners(listeners)
 
     def _drain_auth_listener(self, listener: _AuthListener) -> None:
         while True:

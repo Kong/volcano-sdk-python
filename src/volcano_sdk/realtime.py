@@ -337,9 +337,7 @@ class Channel:
         self._callback_task = None
         self._active_callback_task = None
         self._callback_stop = None
-        while not self._callback_queue.empty():
-            self._callback_queue.get_nowait()
-            self._callback_queue.task_done()
+        self._callback_queue = asyncio.Queue(maxsize=CALLBACK_QUEUE_LIMIT)
 
 
 class Realtime:
@@ -409,26 +407,46 @@ class Realtime:
             await self._subscribe_locked(channel)
 
     async def _subscribe_locked(self, channel: Channel) -> None:
-        if channel._subscription is not None:
-            await channel._subscription.subscribe()
-            return
-        while channel._subscription is None:
+        while True:
             generation = channel._auth_generation
-            connection = await self._connect_locked()
-            subscription = connection.new_subscription(
-                channel._name,
-                events=_ChannelEvents(channel, generation),
-            )
-            channel._subscription = subscription
-            try:
-                await subscription.subscribe()
-            except Exception:
-                if generation == channel._auth_generation:
-                    raise
+            subscription = channel._subscription
+            if subscription is None:
+                connection = await self._connect_locked()
+                subscription = connection.new_subscription(
+                    channel._name,
+                    events=_ChannelEvents(channel, generation),
+                )
+                channel._subscription = subscription
+            if await self._subscribe_current_generation(
+                channel, subscription, generation
+            ):
+                return
+            if channel._subscription is subscription:
                 channel._subscription = None
-                continue
-            if generation != channel._auth_generation:
-                channel._subscription = None
+
+    async def _subscribe_current_generation(
+        self,
+        channel: Channel,
+        subscription: CentrifugeSubscription,
+        generation: int,
+    ) -> bool:
+        try:
+            await subscription.subscribe()
+        except Exception:
+            if generation == channel._auth_generation:
+                raise
+        return self._subscription_is_current(channel, subscription, generation)
+
+    @staticmethod
+    def _subscription_is_current(
+        channel: Channel,
+        subscription: CentrifugeSubscription,
+        generation: int,
+    ) -> bool:
+        return (
+            generation == channel._auth_generation
+            and channel._subscription is subscription
+        )
 
     async def _publish(self, channel: Channel, data: Any) -> None:
         async with self._connection_lock:

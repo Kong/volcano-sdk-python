@@ -372,13 +372,76 @@ def test_auth_change_discards_state_owned_by_a_closed_realtime_loop() -> None:
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
     client.auth.sign_in(email="user@example.com", password="secret")
-    channel = client.realtime.channel("contract")
-    asyncio.run(channel.subscribe())
+    received: list[str] = []
+    channel = client.realtime.channel("contract").on(
+        "message", lambda data: received.append(data["value"])
+    )
+
+    async def exercise(value: str) -> None:
+        await channel.subscribe()
+        await official.emit_wire_publication("broadcast:contract", {"value": value})
+        for _ in range(10):
+            if received and received[-1] == value:
+                return
+            await asyncio.sleep(0)
+        assert received
+        assert received[-1] == value
+
+    asyncio.run(exercise("first"))
 
     transport.access_token = "access-2"
     client.auth.sign_in(email="next@example.com", password="secret")
+    asyncio.run(exercise("second"))
 
-    assert channel._subscription is None
+    assert channel._subscription is official.subscription
+    assert received == ["first", "second"]
+
+
+def test_auth_change_retries_an_existing_subscription_in_flight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = AuthTransport()
+    first = FakeCentrifugeClient()
+    second = FakeCentrifugeClient()
+    clients = iter((first, second))
+
+    def factory(*args: Any, **kwargs: Any) -> FakeCentrifugeClient:
+        del args, kwargs
+        return next(clients)
+
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=factory,
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("contract")
+        await channel.subscribe()
+        assert first.subscription is not None
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        original_subscribe = first.subscription.subscribe
+
+        async def blocking_subscribe() -> None:
+            entered.set()
+            await release.wait()
+            await original_subscribe()
+
+        monkeypatch.setattr(first.subscription, "subscribe", blocking_subscribe)
+        subscribing = asyncio.create_task(channel.subscribe())
+        await entered.wait()
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="next@example.com", password="secret")
+        release.set()
+        await subscribing
+
+        assert second.subscription is not None
+        assert channel._subscription is second.subscription
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
 
 
 def test_realtime_callbacks_run_outside_the_message_processor() -> None:

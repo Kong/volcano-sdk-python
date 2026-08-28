@@ -114,6 +114,7 @@ ERROR_TYPES_BY_STATUS: dict[int, type[VolcanoError]] = {
     422: ValidationError,
     HTTP_RATE_LIMITED: RateLimitedError,
 }
+_INVALID_AUTH_RESPONSE = "Invalid authentication response"
 
 
 class TransportResponse(Protocol):
@@ -497,11 +498,14 @@ class GeneratedTransport:
         body_data: dict[str, Any] = {"email": email, "password": password}
         if user_metadata is not None:
             body_data["user_metadata"] = _mutable_json(user_metadata)
-        with self._client(authorization) as client:
-            response = auth_signup.sync_detailed(
-                client=client,
-                body=AuthSignupBody.from_dict(body_data),
-            )
+        try:
+            with self._client(authorization) as client:
+                response = auth_signup.sync_detailed(
+                    client=client,
+                    body=AuthSignupBody.from_dict(body_data),
+                )
+        except (KeyError, TypeError, ValueError):
+            raise AuthenticationError(_INVALID_AUTH_RESPONSE) from None
         return self._response(response)
 
     def auth_refresh(
