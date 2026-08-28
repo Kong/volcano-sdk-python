@@ -108,6 +108,8 @@ class AuthContext(Protocol):
 
     def _set_user(self, user: User) -> None: ...
 
+    def _clear_user(self) -> None: ...
+
     def _clear_auth(self) -> None: ...
 
     def _subscribe_auth(
@@ -238,7 +240,7 @@ def _auth_session(payload: Mapping[str, Any]) -> AuthSession:
 
 def _required_text(payload: Mapping[str, Any], key: str) -> str:
     value = payload.get(key)
-    if not isinstance(value, str):
+    if not isinstance(value, str) or not value:
         raise AuthenticationError(_INVALID_AUTH_RESPONSE)
     return value
 
@@ -361,9 +363,11 @@ def _session_and_user(payload: Mapping[str, Any]) -> tuple[Session, User]:
     if not isinstance(access_token, str) or not access_token:
         raise AuthenticationError(_INVALID_AUTH_RESPONSE)
     refresh_token_value = payload.get("refresh_token")
-    refresh_token = (
-        refresh_token_value if isinstance(refresh_token_value, str) else None
-    )
+    if refresh_token_value is not None and (
+        not isinstance(refresh_token_value, str) or not refresh_token_value
+    ):
+        raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+    refresh_token = refresh_token_value
     user = _user(_mapping(payload.get("user")))
     return (
         Session(
@@ -530,7 +534,7 @@ class Auth:
         *,
         password: str | None = None,
         user_metadata: Mapping[str, JSONValue] | None = None,
-    ) -> User:
+    ) -> User | None:
         """Update the current user's password or metadata."""
         with self._operation():
             payload = _mapping(
@@ -541,9 +545,7 @@ class Auth:
                     user_metadata=user_metadata,
                 )
             )
-            user = _user(_mapping(payload.get("user")))
-            self._client._set_user(user)
-            return user
+            return self._reconcile_user_payload(payload)
 
     def refresh_session(self) -> Session:
         """Rotate the current refresh token and replace local auth state."""
@@ -630,7 +632,7 @@ class Auth:
             token=token,
         )
         result = _message(_mapping(response_payload(response, 200)))
-        self._refresh_user_best_effort()
+        self._refresh_user_or_clear()
         return result
 
     def resend_confirmation(self, *, email: str) -> MessageResult:
@@ -669,6 +671,20 @@ class Auth:
                 return
             with suppress(VolcanoError):
                 self.get_user()
+
+    def _refresh_user_or_clear(self) -> User | None:
+        try:
+            return self.get_user()
+        except VolcanoError:
+            self._client._clear_user()
+            return None
+
+    def _reconcile_user_payload(self, payload: Mapping[str, Any]) -> User | None:
+        if "user" not in payload:
+            return self._refresh_user_or_clear()
+        user = _user(_mapping(payload["user"]))
+        self._client._set_user(user)
+        return user
 
     def request_email_change(self, *, new_email: str) -> EmailChangeResult:
         """Request a change to the current user's email address."""
@@ -801,11 +817,14 @@ class Auth:
 
     def unlink_oauth_provider(self, *, provider: OAuthProviderName) -> None:
         """Unlink an OAuth provider from the current user."""
-        self._authenticated_payload(
-            self._client._transport.auth_unlink_oauth_provider,
-            expected_status=204,
-            provider=_provider(provider),
-        )
+        with self._operation():
+            self._authenticated_payload(
+                self._client._transport.auth_unlink_oauth_provider,
+                expected_status=204,
+                provider=_provider(provider),
+            )
+            if self._client.current_user is not None:
+                self._refresh_user_or_clear()
 
     def get_linked_oauth_providers(self) -> tuple[OAuthProvider, ...]:
         """Return OAuth providers linked to the current user."""

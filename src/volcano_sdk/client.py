@@ -151,6 +151,12 @@ class VolcanoClient:
             listeners = self._queue_auth_notifications()
         self._notify_auth_listeners(listeners)
 
+    def _clear_user(self) -> None:
+        with self._auth_state_lock:
+            self._current_user = None
+            listeners = self._queue_auth_notifications()
+        self._notify_auth_listeners(listeners)
+
     def _clear_auth(self) -> None:
         with self._auth_state_lock:
             self._current_session = None

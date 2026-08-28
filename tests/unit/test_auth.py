@@ -471,6 +471,27 @@ def test_password_device_and_platform_auth_flows() -> None:
     assert platform.token_id == "00000000-0000-4000-8000-000000000001"
 
 
+def test_platform_exchange_rejects_empty_required_text() -> None:
+    transport = AuthTransport()
+    client = VolcanoClient(
+        anon_key="anon-key", access_token="access-token", _transport=transport
+    )
+    payload = {
+        "token": "platform-secret",
+        "user_id": "user-123",
+        "token_id": "token-id",
+        "expires_at": "2026-08-28T13:00:00Z",
+    }
+
+    for field in ("token", "user_id", "token_id"):
+        transport.queue(
+            "auth_platform_exchange",
+            AuthResponse(200, payload | {field: ""}),
+        )
+        with pytest.raises(AuthenticationError, match="missing required fields"):
+            client.auth.exchange_platform_token(client_id="volcano-cli")
+
+
 def test_device_verification_rejects_an_unknown_action() -> None:
     client = VolcanoClient(
         anon_key="anon-key", access_token="access-token", _transport=AuthTransport()
@@ -735,6 +756,7 @@ def test_get_and_update_user_preserve_the_current_session() -> None:
         user_metadata={"display_name": "Updated"},
     )
 
+    assert updated is not None
     assert fetched.email == "user@example.com"
     assert updated.email == "updated@example.com"
     assert client.current_user is updated
@@ -750,6 +772,24 @@ def test_get_and_update_user_preserve_the_current_session() -> None:
             },
         ),
     ]
+
+
+def test_update_user_hydrates_an_omitted_response_user() -> None:
+    transport = AuthTransport()
+    transport.queue("auth_update_user", AuthResponse(200, {}))
+    transport.queue(
+        "auth_get_user",
+        AuthResponse(200, {"user": _user_payload(email="updated@example.com")}),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key", access_token="access-token", _transport=transport
+    )
+
+    updated = client.auth.update_user(user_metadata={"plan": "pro"})
+
+    assert updated is not None
+    assert updated.email == "updated@example.com"
+    assert client.current_user is updated
 
 
 def test_authenticated_facade_normalizes_a_missing_session() -> None:
@@ -1357,10 +1397,35 @@ def test_confirm_email_preserves_success_when_user_refresh_fails() -> None:
         refresh_token="refresh-token",
         _transport=transport,
     )
+    client._set_user(User(id="user-123", email="stale@example.com"))
 
     result = client.auth.confirm_email(token="confirmation-token")
 
     assert result == MessageResult(message="Done")
+    assert client.current_user is None
+
+
+def test_token_responses_reject_unusable_optional_refresh_tokens() -> None:
+    transport = AuthTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+
+    for refresh_token in ("", 7):
+        payload = _token_payload(
+            access_token="access-token",
+            refresh_token="refresh-token",
+        )
+        payload["refresh_token"] = refresh_token
+        transport.queue(
+            "auth_signin",
+            AuthResponse(200, payload),
+        )
+        with pytest.raises(
+            AuthenticationError,
+            match="missing required fields",
+        ):
+            client.auth.sign_in(email="user@example.com", password="secret")
+
+    assert client.current_session is None
 
 
 def test_hosted_and_oauth_authorization_urls_bind_caller_state(
@@ -1792,6 +1857,21 @@ def test_provider_and_device_session_flows_return_public_values() -> None:
         limit=20,
         total_pages=1,
     )
+
+
+def test_unlink_oauth_provider_reconciles_the_cached_user() -> None:
+    transport = AuthTransport()
+    transport.queue("auth_unlink_oauth_provider", AuthResponse(204))
+    transport.queue("auth_get_user", AuthResponse(200, {"user": _user_payload()}))
+    client = VolcanoClient(
+        anon_key="anon-key", access_token="access-token", _transport=transport
+    )
+    client._set_user(User(id="user-123", email="previous@example.com"))
+
+    client.auth.unlink_oauth_provider(provider="github")
+
+    assert client.current_user is not None
+    assert client.current_user.email == "user@example.com"
 
 
 def test_session_listing_exposes_filters_and_cursor_navigation() -> None:
