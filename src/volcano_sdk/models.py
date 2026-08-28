@@ -157,8 +157,8 @@ class DeviceAuthorization:
 class DeviceVerification:
     """Result of approving or denying a device authorization."""
 
-    success: bool
-    status: str
+    success: bool | None = None
+    status: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

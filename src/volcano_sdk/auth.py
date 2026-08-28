@@ -316,8 +316,8 @@ def _device_authorization(payload: Mapping[str, Any]) -> DeviceAuthorization:
 
 def _device_verification(payload: Mapping[str, Any]) -> DeviceVerification:
     return DeviceVerification(
-        success=_required_bool(payload, "success"),
-        status=_required_text(payload, "status"),
+        success=_optional_bool(payload.get("success")),
+        status=_optional_text(payload.get("status")),
     )
 
 

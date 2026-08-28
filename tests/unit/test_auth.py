@@ -480,6 +480,16 @@ def test_device_verification_rejects_an_unknown_action() -> None:
         client.auth.verify_device(user_code="ABCD-EFGH", action=cast("Any", "ignore"))
 
 
+def test_device_verification_accepts_omitted_response_metadata() -> None:
+    transport = AuthTransport()
+    transport.queue("auth_device_verify", AuthResponse(200, {}))
+    client = VolcanoClient(
+        anon_key="anon-key", access_token="access-token", _transport=transport
+    )
+
+    assert client.auth.verify_device(user_code="ABCD-EFGH") == DeviceVerification()
+
+
 def test_oauth_provider_name_accepts_the_supported_providers() -> None:
     providers: tuple[OAuthProviderName, ...] = (
         "google",
