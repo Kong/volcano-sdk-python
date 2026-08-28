@@ -29,7 +29,10 @@ class StateTransport:
             {
                 "access_token": self.next_access_token,
                 "refresh_token": f"refresh-{self.next_access_token}",
-                "user": {"id": "user-123"},
+                "user": {
+                    "id": "user-123",
+                    "email": "user@example.com",
+                },
             },
         )
 

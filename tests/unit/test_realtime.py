@@ -40,7 +40,10 @@ class AuthTransport:
             {
                 "access_token": self.access_token,
                 "refresh_token": "refresh-token",
-                "user": {"id": "user-123"},
+                "user": {
+                    "id": "user-123",
+                    "email": "user@example.com",
+                },
             },
         )
 

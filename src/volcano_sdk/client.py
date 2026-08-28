@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TypedDict, Unpack, cast
+import logging
+from contextlib import suppress
+from typing import TYPE_CHECKING, TypedDict, Unpack, cast
 
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
@@ -12,9 +14,15 @@ from .models import Session, User
 from .realtime import CentrifugeFactory, Realtime
 from .storage import Storage
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 _NO_ACTIVE_SESSION = "No active session"
 _NO_SERVICE_KEY = "No service key configured"
 _REFRESH_WITHOUT_ACCESS = "refresh_token requires access_token"
+_AUTH_LISTENER_FAILED = "Authentication state listener failed"
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class _AuthBootstrap(TypedDict, total=False):
@@ -50,6 +58,8 @@ class VolcanoClient:
             else None
         )
         self._current_user: User | None = None
+        self._auth_listeners: dict[int, Callable[[User | None], None]] = {}
+        self._next_auth_listener_id = 0
         self._transport: Transport = (
             cast("Transport", _transport)
             if _transport is not None
@@ -100,10 +110,42 @@ class VolcanoClient:
     def _commit_auth(self, session: Session, user: User) -> None:
         self._current_session = session
         self._current_user = user
+        self._notify_auth_listeners()
 
     def _set_user(self, user: User) -> None:
         self._current_user = user
+        self._notify_auth_listeners()
 
     def _clear_auth(self) -> None:
         self._current_session = None
         self._current_user = None
+        self._notify_auth_listeners()
+
+    def _subscribe_auth(
+        self,
+        listener: Callable[[User | None], None],
+    ) -> Callable[[], None]:
+        listener_id = self._next_auth_listener_id
+        self._next_auth_listener_id += 1
+        self._auth_listeners[listener_id] = listener
+        self._invoke_auth_listener(listener)
+
+        def unsubscribe() -> None:
+            self._auth_listeners.pop(listener_id, None)
+
+        return unsubscribe
+
+    def _notify_auth_listeners(self) -> None:
+        for listener in tuple(self._auth_listeners.values()):
+            self._invoke_auth_listener(listener)
+
+    def _invoke_auth_listener(
+        self,
+        listener: Callable[[User | None], None],
+    ) -> None:
+        completed = False
+        with suppress(Exception):
+            listener(self._current_user)
+            completed = True
+        if not completed:
+            _LOGGER.error(_AUTH_LISTENER_FAILED)
