@@ -87,6 +87,11 @@ def test_constructor_rejects_a_refresh_token_without_an_access_token() -> None:
         VolcanoClient(anon_key="anon", refresh_token="refresh-token")
 
 
+def test_constructor_rejects_unknown_authentication_keywords() -> None:
+    with pytest.raises(TypeError, match="acess_token"):
+        VolcanoClient(anon_key="anon", acess_token="misspelled")  # type: ignore[call-arg]
+
+
 def test_auth_state_can_be_replaced_and_cleared() -> None:
     client = VolcanoClient(anon_key="anon")
     session = Session(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import inspect
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol, cast
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -20,6 +21,7 @@ CHANNEL_NOT_SUBSCRIBED = "Channel must be subscribed before sending"
 SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
     "centrifuge client subscription registry is unavailable"
 )
+_LOGGER = logging.getLogger(__name__)
 
 
 class RealtimeContext(Protocol):
@@ -161,11 +163,13 @@ class _VolcanoCentrifugeConnection:
 
 
 class _ChannelEvents:
-    def __init__(self, channel: Channel) -> None:
+    def __init__(self, channel: Channel, generation: int) -> None:
         self._channel = channel
+        self._generation = generation
 
     async def on_publication(self, ctx: PublicationContext) -> None:
-        await self._channel._emit(ctx.pub.data)
+        if self._generation == self._channel._auth_generation:
+            await self._channel._emit(ctx.pub.data)
 
     async def on_subscribing(self, ctx: Any) -> None:
         del ctx
@@ -201,6 +205,7 @@ class Channel:
         self._callback_task: asyncio.Task[None] | None = None
         self._active_callback_task: asyncio.Task[None] | None = None
         self._callback_stop: asyncio.Event | None = None
+        self._auth_generation = 0
 
     def on(self, event: str, callback: MessageCallback) -> Channel:
         """Register a callback for broadcast messages."""
@@ -284,7 +289,7 @@ class Channel:
             await result
 
     async def _reset(self) -> None:
-        self._subscription = None
+        self._invalidate_authentication()
         task = self._callback_task
         active_task = self._active_callback_task
         if self._callback_stop is not None:
@@ -295,6 +300,15 @@ class Channel:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
             self._callback_task = None
+        while not self._callback_queue.empty():
+            self._callback_queue.get_nowait()
+            self._callback_queue.task_done()
+
+    def _invalidate_authentication(self) -> None:
+        self._auth_generation += 1
+        self._subscription = None
+        if self._active_callback_task is not None:
+            self._active_callback_task.cancel()
         while not self._callback_queue.empty():
             self._callback_queue.get_nowait()
             self._callback_queue.task_done()
@@ -317,6 +331,7 @@ class Realtime:
         self._connection: CentrifugeConnection | None = None
         self._connection_lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
+        self._auth_cleanup_tasks: set[asyncio.Task[None]] = set()
 
     def channel(self, name: str) -> Channel:
         """Return a stable channel facade for a broadcast name."""
@@ -358,7 +373,7 @@ class Realtime:
             if channel._subscription is None:
                 channel._subscription = connection.new_subscription(
                     channel._name,
-                    events=_ChannelEvents(channel),
+                    events=_ChannelEvents(channel, channel._auth_generation),
                 )
             await channel._subscription.subscribe()
 
@@ -384,3 +399,30 @@ class Realtime:
             finally:
                 for channel in tuple(self._channels.values()):
                     await channel._reset()
+
+    def on_auth_change(self) -> None:
+        """Immediately invalidate work authenticated by the previous session."""
+        connection = self._connection
+        self._connection = None
+        channels = tuple(self._channels.values())
+        for channel in channels:
+            channel._invalidate_authentication()
+        if connection is None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(self._close_invalidated(connection))
+        else:
+            task = loop.create_task(self._close_invalidated(connection))
+            self._auth_cleanup_tasks.add(task)
+            task.add_done_callback(self._auth_cleanup_tasks.discard)
+
+    async def _close_invalidated(
+        self,
+        connection: CentrifugeConnection,
+    ) -> None:
+        try:
+            await connection.disconnect()
+        except Exception:
+            _LOGGER.exception("Volcano realtime disconnect failed after auth change")

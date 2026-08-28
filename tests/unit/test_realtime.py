@@ -239,6 +239,55 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
     assert received == [{"event": "message", "value": "contract"}]
 
 
+def test_auth_replacement_invalidates_the_connected_realtime_identity() -> None:
+    transport = AuthTransport()
+    first = FakeCentrifugeClient()
+    second = FakeCentrifugeClient()
+    clients = iter((first, second))
+
+    def factory(*args: Any, **kwargs: Any) -> FakeCentrifugeClient:
+        del args, kwargs
+        return next(clients)
+
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=factory,
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        received: list[str] = []
+        channel = client.realtime.channel("contract").on(
+            "message", lambda data: received.append(data["value"])
+        )
+        await channel.subscribe()
+        previous_subscription = first.subscription
+        assert previous_subscription is not None
+
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="next@example.com", password="secret")
+        assert channel._subscription is None
+        await previous_subscription.emit({"value": "stale"})
+        await asyncio.sleep(0)
+        assert received == []
+
+        await channel.subscribe()
+        await second.emit_wire_publication(
+            "broadcast:contract",
+            {"value": "fresh"},
+        )
+        for _ in range(10):
+            if received:
+                break
+            await asyncio.sleep(0)
+        assert received == ["fresh"]
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+    assert first.calls[-1] == "disconnect"
+
+
 def test_realtime_callbacks_run_outside_the_message_processor() -> None:
     transport = AuthTransport()
     official = FakeCentrifugeClient()

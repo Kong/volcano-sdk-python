@@ -665,6 +665,16 @@ def test_anonymous_and_email_account_flows_return_public_values() -> None:
         "auth_convert_anonymous",
         AuthResponse(200, {"user": _user_payload()}),
     )
+    transport.queue(
+        "auth_refresh",
+        AuthResponse(
+            200,
+            _token_payload(
+                access_token="converted-access",
+                refresh_token="converted-refresh",
+            ),
+        ),
+    )
     for operation in (
         "auth_resend_confirmation",
         "auth_forgot_password",
@@ -710,6 +720,8 @@ def test_anonymous_and_email_account_flows_return_public_values() -> None:
 
     assert anonymous is not None
     assert anonymous.access_token == "anonymous-access"
+    assert client.current_session is not None
+    assert client.current_session.access_token == "converted-access"
     assert user_before_reset == converted
     assert all(result == MessageResult(message="Done") for result in messages)
     assert email_change == EmailChangeResult(
@@ -721,7 +733,7 @@ def test_anonymous_and_email_account_flows_return_public_values() -> None:
     assert confirm_change == MessageResult(message="Done")
     assert cancel_change == MessageResult(message="Done")
     assert password_reset == MessageResult(message="Done")
-    assert client.current_session is None
+    assert client.current_session is not None
     assert transport.calls[:2] == [
         (
             "auth_signup_anonymous",
@@ -767,6 +779,25 @@ def test_confirm_email_refreshes_current_user_and_notifies_listeners() -> None:
     assert client.current_user is not None
     assert client.current_user.email_confirmed is True
     assert observations[-1] is client.current_user
+
+
+def test_confirm_email_preserves_success_when_user_refresh_fails() -> None:
+    transport = AuthTransport()
+    transport.queue("auth_confirm_email", AuthResponse(200, {"message": "Done"}))
+    transport.queue(
+        "auth_get_user",
+        AuthResponse(503, {"error": "Temporarily unavailable"}),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        refresh_token="refresh-token",
+        _transport=transport,
+    )
+
+    result = client.auth.confirm_email(token="confirmation-token")
+
+    assert result == MessageResult(message="Done")
 
 
 def test_hosted_and_oauth_authorization_urls_bind_caller_state(
@@ -949,6 +980,16 @@ def test_provider_and_device_session_flows_return_public_values() -> None:
                 "total_pages": 1,
             },
         ),
+        AuthResponse(
+            200,
+            {
+                "sessions": [],
+                "total": 1,
+                "page": 2,
+                "limit": 20,
+                "total_pages": 2,
+            },
+        ),
     )
     transport.queue("auth_delete_my_session", AuthResponse(204))
     transport.queue("auth_delete_all_my_sessions", AuthResponse(204))
@@ -968,6 +1009,7 @@ def test_provider_and_device_session_flows_return_public_values() -> None:
         endpoint="/user",
     )
     sessions = client.auth.get_sessions(page=1, limit=20)
+    client.auth.get_sessions(page=2, limit=20)
     client.auth.delete_all_other_sessions()
     client.auth.delete_session(session_id="3cd3e058-e3ff-42a5-ae4d-650ef9b45746")
 
@@ -1014,3 +1056,49 @@ def test_delete_session_rejects_a_malformed_identifier() -> None:
 
     with pytest.raises(ValidationError, match="session_id must be a valid UUID"):
         client.auth.delete_session(session_id="not-a-uuid")
+
+
+def test_replacing_auth_invalidates_cached_current_device_ids() -> None:
+    previous_id = "3cd3e058-e3ff-42a5-ae4d-650ef9b45746"
+    transport = AuthTransport()
+    transport.queue(
+        "auth_get_my_sessions",
+        AuthResponse(
+            200,
+            {
+                "sessions": [
+                    {
+                        "id": previous_id,
+                        "user_id": "user-123",
+                        "provider": "email",
+                        "expires_at": "2026-08-29T12:00:00Z",
+                        "is_active": True,
+                        "is_current": True,
+                    }
+                ]
+            },
+        ),
+    )
+    transport.queue(
+        "auth_signin",
+        AuthResponse(
+            200,
+            _token_payload(
+                access_token="replacement-access",
+                refresh_token="replacement-refresh",
+            ),
+        ),
+    )
+    transport.queue("auth_delete_my_session", AuthResponse(204))
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="previous-access",
+        refresh_token="previous-refresh",
+        _transport=transport,
+    )
+
+    client.auth.get_sessions()
+    replacement = client.auth.sign_in(email="user@example.com", password="secret")
+    client.auth.delete_session(session_id=previous_id)
+
+    assert client.current_session is replacement

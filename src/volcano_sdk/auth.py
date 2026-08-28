@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextlib import suppress
 from datetime import datetime
 from hmac import compare_digest
 from secrets import token_urlsafe
@@ -11,7 +12,7 @@ from urllib.parse import quote, urlencode
 from uuid import UUID
 
 from ._transport import Transport, TransportResponse, invoke, response_payload
-from .errors import AuthenticationError, ValidationError
+from .errors import AuthenticationError, ValidationError, VolcanoError
 from .models import (
     AuthorizationRequest,
     AuthSession,
@@ -273,7 +274,7 @@ class Auth:
             password=password,
         )
         session, user = _session_and_user(_mapping(response_payload(response, 200)))
-        self._client._commit_auth(session, user)
+        self._replace_auth(session, user)
         return session
 
     def sign_out(self) -> None:
@@ -288,7 +289,7 @@ class Auth:
                 )
                 response_payload(response, 204)
         finally:
-            self._client._clear_auth()
+            self._clear_auth()
 
     def get_user(self) -> User:
         """Load the current user from the API."""
@@ -325,7 +326,7 @@ class Auth:
         """Rotate the current refresh token and replace local auth state."""
         session = self._client.current_session
         if session is None or session.refresh_token is None:
-            self._client._clear_auth()
+            self._clear_auth()
             raise AuthenticationError(_MISSING_AUTH_STATE)
 
         succeeded = False
@@ -340,12 +341,12 @@ class Auth:
             )
             if refreshed.refresh_token is None:
                 raise AuthenticationError(_INVALID_AUTH_RESPONSE)
-            self._client._commit_auth(refreshed, user)
+            self._replace_auth(refreshed, user)
             succeeded = True
             return refreshed
         finally:
             if not succeeded:
-                self._client._clear_auth()
+                self._clear_auth()
 
     def on_auth_state_change(
         self,
@@ -366,7 +367,7 @@ class Auth:
             user_metadata=user_metadata,
         )
         session, user = _session_and_user(_mapping(response_payload(response, 201)))
-        self._client._commit_auth(session, user)
+        self._replace_auth(session, user)
         return session
 
     def convert_anonymous(
@@ -386,9 +387,9 @@ class Auth:
                 user_metadata=user_metadata,
             )
         )
-        user = _user(_mapping(payload.get("user")))
-        self._client._set_user(user)
-        return user
+        converted_user = _user(_mapping(payload.get("user")))
+        self.refresh_session()
+        return self._client.current_user or converted_user
 
     def confirm_email(self, *, token: str) -> MessageResult:
         """Confirm an email address with its one-time token."""
@@ -399,7 +400,8 @@ class Auth:
         )
         result = _message(_mapping(response_payload(response, 200)))
         if self._client.current_session is not None:
-            self.get_user()
+            with suppress(VolcanoError):
+                self.get_user()
         return result
 
     def resend_confirmation(self, *, email: str) -> MessageResult:
@@ -428,9 +430,7 @@ class Auth:
             token=token,
             new_password=new_password,
         )
-        result = _message(_mapping(response_payload(response, 200)))
-        self._client._clear_auth()
-        return result
+        return _message(_mapping(response_payload(response, 200)))
 
     def request_email_change(self, *, new_email: str) -> EmailChangeResult:
         """Request a change to the current user's email address."""
@@ -531,7 +531,7 @@ class Auth:
             redirect_url=redirect_url,
         )
         session, user = _session_and_user(_mapping(response_payload(response, 200)))
-        self._client._commit_auth(session, user)
+        self._replace_auth(session, user)
         return session
 
     def link_oauth_provider(
@@ -649,9 +649,9 @@ class Auth:
             raise AuthenticationError(_INVALID_AUTH_RESPONSE)
         sessions = cast("list[object]", sessions_value)
         mapped_sessions = tuple(_auth_session(_mapping(item)) for item in sessions)
-        self._current_device_session_ids = {
+        self._current_device_session_ids.update(
             session.id for session in mapped_sessions if session.is_current
-        }
+        )
         return SessionPage(
             sessions=mapped_sessions,
             total=_optional_int(payload.get("total")),
@@ -672,8 +672,7 @@ class Auth:
             session_id=session_id,
         )
         if session_id in self._current_device_session_ids:
-            self._current_device_session_ids.clear()
-            self._client._clear_auth()
+            self._clear_auth()
 
     def delete_all_other_sessions(self) -> None:
         """Delete every device session except the current one."""
@@ -710,7 +709,7 @@ class Auth:
             if error.status != _HTTP_UNAUTHORIZED or session is None:
                 raise
             if session.refresh_token is None:
-                self._client._clear_auth()
+                self._clear_auth()
                 raise
         self.refresh_session()
         response = invoke(
@@ -719,3 +718,11 @@ class Auth:
             **kwargs,
         )
         return response_payload(response, expected_status)
+
+    def _replace_auth(self, session: Session, user: User) -> None:
+        self._current_device_session_ids.clear()
+        self._client._commit_auth(session, user)
+
+    def _clear_auth(self) -> None:
+        self._current_device_session_ids.clear()
+        self._client._clear_auth()

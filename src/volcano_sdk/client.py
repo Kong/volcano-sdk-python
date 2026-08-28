@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import suppress
+from threading import RLock
 from typing import TYPE_CHECKING, TypedDict, Unpack, cast
 
 from ._transport import GeneratedTransport, Transport
@@ -23,6 +24,7 @@ _REFRESH_WITHOUT_ACCESS = "refresh_token requires access_token"
 _AUTH_LISTENER_FAILED = "Authentication state listener failed"
 
 _LOGGER = logging.getLogger(__name__)
+_AUTH_BOOTSTRAP_KEYS = frozenset({"access_token", "refresh_token"})
 
 
 class _AuthBootstrap(TypedDict, total=False):
@@ -48,6 +50,11 @@ class VolcanoClient:
         self._api_url = api_url.rstrip("/")
         self._anon_key = anon_key
         self._service_key = service_key
+        unknown_auth = auth_bootstrap.keys() - _AUTH_BOOTSTRAP_KEYS
+        if unknown_auth:
+            unexpected = next(iter(unknown_auth))
+            message = f"unexpected authentication keyword: {unexpected}"
+            raise TypeError(message)
         access_token = auth_bootstrap.get("access_token")
         refresh_token = auth_bootstrap.get("refresh_token")
         if access_token is None and refresh_token is not None:
@@ -58,6 +65,7 @@ class VolcanoClient:
             else None
         )
         self._current_user: User | None = None
+        self._auth_state_lock = RLock()
         self._auth_listeners: dict[int, Callable[[User | None], None]] = {}
         self._next_auth_listener_id = 0
         self._transport: Transport = (
@@ -80,12 +88,14 @@ class VolcanoClient:
     @property
     def current_session(self) -> Session | None:
         """Return the authenticated session, if one exists."""
-        return self._current_session
+        with self._auth_state_lock:
+            return self._current_session
 
     @property
     def current_user(self) -> User | None:
         """Return the authenticated user, if one has been loaded."""
-        return self._current_user
+        with self._auth_state_lock:
+            return self._current_user
 
     def database(self, name: str) -> Database:
         """Create a query facade for a project database."""
@@ -95,9 +105,10 @@ class VolcanoClient:
         return self._anon_key
 
     def _session_token(self) -> str:
-        if self._current_session is None:
-            raise RuntimeError(_NO_ACTIVE_SESSION)
-        return self._current_session.access_token
+        with self._auth_state_lock:
+            if self._current_session is None:
+                raise RuntimeError(_NO_ACTIVE_SESSION)
+            return self._current_session.access_token
 
     def _service_token(self) -> str:
         if self._service_key is None:
@@ -105,33 +116,42 @@ class VolcanoClient:
         return self._service_key
 
     def _set_session(self, session: Session) -> None:
-        self._current_session = session
+        with self._auth_state_lock:
+            self._current_session = session
+            self.realtime.on_auth_change()
 
     def _commit_auth(self, session: Session, user: User) -> None:
-        self._current_session = session
-        self._current_user = user
-        self._notify_auth_listeners()
+        with self._auth_state_lock:
+            self._current_session = session
+            self._current_user = user
+            self.realtime.on_auth_change()
+            self._notify_auth_listeners()
 
     def _set_user(self, user: User) -> None:
-        self._current_user = user
-        self._notify_auth_listeners()
+        with self._auth_state_lock:
+            self._current_user = user
+            self._notify_auth_listeners()
 
     def _clear_auth(self) -> None:
-        self._current_session = None
-        self._current_user = None
-        self._notify_auth_listeners()
+        with self._auth_state_lock:
+            self._current_session = None
+            self._current_user = None
+            self.realtime.on_auth_change()
+            self._notify_auth_listeners()
 
     def _subscribe_auth(
         self,
         listener: Callable[[User | None], None],
     ) -> Callable[[], None]:
-        listener_id = self._next_auth_listener_id
-        self._next_auth_listener_id += 1
-        self._auth_listeners[listener_id] = listener
-        self._invoke_auth_listener(listener)
+        with self._auth_state_lock:
+            listener_id = self._next_auth_listener_id
+            self._next_auth_listener_id += 1
+            self._auth_listeners[listener_id] = listener
+            self._invoke_auth_listener(listener)
 
         def unsubscribe() -> None:
-            self._auth_listeners.pop(listener_id, None)
+            with self._auth_state_lock:
+                self._auth_listeners.pop(listener_id, None)
 
         return unsubscribe
 
