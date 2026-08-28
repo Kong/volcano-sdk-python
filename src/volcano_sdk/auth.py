@@ -4,11 +4,26 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from hmac import compare_digest
+from secrets import token_urlsafe
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
+from urllib.parse import quote, urlencode
 
 from ._transport import Transport, TransportResponse, invoke, response_payload
-from .errors import AuthenticationError
-from .models import Session, SignUpResult, User
+from .errors import AuthenticationError, ValidationError
+from .models import (
+    AuthorizationRequest,
+    AuthSession,
+    EmailChangeResult,
+    MessageResult,
+    OAuthProvider,
+    OAuthProviderName,
+    OAuthTokenResult,
+    Session,
+    SessionPage,
+    SignUpResult,
+    User,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -18,12 +33,17 @@ if TYPE_CHECKING:
 _INVALID_AUTH_RESPONSE = "Authentication response is missing required fields"
 _MISSING_AUTH_STATE = "No refresh token available"
 _HTTP_UNAUTHORIZED = 401
+_INVALID_OAUTH_STATE = "OAuth state does not match"
+_INVALID_OAUTH_PROVIDER = "Unsupported OAuth provider"
+_MISSING_AUTHORIZATION_URL = "Authentication response is missing authorization URL"
+_SUPPORTED_OAUTH_PROVIDERS = frozenset({"google", "github", "microsoft", "apple"})
 
 
 class AuthContext(Protocol):
     """Client capabilities required by the authentication facade."""
 
     _transport: Transport
+    _api_url: str
 
     @property
     def current_session(self) -> Session | None:
@@ -85,6 +105,77 @@ def _optional_metadata(value: object) -> dict[str, JSONValue] | None:
     if not all(isinstance(key, str) for key in metadata):
         return None
     return cast("dict[str, JSONValue]", metadata.copy())
+
+
+def _json_value(value: object) -> JSONValue:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, list):
+        items = cast("list[object]", value)
+        return [_json_value(item) for item in items]
+    if isinstance(value, dict):
+        mapping = cast("dict[object, object]", value)
+        if not all(isinstance(key, str) for key in mapping):
+            raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+        return {cast("str", key): _json_value(item) for key, item in mapping.items()}
+    raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+
+
+def _provider(value: str) -> OAuthProviderName:
+    if value not in _SUPPORTED_OAUTH_PROVIDERS:
+        raise ValidationError(_INVALID_OAUTH_PROVIDER)
+    return cast("OAuthProviderName", value)
+
+
+def _message(payload: Mapping[str, Any]) -> MessageResult:
+    message = payload.get("message")
+    if not isinstance(message, str):
+        raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+    return MessageResult(message=message)
+
+
+def _oauth_token(payload: Mapping[str, Any]) -> OAuthTokenResult:
+    provider_value = payload.get("provider")
+    if not isinstance(provider_value, str):
+        raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+    return OAuthTokenResult(
+        provider=_provider(provider_value),
+        expires_in=_optional_int(payload.get("expires_in")),
+        message=_optional_text(payload.get("message")),
+    )
+
+
+def _auth_session(payload: Mapping[str, Any]) -> AuthSession:
+    session_id = payload.get("id")
+    user_id = payload.get("user_id")
+    provider = payload.get("provider")
+    expires_at = _optional_datetime(payload.get("expires_at"))
+    is_active = payload.get("is_active")
+    is_current = payload.get("is_current")
+    if (
+        not isinstance(session_id, str)
+        or not isinstance(user_id, str)
+        or not isinstance(provider, str)
+        or expires_at is None
+        or not isinstance(is_active, bool)
+        or not isinstance(is_current, bool)
+    ):
+        raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+    return AuthSession(
+        id=session_id,
+        user_id=user_id,
+        provider=provider,
+        expires_at=expires_at,
+        is_active=is_active,
+        is_current=is_current,
+        user_agent=_optional_text(payload.get("user_agent")),
+        ip_address=_optional_text(payload.get("ip_address")),
+        last_ip_address=_optional_text(payload.get("last_ip_address")),
+        last_activity_at=_optional_datetime(payload.get("last_activity_at")),
+        session_started_at=_optional_datetime(payload.get("session_started_at")),
+        created_at=_optional_datetime(payload.get("created_at")),
+        updated_at=_optional_datetime(payload.get("updated_at")),
+    )
 
 
 def _user(payload: Mapping[str, Any]) -> User:
@@ -259,6 +350,325 @@ class Auth:
     ) -> Callable[[], None]:
         """Observe committed auth state and return an idempotent unsubscribe."""
         return self._client._subscribe_auth(listener)
+
+    def sign_up_anonymous(
+        self,
+        *,
+        user_metadata: dict[str, JSONValue] | None = None,
+    ) -> Session:
+        """Create an anonymous user and replace client-owned auth state."""
+        response = invoke(
+            self._client._transport.auth_signup_anonymous,
+            authorization=self._client._anon_token(),
+            user_metadata=user_metadata,
+        )
+        session, user = _session_and_user(_mapping(response_payload(response, 201)))
+        self._client._commit_auth(session, user)
+        return session
+
+    def convert_anonymous(
+        self,
+        *,
+        email: str,
+        password: str,
+        user_metadata: dict[str, JSONValue] | None = None,
+    ) -> User:
+        """Convert the current anonymous user to an email account."""
+        payload = _mapping(
+            self._authenticated_payload(
+                self._client._transport.auth_convert_anonymous,
+                expected_status=200,
+                email=email,
+                password=password,
+                user_metadata=user_metadata,
+            )
+        )
+        user = _user(_mapping(payload.get("user")))
+        self._client._set_user(user)
+        return user
+
+    def confirm_email(self, *, token: str) -> MessageResult:
+        """Confirm an email address with its one-time token."""
+        response = invoke(
+            self._client._transport.auth_confirm_email,
+            authorization=self._client._anon_token(),
+            token=token,
+        )
+        return _message(_mapping(response_payload(response, 200)))
+
+    def resend_confirmation(self, *, email: str) -> MessageResult:
+        """Request another email-confirmation message."""
+        response = invoke(
+            self._client._transport.auth_resend_confirmation,
+            authorization=self._client._anon_token(),
+            email=email,
+        )
+        return _message(_mapping(response_payload(response, 200)))
+
+    def forgot_password(self, *, email: str) -> MessageResult:
+        """Request a password-reset message."""
+        response = invoke(
+            self._client._transport.auth_forgot_password,
+            authorization=self._client._anon_token(),
+            email=email,
+        )
+        return _message(_mapping(response_payload(response, 200)))
+
+    def reset_password(self, *, token: str, new_password: str) -> MessageResult:
+        """Reset a password with its one-time recovery token."""
+        response = invoke(
+            self._client._transport.auth_reset_password,
+            authorization=self._client._anon_token(),
+            token=token,
+            new_password=new_password,
+        )
+        return _message(_mapping(response_payload(response, 200)))
+
+    def request_email_change(self, *, new_email: str) -> EmailChangeResult:
+        """Request a change to the current user's email address."""
+        payload = _mapping(
+            self._authenticated_payload(
+                self._client._transport.auth_request_email_change,
+                expected_status=200,
+                new_email=new_email,
+            )
+        )
+        message = payload.get("message")
+        response_email = payload.get("new_email")
+        if not isinstance(message, str) or not isinstance(response_email, str):
+            raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+        return EmailChangeResult(
+            message=message,
+            new_email=response_email,
+            email_change_token=_optional_text(payload.get("email_change_token")),
+        )
+
+    def confirm_email_change(self, *, token: str) -> MessageResult:
+        """Confirm a pending email change."""
+        payload = self._authenticated_payload(
+            self._client._transport.auth_confirm_email_change,
+            expected_status=200,
+            email_change_token=token,
+        )
+        return _message(_mapping(payload))
+
+    def cancel_email_change(self) -> MessageResult:
+        """Cancel the current user's pending email change."""
+        payload = self._authenticated_payload(
+            self._client._transport.auth_cancel_email_change,
+            expected_status=200,
+        )
+        return _message(_mapping(payload))
+
+    def get_hosted_auth_url(
+        self,
+        *,
+        project_id: str,
+        action: Literal["login", "signup", "forgot-password"] | None = None,
+    ) -> AuthorizationRequest:
+        """Build a hosted-auth URL without navigating a browser."""
+        state = token_urlsafe(32)
+        query = {"anon_key": self._client._anon_token()}
+        if action is not None:
+            query["action"] = action
+        query["state"] = state
+        url = (
+            f"{self._client._api_url}/projects/{quote(project_id, safe='')}/auth/hosted"
+            f"?{urlencode(query)}"
+        )
+        return AuthorizationRequest(authorization_url=url, state=state)
+
+    def get_oauth_authorization_url(
+        self,
+        *,
+        provider: OAuthProviderName,
+        redirect_url: str,
+    ) -> AuthorizationRequest:
+        """Start an OAuth flow and return its provider authorization URL."""
+        validated_provider = _provider(provider)
+        state = token_urlsafe(32)
+        response = invoke(
+            self._client._transport.auth_oauth_authorize,
+            authorization=self._client._anon_token(),
+            provider=validated_provider,
+            redirect_url=redirect_url,
+            state=state,
+        )
+        response_payload(response, 302)
+        authorization_url = self._response_header(response, "Location")
+        if authorization_url is None:
+            raise AuthenticationError(_MISSING_AUTHORIZATION_URL)
+        return AuthorizationRequest(
+            authorization_url=authorization_url,
+            state=state,
+        )
+
+    def exchange_oauth_code(
+        self,
+        *,
+        code: str,
+        redirect_url: str,
+        state: str,
+        expected_state: str,
+    ) -> Session:
+        """Validate caller state and exchange an OAuth code for a session."""
+        if not compare_digest(state, expected_state):
+            raise ValidationError(_INVALID_OAUTH_STATE)
+        response = invoke(
+            self._client._transport.auth_oauth_exchange,
+            authorization=self._client._anon_token(),
+            code=code,
+            redirect_url=redirect_url,
+        )
+        session, user = _session_and_user(_mapping(response_payload(response, 200)))
+        self._client._commit_auth(session, user)
+        return session
+
+    def link_oauth_provider(
+        self,
+        *,
+        provider: OAuthProviderName,
+        redirect_url: str,
+    ) -> AuthorizationRequest:
+        """Start a flow that links an OAuth provider to the current user."""
+        validated_provider = _provider(provider)
+        state = token_urlsafe(32)
+        payload = _mapping(
+            self._authenticated_payload(
+                self._client._transport.auth_link_oauth_provider,
+                expected_status=200,
+                provider=validated_provider,
+                redirect_url=redirect_url,
+                state=state,
+            )
+        )
+        authorization_url = payload.get("authorization_url")
+        if not isinstance(authorization_url, str):
+            raise AuthenticationError(_MISSING_AUTHORIZATION_URL)
+        return AuthorizationRequest(
+            authorization_url=authorization_url,
+            state=state,
+        )
+
+    def unlink_oauth_provider(self, *, provider: OAuthProviderName) -> None:
+        """Unlink an OAuth provider from the current user."""
+        self._authenticated_payload(
+            self._client._transport.auth_unlink_oauth_provider,
+            expected_status=204,
+            provider=_provider(provider),
+        )
+
+    def get_linked_oauth_providers(self) -> tuple[OAuthProvider, ...]:
+        """Return OAuth providers linked to the current user."""
+        payload = _mapping(
+            self._authenticated_payload(
+                self._client._transport.auth_list_oauth_providers,
+                expected_status=200,
+            )
+        )
+        providers_value = payload.get("providers")
+        if not isinstance(providers_value, list):
+            raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+        providers = cast("list[object]", providers_value)
+        return tuple(
+            OAuthProvider(
+                provider=_provider(str(provider_payload.get("provider"))),
+                linked_at=_optional_datetime(provider_payload.get("linked_at")),
+                updated_at=_optional_datetime(provider_payload.get("updated_at")),
+            )
+            for provider_payload in (_mapping(item) for item in providers)
+        )
+
+    def refresh_oauth_token(
+        self,
+        *,
+        provider: OAuthProviderName,
+    ) -> OAuthTokenResult:
+        """Refresh the stored access token for an OAuth provider."""
+        payload = self._authenticated_payload(
+            self._client._transport.refresh_oauth_provider_token,
+            expected_status=200,
+            provider=_provider(provider),
+        )
+        return _oauth_token(_mapping(payload))
+
+    def get_oauth_provider_token(
+        self,
+        *,
+        provider: OAuthProviderName,
+    ) -> OAuthTokenResult:
+        """Get metadata for the current OAuth provider token."""
+        payload = self._authenticated_payload(
+            self._client._transport.get_oauth_provider_token,
+            expected_status=200,
+            provider=_provider(provider),
+        )
+        return _oauth_token(_mapping(payload))
+
+    def call_oauth_api(
+        self,
+        *,
+        provider: OAuthProviderName,
+        endpoint: str,
+        method: Literal["GET", "POST"] = "GET",
+        body: dict[str, JSONValue] | None = None,
+    ) -> JSONValue:
+        """Call a provider API through Volcano's fixed-host proxy."""
+        payload = self._authenticated_payload(
+            self._client._transport.call_oauth_provider_api,
+            expected_status=200,
+            provider=_provider(provider),
+            endpoint=endpoint,
+            method=method,
+            body=body,
+        )
+        return _json_value(payload)
+
+    def get_sessions(self, *, page: int = 1, limit: int = 20) -> SessionPage:
+        """Return a page of the current user's device sessions."""
+        payload = _mapping(
+            self._authenticated_payload(
+                self._client._transport.auth_get_my_sessions,
+                expected_status=200,
+                page=page,
+                limit=limit,
+            )
+        )
+        sessions_value = payload.get("sessions", payload.get("data"))
+        if not isinstance(sessions_value, list):
+            raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+        sessions = cast("list[object]", sessions_value)
+        return SessionPage(
+            sessions=tuple(_auth_session(_mapping(item)) for item in sessions),
+            total=_optional_int(payload.get("total")),
+            page=_optional_int(payload.get("page")),
+            limit=_optional_int(payload.get("limit")),
+            total_pages=_optional_int(payload.get("total_pages")),
+        )
+
+    def delete_session(self, *, session_id: str) -> None:
+        """Delete one device session."""
+        self._authenticated_payload(
+            self._client._transport.auth_delete_my_session,
+            expected_status=204,
+            session_id=session_id,
+        )
+
+    def delete_all_other_sessions(self) -> None:
+        """Delete every device session except the current one."""
+        self._authenticated_payload(
+            self._client._transport.auth_delete_all_my_sessions,
+            expected_status=204,
+        )
+
+    @staticmethod
+    def _response_header(response: TransportResponse, name: str) -> str | None:
+        if response.headers is None:
+            return None
+        for key, value in response.headers.items():
+            if key.lower() == name.lower():
+                return value
+        return None
 
     def _authenticated_payload(
         self,

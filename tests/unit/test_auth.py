@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError, dataclass, fields
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -97,6 +97,66 @@ class AuthTransport:
 
     def auth_update_user(self, **kwargs: Any) -> AuthResponse:
         return self._invoke("auth_update_user", kwargs)
+
+    def auth_signup_anonymous(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_signup_anonymous", kwargs)
+
+    def auth_convert_anonymous(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_convert_anonymous", kwargs)
+
+    def auth_confirm_email(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_confirm_email", kwargs)
+
+    def auth_resend_confirmation(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_resend_confirmation", kwargs)
+
+    def auth_forgot_password(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_forgot_password", kwargs)
+
+    def auth_reset_password(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_reset_password", kwargs)
+
+    def auth_request_email_change(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_request_email_change", kwargs)
+
+    def auth_confirm_email_change(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_confirm_email_change", kwargs)
+
+    def auth_cancel_email_change(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_cancel_email_change", kwargs)
+
+    def auth_oauth_authorize(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_oauth_authorize", kwargs)
+
+    def auth_oauth_exchange(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_oauth_exchange", kwargs)
+
+    def auth_link_oauth_provider(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_link_oauth_provider", kwargs)
+
+    def auth_unlink_oauth_provider(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_unlink_oauth_provider", kwargs)
+
+    def auth_list_oauth_providers(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_list_oauth_providers", kwargs)
+
+    def refresh_oauth_provider_token(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("refresh_oauth_provider_token", kwargs)
+
+    def get_oauth_provider_token(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("get_oauth_provider_token", kwargs)
+
+    def call_oauth_provider_api(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("call_oauth_provider_api", kwargs)
+
+    def auth_get_my_sessions(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_get_my_sessions", kwargs)
+
+    def auth_delete_my_session(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_delete_my_session", kwargs)
+
+    def auth_delete_all_my_sessions(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_delete_all_my_sessions", kwargs)
 
 
 def test_public_auth_values_are_frozen_and_slotted() -> None:
@@ -562,3 +622,326 @@ def test_auth_state_listeners_are_immediate_isolated_and_idempotent(
     client._clear_auth()
 
     assert observed == [("first", user), ("second", user)]
+
+
+def test_anonymous_and_email_account_flows_return_public_values() -> None:
+    transport = AuthTransport()
+    transport.queue(
+        "auth_signup_anonymous",
+        AuthResponse(
+            201,
+            _token_payload(
+                access_token="anonymous-access",
+                refresh_token="anonymous-refresh",
+            ),
+        ),
+    )
+    transport.queue(
+        "auth_convert_anonymous",
+        AuthResponse(200, {"user": _user_payload()}),
+    )
+    for operation in (
+        "auth_confirm_email",
+        "auth_resend_confirmation",
+        "auth_forgot_password",
+        "auth_reset_password",
+        "auth_confirm_email_change",
+        "auth_cancel_email_change",
+    ):
+        transport.queue(operation, AuthResponse(200, {"message": "Done"}))
+    transport.queue(
+        "auth_request_email_change",
+        AuthResponse(
+            200,
+            {
+                "message": "Check your email",
+                "new_email": "new@example.com",
+                "email_change_token": "development-token",
+            },
+        ),
+    )
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+
+    anonymous = client.auth.sign_up_anonymous(user_metadata={"display_name": "Guest"})
+    converted = client.auth.convert_anonymous(
+        email="user@example.com",
+        password="secret",
+        user_metadata={"plan": "developer"},
+    )
+    messages = (
+        client.auth.confirm_email(token="confirmation-token"),
+        client.auth.resend_confirmation(email="user@example.com"),
+        client.auth.forgot_password(email="user@example.com"),
+        client.auth.reset_password(
+            token="recovery-token",
+            new_password="new-password",
+        ),
+    )
+    email_change = client.auth.request_email_change(new_email="new@example.com")
+    confirm_change = client.auth.confirm_email_change(token="email-change-token")
+    cancel_change = client.auth.cancel_email_change()
+
+    assert anonymous is not None
+    assert anonymous.access_token == "anonymous-access"
+    assert converted is client.current_user
+    assert all(result == MessageResult(message="Done") for result in messages)
+    assert email_change == EmailChangeResult(
+        message="Check your email",
+        new_email="new@example.com",
+        email_change_token="development-token",
+    )
+    assert "development-token" not in repr(email_change)
+    assert confirm_change == MessageResult(message="Done")
+    assert cancel_change == MessageResult(message="Done")
+    assert transport.calls[:2] == [
+        (
+            "auth_signup_anonymous",
+            {
+                "authorization": "anon-key",
+                "user_metadata": {"display_name": "Guest"},
+            },
+        ),
+        (
+            "auth_convert_anonymous",
+            {
+                "authorization": "anonymous-access",
+                "email": "user@example.com",
+                "password": "secret",
+                "user_metadata": {"plan": "developer"},
+            },
+        ),
+    ]
+
+
+def test_hosted_and_oauth_authorization_urls_bind_caller_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fixed_state(_size: int) -> str:
+        return "fixed-state"
+
+    monkeypatch.setattr("volcano_sdk.auth.token_urlsafe", fixed_state)
+    transport = AuthTransport()
+    transport.queue(
+        "auth_oauth_authorize",
+        AuthResponse(
+            302,
+            headers={"Location": "https://github.com/login/oauth/authorize"},
+        ),
+    )
+    transport.queue(
+        "auth_link_oauth_provider",
+        AuthResponse(
+            200, {"authorization_url": "https://accounts.google.com/o/oauth2"}
+        ),
+    )
+    client = VolcanoClient(
+        api_url="https://api.test.volcano.dev",
+        anon_key="anon key",
+        access_token="access-token",
+        _transport=transport,
+    )
+
+    hosted = client.auth.get_hosted_auth_url(
+        project_id="project/id",
+        action="signup",
+    )
+    oauth = client.auth.get_oauth_authorization_url(
+        provider="github",
+        redirect_url="https://app.example/callback",
+    )
+    linked = client.auth.link_oauth_provider(
+        provider="google",
+        redirect_url="https://app.example/link-callback",
+    )
+
+    assert hosted == AuthorizationRequest(
+        authorization_url=(
+            "https://api.test.volcano.dev/projects/project%2Fid/auth/hosted"
+            "?anon_key=anon+key&action=signup&state=fixed-state"
+        ),
+        state="fixed-state",
+    )
+    assert oauth == AuthorizationRequest(
+        authorization_url="https://github.com/login/oauth/authorize",
+        state="fixed-state",
+    )
+    assert linked == AuthorizationRequest(
+        authorization_url="https://accounts.google.com/o/oauth2",
+        state="fixed-state",
+    )
+    assert transport.calls == [
+        (
+            "auth_oauth_authorize",
+            {
+                "authorization": "anon key",
+                "provider": "github",
+                "redirect_url": "https://app.example/callback",
+                "state": "fixed-state",
+            },
+        ),
+        (
+            "auth_link_oauth_provider",
+            {
+                "authorization": "access-token",
+                "provider": "google",
+                "redirect_url": "https://app.example/link-callback",
+                "state": "fixed-state",
+            },
+        ),
+    ]
+
+
+def test_oauth_exchange_validates_state_before_committing() -> None:
+    transport = AuthTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+
+    with pytest.raises(ValidationError, match="OAuth state does not match"):
+        client.auth.exchange_oauth_code(
+            code="oauth-code",
+            redirect_url="https://app.example/callback",
+            state="callback-state",
+            expected_state="stored-state",
+        )
+
+    with pytest.raises(ValidationError, match="Unsupported OAuth provider"):
+        client.auth.get_oauth_authorization_url(
+            provider=cast("OAuthProviderName", "twitter"),
+            redirect_url="https://app.example/callback",
+        )
+
+    assert transport.calls == []
+
+    transport.queue(
+        "auth_oauth_exchange",
+        AuthResponse(
+            200,
+            _token_payload(
+                access_token="oauth-access",
+                refresh_token="oauth-refresh",
+            ),
+        ),
+    )
+
+    session = client.auth.exchange_oauth_code(
+        code="oauth-code",
+        redirect_url="https://app.example/callback",
+        state="stored-state",
+        expected_state="stored-state",
+    )
+
+    assert session is client.current_session
+    assert client.current_user is not None
+    assert transport.calls == [
+        (
+            "auth_oauth_exchange",
+            {
+                "authorization": "anon-key",
+                "code": "oauth-code",
+                "redirect_url": "https://app.example/callback",
+            },
+        )
+    ]
+
+
+def test_provider_and_device_session_flows_return_public_values() -> None:
+    transport = AuthTransport()
+    transport.queue("auth_unlink_oauth_provider", AuthResponse(204))
+    transport.queue(
+        "auth_list_oauth_providers",
+        AuthResponse(
+            200,
+            {
+                "providers": [
+                    {
+                        "provider": "github",
+                        "linked_at": "2026-08-27T12:00:00Z",
+                        "updated_at": "2026-08-28T12:00:00Z",
+                    }
+                ]
+            },
+        ),
+    )
+    token_payload = {
+        "provider": "github",
+        "expires_in": 3600,
+        "message": "Ready",
+    }
+    transport.queue("refresh_oauth_provider_token", AuthResponse(200, token_payload))
+    transport.queue("get_oauth_provider_token", AuthResponse(200, token_payload))
+    transport.queue(
+        "call_oauth_provider_api",
+        AuthResponse(200, {"login": "octocat", "private": False}),
+    )
+    transport.queue(
+        "auth_get_my_sessions",
+        AuthResponse(
+            200,
+            {
+                "sessions": [
+                    {
+                        "id": "session-123",
+                        "user_id": "user-123",
+                        "provider": "email",
+                        "expires_at": "2026-08-29T12:00:00Z",
+                        "is_active": True,
+                        "is_current": True,
+                    }
+                ],
+                "total": 1,
+                "page": 1,
+                "limit": 20,
+                "total_pages": 1,
+            },
+        ),
+    )
+    transport.queue("auth_delete_my_session", AuthResponse(204))
+    transport.queue("auth_delete_all_my_sessions", AuthResponse(204))
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        refresh_token="refresh-token",
+        _transport=transport,
+    )
+
+    client.auth.unlink_oauth_provider(provider="github")
+    providers = client.auth.get_linked_oauth_providers()
+    refreshed = client.auth.refresh_oauth_token(provider="github")
+    current = client.auth.get_oauth_provider_token(provider="github")
+    provider_data = client.auth.call_oauth_api(
+        provider="github",
+        endpoint="/user",
+    )
+    sessions = client.auth.get_sessions(page=1, limit=20)
+    client.auth.delete_session(session_id="session-123")
+    client.auth.delete_all_other_sessions()
+
+    assert providers == (
+        OAuthProvider(
+            provider="github",
+            linked_at=datetime(2026, 8, 27, 12, tzinfo=UTC),
+            updated_at=datetime(2026, 8, 28, 12, tzinfo=UTC),
+        ),
+    )
+    assert refreshed == OAuthTokenResult(
+        provider="github",
+        expires_in=3600,
+        message="Ready",
+    )
+    assert current == refreshed
+    assert provider_data == {"login": "octocat", "private": False}
+    assert sessions == SessionPage(
+        sessions=(
+            AuthSession(
+                id="session-123",
+                user_id="user-123",
+                provider="email",
+                expires_at=datetime(2026, 8, 29, 12, tzinfo=UTC),
+                is_active=True,
+                is_current=True,
+            ),
+        ),
+        total=1,
+        page=1,
+        limit=20,
+        total_pages=1,
+    )
