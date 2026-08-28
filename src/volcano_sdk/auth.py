@@ -7,6 +7,7 @@ import json
 from base64 import urlsafe_b64decode
 from collections.abc import Generator, Mapping
 from contextlib import contextmanager, suppress
+from dataclasses import replace
 from datetime import datetime
 from hmac import compare_digest
 from secrets import token_urlsafe
@@ -23,11 +24,16 @@ from .models import (
     AuthMethodType,
     AuthorizationRequest,
     AuthSession,
+    DeviceAuthorization,
+    DeviceVerification,
+    DeviceVerificationAction,
     EmailChangeResult,
     MessageResult,
     OAuthProvider,
     OAuthProviderName,
     OAuthTokenResult,
+    PasswordPolicy,
+    PlatformToken,
     Session,
     SessionListOptions,
     SessionPage,
@@ -50,9 +56,11 @@ _MISSING_AUTHORIZATION_URL = "Authentication response is missing authorization U
 _INVALID_SESSION_ID = "session_id must be a valid UUID"
 _INVALID_IDENTITY_ID = "identity_id must be a valid UUID"
 _INVALID_METHOD_ID = "method_id must be a valid UUID"
+_INVALID_DEVICE_ACTION = "action must be approve or deny"
 _NO_ACTIVE_SESSION = "No active session"
 _SUPPORTED_OAUTH_PROVIDERS = frozenset({"google", "github", "microsoft", "apple"})
 _SUPPORTED_AUTH_METHODS = frozenset({"password", "oauth", "anonymous"})
+_SUPPORTED_DEVICE_ACTIONS = frozenset({"approve", "deny"})
 
 
 def _token_session_id(access_token: str) -> str | None:
@@ -239,6 +247,13 @@ def _required_bool(payload: Mapping[str, Any], key: str) -> bool:
     return value
 
 
+def _required_int(payload: Mapping[str, Any], key: str) -> int:
+    value = payload.get(key)
+    if type(value) is not int:
+        raise AuthenticationError(_INVALID_AUTH_RESPONSE)
+    return value
+
+
 def _required_datetime(payload: Mapping[str, Any], key: str) -> datetime:
     value = _optional_datetime(payload.get(key))
     if value is None:
@@ -270,6 +285,48 @@ def _auth_method(payload: Mapping[str, Any]) -> AuthMethod:
         last_used_at=_optional_datetime(payload.get("last_used_at")),
         created_at=_required_datetime(payload, "created_at"),
         updated_at=_required_datetime(payload, "updated_at"),
+    )
+
+
+def _password_policy(payload: Mapping[str, Any]) -> PasswordPolicy:
+    return PasswordPolicy(
+        effective_min_length=_required_int(payload, "effective_min_length"),
+        min_configurable_length=_required_int(payload, "min_configurable_length"),
+        max_length=_required_int(payload, "max_length"),
+        require_uppercase=_required_bool(payload, "require_uppercase"),
+        require_lowercase=_required_bool(payload, "require_lowercase"),
+        require_numbers=_required_bool(payload, "require_numbers"),
+        require_special_chars=_required_bool(payload, "require_special_chars"),
+        compromised_passwords_rejected=_required_bool(
+            payload, "compromised_passwords_rejected"
+        ),
+    )
+
+
+def _device_authorization(payload: Mapping[str, Any]) -> DeviceAuthorization:
+    return DeviceAuthorization(
+        device_code=_required_text(payload, "device_code"),
+        user_code=_required_text(payload, "user_code"),
+        verification_uri=_required_text(payload, "verification_uri"),
+        verification_uri_complete=_required_text(payload, "verification_uri_complete"),
+        expires_in=_required_int(payload, "expires_in"),
+        interval=_required_int(payload, "interval"),
+    )
+
+
+def _device_verification(payload: Mapping[str, Any]) -> DeviceVerification:
+    return DeviceVerification(
+        success=_required_bool(payload, "success"),
+        status=_required_text(payload, "status"),
+    )
+
+
+def _platform_token(payload: Mapping[str, Any]) -> PlatformToken:
+    return PlatformToken(
+        token=_required_text(payload, "token"),
+        user_id=_required_text(payload, "user_id"),
+        token_id=_required_text(payload, "token_id"),
+        expires_at=_required_datetime(payload, "expires_at"),
     )
 
 
@@ -369,6 +426,61 @@ class Auth:
             confirmation_required=confirmation_required,
             message=message,
         )
+
+    def get_password_policy(self) -> PasswordPolicy:
+        """Return the backend-enforced password policy."""
+        response = invoke(
+            self._client._transport.auth_get_password_policy,
+            authorization=self._client._anon_token(),
+        )
+        return _password_policy(_mapping(response_payload(response, 200)))
+
+    def start_device_authorization(self, *, client_id: str) -> DeviceAuthorization:
+        """Start an RFC 8628 device authorization."""
+        response = invoke(
+            self._client._transport.auth_device_authorize,
+            authorization=self._client._anon_token(),
+            client_id=client_id,
+        )
+        return _device_authorization(_mapping(response_payload(response, 200)))
+
+    def poll_device_token(self, *, client_id: str, device_code: str) -> Session:
+        """Poll once for an approved device token and commit the session."""
+        response = invoke(
+            self._client._transport.auth_device_token,
+            authorization=self._client._anon_token(),
+            client_id=client_id,
+            device_code=device_code,
+        )
+        session, user = _session_and_user(_mapping(response_payload(response, 200)))
+        self._replace_auth(session, user)
+        return session
+
+    def verify_device(
+        self,
+        *,
+        user_code: str,
+        action: DeviceVerificationAction = "approve",
+    ) -> DeviceVerification:
+        """Approve or deny a pending device authorization."""
+        if action not in _SUPPORTED_DEVICE_ACTIONS:
+            raise ValidationError(_INVALID_DEVICE_ACTION)
+        payload = self._authenticated_payload(
+            self._client._transport.auth_device_verify,
+            expected_status=200,
+            user_code=user_code,
+            action=action,
+        )
+        return _device_verification(_mapping(payload))
+
+    def exchange_platform_token(self, *, client_id: str) -> PlatformToken:
+        """Issue a short-lived platform token for another client."""
+        payload = self._authenticated_payload(
+            self._client._transport.auth_platform_exchange,
+            expected_status=200,
+            client_id=client_id,
+        )
+        return _platform_token(_mapping(payload))
 
     def sign_in(self, *, email: str, password: str) -> Session:
         """Sign in a user and replace client-owned auth state."""
@@ -837,6 +949,9 @@ class Auth:
             method_id=normalized_method_id,
         )
         method = _auth_method(_mapping(payload))
+        current_user = self._client.current_user
+        if current_user is not None:
+            self._client._set_user(replace(current_user, email=method.email))
         self._refresh_user_best_effort()
         return method
 

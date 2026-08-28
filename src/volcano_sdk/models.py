@@ -23,6 +23,7 @@ JSONValue: TypeAlias = (
 )
 OAuthProviderName: TypeAlias = Literal["google", "github", "microsoft", "apple"]
 AuthMethodType: TypeAlias = Literal["password", "oauth", "anonymous"]
+DeviceVerificationAction: TypeAlias = Literal["approve", "deny"]
 
 
 class SessionListOptions(TypedDict, total=False):
@@ -124,6 +125,50 @@ class AuthorizationRequest:
 
     authorization_url: str = field(repr=False)
     state: str = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class PasswordPolicy:
+    """Password rules enforced by the current project."""
+
+    effective_min_length: int
+    min_configurable_length: int
+    max_length: int
+    require_uppercase: bool
+    require_lowercase: bool
+    require_numbers: bool
+    require_special_chars: bool
+    compromised_passwords_rejected: bool
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceAuthorization:
+    """RFC 8628 authorization details shown to a device user."""
+
+    device_code: str = field(repr=False)
+    user_code: str
+    verification_uri: str
+    verification_uri_complete: str = field(repr=False)
+    expires_in: int
+    interval: int
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceVerification:
+    """Result of approving or denying a device authorization."""
+
+    success: bool
+    status: str
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformToken:
+    """Short-lived platform token issued for another client."""
+
+    token: str = field(repr=False)
+    user_id: str
+    token_id: str
+    expires_at: datetime
 
 
 @dataclass(frozen=True, slots=True)

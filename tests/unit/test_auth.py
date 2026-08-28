@@ -15,11 +15,15 @@ from volcano_sdk import (
     AuthMethod,
     AuthorizationRequest,
     AuthSession,
+    DeviceAuthorization,
+    DeviceVerification,
     EmailChangeResult,
     MessageResult,
     OAuthProvider,
     OAuthProviderName,
     OAuthTokenResult,
+    PasswordPolicy,
+    PlatformToken,
     Session,
     SessionPage,
     SignUpResult,
@@ -114,6 +118,21 @@ class AuthTransport:
 
     def auth_update_user(self, **kwargs: Any) -> AuthResponse:
         return self._invoke("auth_update_user", kwargs)
+
+    def auth_get_password_policy(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_get_password_policy", kwargs)
+
+    def auth_device_authorize(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_device_authorize", kwargs)
+
+    def auth_device_token(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_device_token", kwargs)
+
+    def auth_device_verify(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_device_verify", kwargs)
+
+    def auth_platform_exchange(self, **kwargs: Any) -> AuthResponse:
+        return self._invoke("auth_platform_exchange", kwargs)
 
     def auth_signup_anonymous(self, **kwargs: Any) -> AuthResponse:
         return self._invoke("auth_signup_anonymous", kwargs)
@@ -232,6 +251,31 @@ def test_public_auth_values_are_frozen_and_slotted() -> None:
             authorization_url="https://auth.example/authorize?state=oauth-state",
             state="oauth-state",
         ),
+        PasswordPolicy(
+            effective_min_length=8,
+            min_configurable_length=6,
+            max_length=128,
+            require_uppercase=True,
+            require_lowercase=True,
+            require_numbers=True,
+            require_special_chars=True,
+            compromised_passwords_rejected=True,
+        ),
+        DeviceAuthorization(
+            "device-secret",
+            "ABCD-EFGH",
+            "https://verify.example",
+            "https://verify.example?code=ABCD-EFGH",
+            600,
+            5,
+        ),
+        DeviceVerification(success=True, status="approved"),
+        PlatformToken(
+            token="platform-secret",
+            user_id="user-123",
+            token_id="00000000-0000-4000-8000-000000000001",
+            expires_at=datetime(2026, 8, 28, 13, tzinfo=UTC),
+        ),
         OAuthProvider(
             provider="github",
             linked_at=datetime(2026, 8, 28, tzinfo=UTC),
@@ -300,6 +344,10 @@ def test_public_auth_value_annotations_do_not_expose_generated_models() -> None:
         MessageResult,
         EmailChangeResult,
         AuthorizationRequest,
+        PasswordPolicy,
+        DeviceAuthorization,
+        DeviceVerification,
+        PlatformToken,
         OAuthProvider,
         OAuthTokenResult,
         AuthSession,
@@ -325,11 +373,111 @@ def test_secret_auth_fields_are_absent_from_repr() -> None:
         authorization_url="https://auth.example/authorize?state=oauth-state",
         state="oauth-state",
     )
+    device = DeviceAuthorization(
+        "device-secret",
+        "ABCD-EFGH",
+        "https://verify.example",
+        "https://verify.example?code=ABCD-EFGH",
+        600,
+        5,
+    )
+    platform = PlatformToken(
+        token="platform-secret",
+        user_id="user-123",
+        token_id="token-id",
+        expires_at=datetime.now(UTC),
+    )
 
     assert "access-token" not in repr(session)
     assert "refresh-token" not in repr(session)
     assert "email-change-token" not in repr(email_change)
     assert "oauth-state" not in repr(authorization)
+    assert "device-secret" not in repr(device)
+    assert "platform-secret" not in repr(platform)
+
+
+def test_password_device_and_platform_auth_flows() -> None:
+    transport = AuthTransport()
+    transport.queue(
+        "auth_get_password_policy",
+        AuthResponse(
+            200,
+            {
+                "effective_min_length": 12,
+                "min_configurable_length": 8,
+                "max_length": 128,
+                "require_uppercase": True,
+                "require_lowercase": True,
+                "require_numbers": True,
+                "require_special_chars": True,
+                "compromised_passwords_rejected": True,
+            },
+        ),
+    )
+    transport.queue(
+        "auth_device_authorize",
+        AuthResponse(
+            200,
+            {
+                "device_code": "device-secret",
+                "user_code": "ABCD-EFGH",
+                "verification_uri": "https://verify.example",
+                "verification_uri_complete": "https://verify.example?code=ABCD-EFGH",
+                "expires_in": 600,
+                "interval": 5,
+            },
+        ),
+    )
+    transport.queue(
+        "auth_device_token",
+        AuthResponse(
+            200,
+            _token_payload(
+                access_token="device-access", refresh_token="device-refresh"
+            ),
+        ),
+    )
+    transport.queue(
+        "auth_device_verify", AuthResponse(200, {"success": True, "status": "approved"})
+    )
+    transport.queue(
+        "auth_platform_exchange",
+        AuthResponse(
+            200,
+            {
+                "token": "platform-secret",
+                "user_id": "user-123",
+                "token_id": "00000000-0000-4000-8000-000000000001",
+                "expires_at": "2026-08-28T13:00:00Z",
+            },
+        ),
+    )
+    client = VolcanoClient(
+        anon_key="anon-key", access_token="access-token", _transport=transport
+    )
+
+    policy = client.auth.get_password_policy()
+    authorization = client.auth.start_device_authorization(client_id="volcano-cli")
+    session = client.auth.poll_device_token(
+        client_id="volcano-cli", device_code="device-secret"
+    )
+    verification = client.auth.verify_device(user_code="ABCD-EFGH")
+    platform = client.auth.exchange_platform_token(client_id="volcano-cli")
+
+    assert policy.effective_min_length == 12
+    assert authorization.user_code == "ABCD-EFGH"
+    assert session is client.current_session
+    assert verification == DeviceVerification(success=True, status="approved")
+    assert platform.token_id == "00000000-0000-4000-8000-000000000001"
+
+
+def test_device_verification_rejects_an_unknown_action() -> None:
+    client = VolcanoClient(
+        anon_key="anon-key", access_token="access-token", _transport=AuthTransport()
+    )
+
+    with pytest.raises(ValidationError, match="approve or deny"):
+        client.auth.verify_device(user_code="ABCD-EFGH", action=cast("Any", "ignore"))
 
 
 def test_oauth_provider_name_accepts_the_supported_providers() -> None:
@@ -1340,7 +1488,7 @@ def test_identity_management_returns_public_immutable_values() -> None:
         "type": "oauth",
         "provider": "github",
         "identity_id": identity_payload["id"],
-        "email": identity_payload["email"],
+        "email": "primary@example.com",
         "is_primary": True,
         "last_used_at": "2026-08-28T12:00:00Z",
         "created_at": "2026-08-27T12:00:00Z",
@@ -1357,7 +1505,7 @@ def test_identity_management_returns_public_immutable_values() -> None:
     transport.queue("auth_promote_method", AuthResponse(200, method_payload))
     transport.queue(
         "auth_get_user",
-        AuthResponse(200, {"user": _user_payload(email="primary@example.com")}),
+        AuthResponse(503, {"error": "Temporarily unavailable"}),
     )
     transport.queue("auth_unlink_identity", AuthResponse(204))
     client = VolcanoClient(
@@ -1365,6 +1513,7 @@ def test_identity_management_returns_public_immutable_values() -> None:
         access_token="access-token",
         _transport=transport,
     )
+    client._set_user(User(id="user-123", email="previous@example.com"))
 
     identities = client.auth.list_identities()
     methods = client.auth.list_methods()
@@ -1388,7 +1537,7 @@ def test_identity_management_returns_public_immutable_values() -> None:
         type="oauth",
         provider="github",
         identity_id=identity_id,
-        email="user@example.com",
+        email="primary@example.com",
         is_primary=True,
         last_used_at=datetime(2026, 8, 28, 12, tzinfo=UTC),
         created_at=datetime(2026, 8, 27, 12, tzinfo=UTC),

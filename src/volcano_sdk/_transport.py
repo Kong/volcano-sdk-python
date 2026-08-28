@@ -23,6 +23,7 @@ from ._generated.api.authentication import (
     auth_delete_my_session,
     auth_forgot_password,
     auth_get_my_sessions,
+    auth_get_password_policy,
     auth_get_user,
     auth_list_identities,
     auth_list_methods,
@@ -41,10 +42,14 @@ from ._generated.api.authentication import (
 from ._generated.api.database_queries import query_database_select
 from ._generated.api.locks import acquire_project_lock, release_project_lock
 from ._generated.api.o_auth_authentication import (
+    auth_device_authorize,
+    auth_device_token,
+    auth_device_verify,
     auth_link_o_auth_provider,
     auth_list_o_auth_providers,
     auth_o_auth_authorize,
     auth_o_auth_exchange,
+    auth_platform_exchange,
     auth_unlink_o_auth_provider,
     get_o_auth_provider_token,
     refresh_o_auth_provider_token,
@@ -59,9 +64,13 @@ from ._generated.models.auth_confirm_email_change_body import (
     AuthConfirmEmailChangeBody,
 )
 from ._generated.models.auth_convert_anonymous_body import AuthConvertAnonymousBody
+from ._generated.models.auth_device_authorize_body import AuthDeviceAuthorizeBody
+from ._generated.models.auth_device_token_body import AuthDeviceTokenBody
+from ._generated.models.auth_device_verify_body import AuthDeviceVerifyBody
 from ._generated.models.auth_forgot_password_body import AuthForgotPasswordBody
 from ._generated.models.auth_logout_body import AuthLogoutBody
 from ._generated.models.auth_o_auth_exchange_body import AuthOAuthExchangeBody
+from ._generated.models.auth_platform_exchange_body import AuthPlatformExchangeBody
 from ._generated.models.auth_refresh_body import AuthRefreshBody
 from ._generated.models.auth_request_email_change_body import (
     AuthRequestEmailChangeBody,
@@ -94,7 +103,12 @@ from .errors import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from .models import JSONValue, OAuthProviderName, SessionListOptions
+    from .models import (
+        DeviceVerificationAction,
+        JSONValue,
+        OAuthProviderName,
+        SessionListOptions,
+    )
 
 
 def _mutable_json(value: JSONValue) -> JSONValue:
@@ -145,6 +159,42 @@ class _GeneratedTransportResponse:
 
 
 class Transport(Protocol):
+    def auth_get_password_policy(
+        self,
+        *,
+        authorization: str,
+    ) -> TransportResponse: ...
+
+    def auth_device_authorize(
+        self,
+        *,
+        authorization: str,
+        client_id: str,
+    ) -> TransportResponse: ...
+
+    def auth_device_token(
+        self,
+        *,
+        authorization: str,
+        client_id: str,
+        device_code: str,
+    ) -> TransportResponse: ...
+
+    def auth_device_verify(
+        self,
+        *,
+        authorization: str,
+        user_code: str,
+        action: DeviceVerificationAction,
+    ) -> TransportResponse: ...
+
+    def auth_platform_exchange(
+        self,
+        *,
+        authorization: str,
+        client_id: str,
+    ) -> TransportResponse: ...
+
     def auth_signup(
         self,
         *,
@@ -518,6 +568,73 @@ class GeneratedTransport:
             response = auth_signin.sync_detailed(
                 client=client,
                 body=AuthSigninBody(email=email, password=password),
+            )
+        return self._response(response)
+
+    def auth_get_password_policy(
+        self,
+        *,
+        authorization: str,
+    ) -> TransportResponse:
+        with self._auth_client(authorization) as client:
+            response = auth_get_password_policy.sync_detailed(client=client)
+        return self._response(response)
+
+    def auth_device_authorize(
+        self,
+        *,
+        authorization: str,
+        client_id: str,
+    ) -> TransportResponse:
+        with self._auth_client(authorization) as client:
+            response = auth_device_authorize.sync_detailed(
+                client=client,
+                body=AuthDeviceAuthorizeBody(client_id=client_id),
+            )
+        return self._response(response)
+
+    def auth_device_token(
+        self,
+        *,
+        authorization: str,
+        client_id: str,
+        device_code: str,
+    ) -> TransportResponse:
+        with self._auth_client(authorization) as client:
+            response = auth_device_token.sync_detailed(
+                client=client,
+                body=AuthDeviceTokenBody(
+                    grant_type="urn:ietf:params:oauth:grant-type:device_code",
+                    device_code=device_code,
+                    client_id=client_id,
+                ),
+            )
+        return self._response(response)
+
+    def auth_device_verify(
+        self,
+        *,
+        authorization: str,
+        user_code: str,
+        action: DeviceVerificationAction,
+    ) -> TransportResponse:
+        with self._auth_client(authorization) as client:
+            response = auth_device_verify.sync_detailed(
+                client=client,
+                body=AuthDeviceVerifyBody(user_code=user_code, action=action),
+            )
+        return self._response(response)
+
+    def auth_platform_exchange(
+        self,
+        *,
+        authorization: str,
+        client_id: str,
+    ) -> TransportResponse:
+        with self._auth_client(authorization) as client:
+            response = auth_platform_exchange.sync_detailed(
+                client=client,
+                body=AuthPlatformExchangeBody(client_id=client_id),
             )
         return self._response(response)
 

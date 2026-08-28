@@ -552,3 +552,39 @@ def test_generated_transport_calls_device_session_operations() -> None:
         "Bearer access-token",
         "Bearer access-token",
     ]
+
+
+def test_generated_transport_calls_extended_auth_operations() -> None:
+    transport, requests = _recording_transport()
+
+    transport.auth_get_password_policy(authorization="anon-key")
+    transport.auth_device_authorize(authorization="anon-key", client_id="volcano-cli")
+    transport.auth_device_token(
+        authorization="anon-key", client_id="volcano-cli", device_code="device-secret"
+    )
+    transport.auth_device_verify(
+        authorization="access-token", user_code="ABCD-EFGH", action="approve"
+    )
+    transport.auth_platform_exchange(
+        authorization="access-token", client_id="volcano-cli"
+    )
+
+    assert [(request.method, request.url.path) for request in requests] == [
+        ("GET", "/auth/password-policy"),
+        ("POST", "/auth/device/authorize"),
+        ("POST", "/auth/device/token"),
+        ("POST", "/auth/device/verify"),
+        ("POST", "/auth/platform/exchange"),
+    ]
+    assert json.loads(requests[2].content) == {
+        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+        "device_code": "device-secret",
+        "client_id": "volcano-cli",
+    }
+    assert [request.headers["authorization"] for request in requests] == [
+        "Bearer anon-key",
+        "Bearer anon-key",
+        "Bearer anon-key",
+        "Bearer access-token",
+        "Bearer access-token",
+    ]
