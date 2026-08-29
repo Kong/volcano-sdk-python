@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from volcano_sdk import VolcanoClient
+from volcano_sdk import Session, VolcanoClient
 
 
 @dataclass(frozen=True)
@@ -107,3 +107,28 @@ def test_each_request_reads_the_current_credentials() -> None:
         ("acquire", "service-1"),
         ("release", "service-2"),
     ]
+
+
+def test_auth_facade_reads_an_empty_session_without_transport() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    assert client.auth.get_session() is None
+    assert transport.authorizations == []
+
+
+def test_auth_facade_reads_established_immutable_session_without_transport() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+    calls_after_sign_in = list(transport.authorizations)
+
+    current = client.auth.get_session()
+
+    assert current is established
+    assert current == Session(
+        access_token="access-1",
+        refresh_token="refresh-access-1",
+        user_id="user-123",
+    )
+    assert transport.authorizations == calls_after_sign_in

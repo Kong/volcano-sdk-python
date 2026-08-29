@@ -32,6 +32,12 @@ def sign_in(context: Any) -> None:
     )
 
 
+@when("the client reads the current session")
+def read_current_session(context: Any) -> None:
+    world = _world(context)
+    world.record(world.client.auth.get_session)
+
+
 @then("the SDK operation succeeds")
 def operation_succeeds(context: Any) -> None:
     outcome = _world(context).last_outcome
