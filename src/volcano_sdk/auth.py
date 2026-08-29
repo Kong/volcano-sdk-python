@@ -13,6 +13,11 @@ class AuthContext(Protocol):
 
     _transport: Transport
 
+    @property
+    def current_session(self) -> Session | None:
+        """Return the locally held session, if one exists."""
+        ...
+
     def _anon_token(self) -> str: ...
 
     def _set_session(self, session: Session) -> None: ...
@@ -24,6 +29,10 @@ class Auth:
     def __init__(self, client: AuthContext) -> None:
         """Create an authentication facade backed by a client."""
         self._client = client
+
+    def get_session(self) -> Session | None:
+        """Return the immutable locally held session without validating it."""
+        return self._client.current_session
 
     def sign_in(self, *, email: str, password: str) -> Session:
         """Sign in a user and store the returned session."""

@@ -18,6 +18,8 @@ client = VolcanoClient(
 )
 
 session = client.auth.sign_in(email="user@example.com", password="secret")
+current_session = client.auth.get_session()
+assert current_session == session
 
 rows = client.database("main").from_("items").select("*").eq("slug", "a").execute()
 
@@ -29,6 +31,8 @@ assert downloaded == b"hello"
 lease = client.locks.acquire("build", ttl=30)
 client.locks.release("build", lease)
 ```
+
+`get_session()` reads immutable local state. It does not refresh or validate the token.
 
 Realtime is async. Channels wrap `centrifuge-python`; the underlying client and
 subscription objects are not part of the public API.
