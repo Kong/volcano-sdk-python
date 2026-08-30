@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).parents[2]
 FEATURE_SHA256 = {
-    "auth.feature": "681041f0e40df20a8decdf733fdadcc3f6486bc0767d9db2ab81cf8f70bdd5eb",
+    "auth.feature": "f776b250138013fd7a9040781a8d30bb5d7784a35573abbc2c1e010d515e251d",
     "database.feature": (
         "4685b29357a621068b25984ff0de29cd4c504eebe5cfb597f0b999e29878a668"
     ),
@@ -78,7 +78,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the current session exposes access and refresh tokens",
         "the current session is empty",
         "the downloaded bytes equal the uploaded bytes",
-        "the refreshed session replaces the previous credentials",
+        "the refreshed session becomes current",
         "the released lease is no longer held",
         "the SDK operation fails with an authentication error",
         "the stored object path equals the contract path",
