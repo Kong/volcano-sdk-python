@@ -23,7 +23,7 @@ from volcano_sdk import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from volcano_sdk.models import LockLease
+    from volcano_sdk.models import LockLease, Session
     from volcano_sdk.realtime import Channel
 
 HTTP_NOT_FOUND = 404
@@ -114,6 +114,7 @@ class ContractWorld:
             "value": f"volcano-sdk-contract-{suffix}",
         }
         self.last_outcome: Outcome | None = None
+        self.previous_session: Session | None = None
         self.subscriber: Channel | None = None
         self.publisher: Channel | None = None
         self.realtime_clients: list[VolcanoClient] = []
