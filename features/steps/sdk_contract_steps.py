@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 from behave import given, then, when
@@ -12,6 +13,8 @@ from contract_support import (
 )
 
 from volcano_sdk import VolcanoClient
+
+ACCESS_TOKEN_CLOCK_TICK_SECONDS = 1.1
 
 
 def _world(context: Any) -> ContractWorld:
@@ -58,6 +61,7 @@ def refresh_current_session(context: Any) -> None:
     world = _world(context)
     world.previous_session = world.client.auth.get_session()
     assert world.previous_session is not None
+    time.sleep(ACCESS_TOKEN_CLOCK_TICK_SECONDS)
     world.record(world.client.auth.refresh_session)
 
 
@@ -66,6 +70,7 @@ def refreshed_session_becomes_current(context: Any) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value is not world.previous_session
+    assert world.last_outcome.value.access_token != world.previous_session.access_token
     assert world.client.auth.get_session() is world.last_outcome.value
 
 
