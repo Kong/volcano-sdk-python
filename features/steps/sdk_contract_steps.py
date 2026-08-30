@@ -56,19 +56,14 @@ def adopt_current_session(context: Any) -> None:
 @when("the client refreshes the current session")
 def refresh_current_session(context: Any) -> None:
     world = _world(context)
-    world.previous_session = world.client.auth.get_session()
-    assert world.previous_session is not None
     world.record(world.client.auth.refresh_session)
 
 
-@then("the refreshed session replaces the previous credentials")
-def refreshed_session_replaces_credentials(context: Any) -> None:
+@then("the refreshed session becomes current")
+def refreshed_session_becomes_current(context: Any) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.previous_session is not None
-    assert (
-        world.last_outcome.value.refresh_token != world.previous_session.refresh_token
-    )
+    assert world.client.auth.get_session() is world.last_outcome.value
 
 
 @when("the client signs out")

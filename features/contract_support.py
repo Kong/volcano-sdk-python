@@ -114,7 +114,6 @@ class ContractWorld:
             "value": f"volcano-sdk-contract-{suffix}",
         }
         self.last_outcome: Outcome | None = None
-        self.previous_session: Session | None = None
         self.signed_out_session: Session | None = None
         self.subscriber: Channel | None = None
         self.publisher: Channel | None = None
