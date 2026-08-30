@@ -83,7 +83,8 @@ def sync_detailed(
     """ Create a new serverless PostgreSQL database
 
      Creates a serverless PostgreSQL database in the project.
-    Each project can contain up to 100 databases. Requests over this cap return 403.
+    Each project can hold 1 database on Free and up to 10,000 on Pro.
+    Requests over the plan's cap return 403.
 
     Args:
         id (UUID):
@@ -125,7 +126,8 @@ def sync(
     """ Create a new serverless PostgreSQL database
 
      Creates a serverless PostgreSQL database in the project.
-    Each project can contain up to 100 databases. Requests over this cap return 403.
+    Each project can hold 1 database on Free and up to 10,000 on Pro.
+    Requests over the plan's cap return 403.
 
     Args:
         id (UUID):
@@ -162,7 +164,8 @@ async def asyncio_detailed(
     """ Create a new serverless PostgreSQL database
 
      Creates a serverless PostgreSQL database in the project.
-    Each project can contain up to 100 databases. Requests over this cap return 403.
+    Each project can hold 1 database on Free and up to 10,000 on Pro.
+    Requests over the plan's cap return 403.
 
     Args:
         id (UUID):
@@ -204,7 +207,8 @@ async def asyncio(
     """ Create a new serverless PostgreSQL database
 
      Creates a serverless PostgreSQL database in the project.
-    Each project can contain up to 100 databases. Requests over this cap return 403.
+    Each project can hold 1 database on Free and up to 10,000 on Pro.
+    Requests over the plan's cap return 403.
 
     Args:
         id (UUID):

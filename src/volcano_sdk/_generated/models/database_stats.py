@@ -28,10 +28,22 @@ T = TypeVar("T", bound="DatabaseStats")
 class DatabaseStats:
     """ 
         Attributes:
-            current_storage_bytes (int): On-disk size right now, in bytes: the database itself plus every
-                branch's divergence from it. This is the figure the storage
-                allowance is enforced against. `branches` breaks it down.
+            current_storage_bytes (int): On-disk size right now, in bytes: the database itself, plus every
+                branch's divergence from it, plus what its backups cost to hold. This
+                is the figure the storage allowance is enforced against. `branches`
+                and `backup_storage_bytes` break it down.
             current_storage_mb (float): `current_storage_bytes` expressed in megabytes.
+            backup_storage_bytes (int): What this database's backups contribute to `current_storage_bytes`.
+
+                A backup taken on request is charged as a full copy of the database
+                as it was at that moment, so two backups of a 2 GB database are 4 GB.
+                A backup schedule is charged its first snapshot in full and each
+                later one only for the storage it adds. Deleting a backup releases
+                its storage immediately.
+
+                Sampled from the provider rather than measured live, so it can lag a
+                change by a few minutes, and a backup taken seconds ago may not be
+                costed yet. Zero on a plan without backups.
             storage_bytes (int): Total storage used in bytes (data + WAL)
             data_written_bytes (int): Total data written in bytes
             data_transfer_bytes (int): Total data transferred in bytes
@@ -47,6 +59,7 @@ class DatabaseStats:
 
     current_storage_bytes: int
     current_storage_mb: float
+    backup_storage_bytes: int
     storage_bytes: int
     data_written_bytes: int
     data_transfer_bytes: int
@@ -66,6 +79,8 @@ class DatabaseStats:
         current_storage_bytes = self.current_storage_bytes
 
         current_storage_mb = self.current_storage_mb
+
+        backup_storage_bytes = self.backup_storage_bytes
 
         storage_bytes = self.storage_bytes
 
@@ -99,6 +114,7 @@ class DatabaseStats:
         field_dict.update({
             "current_storage_bytes": current_storage_bytes,
             "current_storage_mb": current_storage_mb,
+            "backup_storage_bytes": backup_storage_bytes,
             "storage_bytes": storage_bytes,
             "data_written_bytes": data_written_bytes,
             "data_transfer_bytes": data_transfer_bytes,
@@ -123,6 +139,8 @@ class DatabaseStats:
         current_storage_bytes = d.pop("current_storage_bytes")
 
         current_storage_mb = d.pop("current_storage_mb")
+
+        backup_storage_bytes = d.pop("backup_storage_bytes")
 
         storage_bytes = d.pop("storage_bytes")
 
@@ -161,6 +179,7 @@ class DatabaseStats:
         database_stats = cls(
             current_storage_bytes=current_storage_bytes,
             current_storage_mb=current_storage_mb,
+            backup_storage_bytes=backup_storage_bytes,
             storage_bytes=storage_bytes,
             data_written_bytes=data_written_bytes,
             data_transfer_bytes=data_transfer_bytes,

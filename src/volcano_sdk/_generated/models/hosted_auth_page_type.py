@@ -1,8 +1,8 @@
 from typing import Literal
 
-HostedAuthPageType = Literal['login', 'reset-password']
+HostedAuthPageType = Literal['device', 'forgot-password', 'login', 'reset-password', 'signup', 'verify-email']
 
-HOSTED_AUTH_PAGE_TYPE_VALUES: set[HostedAuthPageType] = { 'login', 'reset-password',  }
+HOSTED_AUTH_PAGE_TYPE_VALUES: set[HostedAuthPageType] = { 'device', 'forgot-password', 'login', 'reset-password', 'signup', 'verify-email',  }
 
 def check_hosted_auth_page_type(value: str) -> HostedAuthPageType:
     if value in HOSTED_AUTH_PAGE_TYPE_VALUES:
