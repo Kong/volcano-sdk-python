@@ -8,9 +8,9 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.configure_function_custom_domain_request import ConfigureFunctionCustomDomainRequest
 from ...models.error import Error
-from ...models.function import Function
-from ...models.update_function_request import UpdateFunctionRequest
+from ...models.function_custom_domain_response import FunctionCustomDomainResponse
 from typing import cast
 from uuid import UUID
 
@@ -20,7 +20,7 @@ def _get_kwargs(
     id: UUID,
     function_id: UUID,
     *,
-    body: UpdateFunctionRequest,
+    body: ConfigureFunctionCustomDomainRequest,
 
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
@@ -31,8 +31,8 @@ def _get_kwargs(
     
 
     _kwargs: dict[str, Any] = {
-        "method": "patch",
-        "url": "/projects/{id}/functions/{function_id}".format(id=quote(str(id), safe=""),function_id=quote(str(function_id), safe=""),),
+        "method": "post",
+        "url": "/projects/{id}/functions/{function_id}/domain".format(id=quote(str(id), safe=""),function_id=quote(str(function_id), safe=""),),
     }
 
     _kwargs["json"] = body.to_dict()
@@ -44,13 +44,27 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Error | Function | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Error | FunctionCustomDomainResponse | None:
     if response.status_code == 200:
-        response_200 = Function.from_dict(response.json())
+        response_200 = FunctionCustomDomainResponse.from_dict(response.json())
 
 
 
         return response_200
+
+    if response.status_code == 201:
+        response_201 = FunctionCustomDomainResponse.from_dict(response.json())
+
+
+
+        return response_201
+
+    if response.status_code == 202:
+        response_202 = FunctionCustomDomainResponse.from_dict(response.json())
+
+
+
+        return response_202
 
     if response.status_code == 400:
         response_400 = Error.from_dict(response.json())
@@ -58,6 +72,20 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
         return response_400
+
+    if response.status_code == 401:
+        response_401 = Error.from_dict(response.json())
+
+
+
+        return response_401
+
+    if response.status_code == 403:
+        response_403 = Error.from_dict(response.json())
+
+
+
+        return response_403
 
     if response.status_code == 404:
         response_404 = Error.from_dict(response.json())
@@ -73,13 +101,27 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_409
 
+    if response.status_code == 500:
+        response_500 = Error.from_dict(response.json())
+
+
+
+        return response_500
+
+    if response.status_code == 503:
+        response_503 = Error.from_dict(response.json())
+
+
+
+        return response_503
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | Function]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | FunctionCustomDomainResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -93,26 +135,26 @@ def sync_detailed(
     function_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: UpdateFunctionRequest,
+    body: ConfigureFunctionCustomDomainRequest,
 
-) -> Response[Error | Function]:
-    """ Update function settings
+) -> Response[Error | FunctionCustomDomainResponse]:
+    """ Configure or rotate a function custom domain
 
-     Updates invocation settings without redeploying the function runtime. A function with a
-    custom domain attached or detaching must remain public and in HTTP invocation mode until
-    the domain has been fully detached.
+     PRO capability. The function must be public, active, and use HTTP invocation mode.
+    Configuration and rotation preserve the function's HTTP authentication mode and stored
+    OpenAPI document.
 
     Args:
         id (UUID):
         function_id (UUID):
-        body (UpdateFunctionRequest):
+        body (ConfigureFunctionCustomDomainRequest):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Error | Function]
+        Response[Error | FunctionCustomDomainResponse]
      """
 
 
@@ -134,26 +176,26 @@ def sync(
     function_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: UpdateFunctionRequest,
+    body: ConfigureFunctionCustomDomainRequest,
 
-) -> Error | Function | None:
-    """ Update function settings
+) -> Error | FunctionCustomDomainResponse | None:
+    """ Configure or rotate a function custom domain
 
-     Updates invocation settings without redeploying the function runtime. A function with a
-    custom domain attached or detaching must remain public and in HTTP invocation mode until
-    the domain has been fully detached.
+     PRO capability. The function must be public, active, and use HTTP invocation mode.
+    Configuration and rotation preserve the function's HTTP authentication mode and stored
+    OpenAPI document.
 
     Args:
         id (UUID):
         function_id (UUID):
-        body (UpdateFunctionRequest):
+        body (ConfigureFunctionCustomDomainRequest):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Error | Function
+        Error | FunctionCustomDomainResponse
      """
 
 
@@ -170,26 +212,26 @@ async def asyncio_detailed(
     function_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: UpdateFunctionRequest,
+    body: ConfigureFunctionCustomDomainRequest,
 
-) -> Response[Error | Function]:
-    """ Update function settings
+) -> Response[Error | FunctionCustomDomainResponse]:
+    """ Configure or rotate a function custom domain
 
-     Updates invocation settings without redeploying the function runtime. A function with a
-    custom domain attached or detaching must remain public and in HTTP invocation mode until
-    the domain has been fully detached.
+     PRO capability. The function must be public, active, and use HTTP invocation mode.
+    Configuration and rotation preserve the function's HTTP authentication mode and stored
+    OpenAPI document.
 
     Args:
         id (UUID):
         function_id (UUID):
-        body (UpdateFunctionRequest):
+        body (ConfigureFunctionCustomDomainRequest):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Error | Function]
+        Response[Error | FunctionCustomDomainResponse]
      """
 
 
@@ -211,26 +253,26 @@ async def asyncio(
     function_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: UpdateFunctionRequest,
+    body: ConfigureFunctionCustomDomainRequest,
 
-) -> Error | Function | None:
-    """ Update function settings
+) -> Error | FunctionCustomDomainResponse | None:
+    """ Configure or rotate a function custom domain
 
-     Updates invocation settings without redeploying the function runtime. A function with a
-    custom domain attached or detaching must remain public and in HTTP invocation mode until
-    the domain has been fully detached.
+     PRO capability. The function must be public, active, and use HTTP invocation mode.
+    Configuration and rotation preserve the function's HTTP authentication mode and stored
+    OpenAPI document.
 
     Args:
         id (UUID):
         function_id (UUID):
-        body (UpdateFunctionRequest):
+        body (ConfigureFunctionCustomDomainRequest):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Error | Function
+        Error | FunctionCustomDomainResponse
      """
 
 

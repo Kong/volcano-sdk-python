@@ -13,6 +13,7 @@ from typing import cast
 
 if TYPE_CHECKING:
   from ..models.project_frontend_custom_domain import ProjectFrontendCustomDomain
+  from ..models.project_function_custom_domain import ProjectFunctionCustomDomain
 
 
 
@@ -26,7 +27,7 @@ T = TypeVar("T", bound="PaginatedProjectCustomDomains")
 class PaginatedProjectCustomDomains:
     """ 
         Attributes:
-            data (list[ProjectFrontendCustomDomain]):
+            data (list[ProjectFrontendCustomDomain | ProjectFunctionCustomDomain]):
             page (int): Current page number (1-indexed)
             limit (int): Number of items per page
             total (int): Total number of items across all pages
@@ -34,7 +35,7 @@ class PaginatedProjectCustomDomains:
             next_ (str | Unset): URL path to next page (only present if has_more is true)
      """
 
-    data: list[ProjectFrontendCustomDomain]
+    data: list[ProjectFrontendCustomDomain | ProjectFunctionCustomDomain]
     page: int
     limit: int
     total: int
@@ -48,9 +49,15 @@ class PaginatedProjectCustomDomains:
 
     def to_dict(self) -> dict[str, Any]:
         from ..models.project_frontend_custom_domain import ProjectFrontendCustomDomain
+        from ..models.project_function_custom_domain import ProjectFunctionCustomDomain
         data = []
         for data_item_data in self.data:
-            data_item = data_item_data.to_dict()
+            data_item: dict[str, Any]
+            if isinstance(data_item_data, ProjectFrontendCustomDomain):
+                data_item = data_item_data.to_dict()
+            else:
+                data_item = data_item_data.to_dict()
+
             data.append(data_item)
 
 
@@ -85,13 +92,31 @@ class PaginatedProjectCustomDomains:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.project_frontend_custom_domain import ProjectFrontendCustomDomain
+        from ..models.project_function_custom_domain import ProjectFunctionCustomDomain
         d = dict(src_dict)
         data = []
         _data = d.pop("data")
         for data_item_data in (_data):
-            data_item = ProjectFrontendCustomDomain.from_dict(data_item_data)
+            def _parse_data_item(data: object) -> ProjectFrontendCustomDomain | ProjectFunctionCustomDomain:
+                try:
+                    if not isinstance(data, dict):
+                        raise TypeError()
+                    componentsschemas_project_custom_domain_type_0 = ProjectFrontendCustomDomain.from_dict(data)
 
 
+
+                    return componentsschemas_project_custom_domain_type_0
+                except (TypeError, ValueError, AttributeError, KeyError):
+                    pass
+                if not isinstance(data, dict):
+                    raise TypeError()
+                componentsschemas_project_custom_domain_type_1 = ProjectFunctionCustomDomain.from_dict(data)
+
+
+
+                return componentsschemas_project_custom_domain_type_1
+
+            data_item = _parse_data_item(data_item_data)
 
             data.append(data_item)
 

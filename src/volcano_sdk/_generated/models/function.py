@@ -8,6 +8,10 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.function_http_auth_mode import check_function_http_auth_mode
+from ..models.function_http_auth_mode import FunctionHTTPAuthMode
+from ..models.function_invocation_mode import check_function_invocation_mode
+from ..models.function_invocation_mode import FunctionInvocationMode
 from ..models.function_status import check_function_status
 from ..models.function_status import FunctionStatus
 from ..types import UNSET, Unset
@@ -15,6 +19,8 @@ from typing import cast
 from uuid import UUID
 import datetime
 
+if TYPE_CHECKING:
+  from ..models.function_openapi_spec_type_0 import FunctionOpenapiSpecType0
 
 
 
@@ -35,6 +41,16 @@ class Function:
             is_public (bool): Function visibility for anon-key invocation.
                 - `false` (default): only auth user tokens and service keys can invoke
                 - `true`: anon keys with `functions.invoke` can invoke
+            invocation_mode (FunctionInvocationMode): Invocation contract. `rpc` preserves the existing POST `{payload:
+                ...}` contract;
+                `http` forwards HTTP request semantics to the function runtime. A function with a custom
+                domain attached or detaching cannot switch from `http` to `rpc` until detachment completes.
+            http_auth_mode (FunctionHTTPAuthMode): Authentication applied by the HTTP ingress. `none` is valid only for
+                public
+                HTTP-mode functions and is intended for externally signed webhooks.
+            openapi_spec (FunctionOpenapiSpecType0 | None): Optional OpenAPI 3.0 or 3.1 document describing an HTTP-mode
+                function.
+            has_openapi_spec (bool): Whether OpenAPI metadata is configured; list responses omit the document itself.
             deployed_regions (list[str]): Regions where this function is currently deployed
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
@@ -53,6 +69,10 @@ class Function:
     name: str
     status: FunctionStatus
     is_public: bool
+    invocation_mode: FunctionInvocationMode
+    http_auth_mode: FunctionHTTPAuthMode
+    openapi_spec: FunctionOpenapiSpecType0 | None
+    has_openapi_spec: bool
     deployed_regions: list[str]
     created_at: datetime.datetime
     updated_at: datetime.datetime
@@ -71,6 +91,7 @@ class Function:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.function_openapi_spec_type_0 import FunctionOpenapiSpecType0
         id = str(self.id)
 
         project_id = str(self.project_id)
@@ -80,6 +101,18 @@ class Function:
         status: str = self.status
 
         is_public = self.is_public
+
+        invocation_mode: str = self.invocation_mode
+
+        http_auth_mode: str = self.http_auth_mode
+
+        openapi_spec: dict[str, Any] | None
+        if isinstance(self.openapi_spec, FunctionOpenapiSpecType0):
+            openapi_spec = self.openapi_spec.to_dict()
+        else:
+            openapi_spec = self.openapi_spec
+
+        has_openapi_spec = self.has_openapi_spec
 
         deployed_regions = self.deployed_regions
 
@@ -122,6 +155,10 @@ class Function:
             "name": name,
             "status": status,
             "is_public": is_public,
+            "invocation_mode": invocation_mode,
+            "http_auth_mode": http_auth_mode,
+            "openapi_spec": openapi_spec,
+            "has_openapi_spec": has_openapi_spec,
             "deployed_regions": deployed_regions,
             "created_at": created_at,
             "updated_at": updated_at,
@@ -149,6 +186,7 @@ class Function:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.function_openapi_spec_type_0 import FunctionOpenapiSpecType0
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 
@@ -168,6 +206,36 @@ class Function:
 
 
         is_public = d.pop("is_public")
+
+        invocation_mode = check_function_invocation_mode(d.pop("invocation_mode"))
+
+
+
+
+        http_auth_mode = check_function_http_auth_mode(d.pop("http_auth_mode"))
+
+
+
+
+        def _parse_openapi_spec(data: object) -> FunctionOpenapiSpecType0 | None:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                openapi_spec_type_0 = FunctionOpenapiSpecType0.from_dict(data)
+
+
+
+                return openapi_spec_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(FunctionOpenapiSpecType0 | None, data)
+
+        openapi_spec = _parse_openapi_spec(d.pop("openapi_spec"))
+
+
+        has_openapi_spec = d.pop("has_openapi_spec")
 
         deployed_regions = cast(list[str], d.pop("deployed_regions"))
 
@@ -236,6 +304,10 @@ class Function:
             name=name,
             status=status,
             is_public=is_public,
+            invocation_mode=invocation_mode,
+            http_auth_mode=http_auth_mode,
+            openapi_spec=openapi_spec,
+            has_openapi_spec=has_openapi_spec,
             deployed_regions=deployed_regions,
             created_at=created_at,
             updated_at=updated_at,

@@ -104,6 +104,7 @@ from .call_o_auth_provider_api_response_200 import CallOAuthProviderAPIResponse2
 from .complete_upload_session_response import CompleteUploadSessionResponse
 from .configure_auth_methods_body import ConfigureAuthMethodsBody
 from .configure_auth_methods_body_oauth_providers_item import ConfigureAuthMethodsBodyOauthProvidersItem
+from .configure_function_custom_domain_request import ConfigureFunctionCustomDomainRequest
 from .connect_project_git_request import ConnectProjectGitRequest
 from .create_anon_key_body import CreateAnonKeyBody
 from .create_anon_key_body_permissions_item import CreateAnonKeyBodyPermissionsItem
@@ -205,13 +206,22 @@ from .frontend_usage_daily_entry import FrontendUsageDailyEntry
 from .frontend_usage_data import FrontendUsageData
 from .frontend_usage_history_response import FrontendUsageHistoryResponse
 from .function import Function
+from .function_custom_domain_response import FunctionCustomDomainResponse
+from .function_custom_domain_response_domain_status import FunctionCustomDomainResponseDomainStatus
+from .function_custom_domain_response_tls_mode import FunctionCustomDomainResponseTlsMode
+from .function_custom_domain_response_verification_status import FunctionCustomDomainResponseVerificationStatus
+from .function_custom_domain_tls_config import FunctionCustomDomainTLSConfig
+from .function_custom_domain_tls_config_mode import FunctionCustomDomainTLSConfigMode
 from .function_deployment import FunctionDeployment
 from .function_deployment_deploy_source import FunctionDeploymentDeploySource
 from .function_deployment_operation import FunctionDeploymentOperation
 from .function_deployment_status import FunctionDeploymentStatus
+from .function_http_auth_mode import FunctionHTTPAuthMode
+from .function_invocation_mode import FunctionInvocationMode
 from .function_invocation_request import FunctionInvocationRequest
 from .function_invocation_request_payload import FunctionInvocationRequestPayload
 from .function_invocation_response import FunctionInvocationResponse
+from .function_openapi_spec_type_0 import FunctionOpenapiSpecType0
 from .function_region import FunctionRegion
 from .function_runtime_deployment import FunctionRuntimeDeployment
 from .function_runtime_option import FunctionRuntimeOption
@@ -350,6 +360,7 @@ from .project_config_email_template import ProjectConfigEmailTemplate
 from .project_config_email_templates import ProjectConfigEmailTemplates
 from .project_config_frontend import ProjectConfigFrontend
 from .project_config_function import ProjectConfigFunction
+from .project_config_function_openapi_spec_type_0 import ProjectConfigFunctionOpenapiSpecType0
 from .project_config_hosted_page import ProjectConfigHostedPage
 from .project_config_hosted_pages import ProjectConfigHostedPages
 from .project_config_missing_resource import ProjectConfigMissingResource
@@ -366,6 +377,8 @@ from .project_config_validation_error import ProjectConfigValidationError
 from .project_config_validation_error_response import ProjectConfigValidationErrorResponse
 from .project_config_variable import ProjectConfigVariable
 from .project_config_version import ProjectConfigVersion
+from .project_custom_domain_target import ProjectCustomDomainTarget
+from .project_custom_domain_target_type import ProjectCustomDomainTargetType
 from .project_deployment import ProjectDeployment
 from .project_deployment_deploy_source import ProjectDeploymentDeploySource
 from .project_deployment_operation import ProjectDeploymentOperation
@@ -375,6 +388,10 @@ from .project_deployment_status import ProjectDeploymentStatus
 from .project_deployment_summary import ProjectDeploymentSummary
 from .project_frontend_custom_domain import ProjectFrontendCustomDomain
 from .project_frontend_custom_domain_frontend import ProjectFrontendCustomDomainFrontend
+from .project_frontend_custom_domain_target_type import ProjectFrontendCustomDomainTargetType
+from .project_function_custom_domain import ProjectFunctionCustomDomain
+from .project_function_custom_domain_function import ProjectFunctionCustomDomainFunction
+from .project_function_custom_domain_target_type import ProjectFunctionCustomDomainTargetType
 from .project_git_connection import ProjectGitConnection
 from .project_git_deploy_settings import ProjectGitDeploySettings
 from .project_health_category import ProjectHealthCategory
@@ -471,6 +488,7 @@ from .update_database_type_request_database_type import UpdateDatabaseTypeReques
 from .update_email_template_request import UpdateEmailTemplateRequest
 from .update_email_template_type import UpdateEmailTemplateType
 from .update_function_request import UpdateFunctionRequest
+from .update_function_request_openapi_spec_type_0 import UpdateFunctionRequestOpenapiSpecType0
 from .update_function_scheduler_request import UpdateFunctionSchedulerRequest
 from .update_function_scheduler_request_payload import UpdateFunctionSchedulerRequestPayload
 from .update_o_auth_config_provider import UpdateOAuthConfigProvider
@@ -596,6 +614,7 @@ __all__ = (
     "CompleteUploadSessionResponse",
     "ConfigureAuthMethodsBody",
     "ConfigureAuthMethodsBodyOauthProvidersItem",
+    "ConfigureFunctionCustomDomainRequest",
     "ConnectProjectGitRequest",
     "CreateAnonKeyBody",
     "CreateAnonKeyBodyPermissionsItem",
@@ -697,13 +716,22 @@ __all__ = (
     "FrontendUsageData",
     "FrontendUsageHistoryResponse",
     "Function",
+    "FunctionCustomDomainResponse",
+    "FunctionCustomDomainResponseDomainStatus",
+    "FunctionCustomDomainResponseTlsMode",
+    "FunctionCustomDomainResponseVerificationStatus",
+    "FunctionCustomDomainTLSConfig",
+    "FunctionCustomDomainTLSConfigMode",
     "FunctionDeployment",
     "FunctionDeploymentDeploySource",
     "FunctionDeploymentOperation",
     "FunctionDeploymentStatus",
+    "FunctionHTTPAuthMode",
+    "FunctionInvocationMode",
     "FunctionInvocationRequest",
     "FunctionInvocationRequestPayload",
     "FunctionInvocationResponse",
+    "FunctionOpenapiSpecType0",
     "FunctionRegion",
     "FunctionRuntimeDeployment",
     "FunctionRuntimeOption",
@@ -842,6 +870,7 @@ __all__ = (
     "ProjectConfigEmailTemplates",
     "ProjectConfigFrontend",
     "ProjectConfigFunction",
+    "ProjectConfigFunctionOpenapiSpecType0",
     "ProjectConfigHostedPage",
     "ProjectConfigHostedPages",
     "ProjectConfigMissingResource",
@@ -858,6 +887,8 @@ __all__ = (
     "ProjectConfigValidationErrorResponse",
     "ProjectConfigVariable",
     "ProjectConfigVersion",
+    "ProjectCustomDomainTarget",
+    "ProjectCustomDomainTargetType",
     "ProjectDeployment",
     "ProjectDeploymentDeploySource",
     "ProjectDeploymentOperation",
@@ -867,6 +898,10 @@ __all__ = (
     "ProjectDeploymentSummary",
     "ProjectFrontendCustomDomain",
     "ProjectFrontendCustomDomainFrontend",
+    "ProjectFrontendCustomDomainTargetType",
+    "ProjectFunctionCustomDomain",
+    "ProjectFunctionCustomDomainFunction",
+    "ProjectFunctionCustomDomainTargetType",
     "ProjectGitConnection",
     "ProjectGitDeploySettings",
     "ProjectHealthCategory",
@@ -963,6 +998,7 @@ __all__ = (
     "UpdateEmailTemplateRequest",
     "UpdateEmailTemplateType",
     "UpdateFunctionRequest",
+    "UpdateFunctionRequestOpenapiSpecType0",
     "UpdateFunctionSchedulerRequest",
     "UpdateFunctionSchedulerRequestPayload",
     "UpdateOAuthConfigProvider",
