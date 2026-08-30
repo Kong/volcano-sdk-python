@@ -57,6 +57,17 @@ snapshot. An authentication failure clears the session that initiated the reques
 transport failures preserve it, and a late response never replaces a newer session. The SDK does
 not persist sessions.
 
+Sign out by revoking and clearing the current session:
+
+```python
+client.auth.sign_out()
+assert client.auth.get_session() is None
+```
+
+Calling `sign_out()` without a session succeeds without a request. A revocation failure is raised
+after the captured local session is cleared. A newer session established while sign-out is in
+flight remains current.
+
 Realtime is async. Channels wrap `centrifuge-python`; the underlying client and
 subscription objects are not part of the public API.
 

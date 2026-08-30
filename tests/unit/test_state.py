@@ -37,6 +37,8 @@ class StateTransport:
             },
         )
         self.on_refresh: Callable[[], None] | None = None
+        self.logout_response = Response(204)
+        self.on_logout: Callable[[], None] | None = None
         self.query_calls: list[dict[str, Any]] = []
         self.authorizations: list[tuple[str, str]] = []
 
@@ -56,6 +58,12 @@ class StateTransport:
         if self.on_refresh is not None:
             self.on_refresh()
         return self.refresh_response
+
+    def auth_logout(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("logout", kwargs["authorization"]))
+        if self.on_logout is not None:
+            self.on_logout()
+        return self.logout_response
 
     def query_database_select(self, **kwargs: Any) -> Response:
         self.authorizations.append(("query", kwargs["authorization"]))
@@ -281,4 +289,52 @@ def test_refresh_does_not_replace_a_session_established_during_the_request() -> 
     with pytest.raises(SessionChangedError):
         client.auth.refresh_session()
 
+    assert client.auth.get_session() == replacement
+
+
+def test_sign_out_revokes_and_clears_the_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    client.auth.sign_out()
+
+    assert client.auth.get_session() is None
+    assert transport.authorizations[-1] == ("logout", "anon")
+
+
+def test_sign_out_without_a_session_succeeds_without_transport() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    client.auth.sign_out()
+    assert transport.authorizations == []
+
+
+def test_sign_out_server_failure_clears_then_raises() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    transport.logout_response = Response(503, {"error": "Logout unavailable"})
+
+    with pytest.raises(ServerError, match="Logout unavailable"):
+        client.auth.sign_out()
+
+    assert client.auth.get_session() is None
+
+
+def test_sign_out_does_not_clear_a_replacement_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    replacement = Session(
+        "replacement-access", "replacement-refresh", "replacement-user"
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_logout = replace_session
+    with pytest.raises(SessionChangedError):
+        client.auth.sign_out()
     assert client.auth.get_session() == replacement
