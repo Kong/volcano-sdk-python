@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).parents[2]
 FEATURE_SHA256 = {
-    "auth.feature": "70289856dcca9854464ae92659363f3395b2fe79d92ebb8374973f29f5c1994d",
+    "auth.feature": "4145af3f1120331d100d8548b2abfcb98c0aeef552fd2b3304dc7e074e526ce2",
     "database.feature": (
         "4685b29357a621068b25984ff0de29cd4c504eebe5cfb597f0b999e29878a668"
     ),
@@ -60,6 +60,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
     }
     assert bound == {
         "a service-role client",
+        "a fresh client adopts the current session",
         "an authenticated client",
         "exactly the fixture row is returned",
         "one client subscribes and the other publishes the contract message",

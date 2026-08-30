@@ -7,6 +7,33 @@ from typing import Protocol
 from ._transport import Transport, invoke, response_payload
 from .models import Session
 
+_INCOMPLETE_SESSION = "Expected a complete Session"
+
+
+def _is_non_empty_string(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _has_complete_values(session: Session) -> bool:
+    return all(
+        _is_non_empty_string(value)
+        for value in (
+            session.access_token,
+            session.refresh_token,
+            session.user_id,
+        )
+    )
+
+
+def _copy_complete_session(session: object) -> Session:
+    if not isinstance(session, Session) or not _has_complete_values(session):
+        raise ValueError(_INCOMPLETE_SESSION)
+    return Session(
+        access_token=session.access_token,
+        refresh_token=session.refresh_token,
+        user_id=session.user_id,
+    )
+
 
 class AuthContext(Protocol):
     """Client capabilities required by the authentication facade."""
@@ -33,6 +60,12 @@ class Auth:
     def get_session(self) -> Session | None:
         """Return the immutable locally held session without validating it."""
         return self._client.current_session
+
+    def set_session(self, session: Session) -> Session:
+        """Copy a complete session into local client state."""
+        owned = _copy_complete_session(session)
+        self._client._set_session(owned)
+        return owned
 
     def sign_in(self, *, email: str, password: str) -> Session:
         """Sign in a user and store the returned session."""
