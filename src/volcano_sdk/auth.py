@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from collections.abc import Mapping
+from typing import Protocol, cast
 
-from ._transport import Transport, invoke, response_payload
+from ._transport import AuthRefreshTransport, Transport, invoke, response_payload
+from .errors import AuthenticationError, SessionChangedError
 from .models import Session
 
 _INCOMPLETE_SESSION = "Expected a complete Session"
+_NO_ACTIVE_SESSION = "No active session"
 
 
 def _is_non_empty_string(value: object) -> bool:
@@ -35,6 +38,25 @@ def _copy_complete_session(session: object) -> Session:
     )
 
 
+def _session_from_payload(payload: object) -> Session:
+    values: Mapping[object, object] = (
+        cast("Mapping[object, object]", payload) if isinstance(payload, Mapping) else {}
+    )
+    raw_user = values.get("user")
+    user: Mapping[object, object] = (
+        cast("Mapping[object, object]", raw_user)
+        if isinstance(raw_user, Mapping)
+        else {}
+    )
+    return _copy_complete_session(
+        Session(
+            access_token=cast("str", values.get("access_token")),
+            refresh_token=cast("str", values.get("refresh_token")),
+            user_id=cast("str", user.get("id")),
+        )
+    )
+
+
 class AuthContext(Protocol):
     """Client capabilities required by the authentication facade."""
 
@@ -48,6 +70,12 @@ class AuthContext(Protocol):
     def _anon_token(self) -> str: ...
 
     def _set_session(self, session: Session) -> None: ...
+
+    def _capture_session(self) -> tuple[int, Session | None]: ...
+
+    def _set_session_if_current(self, session: Session, generation: int) -> bool: ...
+
+    def _clear_session_if_current(self, generation: int) -> bool: ...
 
 
 class Auth:
@@ -76,10 +104,28 @@ class Auth:
             password=password,
         )
         payload = response_payload(response, 200)
-        session = Session(
-            access_token=payload["access_token"],
-            refresh_token=payload["refresh_token"],
-            user_id=payload["user"]["id"],
-        )
+        session = _session_from_payload(payload)
         self._client._set_session(session)
         return session
+
+    def refresh_session(self) -> Session:
+        """Refresh and replace the current session."""
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+
+        transport = cast("AuthRefreshTransport", self._client._transport)
+        response = invoke(
+            transport.auth_refresh,
+            authorization=self._client._anon_token(),
+            refresh_token=current.refresh_token,
+        )
+        try:
+            payload = response_payload(response, 200)
+        except AuthenticationError:
+            self._client._clear_session_if_current(generation)
+            raise
+        refreshed = _session_from_payload(payload)
+        if not self._client._set_session_if_current(refreshed, generation):
+            raise SessionChangedError
+        return refreshed

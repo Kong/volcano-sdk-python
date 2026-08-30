@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).parents[2]
 FEATURE_SHA256 = {
-    "auth.feature": "4145af3f1120331d100d8548b2abfcb98c0aeef552fd2b3304dc7e074e526ce2",
+    "auth.feature": "ca01037d4f7c40a1d17be3e79ff24d2433c2085e991332f594ca698466c33f8d",
     "database.feature": (
         "4685b29357a621068b25984ff0de29cd4c504eebe5cfb597f0b999e29878a668"
     ),
@@ -68,12 +68,14 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the client acquires and releases the contract lock",
         'the client selects the contract table where "slug" equals the fixture slug',
         "the client reads the current session",
+        "the client refreshes the current session",
         "the client signs in with the contract user's credentials",
         "the client uploads and downloads the contract object",
         "the confirmed contract user",
         "the current session belongs to the contract user",
         "the current session exposes access and refresh tokens",
         "the downloaded bytes equal the uploaded bytes",
+        "the refreshed session replaces the previous credentials",
         "the released lease is no longer held",
         "the stored object path equals the contract path",
         "the subscriber receives the contract message within 10 seconds",

@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 
 import httpx
 
-from ._generated.api.authentication import auth_signin
+from ._generated.api.authentication import auth_refresh, auth_signin
 from ._generated.api.database_queries import query_database_select
 from ._generated.api.locks import acquire_project_lock, release_project_lock
 from ._generated.api.storage_objects import (
@@ -19,6 +19,7 @@ from ._generated.api.storage_objects import (
     upload_storage_object,
 )
 from ._generated.client import AuthenticatedClient
+from ._generated.models.auth_refresh_body import AuthRefreshBody
 from ._generated.models.auth_signin_body import AuthSigninBody
 from ._generated.models.database_select_request import DatabaseSelectRequest
 from ._generated.models.project_lock_lease_request import ProjectLockLeaseRequest
@@ -76,6 +77,15 @@ class _GeneratedTransportResponse:
     payload: Any
     content: bytes
     headers: Mapping[str, str]
+
+
+class AuthRefreshTransport(Protocol):
+    def auth_refresh(
+        self,
+        *,
+        authorization: str,
+        refresh_token: str,
+    ) -> TransportResponse: ...
 
 
 class Transport(Protocol):
@@ -240,6 +250,19 @@ class GeneratedTransport:
             response = auth_signin.sync_detailed(
                 client=client,
                 body=AuthSigninBody(email=email, password=password),
+            )
+        return self._response(response)
+
+    def auth_refresh(
+        self,
+        *,
+        authorization: str,
+        refresh_token: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_refresh.sync_detailed(
+                client=client,
+                body=AuthRefreshBody(refresh_token=refresh_token),
             )
         return self._response(response)
 

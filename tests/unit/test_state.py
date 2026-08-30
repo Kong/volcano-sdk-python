@@ -1,11 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from volcano_sdk import Session, VolcanoClient
+from volcano_sdk import (
+    AuthenticationError,
+    ServerError,
+    Session,
+    SessionChangedError,
+    VolcanoClient,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 @dataclass(frozen=True)
@@ -19,6 +28,15 @@ class Response:
 class StateTransport:
     def __init__(self) -> None:
         self.next_access_token = "access-1"
+        self.refresh_response = Response(
+            200,
+            {
+                "access_token": "access-2",
+                "refresh_token": "refresh-2",
+                "user": {"id": "user-123"},
+            },
+        )
+        self.on_refresh: Callable[[], None] | None = None
         self.query_calls: list[dict[str, Any]] = []
         self.authorizations: list[tuple[str, str]] = []
 
@@ -32,6 +50,12 @@ class StateTransport:
                 "user": {"id": "user-123"},
             },
         )
+
+    def auth_refresh(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("refresh", kwargs["authorization"]))
+        if self.on_refresh is not None:
+            self.on_refresh()
+        return self.refresh_response
 
     def query_database_select(self, **kwargs: Any) -> Response:
         self.authorizations.append(("query", kwargs["authorization"]))
@@ -191,3 +215,70 @@ def test_auth_facade_rejects_incomplete_adoption_without_mutation(invalid: Any) 
 
     assert client.auth.get_session() is previous
     assert transport.authorizations == calls_after_sign_in
+
+
+def test_refresh_replaces_the_captured_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+
+    refreshed = client.auth.refresh_session()
+
+    assert refreshed == Session("access-2", "refresh-2", established.user_id)
+    assert client.auth.get_session() is refreshed
+
+
+def test_refresh_without_a_session_fails_without_transport() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="No active session"):
+        client.auth.refresh_session()
+
+    assert transport.authorizations == []
+
+
+def test_refresh_authentication_failure_clears_only_the_captured_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+    transport.refresh_response = Response(401, {"error": "expired"})
+
+    with pytest.raises(AuthenticationError, match="expired"):
+        client.auth.refresh_session()
+
+    assert client.auth.get_session() is None
+    assert established.refresh_token == "refresh-access-1"
+
+
+def test_refresh_server_failure_preserves_the_captured_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+    transport.refresh_response = Response(503, {"error": "unavailable"})
+
+    with pytest.raises(ServerError, match="unavailable"):
+        client.auth.refresh_session()
+
+    assert client.auth.get_session() is established
+
+
+def test_refresh_does_not_replace_a_session_established_during_the_request() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    replacement = Session(
+        "replacement-access",
+        "replacement-refresh",
+        "replacement-user",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_refresh = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.refresh_session()
+
+    assert client.auth.get_session() == replacement

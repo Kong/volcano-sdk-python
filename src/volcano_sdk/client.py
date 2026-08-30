@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import TYPE_CHECKING
 
 from ._transport import GeneratedTransport, Transport
@@ -35,6 +36,8 @@ class VolcanoClient:
         self._api_url = api_url.rstrip("/")
         self._anon_key = anon_key
         self._service_key = service_key
+        self._session_lock = threading.Lock()
+        self._session_generation = 0
         self._current_session: Session | None = None
         self._transport: Transport = (
             _transport
@@ -56,7 +59,7 @@ class VolcanoClient:
     @property
     def current_session(self) -> Session | None:
         """Return the authenticated session, if one exists."""
-        return self._current_session
+        return self._capture_session()[1]
 
     def database(self, name: str) -> Database:
         """Create a query facade for a project database."""
@@ -66,9 +69,10 @@ class VolcanoClient:
         return self._anon_key
 
     def _session_token(self) -> str:
-        if self._current_session is None:
+        session = self._capture_session()[1]
+        if session is None:
             raise RuntimeError(_NO_ACTIVE_SESSION)
-        return self._current_session.access_token
+        return session.access_token
 
     def _service_token(self) -> str:
         if self._service_key is None:
@@ -76,4 +80,26 @@ class VolcanoClient:
         return self._service_key
 
     def _set_session(self, session: Session) -> None:
-        self._current_session = session
+        with self._session_lock:
+            self._current_session = session
+            self._session_generation += 1
+
+    def _capture_session(self) -> tuple[int, Session | None]:
+        with self._session_lock:
+            return self._session_generation, self._current_session
+
+    def _set_session_if_current(self, session: Session, generation: int) -> bool:
+        with self._session_lock:
+            if generation != self._session_generation:
+                return False
+            self._current_session = session
+            self._session_generation += 1
+            return True
+
+    def _clear_session_if_current(self, generation: int) -> bool:
+        with self._session_lock:
+            if generation != self._session_generation:
+                return False
+            self._current_session = None
+            self._session_generation += 1
+            return True

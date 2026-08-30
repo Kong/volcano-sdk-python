@@ -7,18 +7,23 @@ import httpx
 from volcano_sdk._transport import GeneratedTransport
 
 
-def test_generated_transport_calls_the_six_openapi_operations() -> None:
+def test_generated_transport_calls_the_seven_openapi_operations() -> None:
     requests: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         path = request.url.path
-        if path == "/auth/signin":
+        if path in {"/auth/signin", "/auth/refresh"}:
+            refreshing = path == "/auth/refresh"
             return httpx.Response(
                 200,
                 json={
-                    "access_token": "access-token",
-                    "refresh_token": "refresh-token",
+                    "access_token": (
+                        "refreshed-access-token" if refreshing else "access-token"
+                    ),
+                    "refresh_token": (
+                        "refreshed-refresh-token" if refreshing else "refresh-token"
+                    ),
                     "user": {
                         "id": "00000000-0000-4000-8000-000000000010",
                         "email": "user@example.com",
@@ -75,6 +80,10 @@ def test_generated_transport_calls_the_six_openapi_operations() -> None:
         email="user@example.com",
         password="secret",
     )
+    refresh = transport.auth_refresh(
+        authorization="anon-key",
+        refresh_token="refresh-token",
+    )
     query = transport.query_database_select(
         authorization="access-token",
         database_name="main",
@@ -108,6 +117,7 @@ def test_generated_transport_calls_the_six_openapi_operations() -> None:
     )
 
     assert auth.payload["user"]["id"] == "00000000-0000-4000-8000-000000000010"
+    assert refresh.payload["access_token"] == "refreshed-access-token"
     assert query.payload == {"data": [{"slug": "a"}], "count": 1}
     assert upload.payload["name"] == "a.txt"
     assert download.content == b"hello"
@@ -117,11 +127,13 @@ def test_generated_transport_calls_the_six_openapi_operations() -> None:
         "POST",
         "POST",
         "POST",
+        "POST",
         "GET",
         "POST",
         "DELETE",
     ]
     assert [request.headers["authorization"] for request in requests] == [
+        "Bearer anon-key",
         "Bearer anon-key",
         "Bearer access-token",
         "Bearer access-token",
@@ -134,15 +146,18 @@ def test_generated_transport_calls_the_six_openapi_operations() -> None:
         "password": "secret",
     }
     assert json.loads(requests[1].content) == {
+        "refresh_token": "refresh-token",
+    }
+    assert json.loads(requests[2].content) == {
         "table": "items",
         "select": ["*"],
         "filters": [{"column": "slug", "operator": "eq", "value": "a"}],
     }
-    assert b"hello" in requests[2].content
-    assert json.loads(requests[4].content) == {"ttl_seconds": 30}
-    assert requests[4].headers["x-volcano-lock-token"] == (
+    assert b"hello" in requests[3].content
+    assert json.loads(requests[5].content) == {"ttl_seconds": 30}
+    assert requests[5].headers["x-volcano-lock-token"] == (
         "00000000-0000-4000-8000-000000000001"
     )
-    assert requests[5].headers["x-volcano-lock-token"] == (
+    assert requests[6].headers["x-volcano-lock-token"] == (
         "00000000-0000-4000-8000-000000000001"
     )

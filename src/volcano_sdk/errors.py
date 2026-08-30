@@ -37,6 +37,18 @@ class ConflictError(VolcanoError):
     """The request conflicts with the current resource state."""
 
 
+class SessionChangedError(ConflictError):
+    """An auth operation completed after the client session changed."""
+
+    def __init__(self) -> None:
+        """Create a deterministic stale-auth-operation error."""
+        super().__init__(
+            "Session changed during authentication operation",
+            status=409,
+            code="auth_session_changed",
+        )
+
+
 class RateLimitedError(VolcanoError):
     """The API rejected the request because of a rate limit."""
 

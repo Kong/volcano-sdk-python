@@ -45,6 +45,18 @@ if session is not None:
 `set_session()` copies the session without making a request or persisting credentials. It raises
 `ValueError` when the session type or any credential field is incomplete.
 
+Refresh the session with its current refresh token:
+
+```python
+refreshed = client.auth.refresh_session()
+assert client.auth.get_session() is refreshed
+```
+
+On success, `refresh_session()` replaces the in-memory session and returns the immutable new
+snapshot. An authentication failure clears the session that initiated the request. Server and
+transport failures preserve it, and a late response never replaces a newer session. The SDK does
+not persist sessions.
+
 Realtime is async. Channels wrap `centrifuge-python`; the underlying client and
 subscription objects are not part of the public API.
 
