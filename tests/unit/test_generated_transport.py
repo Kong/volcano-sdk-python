@@ -7,6 +7,30 @@ import httpx
 from volcano_sdk._transport import GeneratedTransport
 
 
+def test_generated_transport_logs_out_with_the_anon_key_and_refresh_token() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(204)
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_logout(
+        authorization="anon-key",
+        refresh_token="refresh-1",
+    )
+
+    assert response.status_code == 204
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/auth/logout"
+    assert requests[0].headers["authorization"] == "Bearer anon-key"
+    assert json.loads(requests[0].content) == {"refresh_token": "refresh-1"}
+
+
 def test_generated_transport_calls_the_seven_openapi_operations() -> None:
     requests: list[httpx.Request] = []
 

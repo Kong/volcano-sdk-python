@@ -5,8 +5,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol, cast
 
-from ._transport import AuthRefreshTransport, Transport, invoke, response_payload
-from .errors import AuthenticationError, SessionChangedError
+from ._transport import (
+    AuthLogoutTransport,
+    AuthRefreshTransport,
+    Transport,
+    invoke,
+    response_payload,
+)
+from .errors import AuthenticationError, SessionChangedError, VolcanoError
 from .models import Session
 
 _INCOMPLETE_SESSION = "Expected a complete Session"
@@ -129,3 +135,24 @@ class Auth:
         if not self._client._set_session_if_current(refreshed, generation):
             raise SessionChangedError
         return refreshed
+
+    def sign_out(self) -> None:
+        """Revoke and clear the current session."""
+        generation, current = self._client._capture_session()
+        if current is None:
+            return
+        transport = cast("AuthLogoutTransport", self._client._transport)
+        error: VolcanoError | None = None
+        try:
+            response = invoke(
+                transport.auth_logout,
+                authorization=self._client._anon_token(),
+                refresh_token=current.refresh_token,
+            )
+            response_payload(response, 204)
+        except VolcanoError as caught:
+            error = caught
+        if not self._client._clear_session_if_current(generation):
+            raise SessionChangedError from error
+        if error is not None:
+            raise error

@@ -71,6 +71,40 @@ def refreshed_session_replaces_credentials(context: Any) -> None:
     )
 
 
+@when("the client signs out")
+def sign_out(context: Any) -> None:
+    world = _world(context)
+    world.signed_out_session = world.client.auth.get_session()
+    assert world.signed_out_session is not None
+    world.record(world.client.auth.sign_out)
+
+
+@then("the current session is empty")
+def current_session_is_empty(context: Any) -> None:
+    assert _world(context).client.auth.get_session() is None
+
+
+@when("a fresh client tries to refresh the signed-out session")
+def refresh_signed_out_session(context: Any) -> None:
+    world = _world(context)
+    assert world.signed_out_session is not None
+    target = VolcanoClient(
+        api_url=world.fixture["api_url"],
+        anon_key=world.fixture["anon_key"],
+    )
+    target.auth.set_session(world.signed_out_session)
+    world.client = target
+    world.record(target.auth.refresh_session)
+
+
+@then("the SDK operation fails with an authentication error")
+def operation_fails_with_authentication_error(context: Any) -> None:
+    outcome = _world(context).last_outcome
+    assert outcome is not None
+    assert not outcome.ok
+    assert outcome.category == "authentication error"
+
+
 @then("the SDK operation succeeds")
 def operation_succeeds(context: Any) -> None:
     outcome = _world(context).last_outcome
