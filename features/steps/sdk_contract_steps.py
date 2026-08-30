@@ -11,6 +11,8 @@ from contract_support import (
     classify_error,
 )
 
+from volcano_sdk import VolcanoClient
+
 
 def _world(context: Any) -> ContractWorld:
     return context.contract
@@ -36,6 +38,19 @@ def sign_in(context: Any) -> None:
 def read_current_session(context: Any) -> None:
     world = _world(context)
     world.record(world.client.auth.get_session)
+
+
+@when("a fresh client adopts the current session")
+def adopt_current_session(context: Any) -> None:
+    world = _world(context)
+    source = world.client.auth.get_session()
+    assert source is not None
+    target = VolcanoClient(
+        api_url=world.fixture["api_url"],
+        anon_key=world.fixture["anon_key"],
+    )
+    world.record(lambda: target.auth.set_session(source))
+    world.client = target
 
 
 @then("the SDK operation succeeds")

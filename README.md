@@ -34,6 +34,17 @@ client.locks.release("build", lease)
 
 `get_session()` reads immutable local state. It does not refresh or validate the token.
 
+Copy a complete native session into another client's memory:
+
+```python
+session = source.auth.get_session()
+if session is not None:
+    fresh.auth.set_session(session)
+```
+
+`set_session()` copies the session without making a request or persisting credentials. It raises
+`ValueError` when the session type or any credential field is incomplete.
+
 Realtime is async. Channels wrap `centrifuge-python`; the underlying client and
 subscription objects are not part of the public API.
 

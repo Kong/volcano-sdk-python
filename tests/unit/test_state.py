@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import pytest
+
 from volcano_sdk import Session, VolcanoClient
 
 
@@ -131,4 +133,61 @@ def test_auth_facade_reads_established_immutable_session_without_transport() -> 
         refresh_token="refresh-access-1",
         user_id="user-123",
     )
+    assert transport.authorizations == calls_after_sign_in
+
+
+def test_auth_facade_adopts_an_owned_session_without_transport() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    supplied = Session(
+        access_token="adopted-access",
+        refresh_token="adopted-refresh",
+        user_id="adopted-user",
+    )
+
+    adopted = client.auth.set_session(supplied)
+
+    assert adopted == supplied
+    assert adopted is not supplied
+    assert client.auth.get_session() is adopted
+    assert transport.authorizations == []
+
+
+def test_auth_facade_adoption_replaces_the_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="replacement-user",
+    )
+    calls_after_sign_in = list(transport.authorizations)
+
+    adopted = client.auth.set_session(replacement)
+
+    assert client.auth.get_session() is adopted
+    assert adopted == replacement
+    assert transport.authorizations == calls_after_sign_in
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        object(),
+        Session(access_token=" ", refresh_token="refresh", user_id="user"),
+        Session(access_token="access", refresh_token="\t", user_id="user"),
+        Session(access_token="access", refresh_token="refresh", user_id="\n"),
+    ],
+)
+def test_auth_facade_rejects_incomplete_adoption_without_mutation(invalid: Any) -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    previous = client.auth.sign_in(email="user@example.com", password="secret")
+    calls_after_sign_in = list(transport.authorizations)
+
+    with pytest.raises(ValueError, match="complete Session"):
+        client.auth.set_session(invalid)
+
+    assert client.auth.get_session() is previous
     assert transport.authorizations == calls_after_sign_in
