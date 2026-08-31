@@ -49,7 +49,11 @@ class User:
     email: str
     status: str
     email_confirmed: bool | None = None
-    user_metadata: Mapping[str, JSONValue] | None = field(default=None, repr=False)
+    user_metadata: Mapping[str, JSONValue] | None = field(
+        default=None,
+        repr=False,
+        hash=False,
+    )
 
     def __post_init__(self) -> None:
         """Defensively freeze nested metadata owned by this value."""

@@ -96,7 +96,8 @@ def _user_from_payload(payload: object) -> User:
     status = user.get("status")
     email_confirmed = user.get("email_confirmed")
     metadata = user.get("user_metadata")
-    valid = all(_is_non_empty_string(value) for value in (user_id, email, status))
+    valid = all(_is_non_empty_string(value) for value in (user_id, status))
+    valid = valid and isinstance(email, str)
     valid = valid and (email_confirmed is None or isinstance(email_confirmed, bool))
     valid = valid and (metadata is None or isinstance(metadata, Mapping))
     if not valid:

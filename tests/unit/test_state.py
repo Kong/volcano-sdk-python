@@ -257,6 +257,27 @@ def test_get_user_returns_an_immutable_server_validated_profile() -> None:
         mutable_metadata["display_name"] = "Changed"
 
 
+def test_get_user_accepts_a_server_profile_without_an_email() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    transport.user_response.payload["user"]["email"] = ""
+
+    user = client.auth.get_user()
+
+    assert user.email == ""
+
+
+def test_user_with_metadata_has_a_stable_hash() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    user = client.auth.get_user()
+
+    assert {user} == {user}
+
+
 def test_get_user_without_a_session_fails_before_transport() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
