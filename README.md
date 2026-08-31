@@ -29,6 +29,9 @@ session = client.auth.sign_in(email="user@example.com", password="secret")
 current_session = client.auth.get_session()
 assert current_session == session
 
+user = client.auth.get_user()
+assert user.id == session.user_id
+
 rows = client.database("main").from_("items").select("*").eq("slug", "a").execute()
 
 bucket = client.storage.from_("assets")
@@ -45,6 +48,11 @@ response is identical for new and existing email addresses. Call `sign_in()` sep
 account is ready to establish a session.
 
 `get_session()` reads immutable local state. It does not refresh or validate the token.
+
+`get_user()` sends the active access token to Volcano and returns an immutable, server-validated
+profile. It does not replace the session or cache the profile. If another authentication operation
+replaces the session while the request is in flight, `get_user()` raises `SessionChangedError`
+instead of returning a profile for stale credentials.
 
 Copy a complete native session into another client's memory:
 

@@ -36,6 +36,22 @@ class StateTransport:
             },
         )
         self.signup_calls: list[dict[str, Any]] = []
+        self.user_response = Response(
+            200,
+            {
+                "user": {
+                    "id": "user-123",
+                    "email": "user@example.com",
+                    "status": "active",
+                    "email_confirmed": True,
+                    "user_metadata": {
+                        "display_name": "Ada",
+                        "roles": ["admin"],
+                    },
+                }
+            },
+        )
+        self.on_get_user: Callable[[], None] | None = None
         self.refresh_response = Response(
             200,
             {
@@ -65,6 +81,12 @@ class StateTransport:
         self.authorizations.append(("signup", kwargs["authorization"]))
         self.signup_calls.append(kwargs)
         return self.signup_response
+
+    def auth_get_user(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("get_user", kwargs["authorization"]))
+        if self.on_get_user is not None:
+            self.on_get_user()
+        return self.user_response
 
     def auth_refresh(self, **kwargs: Any) -> Response:
         self.authorizations.append(("refresh", kwargs["authorization"]))
@@ -211,6 +233,92 @@ def test_sign_up_raises_typed_errors_without_changing_session() -> None:
         client.auth.sign_up(email="new@example.com", password="secret")
 
     assert client.auth.get_session() is established
+
+
+def test_get_user_returns_an_immutable_server_validated_profile() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+
+    user = client.auth.get_user()
+
+    assert user.id == "user-123"
+    assert user.email == "user@example.com"
+    assert user.status == "active"
+    assert user.email_confirmed is True
+    assert user.user_metadata == {"display_name": "Ada", "roles": ("admin",)}
+    assert transport.authorizations[-1] == ("get_user", "access-1")
+    assert client.auth.get_session() is established
+    mutable_user: Any = user
+    mutable_metadata: Any = user.user_metadata
+    with pytest.raises(FrozenInstanceError):
+        mutable_user.email = "changed@example.com"
+    with pytest.raises(TypeError):
+        mutable_metadata["display_name"] = "Changed"
+
+
+def test_get_user_accepts_a_server_profile_without_an_email() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    transport.user_response.payload["user"]["email"] = ""
+
+    user = client.auth.get_user()
+
+    assert user.email == ""
+
+
+def test_user_with_metadata_has_a_stable_hash() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    user = client.auth.get_user()
+
+    assert {user} == {user}
+
+
+def test_get_user_without_a_session_fails_before_transport() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="No active session"):
+        client.auth.get_user()
+
+    assert transport.authorizations == []
+
+
+def test_get_user_authentication_failure_preserves_the_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+    transport.user_response = Response(401, {"error": "expired"})
+
+    with pytest.raises(AuthenticationError, match="expired"):
+        client.auth.get_user()
+
+    assert client.auth.get_session() is established
+
+
+def test_get_user_rejects_a_profile_loaded_for_a_replaced_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="replacement-user",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_get_user = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.get_user()
+
+    assert client.auth.get_session() == replacement
 
 
 def test_auth_facade_reads_established_immutable_session_without_transport() -> None:

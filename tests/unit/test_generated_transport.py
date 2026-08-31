@@ -47,6 +47,40 @@ def test_generated_transport_signs_up_with_the_anon_key_and_metadata() -> None:
     }
 
 
+def test_generated_transport_gets_the_current_user_with_the_access_token() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "user": {
+                    "id": "00000000-0000-4000-8000-000000000010",
+                    "email": "user@example.com",
+                    "status": "active",
+                    "email_confirmed": True,
+                    "user_metadata": {"display_name": "Ada"},
+                    "created_at": "2026-08-26T12:00:00Z",
+                    "updated_at": "2026-08-26T12:00:00Z",
+                }
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_get_user(authorization="access-token")
+
+    assert response.status_code == 200
+    assert response.payload["user"]["email"] == "user@example.com"
+    assert requests[0].method == "GET"
+    assert requests[0].url.path == "/auth/user"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
 def test_generated_transport_logs_out_with_the_anon_key_and_refresh_token() -> None:
     requests: list[httpx.Request] = []
 
