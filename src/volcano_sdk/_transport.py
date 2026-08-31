@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 import httpx
 
 from ._generated.api.authentication import (
+    auth_get_user,
     auth_logout,
     auth_refresh,
     auth_signin,
@@ -307,17 +308,22 @@ class GeneratedTransport:
         return self._response(response)
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
-        with self._client(authorization) as client:
-            response = client.get_httpx_client().request(method="get", url="/auth/user")
         try:
-            payload = json.loads(response.content)
-        except (json.JSONDecodeError, UnicodeDecodeError) as error:
-            if response.status_code == HTTP_OK:
-                raise AuthenticationError(_MALFORMED_USER_PROFILE) from error
-            payload = None
+            with self._client(authorization) as client:
+                response = auth_get_user.sync_detailed(client=client)
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
+            raise AuthenticationError(_MALFORMED_USER_PROFILE) from error
+        if int(response.status_code) != HTTP_OK:
+            return self._response(response)
         return _GeneratedTransportResponse(
-            status_code=response.status_code,
-            payload=payload,
+            status_code=int(response.status_code),
+            payload=response.parsed,
             content=response.content,
             headers=dict(response.headers),
         )

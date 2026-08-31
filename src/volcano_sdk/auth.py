@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
-from datetime import datetime
-from typing import Protocol, cast
-from uuid import UUID
+from typing import Protocol, TypeVar, cast
 
+from ._generated.models.auth_get_user_response_200 import AuthGetUserResponse200
+from ._generated.types import Unset
 from ._transport import (
     AuthGetUserTransport,
     AuthLogoutTransport,
@@ -23,26 +22,12 @@ from .models import JSONValue, Session, SignUpResult, User
 _INCOMPLETE_SESSION = "Expected a complete Session"
 _INVALID_SIGN_UP_RESULT = "Expected a complete sign-up acknowledgement"
 _INVALID_USER = "Expected a complete user profile"
-_MISSING = object()
 _NO_ACTIVE_SESSION = "No active session"
-_RFC3339_DATETIME = re.compile(
-    r"\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})"
-)
-_USER_STATUSES = frozenset({"active", "banned", "deleted"})
+_T = TypeVar("_T")
 
 
 def _is_non_empty_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
-
-
-def _is_uuid(value: object) -> bool:
-    if not isinstance(value, str):
-        return False
-    try:
-        UUID(value)
-    except ValueError:
-        return False
-    return True
 
 
 def _has_complete_values(session: Session) -> bool:
@@ -100,78 +85,41 @@ def _sign_up_result_from_payload(payload: object) -> SignUpResult:
 
 
 def _user_from_payload(payload: object) -> User:
-    values: Mapping[object, object] = (
-        cast("Mapping[object, object]", payload) if isinstance(payload, Mapping) else {}
-    )
-    raw_user = values.get("user")
-    user: Mapping[object, object] = (
-        cast("Mapping[object, object]", raw_user)
-        if isinstance(raw_user, Mapping)
-        else {}
-    )
-    user_id = user.get("id")
-    email = user.get("email")
-    status = user.get("status")
-    email_confirmed = user.get("email_confirmed", _MISSING)
-    user_metadata = user.get("user_metadata", _MISSING)
-    app_metadata = user.get("app_metadata", _MISSING)
-    project_id = user.get("project_id", _MISSING)
-    avatar_url = user.get("avatar_url", _MISSING)
-    valid = _is_uuid(user_id) and isinstance(status, str) and status in _USER_STATUSES
-    valid = valid and isinstance(email, str)
-    valid = valid and (email_confirmed is _MISSING or isinstance(email_confirmed, bool))
-    valid = valid and (user_metadata is _MISSING or isinstance(user_metadata, Mapping))
-    valid = valid and (app_metadata is _MISSING or isinstance(app_metadata, Mapping))
-    valid = valid and (project_id is _MISSING or _is_uuid(project_id))
-    valid = valid and (avatar_url is _MISSING or isinstance(avatar_url, str))
-    if not valid:
+    if not isinstance(payload, AuthGetUserResponse200) or isinstance(
+        payload.user,
+        Unset,
+    ):
         raise AuthenticationError(_INVALID_USER)
+    user = payload.user
+    project_id = _none_if_unset(user.project_id)
+    user_metadata = _none_if_unset(user.user_metadata)
+    app_metadata = _none_if_unset(user.app_metadata)
     return User(
-        id=cast("str", user_id),
-        email=cast("str", email),
-        status=cast("str", status),
-        project_id=None if project_id is _MISSING else cast("str", project_id),
-        email_confirmed=(
-            None if email_confirmed is _MISSING else cast("bool", email_confirmed)
-        ),
+        id=str(user.id),
+        email=user.email,
+        status=user.status,
+        project_id=None if project_id is None else str(project_id),
+        email_confirmed=_none_if_unset(user.email_confirmed),
         user_metadata=(
             None
-            if user_metadata is _MISSING
-            else cast("Mapping[str, JSONValue]", user_metadata)
+            if user_metadata is None
+            else cast("Mapping[str, JSONValue]", user_metadata.to_dict())
         ),
         app_metadata=(
             None
-            if app_metadata is _MISSING
-            else cast("Mapping[str, JSONValue]", app_metadata)
+            if app_metadata is None
+            else cast("Mapping[str, JSONValue]", app_metadata.to_dict())
         ),
-        avatar_url=None if avatar_url is _MISSING else cast("str", avatar_url),
-        banned_until=_profile_datetime(
-            user.get("banned_until", _MISSING),
-            nullable=True,
-        ),
-        last_sign_in_at=_profile_datetime(user.get("last_sign_in_at", _MISSING)),
-        created_at=_profile_datetime(user.get("created_at", _MISSING)),
-        updated_at=_profile_datetime(user.get("updated_at", _MISSING)),
+        avatar_url=_none_if_unset(user.avatar_url),
+        banned_until=_none_if_unset(user.banned_until),
+        last_sign_in_at=_none_if_unset(user.last_sign_in_at),
+        created_at=_none_if_unset(user.created_at),
+        updated_at=_none_if_unset(user.updated_at),
     )
 
 
-def _profile_datetime(value: object, *, nullable: bool = False) -> datetime | None:
-    if value is _MISSING:
-        return None
-    if value is None:
-        if nullable:
-            return None
-        raise AuthenticationError(_INVALID_USER)
-    if not isinstance(value, str) or _RFC3339_DATETIME.fullmatch(value) is None:
-        raise AuthenticationError(_INVALID_USER)
-    try:
-        normalized = f"{value[:-1]}Z" if value.endswith("z") else value
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError as error:
-        raise AuthenticationError(_INVALID_USER) from error
-    if parsed.utcoffset() is None:
-        raise AuthenticationError(_INVALID_USER)
-    return parsed
+def _none_if_unset(value: _T | Unset) -> _T | None:
+    return None if isinstance(value, Unset) else value
 
 
 class AuthContext(Protocol):

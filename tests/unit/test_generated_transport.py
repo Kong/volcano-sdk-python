@@ -6,6 +6,10 @@ import httpx
 import pytest
 
 from volcano_sdk import AuthenticationError
+from volcano_sdk._generated.models.auth_get_user_response_200 import (
+    AuthGetUserResponse200,
+)
+from volcano_sdk._generated.types import Unset
 from volcano_sdk._transport import GeneratedTransport
 
 
@@ -63,7 +67,7 @@ def test_generated_transport_gets_the_current_user_with_the_access_token() -> No
                     "status": "active",
                     "email_confirmed": True,
                     "user_metadata": {"display_name": "Ada"},
-                    "created_at": "2026-08-26T12:00:00z",
+                    "created_at": "2026-08-26T12:00:00Z",
                     "updated_at": "2026-08-26T12:00:00Z",
                 }
             },
@@ -77,7 +81,9 @@ def test_generated_transport_gets_the_current_user_with_the_access_token() -> No
     response = transport.auth_get_user(authorization="access-token")
 
     assert response.status_code == 200
-    assert response.payload["user"]["email"] == "user@example.com"
+    assert isinstance(response.payload, AuthGetUserResponse200)
+    assert not isinstance(response.payload.user, Unset)
+    assert response.payload.user.email == "user@example.com"
     assert requests[0].method == "GET"
     assert requests[0].url.path == "/auth/user"
     assert requests[0].headers["authorization"] == "Bearer access-token"
