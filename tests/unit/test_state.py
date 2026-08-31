@@ -41,10 +41,10 @@ class StateTransport:
             200,
             {
                 "user": {
-                    "id": "user-123",
+                    "id": "00000000-0000-4000-8000-000000000010",
                     "email": "user@example.com",
                     "status": "active",
-                    "project_id": "project-123",
+                    "project_id": "00000000-0000-4000-8000-000000000020",
                     "email_confirmed": True,
                     "user_metadata": {
                         "display_name": "Ada",
@@ -65,7 +65,7 @@ class StateTransport:
             {
                 "access_token": "access-2",
                 "refresh_token": "refresh-2",
-                "user": {"id": "user-123"},
+                "user": {"id": "00000000-0000-4000-8000-000000000010"},
             },
         )
         self.on_refresh: Callable[[], None] | None = None
@@ -81,7 +81,7 @@ class StateTransport:
             {
                 "access_token": self.next_access_token,
                 "refresh_token": f"refresh-{self.next_access_token}",
-                "user": {"id": "user-123"},
+                "user": {"id": "00000000-0000-4000-8000-000000000010"},
             },
         )
 
@@ -250,10 +250,10 @@ def test_get_user_returns_an_immutable_server_validated_profile() -> None:
 
     user = client.auth.get_user()
 
-    assert user.id == "user-123"
+    assert user.id == "00000000-0000-4000-8000-000000000010"
     assert user.email == "user@example.com"
     assert user.status == "active"
-    assert user.project_id == "project-123"
+    assert user.project_id == "00000000-0000-4000-8000-000000000020"
     assert user.email_confirmed is True
     assert user.user_metadata == {"display_name": "Ada", "roles": ("admin",)}
     assert user.app_metadata == {"provider": "email"}
@@ -301,7 +301,13 @@ def test_user_with_metadata_has_a_stable_hash() -> None:
     [
         ("status", "pending"),
         ("status", {"unexpected": True}),
+        ("id", "not-a-uuid"),
+        ("project_id", "not-a-uuid"),
         ("created_at", "2026-08-31T12:00:00"),
+        ("created_at", "2026-08-31 12:00:00Z"),
+        ("created_at", "2026-08-31T12:00:00+05"),
+        ("created_at", "2026-08-31T12:00:00+05:30:15"),
+        ("created_at", "2026-W36-1T12:00:00Z"),
     ],
 )
 def test_get_user_rejects_invalid_profile_values(field: str, value: object) -> None:
@@ -369,7 +375,7 @@ def test_auth_facade_reads_established_immutable_session_without_transport() -> 
     assert current == Session(
         access_token="access-1",
         refresh_token="refresh-access-1",
-        user_id="user-123",
+        user_id="00000000-0000-4000-8000-000000000010",
     )
     assert transport.authorizations == calls_after_sign_in
 

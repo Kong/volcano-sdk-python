@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from datetime import datetime
 from typing import Protocol, cast
+from uuid import UUID
 
 from ._transport import (
     AuthGetUserTransport,
@@ -22,11 +24,24 @@ _INCOMPLETE_SESSION = "Expected a complete Session"
 _INVALID_SIGN_UP_RESULT = "Expected a complete sign-up acknowledgement"
 _INVALID_USER = "Expected a complete user profile"
 _NO_ACTIVE_SESSION = "No active session"
+_RFC3339_DATETIME = re.compile(
+    r"\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})"
+)
 _USER_STATUSES = frozenset({"active", "banned", "deleted"})
 
 
 def _is_non_empty_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def _is_uuid(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        UUID(value)
+    except ValueError:
+        return False
+    return True
 
 
 def _has_complete_values(session: Session) -> bool:
@@ -101,16 +116,12 @@ def _user_from_payload(payload: object) -> User:
     app_metadata = user.get("app_metadata")
     project_id = user.get("project_id")
     avatar_url = user.get("avatar_url")
-    valid = (
-        _is_non_empty_string(user_id)
-        and isinstance(status, str)
-        and status in _USER_STATUSES
-    )
+    valid = _is_uuid(user_id) and isinstance(status, str) and status in _USER_STATUSES
     valid = valid and isinstance(email, str)
     valid = valid and (email_confirmed is None or isinstance(email_confirmed, bool))
     valid = valid and (user_metadata is None or isinstance(user_metadata, Mapping))
     valid = valid and (app_metadata is None or isinstance(app_metadata, Mapping))
-    valid = valid and (project_id is None or isinstance(project_id, str))
+    valid = valid and (project_id is None or _is_uuid(project_id))
     valid = valid and (avatar_url is None or isinstance(avatar_url, str))
     if not valid:
         raise AuthenticationError(_INVALID_USER)
@@ -133,7 +144,7 @@ def _user_from_payload(payload: object) -> User:
 def _profile_datetime(value: object) -> datetime | None:
     if value is None:
         return None
-    if not isinstance(value, str):
+    if not isinstance(value, str) or _RFC3339_DATETIME.fullmatch(value) is None:
         raise AuthenticationError(_INVALID_USER)
     try:
         normalized = f"{value[:-1]}Z" if value.endswith("z") else value
