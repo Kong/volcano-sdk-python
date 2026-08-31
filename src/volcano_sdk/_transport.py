@@ -55,8 +55,10 @@ if TYPE_CHECKING:
 HTTP_NOT_FOUND = 404
 HTTP_CONFLICT = 409
 HTTP_RATE_LIMITED = 429
+HTTP_OK = 200
 HTTP_SERVER_ERROR_MIN = 500
 HTTP_SERVER_ERROR_MAX = 599
+_MALFORMED_USER_PROFILE = "Expected a complete user profile"
 ERROR_TYPES_BY_STATUS: dict[int, type[VolcanoError]] = {
     400: ValidationError,
     401: AuthenticationError,
@@ -306,9 +308,25 @@ class GeneratedTransport:
         return self._response(response)
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
-        with self._client(authorization) as client:
-            response = auth_get_user.sync_detailed(client=client)
-        return self._response(response)
+        try:
+            with self._client(authorization) as client:
+                response = auth_get_user.sync_detailed(client=client)
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
+            raise AuthenticationError(_MALFORMED_USER_PROFILE) from error
+        if int(response.status_code) != HTTP_OK:
+            return self._response(response)
+        return _GeneratedTransportResponse(
+            status_code=int(response.status_code),
+            payload=response.parsed,
+            content=response.content,
+            headers=dict(response.headers),
+        )
 
     def auth_refresh(
         self,

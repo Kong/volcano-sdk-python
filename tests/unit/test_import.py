@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import get_type_hints
+
 from volcano_sdk import SignUpResult, User, VolcanoClient
 
 
@@ -16,3 +19,21 @@ def test_package_exports_user() -> None:
     user = User(id="user-123", email="user@example.com", status="active")
 
     assert user.id == "user-123"
+
+
+def test_user_preserves_the_existing_positional_constructor() -> None:
+    confirmed = True
+    user = User(
+        "user-123",
+        "user@example.com",
+        "active",
+        confirmed,
+        {"role": "admin"},
+    )
+
+    assert user.email_confirmed is True
+    assert user.user_metadata == {"role": "admin"}
+
+
+def test_user_type_hints_resolve_at_runtime() -> None:
+    assert get_type_hints(User)["created_at"] == datetime | None

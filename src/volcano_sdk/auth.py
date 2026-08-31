@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Protocol, cast
+from typing import Protocol, TypeVar, cast
 
+from ._generated.models.auth_get_user_response_200 import AuthGetUserResponse200
+from ._generated.types import Unset
 from ._transport import (
     AuthGetUserTransport,
     AuthLogoutTransport,
@@ -21,6 +23,7 @@ _INCOMPLETE_SESSION = "Expected a complete Session"
 _INVALID_SIGN_UP_RESULT = "Expected a complete sign-up acknowledgement"
 _INVALID_USER = "Expected a complete user profile"
 _NO_ACTIVE_SESSION = "No active session"
+_T = TypeVar("_T")
 
 
 def _is_non_empty_string(value: object) -> bool:
@@ -82,33 +85,41 @@ def _sign_up_result_from_payload(payload: object) -> SignUpResult:
 
 
 def _user_from_payload(payload: object) -> User:
-    values: Mapping[object, object] = (
-        cast("Mapping[object, object]", payload) if isinstance(payload, Mapping) else {}
-    )
-    raw_user = values.get("user")
-    user: Mapping[object, object] = (
-        cast("Mapping[object, object]", raw_user)
-        if isinstance(raw_user, Mapping)
-        else {}
-    )
-    user_id = user.get("id")
-    email = user.get("email")
-    status = user.get("status")
-    email_confirmed = user.get("email_confirmed")
-    metadata = user.get("user_metadata")
-    valid = all(_is_non_empty_string(value) for value in (user_id, status))
-    valid = valid and isinstance(email, str)
-    valid = valid and (email_confirmed is None or isinstance(email_confirmed, bool))
-    valid = valid and (metadata is None or isinstance(metadata, Mapping))
-    if not valid:
+    if not isinstance(payload, AuthGetUserResponse200) or isinstance(
+        payload.user,
+        Unset,
+    ):
         raise AuthenticationError(_INVALID_USER)
+    user = payload.user
+    project_id = _none_if_unset(user.project_id)
+    user_metadata = _none_if_unset(user.user_metadata)
+    app_metadata = _none_if_unset(user.app_metadata)
     return User(
-        id=cast("str", user_id),
-        email=cast("str", email),
-        status=cast("str", status),
-        email_confirmed=cast("bool | None", email_confirmed),
-        user_metadata=cast("Mapping[str, JSONValue] | None", metadata),
+        id=str(user.id),
+        email=user.email,
+        status=user.status,
+        project_id=None if project_id is None else str(project_id),
+        email_confirmed=_none_if_unset(user.email_confirmed),
+        user_metadata=(
+            None
+            if user_metadata is None
+            else cast("Mapping[str, JSONValue]", user_metadata.to_dict())
+        ),
+        app_metadata=(
+            None
+            if app_metadata is None
+            else cast("Mapping[str, JSONValue]", app_metadata.to_dict())
+        ),
+        avatar_url=_none_if_unset(user.avatar_url),
+        banned_until=_none_if_unset(user.banned_until),
+        last_sign_in_at=_none_if_unset(user.last_sign_in_at),
+        created_at=_none_if_unset(user.created_at),
+        updated_at=_none_if_unset(user.updated_at),
     )
+
+
+def _none_if_unset(value: _T | Unset) -> _T | None:
+    return None if isinstance(value, Unset) else value
 
 
 class AuthContext(Protocol):

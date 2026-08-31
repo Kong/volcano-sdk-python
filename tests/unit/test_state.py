@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError, dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -11,6 +12,9 @@ from volcano_sdk import (
     Session,
     SessionChangedError,
     VolcanoClient,
+)
+from volcano_sdk._generated.models.auth_get_user_response_200 import (
+    AuthGetUserResponse200,
 )
 
 if TYPE_CHECKING:
@@ -23,6 +27,30 @@ class Response:
     payload: Any = None
     content: bytes = b""
     headers: dict[str, str] | None = None
+
+
+def _user_profile(*, email: str = "user@example.com") -> AuthGetUserResponse200:
+    return AuthGetUserResponse200.from_dict(
+        {
+            "user": {
+                "id": "00000000-0000-4000-8000-000000000010",
+                "email": email,
+                "status": "active",
+                "project_id": "00000000-0000-4000-8000-000000000020",
+                "email_confirmed": True,
+                "user_metadata": {
+                    "display_name": "Ada",
+                    "roles": ["admin"],
+                },
+                "app_metadata": {"provider": "email"},
+                "avatar_url": "https://example.com/avatar.png",
+                "banned_until": None,
+                "last_sign_in_at": "2026-08-31T12:00:00Z",
+                "created_at": "2026-08-30T12:00:00+00:00",
+                "updated_at": "2026-08-31T17:30:00+05:30",
+            }
+        }
+    )
 
 
 class StateTransport:
@@ -38,18 +66,7 @@ class StateTransport:
         self.signup_calls: list[dict[str, Any]] = []
         self.user_response = Response(
             200,
-            {
-                "user": {
-                    "id": "user-123",
-                    "email": "user@example.com",
-                    "status": "active",
-                    "email_confirmed": True,
-                    "user_metadata": {
-                        "display_name": "Ada",
-                        "roles": ["admin"],
-                    },
-                }
-            },
+            _user_profile(),
         )
         self.on_get_user: Callable[[], None] | None = None
         self.refresh_response = Response(
@@ -57,7 +74,7 @@ class StateTransport:
             {
                 "access_token": "access-2",
                 "refresh_token": "refresh-2",
-                "user": {"id": "user-123"},
+                "user": {"id": "00000000-0000-4000-8000-000000000010"},
             },
         )
         self.on_refresh: Callable[[], None] | None = None
@@ -73,7 +90,7 @@ class StateTransport:
             {
                 "access_token": self.next_access_token,
                 "refresh_token": f"refresh-{self.next_access_token}",
-                "user": {"id": "user-123"},
+                "user": {"id": "00000000-0000-4000-8000-000000000010"},
             },
         )
 
@@ -242,26 +259,36 @@ def test_get_user_returns_an_immutable_server_validated_profile() -> None:
 
     user = client.auth.get_user()
 
-    assert user.id == "user-123"
+    assert user.id == "00000000-0000-4000-8000-000000000010"
     assert user.email == "user@example.com"
     assert user.status == "active"
+    assert user.project_id == "00000000-0000-4000-8000-000000000020"
     assert user.email_confirmed is True
     assert user.user_metadata == {"display_name": "Ada", "roles": ("admin",)}
+    assert user.app_metadata == {"provider": "email"}
+    assert user.avatar_url == "https://example.com/avatar.png"
+    assert user.banned_until is None
+    assert user.last_sign_in_at == datetime.fromisoformat("2026-08-31T12:00:00Z")
+    assert user.created_at == datetime.fromisoformat("2026-08-30T12:00:00+00:00")
+    assert user.updated_at == datetime.fromisoformat("2026-08-31T17:30:00+05:30")
     assert transport.authorizations[-1] == ("get_user", "access-1")
     assert client.auth.get_session() is established
     mutable_user: Any = user
     mutable_metadata: Any = user.user_metadata
+    mutable_app_metadata: Any = user.app_metadata
     with pytest.raises(FrozenInstanceError):
         mutable_user.email = "changed@example.com"
     with pytest.raises(TypeError):
         mutable_metadata["display_name"] = "Changed"
+    with pytest.raises(TypeError):
+        mutable_app_metadata["provider"] = "oauth"
 
 
 def test_get_user_accepts_a_server_profile_without_an_email() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
     client.auth.sign_in(email="user@example.com", password="secret")
-    transport.user_response.payload["user"]["email"] = ""
+    transport.user_response = Response(200, _user_profile(email=""))
 
     user = client.auth.get_user()
 
@@ -333,7 +360,7 @@ def test_auth_facade_reads_established_immutable_session_without_transport() -> 
     assert current == Session(
         access_token="access-1",
         refresh_token="refresh-access-1",
-        user_id="user-123",
+        user_id="00000000-0000-4000-8000-000000000010",
     )
     assert transport.authorizations == calls_after_sign_in
 

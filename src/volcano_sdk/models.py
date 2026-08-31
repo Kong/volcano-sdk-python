@@ -1,14 +1,10 @@
 """Public Volcano SDK value objects."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, TypeAlias
-
-if TYPE_CHECKING:
-    from datetime import datetime
+from typing import TypeAlias
 
 JSONValue: TypeAlias = (
     str
@@ -54,10 +50,22 @@ class User:
         repr=False,
         hash=False,
     )
+    project_id: str | None = None
+    app_metadata: Mapping[str, JSONValue] | None = field(
+        default=None,
+        repr=False,
+        hash=False,
+    )
+    avatar_url: str | None = None
+    banned_until: datetime | None = None
+    last_sign_in_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     def __post_init__(self) -> None:
         """Defensively freeze nested metadata owned by this value."""
         object.__setattr__(self, "user_metadata", _freeze_metadata(self.user_metadata))
+        object.__setattr__(self, "app_metadata", _freeze_metadata(self.app_metadata))
 
 
 @dataclass(frozen=True, slots=True)

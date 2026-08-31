@@ -3,7 +3,13 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 
+from volcano_sdk import AuthenticationError
+from volcano_sdk._generated.models.auth_get_user_response_200 import (
+    AuthGetUserResponse200,
+)
+from volcano_sdk._generated.types import Unset
 from volcano_sdk._transport import GeneratedTransport
 
 
@@ -75,10 +81,29 @@ def test_generated_transport_gets_the_current_user_with_the_access_token() -> No
     response = transport.auth_get_user(authorization="access-token")
 
     assert response.status_code == 200
-    assert response.payload["user"]["email"] == "user@example.com"
+    assert isinstance(response.payload, AuthGetUserResponse200)
+    assert not isinstance(response.payload.user, Unset)
+    assert response.payload.user.email == "user@example.com"
     assert requests[0].method == "GET"
     assert requests[0].url.path == "/auth/user"
     assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
+def test_generated_transport_normalizes_malformed_current_user_json() -> None:
+    def handle(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"not-json",
+            headers={"Content-Type": "text/html"},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    with pytest.raises(AuthenticationError, match="Expected a complete user profile"):
+        transport.auth_get_user(authorization="access-token")
 
 
 def test_generated_transport_logs_out_with_the_anon_key_and_refresh_token() -> None:

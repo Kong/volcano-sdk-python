@@ -50,9 +50,11 @@ account is ready to establish a session.
 `get_session()` reads immutable local state. It does not refresh or validate the token.
 
 `get_user()` sends the active access token to Volcano and returns an immutable, server-validated
-profile. It does not replace the session or cache the profile. If another authentication operation
-replaces the session while the request is in flight, `get_user()` raises `SessionChangedError`
-instead of returning a profile for stale credentials.
+profile with the complete public AuthUser fields. Profile timestamps are timezone-aware `datetime`
+values, and nested user and application metadata are immutable. The request does not replace the
+session or cache the profile. If another authentication operation replaces the session while the
+request is in flight, `get_user()` raises `SessionChangedError` instead of returning a profile for
+stale credentials.
 
 Copy a complete native session into another client's memory:
 
