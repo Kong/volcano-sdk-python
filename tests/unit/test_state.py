@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import FrozenInstanceError, dataclass
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -28,6 +28,14 @@ class Response:
 class StateTransport:
     def __init__(self) -> None:
         self.next_access_token = "access-1"
+        self.signup_response = Response(
+            201,
+            {
+                "confirmation_required": True,
+                "message": "Check your email to confirm your account",
+            },
+        )
+        self.signup_calls: list[dict[str, Any]] = []
         self.refresh_response = Response(
             200,
             {
@@ -52,6 +60,11 @@ class StateTransport:
                 "user": {"id": "user-123"},
             },
         )
+
+    def auth_signup(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("signup", kwargs["authorization"]))
+        self.signup_calls.append(kwargs)
+        return self.signup_response
 
     def auth_refresh(self, **kwargs: Any) -> Response:
         self.authorizations.append(("refresh", kwargs["authorization"]))
@@ -149,6 +162,55 @@ def test_auth_facade_reads_an_empty_session_without_transport() -> None:
 
     assert client.auth.get_session() is None
     assert transport.authorizations == []
+
+
+def test_sign_up_returns_immutable_acknowledgement_without_session_change() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+
+    result = client.auth.sign_up(
+        email="new@example.com",
+        password="secret",
+        metadata={"display_name": "New User"},
+    )
+
+    assert result.confirmation_required is True
+    assert result.message == "Check your email to confirm your account"
+    assert client.auth.get_session() is established
+    assert transport.signup_calls == [
+        {
+            "authorization": "anon",
+            "email": "new@example.com",
+            "password": "secret",
+            "metadata": {"display_name": "New User"},
+        }
+    ]
+    mutable_result: Any = result
+    with pytest.raises(FrozenInstanceError):
+        mutable_result.message = "changed"
+
+
+def test_sign_up_uses_empty_metadata_without_creating_a_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    client.auth.sign_up(email="new@example.com", password="secret")
+
+    assert client.auth.get_session() is None
+    assert transport.signup_calls[0]["metadata"] == {}
+
+
+def test_sign_up_raises_typed_errors_without_changing_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+    transport.signup_response = Response(403, {"error": "Signups are disabled"})
+
+    with pytest.raises(AuthenticationError, match="Signups are disabled"):
+        client.auth.sign_up(email="new@example.com", password="secret")
+
+    assert client.auth.get_session() is established
 
 
 def test_auth_facade_reads_established_immutable_session_without_transport() -> None:

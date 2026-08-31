@@ -17,6 +17,14 @@ client = VolcanoClient(
     service_key="your-service-key",
 )
 
+sign_up = client.auth.sign_up(
+    email="new-user@example.com",
+    password="secret",
+    metadata={"display_name": "New User"},
+)
+if sign_up.confirmation_required:
+    print(sign_up.message)
+
 session = client.auth.sign_in(email="user@example.com", password="secret")
 current_session = client.auth.get_session()
 assert current_session == session
@@ -31,6 +39,10 @@ assert downloaded == b"hello"
 lease = client.locks.acquire("build", ttl=30)
 client.locks.release("build", lease)
 ```
+
+`sign_up()` returns an immutable acknowledgement and never creates or replaces a session. The
+response is identical for new and existing email addresses. Call `sign_in()` separately after the
+account is ready to establish a session.
 
 `get_session()` reads immutable local state. It does not refresh or validate the token.
 

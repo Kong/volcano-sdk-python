@@ -7,6 +7,46 @@ import httpx
 from volcano_sdk._transport import GeneratedTransport
 
 
+def test_generated_transport_signs_up_with_the_anon_key_and_metadata() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            201,
+            json={
+                "confirmation_required": True,
+                "message": "Check your email to confirm your account",
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_signup(
+        authorization="anon-key",
+        email="user@example.com",
+        password="secret",
+        metadata={"display_name": "New User"},
+    )
+
+    assert response.status_code == 201
+    assert response.payload == {
+        "confirmation_required": True,
+        "message": "Check your email to confirm your account",
+    }
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/auth/signup"
+    assert requests[0].headers["authorization"] == "Bearer anon-key"
+    assert json.loads(requests[0].content) == {
+        "email": "user@example.com",
+        "password": "secret",
+        "user_metadata": {"display_name": "New User"},
+    }
+
+
 def test_generated_transport_logs_out_with_the_anon_key_and_refresh_token() -> None:
     requests: list[httpx.Request] = []
 
