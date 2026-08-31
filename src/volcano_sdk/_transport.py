@@ -11,7 +11,12 @@ from uuid import UUID, uuid4
 
 import httpx
 
-from ._generated.api.authentication import auth_logout, auth_refresh, auth_signin
+from ._generated.api.authentication import (
+    auth_logout,
+    auth_refresh,
+    auth_signin,
+    auth_signup,
+)
 from ._generated.api.database_queries import query_database_select
 from ._generated.api.locks import acquire_project_lock, release_project_lock
 from ._generated.api.storage_objects import (
@@ -22,6 +27,10 @@ from ._generated.client import AuthenticatedClient
 from ._generated.models.auth_logout_body import AuthLogoutBody
 from ._generated.models.auth_refresh_body import AuthRefreshBody
 from ._generated.models.auth_signin_body import AuthSigninBody
+from ._generated.models.auth_signup_body import AuthSignupBody
+from ._generated.models.auth_signup_body_user_metadata import (
+    AuthSignupBodyUserMetadata,
+)
 from ._generated.models.database_select_request import DatabaseSelectRequest
 from ._generated.models.project_lock_lease_request import ProjectLockLeaseRequest
 from ._generated.models.upload_storage_object_files_body import (
@@ -95,6 +104,17 @@ class AuthLogoutTransport(Protocol):
         *,
         authorization: str,
         refresh_token: str,
+    ) -> TransportResponse: ...
+
+
+class AuthSignUpTransport(Protocol):
+    def auth_signup(
+        self,
+        *,
+        authorization: str,
+        email: str,
+        password: str,
+        metadata: dict[str, object],
     ) -> TransportResponse: ...
 
 
@@ -261,6 +281,23 @@ class GeneratedTransport:
                 client=client,
                 body=AuthSigninBody(email=email, password=password),
             )
+        return self._response(response)
+
+    def auth_signup(
+        self,
+        *,
+        authorization: str,
+        email: str,
+        password: str,
+        metadata: dict[str, object],
+    ) -> TransportResponse:
+        body = AuthSignupBody(
+            email=email,
+            password=password,
+            user_metadata=AuthSignupBodyUserMetadata.from_dict(metadata),
+        )
+        with self._client(authorization) as client:
+            response = auth_signup.sync_detailed(client=client, body=body)
         return self._response(response)
 
     def auth_refresh(

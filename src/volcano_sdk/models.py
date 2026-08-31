@@ -19,6 +19,14 @@ class Session:
 
 
 @dataclass(frozen=True, slots=True)
+class SignUpResult:
+    """Session-less acknowledgement returned after sign-up."""
+
+    confirmation_required: bool
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
 class LockLease:
     """Lease returned for an acquired distributed lock."""
 

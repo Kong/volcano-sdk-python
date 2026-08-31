@@ -8,14 +8,16 @@ from typing import Protocol, cast
 from ._transport import (
     AuthLogoutTransport,
     AuthRefreshTransport,
+    AuthSignUpTransport,
     Transport,
     invoke,
     response_payload,
 )
 from .errors import AuthenticationError, SessionChangedError, VolcanoError
-from .models import Session
+from .models import Session, SignUpResult
 
 _INCOMPLETE_SESSION = "Expected a complete Session"
+_INVALID_SIGN_UP_RESULT = "Expected a complete sign-up acknowledgement"
 _NO_ACTIVE_SESSION = "No active session"
 
 
@@ -63,6 +65,20 @@ def _session_from_payload(payload: object) -> Session:
     )
 
 
+def _sign_up_result_from_payload(payload: object) -> SignUpResult:
+    values: Mapping[object, object] = (
+        cast("Mapping[object, object]", payload) if isinstance(payload, Mapping) else {}
+    )
+    confirmation_required = values.get("confirmation_required")
+    message = values.get("message")
+    if not isinstance(confirmation_required, bool) or not isinstance(message, str):
+        raise TypeError(_INVALID_SIGN_UP_RESULT)
+    return SignUpResult(
+        confirmation_required=confirmation_required,
+        message=message,
+    )
+
+
 class AuthContext(Protocol):
     """Client capabilities required by the authentication facade."""
 
@@ -100,6 +116,24 @@ class Auth:
         owned = _copy_complete_session(session)
         self._client._set_session(owned)
         return owned
+
+    def sign_up(
+        self,
+        *,
+        email: str,
+        password: str,
+        metadata: Mapping[str, object] | None = None,
+    ) -> SignUpResult:
+        """Create an account without creating or replacing a local session."""
+        transport = cast("AuthSignUpTransport", self._client._transport)
+        response = invoke(
+            transport.auth_signup,
+            authorization=self._client._anon_token(),
+            email=email,
+            password=password,
+            metadata=dict(metadata or {}),
+        )
+        return _sign_up_result_from_payload(response_payload(response, 201))
 
     def sign_in(self, *, email: str, password: str) -> Session:
         """Sign in a user and store the returned session."""
