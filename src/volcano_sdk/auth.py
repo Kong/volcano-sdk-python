@@ -112,29 +112,39 @@ def _user_from_payload(payload: object) -> User:
     user_id = user.get("id")
     email = user.get("email")
     status = user.get("status")
-    email_confirmed = user.get("email_confirmed")
-    user_metadata = user.get("user_metadata")
-    app_metadata = user.get("app_metadata")
-    project_id = user.get("project_id")
-    avatar_url = user.get("avatar_url")
+    email_confirmed = user.get("email_confirmed", _MISSING)
+    user_metadata = user.get("user_metadata", _MISSING)
+    app_metadata = user.get("app_metadata", _MISSING)
+    project_id = user.get("project_id", _MISSING)
+    avatar_url = user.get("avatar_url", _MISSING)
     valid = _is_uuid(user_id) and isinstance(status, str) and status in _USER_STATUSES
     valid = valid and isinstance(email, str)
-    valid = valid and (email_confirmed is None or isinstance(email_confirmed, bool))
-    valid = valid and (user_metadata is None or isinstance(user_metadata, Mapping))
-    valid = valid and (app_metadata is None or isinstance(app_metadata, Mapping))
-    valid = valid and (project_id is None or _is_uuid(project_id))
-    valid = valid and (avatar_url is None or isinstance(avatar_url, str))
+    valid = valid and (email_confirmed is _MISSING or isinstance(email_confirmed, bool))
+    valid = valid and (user_metadata is _MISSING or isinstance(user_metadata, Mapping))
+    valid = valid and (app_metadata is _MISSING or isinstance(app_metadata, Mapping))
+    valid = valid and (project_id is _MISSING or _is_uuid(project_id))
+    valid = valid and (avatar_url is _MISSING or isinstance(avatar_url, str))
     if not valid:
         raise AuthenticationError(_INVALID_USER)
     return User(
         id=cast("str", user_id),
         email=cast("str", email),
         status=cast("str", status),
-        project_id=cast("str | None", project_id),
-        email_confirmed=cast("bool | None", email_confirmed),
-        user_metadata=cast("Mapping[str, JSONValue] | None", user_metadata),
-        app_metadata=cast("Mapping[str, JSONValue] | None", app_metadata),
-        avatar_url=cast("str | None", avatar_url),
+        project_id=None if project_id is _MISSING else cast("str", project_id),
+        email_confirmed=(
+            None if email_confirmed is _MISSING else cast("bool", email_confirmed)
+        ),
+        user_metadata=(
+            None
+            if user_metadata is _MISSING
+            else cast("Mapping[str, JSONValue]", user_metadata)
+        ),
+        app_metadata=(
+            None
+            if app_metadata is _MISSING
+            else cast("Mapping[str, JSONValue]", app_metadata)
+        ),
+        avatar_url=None if avatar_url is _MISSING else cast("str", avatar_url),
         banned_until=_profile_datetime(
             user.get("banned_until", _MISSING),
             nullable=True,
