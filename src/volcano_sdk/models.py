@@ -48,13 +48,13 @@ class User:
     id: str
     email: str
     status: str
-    project_id: str | None = None
     email_confirmed: bool | None = None
     user_metadata: Mapping[str, JSONValue] | None = field(
         default=None,
         repr=False,
         hash=False,
     )
+    project_id: str | None = None
     app_metadata: Mapping[str, JSONValue] | None = field(
         default=None,
         repr=False,

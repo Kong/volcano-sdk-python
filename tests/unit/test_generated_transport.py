@@ -63,7 +63,7 @@ def test_generated_transport_gets_the_current_user_with_the_access_token() -> No
                     "status": "active",
                     "email_confirmed": True,
                     "user_metadata": {"display_name": "Ada"},
-                    "created_at": "2026-08-26T12:00:00Z",
+                    "created_at": "2026-08-26T12:00:00z",
                     "updated_at": "2026-08-26T12:00:00Z",
                 }
             },

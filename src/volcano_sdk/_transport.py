@@ -12,7 +12,6 @@ from uuid import UUID, uuid4
 import httpx
 
 from ._generated.api.authentication import (
-    auth_get_user,
     auth_logout,
     auth_refresh,
     auth_signin,
@@ -55,6 +54,7 @@ if TYPE_CHECKING:
 HTTP_NOT_FOUND = 404
 HTTP_CONFLICT = 409
 HTTP_RATE_LIMITED = 429
+HTTP_OK = 200
 HTTP_SERVER_ERROR_MIN = 500
 HTTP_SERVER_ERROR_MAX = 599
 _MALFORMED_USER_PROFILE = "Expected a complete user profile"
@@ -307,12 +307,20 @@ class GeneratedTransport:
         return self._response(response)
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(method="get", url="/auth/user")
         try:
-            with self._client(authorization) as client:
-                response = auth_get_user.sync_detailed(client=client)
-        except (AttributeError, KeyError, TypeError, ValueError) as error:
-            raise AuthenticationError(_MALFORMED_USER_PROFILE) from error
-        return self._response(response)
+            payload = json.loads(response.content)
+        except (json.JSONDecodeError, UnicodeDecodeError) as error:
+            if response.status_code == HTTP_OK:
+                raise AuthenticationError(_MALFORMED_USER_PROFILE) from error
+            payload = None
+        return _GeneratedTransportResponse(
+            status_code=response.status_code,
+            payload=payload,
+            content=response.content,
+            headers=dict(response.headers),
+        )
 
     def auth_refresh(
         self,
