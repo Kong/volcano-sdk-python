@@ -1,4 +1,4 @@
-from volcano_sdk import SignUpResult, VolcanoClient
+from volcano_sdk import SignUpResult, User, VolcanoClient
 
 
 def test_package_exports_client() -> None:
@@ -10,3 +10,9 @@ def test_package_exports_sign_up_result() -> None:
 
     assert result.confirmation_required is True
     assert result.message == "Check your email"
+
+
+def test_package_exports_user() -> None:
+    user = User(id="user-123", email="user@example.com", status="active")
+
+    assert user.id == "user-123"

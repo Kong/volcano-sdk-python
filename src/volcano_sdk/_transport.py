@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 import httpx
 
 from ._generated.api.authentication import (
+    auth_get_user,
     auth_logout,
     auth_refresh,
     auth_signin,
@@ -116,6 +117,10 @@ class AuthSignUpTransport(Protocol):
         password: str,
         metadata: dict[str, object],
     ) -> TransportResponse: ...
+
+
+class AuthGetUserTransport(Protocol):
+    def auth_get_user(self, *, authorization: str) -> TransportResponse: ...
 
 
 class Transport(Protocol):
@@ -298,6 +303,11 @@ class GeneratedTransport:
         )
         with self._client(authorization) as client:
             response = auth_signup.sync_detailed(client=client, body=body)
+        return self._response(response)
+
+    def auth_get_user(self, *, authorization: str) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_get_user.sync_detailed(client=client)
         return self._response(response)
 
     def auth_refresh(

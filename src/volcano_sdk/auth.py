@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Protocol, cast
 
 from ._transport import (
+    AuthGetUserTransport,
     AuthLogoutTransport,
     AuthRefreshTransport,
     AuthSignUpTransport,
@@ -14,10 +15,11 @@ from ._transport import (
     response_payload,
 )
 from .errors import AuthenticationError, SessionChangedError, VolcanoError
-from .models import Session, SignUpResult
+from .models import JSONValue, Session, SignUpResult, User
 
 _INCOMPLETE_SESSION = "Expected a complete Session"
 _INVALID_SIGN_UP_RESULT = "Expected a complete sign-up acknowledgement"
+_INVALID_USER = "Expected a complete user profile"
 _NO_ACTIVE_SESSION = "No active session"
 
 
@@ -79,6 +81,35 @@ def _sign_up_result_from_payload(payload: object) -> SignUpResult:
     )
 
 
+def _user_from_payload(payload: object) -> User:
+    values: Mapping[object, object] = (
+        cast("Mapping[object, object]", payload) if isinstance(payload, Mapping) else {}
+    )
+    raw_user = values.get("user")
+    user: Mapping[object, object] = (
+        cast("Mapping[object, object]", raw_user)
+        if isinstance(raw_user, Mapping)
+        else {}
+    )
+    user_id = user.get("id")
+    email = user.get("email")
+    status = user.get("status")
+    email_confirmed = user.get("email_confirmed")
+    metadata = user.get("user_metadata")
+    valid = all(_is_non_empty_string(value) for value in (user_id, email, status))
+    valid = valid and (email_confirmed is None or isinstance(email_confirmed, bool))
+    valid = valid and (metadata is None or isinstance(metadata, Mapping))
+    if not valid:
+        raise AuthenticationError(_INVALID_USER)
+    return User(
+        id=cast("str", user_id),
+        email=cast("str", email),
+        status=cast("str", status),
+        email_confirmed=cast("bool | None", email_confirmed),
+        user_metadata=cast("Mapping[str, JSONValue] | None", metadata),
+    )
+
+
 class AuthContext(Protocol):
     """Client capabilities required by the authentication facade."""
 
@@ -134,6 +165,18 @@ class Auth:
             metadata=dict(metadata or {}),
         )
         return _sign_up_result_from_payload(response_payload(response, 201))
+
+    def get_user(self) -> User:
+        """Load a server-validated profile for the current session."""
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast("AuthGetUserTransport", self._client._transport)
+        response = invoke(transport.auth_get_user, authorization=current.access_token)
+        user = _user_from_payload(response_payload(response, 200))
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
+        return user
 
     def sign_in(self, *, email: str, password: str) -> Session:
         """Sign in a user and store the returned session."""
