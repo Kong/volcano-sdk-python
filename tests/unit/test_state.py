@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError, dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -43,11 +44,18 @@ class StateTransport:
                     "id": "user-123",
                     "email": "user@example.com",
                     "status": "active",
+                    "project_id": "project-123",
                     "email_confirmed": True,
                     "user_metadata": {
                         "display_name": "Ada",
                         "roles": ["admin"],
                     },
+                    "app_metadata": {"provider": "email"},
+                    "avatar_url": "https://example.com/avatar.png",
+                    "banned_until": None,
+                    "last_sign_in_at": "2026-08-31T12:00:00z",
+                    "created_at": "2026-08-30T12:00:00+00:00",
+                    "updated_at": "2026-08-31T17:30:00+05:30",
                 }
             },
         )
@@ -245,16 +253,26 @@ def test_get_user_returns_an_immutable_server_validated_profile() -> None:
     assert user.id == "user-123"
     assert user.email == "user@example.com"
     assert user.status == "active"
+    assert user.project_id == "project-123"
     assert user.email_confirmed is True
     assert user.user_metadata == {"display_name": "Ada", "roles": ("admin",)}
+    assert user.app_metadata == {"provider": "email"}
+    assert user.avatar_url == "https://example.com/avatar.png"
+    assert user.banned_until is None
+    assert user.last_sign_in_at == datetime.fromisoformat("2026-08-31T12:00:00Z")
+    assert user.created_at == datetime.fromisoformat("2026-08-30T12:00:00+00:00")
+    assert user.updated_at == datetime.fromisoformat("2026-08-31T17:30:00+05:30")
     assert transport.authorizations[-1] == ("get_user", "access-1")
     assert client.auth.get_session() is established
     mutable_user: Any = user
     mutable_metadata: Any = user.user_metadata
+    mutable_app_metadata: Any = user.app_metadata
     with pytest.raises(FrozenInstanceError):
         mutable_user.email = "changed@example.com"
     with pytest.raises(TypeError):
         mutable_metadata["display_name"] = "Changed"
+    with pytest.raises(TypeError):
+        mutable_app_metadata["provider"] = "oauth"
 
 
 def test_get_user_accepts_a_server_profile_without_an_email() -> None:
@@ -276,6 +294,24 @@ def test_user_with_metadata_has_a_stable_hash() -> None:
     user = client.auth.get_user()
 
     assert {user} == {user}
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("status", "pending"),
+        ("status", {"unexpected": True}),
+        ("created_at", "2026-08-31T12:00:00"),
+    ],
+)
+def test_get_user_rejects_invalid_profile_values(field: str, value: object) -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    transport.user_response.payload["user"][field] = value
+
+    with pytest.raises(AuthenticationError, match="Expected a complete user profile"):
+        client.auth.get_user()
 
 
 def test_get_user_without_a_session_fails_before_transport() -> None:

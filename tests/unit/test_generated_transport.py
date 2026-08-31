@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 
+from volcano_sdk import AuthenticationError
 from volcano_sdk._transport import GeneratedTransport
 
 
@@ -79,6 +81,23 @@ def test_generated_transport_gets_the_current_user_with_the_access_token() -> No
     assert requests[0].method == "GET"
     assert requests[0].url.path == "/auth/user"
     assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
+def test_generated_transport_normalizes_malformed_current_user_json() -> None:
+    def handle(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"not-json",
+            headers={"Content-Type": "text/html"},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    with pytest.raises(AuthenticationError, match="Expected a complete user profile"):
+        transport.auth_get_user(authorization="access-token")
 
 
 def test_generated_transport_logs_out_with_the_anon_key_and_refresh_token() -> None:

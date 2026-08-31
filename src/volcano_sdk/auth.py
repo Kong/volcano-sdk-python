@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Protocol, cast
 
 from ._transport import (
@@ -21,6 +22,7 @@ _INCOMPLETE_SESSION = "Expected a complete Session"
 _INVALID_SIGN_UP_RESULT = "Expected a complete sign-up acknowledgement"
 _INVALID_USER = "Expected a complete user profile"
 _NO_ACTIVE_SESSION = "No active session"
+_USER_STATUSES = frozenset({"active", "banned", "deleted"})
 
 
 def _is_non_empty_string(value: object) -> bool:
@@ -95,20 +97,52 @@ def _user_from_payload(payload: object) -> User:
     email = user.get("email")
     status = user.get("status")
     email_confirmed = user.get("email_confirmed")
-    metadata = user.get("user_metadata")
-    valid = all(_is_non_empty_string(value) for value in (user_id, status))
+    user_metadata = user.get("user_metadata")
+    app_metadata = user.get("app_metadata")
+    project_id = user.get("project_id")
+    avatar_url = user.get("avatar_url")
+    valid = (
+        _is_non_empty_string(user_id)
+        and isinstance(status, str)
+        and status in _USER_STATUSES
+    )
     valid = valid and isinstance(email, str)
     valid = valid and (email_confirmed is None or isinstance(email_confirmed, bool))
-    valid = valid and (metadata is None or isinstance(metadata, Mapping))
+    valid = valid and (user_metadata is None or isinstance(user_metadata, Mapping))
+    valid = valid and (app_metadata is None or isinstance(app_metadata, Mapping))
+    valid = valid and (project_id is None or isinstance(project_id, str))
+    valid = valid and (avatar_url is None or isinstance(avatar_url, str))
     if not valid:
         raise AuthenticationError(_INVALID_USER)
     return User(
         id=cast("str", user_id),
         email=cast("str", email),
         status=cast("str", status),
+        project_id=cast("str | None", project_id),
         email_confirmed=cast("bool | None", email_confirmed),
-        user_metadata=cast("Mapping[str, JSONValue] | None", metadata),
+        user_metadata=cast("Mapping[str, JSONValue] | None", user_metadata),
+        app_metadata=cast("Mapping[str, JSONValue] | None", app_metadata),
+        avatar_url=cast("str | None", avatar_url),
+        banned_until=_profile_datetime(user.get("banned_until")),
+        last_sign_in_at=_profile_datetime(user.get("last_sign_in_at")),
+        created_at=_profile_datetime(user.get("created_at")),
+        updated_at=_profile_datetime(user.get("updated_at")),
     )
+
+
+def _profile_datetime(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise AuthenticationError(_INVALID_USER)
+    try:
+        normalized = f"{value[:-1]}Z" if value.endswith("z") else value
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as error:
+        raise AuthenticationError(_INVALID_USER) from error
+    if parsed.utcoffset() is None:
+        raise AuthenticationError(_INVALID_USER)
+    return parsed
 
 
 class AuthContext(Protocol):
