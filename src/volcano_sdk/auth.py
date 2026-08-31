@@ -23,6 +23,7 @@ from .models import JSONValue, Session, SignUpResult, User
 _INCOMPLETE_SESSION = "Expected a complete Session"
 _INVALID_SIGN_UP_RESULT = "Expected a complete sign-up acknowledgement"
 _INVALID_USER = "Expected a complete user profile"
+_MISSING = object()
 _NO_ACTIVE_SESSION = "No active session"
 _RFC3339_DATETIME = re.compile(
     r"\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})"
@@ -134,16 +135,23 @@ def _user_from_payload(payload: object) -> User:
         user_metadata=cast("Mapping[str, JSONValue] | None", user_metadata),
         app_metadata=cast("Mapping[str, JSONValue] | None", app_metadata),
         avatar_url=cast("str | None", avatar_url),
-        banned_until=_profile_datetime(user.get("banned_until")),
-        last_sign_in_at=_profile_datetime(user.get("last_sign_in_at")),
-        created_at=_profile_datetime(user.get("created_at")),
-        updated_at=_profile_datetime(user.get("updated_at")),
+        banned_until=_profile_datetime(
+            user.get("banned_until", _MISSING),
+            nullable=True,
+        ),
+        last_sign_in_at=_profile_datetime(user.get("last_sign_in_at", _MISSING)),
+        created_at=_profile_datetime(user.get("created_at", _MISSING)),
+        updated_at=_profile_datetime(user.get("updated_at", _MISSING)),
     )
 
 
-def _profile_datetime(value: object) -> datetime | None:
-    if value is None:
+def _profile_datetime(value: object, *, nullable: bool = False) -> datetime | None:
+    if value is _MISSING:
         return None
+    if value is None:
+        if nullable:
+            return None
+        raise AuthenticationError(_INVALID_USER)
     if not isinstance(value, str) or _RFC3339_DATETIME.fullmatch(value) is None:
         raise AuthenticationError(_INVALID_USER)
     try:

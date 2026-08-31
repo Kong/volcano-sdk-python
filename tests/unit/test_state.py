@@ -303,6 +303,7 @@ def test_user_with_metadata_has_a_stable_hash() -> None:
         ("status", {"unexpected": True}),
         ("id", "not-a-uuid"),
         ("project_id", "not-a-uuid"),
+        ("created_at", None),
         ("created_at", "2026-08-31T12:00:00"),
         ("created_at", "2026-08-31 12:00:00Z"),
         ("created_at", "2026-08-31T12:00:00+05"),
