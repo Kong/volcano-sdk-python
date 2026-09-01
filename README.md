@@ -77,6 +77,15 @@ When transactional email is configured, Volcano sends the reset link. Success re
 the response is intentionally identical whether or not the email belongs to an account. Failures
 raise the same typed Volcano errors as other authentication operations.
 
+Confirm an email address with the token from its confirmation link:
+
+```python
+client.auth.confirm_email(token="confirmation-token")
+```
+
+Success returns `None`. Confirmation does not sign in the confirmed account or change an unrelated
+local session.
+
 Set a new password with the recovery token from that email:
 
 ```python

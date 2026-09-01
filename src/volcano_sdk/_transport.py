@@ -19,6 +19,9 @@ from ._generated.api.authentication import (
     auth_signup,
     auth_update_user,
 )
+from ._generated.api.authentication.auth_confirm_email import (
+    _get_kwargs as confirm_email_kwargs,
+)
 from ._generated.api.authentication.auth_forgot_password import (
     _get_kwargs as forgot_password_kwargs,
 )
@@ -32,6 +35,7 @@ from ._generated.api.storage_objects import (
     upload_storage_object,
 )
 from ._generated.client import AuthenticatedClient
+from ._generated.models.auth_confirm_email_body import AuthConfirmEmailBody
 from ._generated.models.auth_forgot_password_body import AuthForgotPasswordBody
 from ._generated.models.auth_logout_body import AuthLogoutBody
 from ._generated.models.auth_refresh_body import AuthRefreshBody
@@ -140,6 +144,15 @@ class AuthForgotPasswordTransport(Protocol):
         *,
         authorization: str,
         email: str,
+    ) -> TransportResponse: ...
+
+
+class AuthConfirmEmailTransport(Protocol):
+    def auth_confirm_email(
+        self,
+        *,
+        authorization: str,
+        token: str,
     ) -> TransportResponse: ...
 
 
@@ -371,6 +384,18 @@ class GeneratedTransport:
         with self._client(authorization) as client:
             response = client.get_httpx_client().request(
                 **forgot_password_kwargs(body=AuthForgotPasswordBody(email=email))
+            )
+        return self._raw_response(response)
+
+    def auth_confirm_email(
+        self,
+        *,
+        authorization: str,
+        token: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **confirm_email_kwargs(body=AuthConfirmEmailBody(token=token))
             )
         return self._raw_response(response)
 

@@ -81,6 +81,11 @@ class StateTransport:
             {"message": "Password reset successful. Please sign in again."},
         )
         self.reset_password_calls: list[dict[str, Any]] = []
+        self.confirm_email_response = Response(
+            200,
+            {"message": "Email confirmed successfully"},
+        )
+        self.confirm_email_calls: list[dict[str, Any]] = []
         self.user_response = Response(
             200,
             _user_profile(),
@@ -128,6 +133,11 @@ class StateTransport:
         self.authorizations.append(("reset_password", kwargs["authorization"]))
         self.reset_password_calls.append(kwargs)
         return self.reset_password_response
+
+    def auth_confirm_email(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("confirm_email", kwargs["authorization"]))
+        self.confirm_email_calls.append(kwargs)
+        return self.confirm_email_response
 
     def auth_get_user(self, **kwargs: Any) -> Response:
         self.authorizations.append(("get_user", kwargs["authorization"]))
@@ -382,6 +392,31 @@ def test_reset_password_raises_a_typed_error_without_session_change() -> None:
 
     with pytest.raises(AuthenticationError):
         client.auth.reset_password(token="expired-token", new_password="new-secret")
+
+    assert client.auth.get_session() is established
+
+
+def test_confirm_email_uses_the_token_without_session_change() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="other@example.com", password="secret")
+
+    client.auth.confirm_email(token="confirmation-token")
+
+    assert transport.confirm_email_calls == [
+        {"authorization": "anon", "token": "confirmation-token"}
+    ]
+    assert client.auth.get_session() is established
+
+
+def test_confirm_email_raises_a_typed_error_without_session_change() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="other@example.com", password="secret")
+    transport.confirm_email_response = Response(401)
+
+    with pytest.raises(AuthenticationError):
+        client.auth.confirm_email(token="expired-token")
 
     assert client.auth.get_session() is established
 
