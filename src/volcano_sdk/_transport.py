@@ -14,6 +14,7 @@ import httpx
 from ._generated.api.authentication import (
     auth_confirm_email_change,
     auth_convert_anonymous,
+    auth_get_my_sessions,
     auth_get_user,
     auth_logout,
     auth_refresh,
@@ -266,6 +267,16 @@ class AuthDeleteMySessionTransport(Protocol):
         *,
         authorization: str,
         session_id: str,
+    ) -> TransportResponse: ...
+
+
+class AuthGetMySessionsTransport(Protocol):
+    def auth_get_my_sessions(
+        self,
+        *,
+        authorization: str,
+        page: int,
+        limit: int,
     ) -> TransportResponse: ...
 
 
@@ -650,6 +661,28 @@ class GeneratedTransport:
                 **delete_my_session_kwargs(session_id=cast("UUID", session_id))
             )
         return self._raw_response(response)
+
+    def auth_get_my_sessions(
+        self,
+        *,
+        authorization: str,
+        page: int,
+        limit: int,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_get_my_sessions.sync_detailed(
+                client=client,
+                page=page,
+                limit=limit,
+            )
+        if int(response.status_code) != HTTP_OK:
+            return self._response(response)
+        return _GeneratedTransportResponse(
+            status_code=int(response.status_code),
+            payload=response.parsed,
+            content=response.content,
+            headers=dict(response.headers),
+        )
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
         try:

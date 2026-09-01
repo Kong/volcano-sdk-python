@@ -6,13 +6,16 @@ import base64
 import binascii
 import json
 from collections.abc import Mapping
-from typing import Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Protocol, TypeVar, cast
 
 from ._generated.models.auth_confirm_email_change_response_200 import (
     AuthConfirmEmailChangeResponse200,
 )
 from ._generated.models.auth_convert_anonymous_response_200 import (
     AuthConvertAnonymousResponse200,
+)
+from ._generated.models.auth_get_my_sessions_response_200 import (
+    AuthGetMySessionsResponse200,
 )
 from ._generated.models.auth_get_user_response_200 import AuthGetUserResponse200
 from ._generated.models.auth_update_user_response_200 import AuthUpdateUserResponse200
@@ -25,6 +28,7 @@ from ._transport import (
     AuthDeleteAllMySessionsTransport,
     AuthDeleteMySessionTransport,
     AuthForgotPasswordTransport,
+    AuthGetMySessionsTransport,
     AuthGetUserTransport,
     AuthLogoutTransport,
     AuthRefreshTransport,
@@ -44,15 +48,27 @@ from .errors import (
     TransportError,
     VolcanoError,
 )
-from .models import EmailChangeResult, JSONValue, Session, SignUpResult, User
+from .models import (
+    AuthSession,
+    EmailChangeResult,
+    JSONValue,
+    Session,
+    SessionPage,
+    SignUpResult,
+    User,
+)
 
 _INCOMPLETE_SESSION = "Expected a complete Session"
 _INVALID_SIGN_UP_RESULT = "Expected a complete sign-up acknowledgement"
 _INVALID_EMAIL_CHANGE_RESULT = "Expected a valid email-change acknowledgement"
 _INVALID_USER = "Expected a complete user profile"
+_INVALID_SESSION_PAGE = "Expected a complete session page"
 _JWT_PARTS = 3
 _NO_ACTIVE_SESSION = "No active session"
 _T = TypeVar("_T")
+
+if TYPE_CHECKING:
+    from ._generated.models.auth_session import AuthSession as GeneratedAuthSession
 
 
 def _is_non_empty_string(value: object) -> bool:
@@ -190,6 +206,48 @@ def _user_from_payload(payload: object) -> User:
 
 def _none_if_unset(value: _T | Unset) -> _T | None:
     return None if isinstance(value, Unset) else value
+
+
+def _auth_session_from_model(session: GeneratedAuthSession) -> AuthSession:
+    return AuthSession(
+        id=str(session.id),
+        user_id=str(session.user_id),
+        provider=session.provider,
+        expires_at=session.expires_at,
+        is_active=session.is_active,
+        is_current=session.is_current,
+        user_agent=_none_if_unset(session.user_agent),
+        ip_address=_none_if_unset(session.ip_address),
+        last_ip_address=_none_if_unset(session.last_ip_address),
+        last_activity_at=_none_if_unset(session.last_activity_at),
+        session_started_at=_none_if_unset(session.session_started_at),
+        created_at=_none_if_unset(session.created_at),
+        updated_at=_none_if_unset(session.updated_at),
+    )
+
+
+def _session_page_from_payload(payload: object) -> SessionPage:
+    if not isinstance(payload, AuthGetMySessionsResponse200):
+        raise VolcanoError(_INVALID_SESSION_PAGE)
+    values = (
+        payload.sessions,
+        payload.total,
+        payload.page,
+        payload.limit,
+        payload.total_pages,
+    )
+    if any(isinstance(value, Unset) for value in values):
+        raise VolcanoError(_INVALID_SESSION_PAGE)
+    return SessionPage(
+        sessions=tuple(
+            _auth_session_from_model(session)
+            for session in cast("list[GeneratedAuthSession]", payload.sessions)
+        ),
+        total=cast("int", payload.total),
+        page=cast("int", payload.page),
+        limit=cast("int", payload.limit),
+        total_pages=cast("int", payload.total_pages),
+    )
 
 
 class AuthContext(Protocol):
@@ -359,6 +417,23 @@ class Auth:
         response_payload(response, 204)
         if self._client._capture_session()[0] != generation:
             raise SessionChangedError
+
+    def list_sessions(self, *, page: int = 1, limit: int = 20) -> SessionPage:
+        """List sessions in the stable offset-paginated activity order."""
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast("AuthGetMySessionsTransport", self._client._transport)
+        response = invoke(
+            transport.auth_get_my_sessions,
+            authorization=current.access_token,
+            page=page,
+            limit=limit,
+        )
+        result = _session_page_from_payload(response_payload(response, 200))
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
+        return result
 
     def delete_session(self, *, session_id: str) -> None:
         """Delete one session and clear local state when it is current."""

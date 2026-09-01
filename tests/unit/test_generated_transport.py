@@ -207,6 +207,53 @@ def test_generated_transport_confirms_an_email_change() -> None:
     assert json.loads(requests[0].content) == {"email_change_token": "change-token"}
 
 
+def test_generated_transport_lists_sessions_with_offset_pagination() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "sessions": [
+                    {
+                        "id": "00000000-0000-4000-8000-000000000099",
+                        "user_id": "00000000-0000-4000-8000-000000000010",
+                        "provider": "email",
+                        "expires_at": "2026-09-02T12:00:00Z",
+                        "is_active": True,
+                        "is_current": True,
+                    }
+                ],
+                "total": 21,
+                "page": 2,
+                "limit": 10,
+                "total_pages": 3,
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_get_my_sessions(
+        authorization="access-token",
+        page=2,
+        limit=10,
+    )
+
+    assert response.status_code == 200
+    assert requests[0].method == "GET"
+    assert requests[0].url.path == "/auth/user/sessions"
+    assert dict(requests[0].url.params) == {
+        "page": "2",
+        "limit": "10",
+        "sort": "last_activity",
+    }
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
 def test_generated_transport_deletes_all_other_sessions() -> None:
     requests: list[httpx.Request] = []
 

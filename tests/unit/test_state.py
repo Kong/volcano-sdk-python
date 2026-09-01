@@ -11,10 +11,12 @@ import pytest
 
 from volcano_sdk import (
     AuthenticationError,
+    AuthSession,
     RateLimitedError,
     ServerError,
     Session,
     SessionChangedError,
+    SessionPage,
     TransportError,
     VolcanoClient,
 )
@@ -23,6 +25,9 @@ from volcano_sdk._generated.models.auth_confirm_email_change_response_200 import
 )
 from volcano_sdk._generated.models.auth_convert_anonymous_response_200 import (
     AuthConvertAnonymousResponse200,
+)
+from volcano_sdk._generated.models.auth_get_my_sessions_response_200 import (
+    AuthGetMySessionsResponse200,
 )
 from volcano_sdk._generated.models.auth_get_user_response_200 import (
     AuthGetUserResponse200,
@@ -93,6 +98,34 @@ def _access_token_with_session_id(session_id: str) -> str:
     return f"header.{payload.decode()}.signature"
 
 
+def _sessions_page() -> AuthGetMySessionsResponse200:
+    return AuthGetMySessionsResponse200.from_dict(
+        {
+            "sessions": [
+                {
+                    "id": "00000000-0000-4000-8000-000000000099",
+                    "user_id": "00000000-0000-4000-8000-000000000010",
+                    "provider": "email",
+                    "user_agent": "Volcano Test",
+                    "ip_address": "192.0.2.10",
+                    "last_ip_address": "192.0.2.11",
+                    "expires_at": "2026-09-02T12:00:00Z",
+                    "last_activity_at": "2026-09-01T12:00:00Z",
+                    "session_started_at": "2026-08-31T12:00:00Z",
+                    "is_active": True,
+                    "is_current": True,
+                    "created_at": "2026-08-31T12:00:00Z",
+                    "updated_at": "2026-09-01T12:00:00Z",
+                }
+            ],
+            "total": 21,
+            "page": 2,
+            "limit": 10,
+            "total_pages": 3,
+        }
+    )
+
+
 class StateTransport:
     def __init__(self) -> None:
         self.next_access_token = "access-1"
@@ -138,6 +171,9 @@ class StateTransport:
         self.delete_session_response = Response(204)
         self.delete_session_calls: list[dict[str, Any]] = []
         self.on_delete_session: Callable[[], None] | None = None
+        self.list_sessions_response = Response(200, _sessions_page())
+        self.list_sessions_calls: list[dict[str, Any]] = []
+        self.on_list_sessions: Callable[[], None] | None = None
         self.forgot_password_response = Response(
             200,
             {"message": "If the email exists, a password reset link has been sent."},
@@ -244,6 +280,13 @@ class StateTransport:
         if self.on_delete_session is not None:
             self.on_delete_session()
         return self.delete_session_response
+
+    def auth_get_my_sessions(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("list_sessions", kwargs["authorization"]))
+        self.list_sessions_calls.append(kwargs)
+        if self.on_list_sessions is not None:
+            self.on_list_sessions()
+        return self.list_sessions_response
 
     def auth_forgot_password(self, **kwargs: Any) -> Response:
         self.authorizations.append(("forgot_password", kwargs["authorization"]))
@@ -696,6 +739,75 @@ def test_confirm_email_change_rejects_a_stale_response() -> None:
 
     with pytest.raises(SessionChangedError):
         client.auth.confirm_email_change(token="change-token")
+
+    assert client.auth.get_session() == replacement
+
+
+def test_list_sessions_returns_an_immutable_offset_page() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+
+    result = client.auth.list_sessions(page=2, limit=10)
+
+    assert result == SessionPage(
+        sessions=(
+            AuthSession(
+                id="00000000-0000-4000-8000-000000000099",
+                user_id="00000000-0000-4000-8000-000000000010",
+                provider="email",
+                expires_at=datetime.fromisoformat("2026-09-02T12:00:00+00:00"),
+                is_active=True,
+                is_current=True,
+                user_agent="Volcano Test",
+                ip_address="192.0.2.10",
+                last_ip_address="192.0.2.11",
+                last_activity_at=datetime.fromisoformat("2026-09-01T12:00:00+00:00"),
+                session_started_at=datetime.fromisoformat("2026-08-31T12:00:00+00:00"),
+                created_at=datetime.fromisoformat("2026-08-31T12:00:00+00:00"),
+                updated_at=datetime.fromisoformat("2026-09-01T12:00:00+00:00"),
+            ),
+        ),
+        total=21,
+        page=2,
+        limit=10,
+        total_pages=3,
+    )
+    assert client.auth.get_session() is established
+    assert transport.list_sessions_calls == [
+        {"authorization": "access-1", "page": 2, "limit": 10}
+    ]
+    with pytest.raises(FrozenInstanceError):
+        result.page = 3  # type: ignore[misc]
+
+
+def test_list_sessions_requires_a_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="No active session"):
+        client.auth.list_sessions()
+
+    assert transport.list_sessions_calls == []
+
+
+def test_list_sessions_rejects_a_stale_response() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="replacement-user",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_list_sessions = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.list_sessions()
 
     assert client.auth.get_session() == replacement
 

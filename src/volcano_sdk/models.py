@@ -78,6 +78,36 @@ class Session:
 
 
 @dataclass(frozen=True, slots=True)
+class AuthSession:
+    """Server-reported authentication session for one device."""
+
+    id: str
+    user_id: str
+    provider: str
+    expires_at: datetime
+    is_active: bool
+    is_current: bool
+    user_agent: str | None = None
+    ip_address: str | None = None
+    last_ip_address: str | None = None
+    last_activity_at: datetime | None = None
+    session_started_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SessionPage:
+    """Offset-paginated authentication sessions."""
+
+    sessions: tuple[AuthSession, ...]
+    total: int
+    page: int
+    limit: int
+    total_pages: int
+
+
+@dataclass(frozen=True, slots=True)
 class SignUpResult:
     """Session-less acknowledgement returned after sign-up."""
 
