@@ -65,6 +65,9 @@ from ._generated.api.o_auth_authentication.auth_unlink_o_auth_provider import (
 from ._generated.api.o_auth_authentication.get_o_auth_provider_token import (
     _get_kwargs as get_oauth_provider_token_kwargs,
 )
+from ._generated.api.o_auth_authentication.refresh_o_auth_provider_token import (
+    _get_kwargs as refresh_oauth_provider_token_kwargs,
+)
 from ._generated.api.storage_objects import (
     download_storage_object,
     upload_storage_object,
@@ -109,6 +112,9 @@ from ._generated.models.get_o_auth_provider_token_response_200 import (
     GetOAuthProviderTokenResponse200,
 )
 from ._generated.models.project_lock_lease_request import ProjectLockLeaseRequest
+from ._generated.models.refresh_o_auth_provider_token_response_200 import (
+    RefreshOAuthProviderTokenResponse200,
+)
 from ._generated.models.upload_storage_object_files_body import (
     UploadStorageObjectFilesBody,
 )
@@ -135,6 +141,9 @@ if TYPE_CHECKING:
     )
     from ._generated.models.get_o_auth_provider_token_provider import (
         GetOAuthProviderTokenProvider,
+    )
+    from ._generated.models.refresh_o_auth_provider_token_provider import (
+        RefreshOAuthProviderTokenProvider,
     )
 
 HTTP_NOT_FOUND = 404
@@ -352,6 +361,15 @@ class AuthGetOAuthProviderTokenTransport(Protocol):
         *,
         authorization: str,
         provider: GetOAuthProviderTokenProvider,
+    ) -> TransportResponse: ...
+
+
+class AuthRefreshOAuthProviderTokenTransport(Protocol):
+    def auth_refresh_oauth_provider_token(
+        self,
+        *,
+        authorization: str,
+        provider: RefreshOAuthProviderTokenProvider,
     ) -> TransportResponse: ...
 
 
@@ -850,6 +868,35 @@ class GeneratedTransport:
             return self._raw_response(response)
         try:
             payload = GetOAuthProviderTokenResponse200.from_dict(response.json())
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
+            raise VolcanoError(_MALFORMED_OAUTH_STATUS) from error
+        return _GeneratedTransportResponse(
+            status_code=response.status_code,
+            payload=payload,
+            content=response.content,
+            headers=dict(response.headers),
+        )
+
+    def auth_refresh_oauth_provider_token(
+        self,
+        *,
+        authorization: str,
+        provider: RefreshOAuthProviderTokenProvider,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **refresh_oauth_provider_token_kwargs(provider)
+            )
+        if response.status_code != HTTP_OK:
+            return self._raw_response(response)
+        try:
+            payload = RefreshOAuthProviderTokenResponse200.from_dict(response.json())
         except (
             AttributeError,
             KeyError,
