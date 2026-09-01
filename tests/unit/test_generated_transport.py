@@ -290,6 +290,65 @@ def test_generated_transport_preserves_a_malformed_session_auth_error() -> None:
     assert caught.value.status == 401
 
 
+def test_generated_transport_lists_linked_oauth_providers() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "providers": [
+                    {
+                        "provider": "google",
+                        "linked_at": "2026-08-30T12:00:00Z",
+                        "updated_at": "2026-09-01T12:00:00Z",
+                    }
+                ]
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_list_oauth_providers(authorization="access-token")
+
+    assert response.status_code == 200
+    assert requests[0].method == "GET"
+    assert requests[0].url.path == "/auth/oauth/providers"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
+def test_generated_transport_rejects_malformed_linked_oauth_providers() -> None:
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, content=b"not-json")
+        ),
+    )
+
+    with pytest.raises(VolcanoError, match="Expected complete linked OAuth providers"):
+        transport.auth_list_oauth_providers(authorization="access-token")
+
+
+def test_generated_transport_preserves_a_malformed_oauth_auth_error() -> None:
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(
+            lambda _request: httpx.Response(401, content=b"not-json")
+        ),
+    )
+
+    response = transport.auth_list_oauth_providers(authorization="access-token")
+
+    with pytest.raises(AuthenticationError) as caught:
+        response_payload(response, 200)
+
+    assert caught.value.status == 401
+
+
 def test_generated_transport_deletes_all_other_sessions() -> None:
     requests: list[httpx.Request] = []
 

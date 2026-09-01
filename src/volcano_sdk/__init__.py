@@ -15,6 +15,7 @@ from .errors import (
 from .models import (
     AuthSession,
     EmailChangeResult,
+    LinkedOAuthProvider,
     LockLease,
     Session,
     SessionPage,
@@ -27,6 +28,7 @@ __all__ = [
     "AuthenticationError",
     "ConflictError",
     "EmailChangeResult",
+    "LinkedOAuthProvider",
     "LockLease",
     "NotFoundError",
     "RateLimitedError",
