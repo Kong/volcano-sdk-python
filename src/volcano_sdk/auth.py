@@ -29,6 +29,9 @@ from ._generated.models.auth_update_user_response_200 import AuthUpdateUserRespo
 from ._generated.models.get_o_auth_provider_token_response_200 import (
     GetOAuthProviderTokenResponse200,
 )
+from ._generated.models.refresh_o_auth_provider_token_response_200 import (
+    RefreshOAuthProviderTokenResponse200,
+)
 from ._generated.types import Unset
 from ._transport import (
     AuthCancelEmailChangeTransport,
@@ -44,6 +47,7 @@ from ._transport import (
     AuthLinkOAuthProviderTransport,
     AuthListOAuthProvidersTransport,
     AuthLogoutTransport,
+    AuthRefreshOAuthProviderTokenTransport,
     AuthRefreshTransport,
     AuthRequestEmailChangeTransport,
     AuthResendConfirmationTransport,
@@ -338,7 +342,10 @@ def _oauth_link_from_payload(payload: object) -> str:
 def _oauth_provider_token_status_from_payload(
     payload: object,
 ) -> OAuthProviderTokenStatus:
-    if not isinstance(payload, GetOAuthProviderTokenResponse200):
+    if not isinstance(
+        payload,
+        (GetOAuthProviderTokenResponse200, RefreshOAuthProviderTokenResponse200),
+    ):
         raise VolcanoError(_INVALID_OAUTH_STATUS)
     message = payload.message
     provider = payload.provider
@@ -608,6 +615,32 @@ class Auth:
         )
         response = invoke(
             transport.auth_get_oauth_provider_token,
+            authorization=current.access_token,
+            provider=provider_name,
+        )
+        result = _oauth_provider_token_status_from_payload(
+            response_payload(response, 200)
+        )
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
+        return result
+
+    def refresh_oauth_provider_token(
+        self,
+        *,
+        provider: OAuthProviderName,
+    ) -> OAuthProviderTokenStatus:
+        """Refresh a server-held OAuth provider token and return its status."""
+        provider_name = _oauth_provider_name(provider)
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast(
+            "AuthRefreshOAuthProviderTokenTransport",
+            self._client._transport,
+        )
+        response = invoke(
+            transport.auth_refresh_oauth_provider_token,
             authorization=current.access_token,
             provider=provider_name,
         )

@@ -462,6 +462,36 @@ def test_generated_transport_gets_oauth_provider_token_status() -> None:
     assert requests[0].headers["authorization"] == "Bearer access-token"
 
 
+def test_generated_transport_refreshes_an_oauth_provider_token() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "message": "Provider token refreshed successfully",
+                "provider": "google",
+                "expires_in": 3600,
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_refresh_oauth_provider_token(
+        authorization="access-token",
+        provider="google",
+    )
+
+    assert response.status_code == 200
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/auth/oauth/google/refresh-token"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
 def test_generated_transport_deletes_all_other_sessions() -> None:
     requests: list[httpx.Request] = []
 

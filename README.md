@@ -177,6 +177,16 @@ print(status.provider, status.expires_in)
 The immutable `OAuthProviderTokenStatus` contains provider and expiry metadata, not the credential.
 Volcano refreshes an expired token on the server. A stale result raises `SessionChangedError`.
 
+Refresh a provider token explicitly:
+
+```python
+status = client.auth.refresh_oauth_provider_token(provider="github")
+print(status.provider, status.expires_in)
+```
+
+The refresh credential and new access token remain on the server. A stale result raises
+`SessionChangedError`.
+
 Sign out every other device while keeping the current session active:
 
 ```python
