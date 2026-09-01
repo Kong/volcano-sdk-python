@@ -326,7 +326,9 @@ subscription.unsubscribe()
 Registration immediately emits `INITIAL_SESSION`. Successful session creation, refresh, and local
 clearing emit `SIGNED_IN`, `TOKEN_REFRESHED`, and `SIGNED_OUT`. Callbacks are delivered locally in
 transition order after the state lock is released, and callback failures cannot interrupt auth
-operations. The SDK does not broadcast between processes or persist sessions.
+operations. Unsubscribing prevents queued and future delivery; a callback already selected for
+delivery may finish after `unsubscribe()` returns. The SDK does not broadcast between processes or
+persist sessions.
 
 Sign out by revoking and clearing the current session:
 

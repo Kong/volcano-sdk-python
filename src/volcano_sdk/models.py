@@ -94,7 +94,11 @@ class AuthSubscription:
     _unsubscribe: Callable[[], None] = field(repr=False, compare=False)
 
     def unsubscribe(self) -> None:
-        """Stop future authentication-state notifications."""
+        """Stop queued and future authentication-state notifications.
+
+        A callback already selected for delivery may finish after this method
+        returns.
+        """
         self._unsubscribe()
 
 
