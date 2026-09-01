@@ -836,6 +836,25 @@ def test_delete_session_clears_current_state_when_the_response_is_lost() -> None
     assert client.auth.get_session() is None
 
 
+def test_delete_session_preserves_current_state_when_the_server_rejects_it() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    session_id = "00000000-0000-4000-8000-000000000099"
+    current = Session(
+        access_token=_access_token_with_session_id(session_id),
+        refresh_token="current-refresh",
+        user_id="current-user",
+    )
+    client.auth.set_session(current)
+    stored = client.auth.get_session()
+    transport.delete_session_response = Response(401, {"error": "expired"})
+
+    with pytest.raises(AuthenticationError, match="expired"):
+        client.auth.delete_session(session_id=session_id)
+
+    assert client.auth.get_session() is stored
+
+
 def test_get_user_returns_an_immutable_server_validated_profile() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)

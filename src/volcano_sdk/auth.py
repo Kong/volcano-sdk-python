@@ -38,7 +38,12 @@ from ._transport import (
     invoke,
     response_payload,
 )
-from .errors import AuthenticationError, SessionChangedError, VolcanoError
+from .errors import (
+    AuthenticationError,
+    SessionChangedError,
+    TransportError,
+    VolcanoError,
+)
 from .models import EmailChangeResult, JSONValue, Session, SignUpResult, User
 
 _INCOMPLETE_SESSION = "Expected a complete Session"
@@ -373,7 +378,7 @@ class Auth:
                 session_id=session_id,
             )
             response_payload(response, 204)
-        except VolcanoError as error:
+        except TransportError as error:
             if deletes_current and not self._client._clear_session_if_current(
                 generation
             ):
