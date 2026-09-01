@@ -25,6 +25,9 @@ from ._generated.api.authentication.auth_confirm_email import (
 from ._generated.api.authentication.auth_forgot_password import (
     _get_kwargs as forgot_password_kwargs,
 )
+from ._generated.api.authentication.auth_resend_confirmation import (
+    _get_kwargs as resend_confirmation_kwargs,
+)
 from ._generated.api.authentication.auth_reset_password import (
     _get_kwargs as reset_password_kwargs,
 )
@@ -39,6 +42,7 @@ from ._generated.models.auth_confirm_email_body import AuthConfirmEmailBody
 from ._generated.models.auth_forgot_password_body import AuthForgotPasswordBody
 from ._generated.models.auth_logout_body import AuthLogoutBody
 from ._generated.models.auth_refresh_body import AuthRefreshBody
+from ._generated.models.auth_resend_confirmation_body import AuthResendConfirmationBody
 from ._generated.models.auth_reset_password_body import AuthResetPasswordBody
 from ._generated.models.auth_signin_body import AuthSigninBody
 from ._generated.models.auth_signup_body import AuthSignupBody
@@ -163,6 +167,15 @@ class AuthResetPasswordTransport(Protocol):
         authorization: str,
         token: str,
         new_password: str,
+    ) -> TransportResponse: ...
+
+
+class AuthResendConfirmationTransport(Protocol):
+    def auth_resend_confirmation(
+        self,
+        *,
+        authorization: str,
+        email: str,
     ) -> TransportResponse: ...
 
 
@@ -410,6 +423,19 @@ class GeneratedTransport:
         with self._client(authorization) as client:
             response = client.get_httpx_client().request(
                 **reset_password_kwargs(body=body)
+            )
+        return self._raw_response(response)
+
+    def auth_resend_confirmation(
+        self,
+        *,
+        authorization: str,
+        email: str,
+    ) -> TransportResponse:
+        body = AuthResendConfirmationBody(email=email)
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **resend_confirmation_kwargs(body=body)
             )
         return self._raw_response(response)
 

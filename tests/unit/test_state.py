@@ -8,6 +8,7 @@ import pytest
 
 from volcano_sdk import (
     AuthenticationError,
+    RateLimitedError,
     ServerError,
     Session,
     SessionChangedError,
@@ -86,6 +87,11 @@ class StateTransport:
             {"message": "Email confirmed successfully"},
         )
         self.confirm_email_calls: list[dict[str, Any]] = []
+        self.resend_confirmation_response = Response(
+            200,
+            {"message": "If eligible, a confirmation email has been sent."},
+        )
+        self.resend_confirmation_calls: list[dict[str, Any]] = []
         self.user_response = Response(
             200,
             _user_profile(),
@@ -138,6 +144,11 @@ class StateTransport:
         self.authorizations.append(("confirm_email", kwargs["authorization"]))
         self.confirm_email_calls.append(kwargs)
         return self.confirm_email_response
+
+    def auth_resend_confirmation(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("resend_confirmation", kwargs["authorization"]))
+        self.resend_confirmation_calls.append(kwargs)
+        return self.resend_confirmation_response
 
     def auth_get_user(self, **kwargs: Any) -> Response:
         self.authorizations.append(("get_user", kwargs["authorization"]))
@@ -418,6 +429,36 @@ def test_confirm_email_raises_a_typed_error_without_session_change() -> None:
     with pytest.raises(AuthenticationError):
         client.auth.confirm_email(token="expired-token")
 
+    assert client.auth.get_session() is established
+
+
+def test_resend_confirmation_is_enumeration_safe_without_session_change() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="other@example.com", password="secret")
+
+    client.auth.resend_confirmation(email="user@example.com")
+
+    assert transport.resend_confirmation_calls == [
+        {"authorization": "anon", "email": "user@example.com"}
+    ]
+    assert client.auth.get_session() is established
+
+
+def test_resend_confirmation_preserves_rate_limit_metadata() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="other@example.com", password="secret")
+    transport.resend_confirmation_response = Response(
+        429,
+        {"error": "Too many requests"},
+        headers={"Retry-After": "17"},
+    )
+
+    with pytest.raises(RateLimitedError) as caught:
+        client.auth.resend_confirmation(email="user@example.com")
+
+    assert caught.value.retry_after == 17
     assert client.auth.get_session() is established
 
 

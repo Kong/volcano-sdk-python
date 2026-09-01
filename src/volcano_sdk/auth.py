@@ -14,6 +14,7 @@ from ._transport import (
     AuthGetUserTransport,
     AuthLogoutTransport,
     AuthRefreshTransport,
+    AuthResendConfirmationTransport,
     AuthResetPasswordTransport,
     AuthSignUpTransport,
     AuthUpdateUserTransport,
@@ -200,6 +201,16 @@ class Auth:
             transport.auth_confirm_email,
             authorization=self._client._anon_token(),
             token=token,
+        )
+        response_payload(response, 200)
+
+    def resend_confirmation(self, *, email: str) -> None:
+        """Request a generic confirmation resend without changing local state."""
+        transport = cast("AuthResendConfirmationTransport", self._client._transport)
+        response = invoke(
+            transport.auth_resend_confirmation,
+            authorization=self._client._anon_token(),
+            email=email,
         )
         response_payload(response, 200)
 

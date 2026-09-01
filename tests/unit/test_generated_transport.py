@@ -187,6 +187,30 @@ def test_generated_transport_confirms_an_email_with_the_anon_key() -> None:
     assert json.loads(requests[0].content) == {"token": "confirmation-token"}
 
 
+def test_generated_transport_resends_confirmation_with_the_anon_key() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={})
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_resend_confirmation(
+        authorization="anon-key",
+        email="user@example.com",
+    )
+
+    assert response.status_code == 200
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/auth/resend-confirmation"
+    assert requests[0].headers["authorization"] == "Bearer anon-key"
+    assert json.loads(requests[0].content) == {"email": "user@example.com"}
+
+
 def test_generated_transport_gets_the_current_user_with_the_access_token() -> None:
     requests: list[httpx.Request] = []
 
