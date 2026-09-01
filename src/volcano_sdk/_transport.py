@@ -53,6 +53,9 @@ from ._generated.api.authentication.auth_signup_anonymous import (
 )
 from ._generated.api.database_queries import query_database_select
 from ._generated.api.locks import acquire_project_lock, release_project_lock
+from ._generated.api.o_auth_authentication.auth_link_o_auth_provider import (
+    _get_kwargs as link_oauth_provider_kwargs,
+)
 from ._generated.api.o_auth_authentication.auth_list_o_auth_providers import (
     _get_kwargs as list_oauth_providers_kwargs,
 )
@@ -70,6 +73,9 @@ from ._generated.models.auth_convert_anonymous_body_user_metadata import (
 from ._generated.models.auth_forgot_password_body import AuthForgotPasswordBody
 from ._generated.models.auth_get_my_sessions_response_200 import (
     AuthGetMySessionsResponse200,
+)
+from ._generated.models.auth_link_o_auth_provider_response_200 import (
+    AuthLinkOAuthProviderResponse200,
 )
 from ._generated.models.auth_list_o_auth_providers_response_200 import (
     AuthListOAuthProvidersResponse200,
@@ -112,6 +118,10 @@ from .errors import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
+    from ._generated.models.auth_link_o_auth_provider_provider import (
+        AuthLinkOAuthProviderProvider,
+    )
+
 HTTP_NOT_FOUND = 404
 HTTP_CONFLICT = 409
 HTTP_RATE_LIMITED = 429
@@ -121,6 +131,7 @@ HTTP_SERVER_ERROR_MAX = 599
 _MALFORMED_USER_PROFILE = "Expected a complete user profile"
 _MALFORMED_SESSION_PAGE = "Expected a complete session page"
 _MALFORMED_LINKED_OAUTH_PROVIDERS = "Expected complete linked OAuth providers"
+_MALFORMED_OAUTH_LINK = "Expected an OAuth authorization URL"
 ERROR_TYPES_BY_STATUS: dict[int, type[VolcanoError]] = {
     400: ValidationError,
     401: AuthenticationError,
@@ -298,6 +309,15 @@ class AuthListOAuthProvidersTransport(Protocol):
         self,
         *,
         authorization: str,
+    ) -> TransportResponse: ...
+
+
+class AuthLinkOAuthProviderTransport(Protocol):
+    def auth_link_oauth_provider(
+        self,
+        *,
+        authorization: str,
+        provider: AuthLinkOAuthProviderProvider,
     ) -> TransportResponse: ...
 
 
@@ -734,6 +754,35 @@ class GeneratedTransport:
             ValueError,
         ) as error:
             raise VolcanoError(_MALFORMED_LINKED_OAUTH_PROVIDERS) from error
+        return _GeneratedTransportResponse(
+            status_code=response.status_code,
+            payload=payload,
+            content=response.content,
+            headers=dict(response.headers),
+        )
+
+    def auth_link_oauth_provider(
+        self,
+        *,
+        authorization: str,
+        provider: AuthLinkOAuthProviderProvider,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **link_oauth_provider_kwargs(provider)
+            )
+        if response.status_code != HTTP_OK:
+            return self._raw_response(response)
+        try:
+            payload = AuthLinkOAuthProviderResponse200.from_dict(response.json())
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
+            raise VolcanoError(_MALFORMED_OAUTH_LINK) from error
         return _GeneratedTransportResponse(
             status_code=response.status_code,
             payload=payload,

@@ -19,6 +19,9 @@ from ._generated.models.auth_get_my_sessions_response_200 import (
     AuthGetMySessionsResponse200,
 )
 from ._generated.models.auth_get_user_response_200 import AuthGetUserResponse200
+from ._generated.models.auth_link_o_auth_provider_response_200 import (
+    AuthLinkOAuthProviderResponse200,
+)
 from ._generated.models.auth_list_o_auth_providers_response_200 import (
     AuthListOAuthProvidersResponse200,
 )
@@ -34,6 +37,7 @@ from ._transport import (
     AuthForgotPasswordTransport,
     AuthGetMySessionsTransport,
     AuthGetUserTransport,
+    AuthLinkOAuthProviderTransport,
     AuthListOAuthProvidersTransport,
     AuthLogoutTransport,
     AuthRefreshTransport,
@@ -58,6 +62,7 @@ from .models import (
     EmailChangeResult,
     JSONValue,
     LinkedOAuthProvider,
+    OAuthProviderName,
     Session,
     SessionPage,
     SignUpResult,
@@ -70,9 +75,12 @@ _INVALID_EMAIL_CHANGE_RESULT = "Expected a valid email-change acknowledgement"
 _INVALID_USER = "Expected a complete user profile"
 _INVALID_SESSION_PAGE = "Expected a complete session page"
 _INVALID_LINKED_OAUTH_PROVIDERS = "Expected complete linked OAuth providers"
+_INVALID_OAUTH_LINK = "Expected an OAuth authorization URL"
+_UNSUPPORTED_OAUTH_PROVIDER = "Unsupported OAuth provider"
 _JWT_PARTS = 3
 _NO_ACTIVE_SESSION = "No active session"
 _T = TypeVar("_T")
+_OAUTH_PROVIDERS: frozenset[str] = frozenset({"apple", "github", "google", "microsoft"})
 
 if TYPE_CHECKING:
     from ._generated.models import (
@@ -305,6 +313,21 @@ def _linked_oauth_providers_from_payload(
     )
 
 
+def _oauth_provider_name(value: object) -> OAuthProviderName:
+    if not isinstance(value, str) or value not in _OAUTH_PROVIDERS:
+        raise ValueError(_UNSUPPORTED_OAUTH_PROVIDER)
+    return cast("OAuthProviderName", value)
+
+
+def _oauth_link_from_payload(payload: object) -> str:
+    if not isinstance(payload, AuthLinkOAuthProviderResponse200):
+        raise VolcanoError(_INVALID_OAUTH_LINK)
+    authorization_url = payload.authorization_url
+    if not isinstance(authorization_url, str) or not authorization_url.strip():
+        raise VolcanoError(_INVALID_OAUTH_LINK)
+    return authorization_url
+
+
 class AuthContext(Protocol):
     """Client capabilities required by the authentication facade."""
 
@@ -501,6 +524,23 @@ class Auth:
             authorization=current.access_token,
         )
         result = _linked_oauth_providers_from_payload(response_payload(response, 200))
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
+        return result
+
+    def link_oauth_provider(self, *, provider: OAuthProviderName) -> str:
+        """Return the authorization URL for linking an OAuth provider."""
+        provider_name = _oauth_provider_name(provider)
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast("AuthLinkOAuthProviderTransport", self._client._transport)
+        response = invoke(
+            transport.auth_link_oauth_provider,
+            authorization=current.access_token,
+            provider=provider_name,
+        )
+        result = _oauth_link_from_payload(response_payload(response, 200))
         if self._client._capture_session()[0] != generation:
             raise SessionChangedError
         return result

@@ -148,6 +148,16 @@ for provider in providers:
 The method returns an immutable tuple of `LinkedOAuthProvider` values and raises
 `SessionChangedError` if the active session changes while the request is in flight.
 
+Start linking another OAuth provider to the current account:
+
+```python
+authorization_url = client.auth.link_oauth_provider(provider="github")
+```
+
+Redirect the user to the returned URL to complete the provider flow. The method accepts `apple`,
+`github`, `google`, or `microsoft` and raises `SessionChangedError` if the active session changes
+while the request is in flight.
+
 Sign out every other device while keeping the current session active:
 
 ```python

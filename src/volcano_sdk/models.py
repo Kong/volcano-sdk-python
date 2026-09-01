@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from types import MappingProxyType
-from typing import TypeAlias
+from typing import Literal, TypeAlias
 
 JSONValue: TypeAlias = (
     str
@@ -17,6 +17,7 @@ JSONValue: TypeAlias = (
     | Mapping[str, "JSONValue"]
     | None
 )
+OAuthProviderName: TypeAlias = Literal["apple", "github", "google", "microsoft"]
 
 
 def _freeze_json(value: JSONValue) -> JSONValue:

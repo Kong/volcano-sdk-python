@@ -349,6 +349,66 @@ def test_generated_transport_preserves_a_malformed_oauth_auth_error() -> None:
     assert caught.value.status == 401
 
 
+def test_generated_transport_starts_linking_an_oauth_provider() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={"authorization_url": "https://accounts.example/link"},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_link_oauth_provider(
+        authorization="access-token",
+        provider="github",
+    )
+
+    assert response.status_code == 200
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/auth/oauth/github/link"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
+def test_generated_transport_rejects_a_malformed_oauth_link_response() -> None:
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, content=b"not-json")
+        ),
+    )
+
+    with pytest.raises(VolcanoError, match="Expected an OAuth authorization URL"):
+        transport.auth_link_oauth_provider(
+            authorization="access-token",
+            provider="google",
+        )
+
+
+def test_generated_transport_preserves_a_malformed_oauth_link_auth_error() -> None:
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(
+            lambda _request: httpx.Response(401, content=b"not-json")
+        ),
+    )
+
+    response = transport.auth_link_oauth_provider(
+        authorization="access-token",
+        provider="google",
+    )
+
+    with pytest.raises(AuthenticationError) as caught:
+        response_payload(response, 200)
+
+    assert caught.value.status == 401
+
+
 def test_generated_transport_deletes_all_other_sessions() -> None:
     requests: list[httpx.Request] = []
 
