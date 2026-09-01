@@ -252,6 +252,16 @@ class StateTransport:
     def _configure_oauth(self) -> None:
         self.oauth_authorization_url = "https://api.example/auth/oauth/github/authorize"
         self.oauth_authorization_url_calls: list[dict[str, Any]] = []
+        self.oauth_exchange_response = Response(
+            200,
+            {
+                "access_token": "oauth-access",
+                "refresh_token": "oauth-refresh",
+                "user": {"id": "00000000-0000-4000-8000-000000000010"},
+            },
+        )
+        self.oauth_exchange_calls: list[dict[str, Any]] = []
+        self.on_oauth_exchange: Callable[[], None] | None = None
         self.list_oauth_providers_response = Response(200, _linked_oauth_providers())
         self.list_oauth_providers_calls: list[dict[str, Any]] = []
         self.on_list_oauth_providers: Callable[[], None] | None = None
@@ -386,6 +396,12 @@ class StateTransport:
     def auth_oauth_authorization_url(self, **kwargs: Any) -> str:
         self.oauth_authorization_url_calls.append(kwargs)
         return self.oauth_authorization_url
+
+    def auth_oauth_exchange(self, **kwargs: Any) -> Response:
+        self.oauth_exchange_calls.append(kwargs)
+        if self.on_oauth_exchange is not None:
+            self.on_oauth_exchange()
+        return self.oauth_exchange_response
 
     def auth_link_oauth_provider(self, **kwargs: Any) -> Response:
         self.authorizations.append(("link_oauth_provider", kwargs["authorization"]))
@@ -1091,7 +1107,11 @@ def test_sign_in_with_oauth_returns_an_authorization_url_without_a_session() -> 
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
-    result = client.auth.sign_in_with_oauth(provider="github")
+    result = client.auth.sign_in_with_oauth(
+        provider="github",
+        redirect_to="https://app.example/callback",
+        state="state-value",
+    )
 
     assert result == "https://api.example/auth/oauth/github/authorize"
     assert client.auth.get_session() is None
@@ -1099,6 +1119,8 @@ def test_sign_in_with_oauth_returns_an_authorization_url_without_a_session() -> 
         {
             "anon_key": "anon",
             "provider": "github",
+            "redirect_url": "https://app.example/callback",
+            "client_state": "state-value",
         }
     ]
 
@@ -1108,9 +1130,79 @@ def test_sign_in_with_oauth_rejects_an_unknown_provider() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(ValueError, match="Unsupported OAuth provider"):
-        client.auth.sign_in_with_oauth(provider="invalid")  # type: ignore[arg-type]
+        client.auth.sign_in_with_oauth(
+            provider="invalid",  # type: ignore[arg-type]
+            redirect_to="https://app.example/callback",
+            state="state-value",
+        )
 
     assert transport.oauth_authorization_url_calls == []
+
+
+def test_exchange_oauth_code_stores_the_session_after_state_validation() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    result = client.auth.exchange_oauth_code(
+        code="oauth-code",
+        redirect_to="https://app.example/callback",
+        state="state-value",
+        expected_state="state-value",
+    )
+
+    assert result == Session(
+        access_token="oauth-access",
+        refresh_token="oauth-refresh",
+        user_id="00000000-0000-4000-8000-000000000010",
+    )
+    assert client.auth.get_session() is result
+    assert transport.oauth_exchange_calls == [
+        {
+            "authorization": "anon",
+            "code": "oauth-code",
+            "redirect_url": "https://app.example/callback",
+        }
+    ]
+
+
+def test_exchange_oauth_code_rejects_a_state_mismatch_without_a_request() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(ValueError, match="OAuth state mismatch"):
+        client.auth.exchange_oauth_code(
+            code="oauth-code",
+            redirect_to="https://app.example/callback",
+            state="attacker-state",
+            expected_state="expected-state",
+        )
+
+    assert transport.oauth_exchange_calls == []
+
+
+def test_exchange_oauth_code_does_not_replace_a_concurrent_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="replacement-user",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_oauth_exchange = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.exchange_oauth_code(
+            code="oauth-code",
+            redirect_to="https://app.example/callback",
+            state="state-value",
+            expected_state="state-value",
+        )
+
+    assert client.auth.get_session() == replacement
 
 
 def test_link_oauth_provider_rejects_an_unknown_provider() -> None:

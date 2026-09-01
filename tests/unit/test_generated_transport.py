@@ -26,13 +26,60 @@ def test_generated_transport_builds_an_oauth_authorization_url() -> None:
     result = transport.auth_oauth_authorization_url(
         anon_key="anon key",
         provider="github",
+        redirect_url="https://app.example/callback?next=/repos",
+        client_state="state-value",
     )
 
     url = httpx.URL(result)
     assert url.scheme == "https"
     assert url.host == "api.test.volcano.dev"
     assert url.path == "/auth/oauth/github/authorize"
-    assert dict(url.params) == {"anon_key": "anon key"}
+    assert dict(url.params) == {
+        "anon_key": "anon key",
+        "redirect_url": "https://app.example/callback?next=/repos",
+        "client_state": "state-value",
+        "response_mode": "code",
+    }
+
+
+def test_generated_transport_exchanges_an_oauth_code() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "oauth-access",
+                "refresh_token": "oauth-refresh",
+                "token_type": "bearer",
+                "expires_in": 3600,
+                "user": {
+                    "id": "00000000-0000-4000-8000-000000000010",
+                    "email": "user@example.com",
+                    "status": "active",
+                },
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_oauth_exchange(
+        authorization="anon-key",
+        code="oauth-code",
+        redirect_url="https://app.example/callback",
+    )
+
+    assert response.status_code == 200
+    assert requests[0].url.path == "/auth/oauth/exchange"
+    assert requests[0].headers["authorization"] == "Bearer anon-key"
+    assert json.loads(requests[0].content) == {
+        "code": "oauth-code",
+        "redirect_url": "https://app.example/callback",
+    }
 
 
 def test_generated_transport_signs_up_with_the_anon_key_and_metadata() -> None:
