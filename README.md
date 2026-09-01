@@ -158,6 +158,15 @@ Redirect the user to the returned URL to complete the provider flow. The method 
 `github`, `google`, or `microsoft` and raises `SessionChangedError` if the active session changes
 while the request is in flight.
 
+Unlink an OAuth provider from the current account:
+
+```python
+client.auth.unlink_oauth_provider(provider="github")
+```
+
+The server rejects removal of the account's only authentication method. A successful stale response
+raises `SessionChangedError` instead of acknowledging work authorized by a replaced session.
+
 Sign out every other device while keeping the current session active:
 
 ```python

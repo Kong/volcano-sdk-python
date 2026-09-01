@@ -251,6 +251,9 @@ class StateTransport:
         )
         self.link_oauth_provider_calls: list[dict[str, Any]] = []
         self.on_link_oauth_provider: Callable[[], None] | None = None
+        self.unlink_oauth_provider_response = Response(204)
+        self.unlink_oauth_provider_calls: list[dict[str, Any]] = []
+        self.on_unlink_oauth_provider: Callable[[], None] | None = None
 
     def auth_signin(self, **kwargs: Any) -> Response:
         self.authorizations.append(("auth", kwargs["authorization"]))
@@ -337,6 +340,13 @@ class StateTransport:
         if self.on_link_oauth_provider is not None:
             self.on_link_oauth_provider()
         return self.link_oauth_provider_response
+
+    def auth_unlink_oauth_provider(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("unlink_oauth_provider", kwargs["authorization"]))
+        self.unlink_oauth_provider_calls.append(kwargs)
+        if self.on_unlink_oauth_provider is not None:
+            self.on_unlink_oauth_provider()
+        return self.unlink_oauth_provider_response
 
     def auth_forgot_password(self, **kwargs: Any) -> Response:
         self.authorizations.append(("forgot_password", kwargs["authorization"]))
@@ -1053,6 +1063,60 @@ def test_link_oauth_provider_rejects_a_stale_response() -> None:
 
     with pytest.raises(SessionChangedError):
         client.auth.link_oauth_provider(provider="google")
+
+    assert client.auth.get_session() == replacement
+
+
+def test_unlink_oauth_provider_preserves_the_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+
+    client.auth.unlink_oauth_provider(provider="github")
+
+    assert client.auth.get_session() is established
+    assert transport.unlink_oauth_provider_calls == [
+        {"authorization": "access-1", "provider": "github"}
+    ]
+
+
+def test_unlink_oauth_provider_rejects_an_unknown_provider() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(ValueError, match="Unsupported OAuth provider"):
+        client.auth.unlink_oauth_provider(provider="invalid")  # type: ignore[arg-type]
+
+    assert transport.unlink_oauth_provider_calls == []
+
+
+def test_unlink_oauth_provider_requires_a_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="No active session"):
+        client.auth.unlink_oauth_provider(provider="google")
+
+    assert transport.unlink_oauth_provider_calls == []
+
+
+def test_unlink_oauth_provider_rejects_a_stale_response() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="replacement-user",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_unlink_oauth_provider = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.unlink_oauth_provider(provider="google")
 
     assert client.auth.get_session() == replacement
 
