@@ -1368,6 +1368,60 @@ def test_get_hosted_auth_url_rejects_an_unknown_action() -> None:
         )
 
 
+def test_adopt_hosted_auth_session_validates_state_and_stores_an_owned_copy() -> None:
+    client = VolcanoClient(anon_key="anon", _transport=StateTransport())
+    supplied = Session(
+        access_token="hosted-access",
+        refresh_token="hosted-refresh",
+        user_id="hosted-user",
+    )
+
+    adopted = client.auth.adopt_hosted_auth_session(
+        supplied,
+        state="returned-state",
+        expected_state="returned-state",
+    )
+
+    assert adopted == supplied
+    assert adopted is not supplied
+    assert client.auth.get_session() is adopted
+
+
+def test_hosted_auth_state_mismatch_preserves_current_session() -> None:
+    client = VolcanoClient(anon_key="anon", _transport=StateTransport())
+    established = client.auth.set_session(
+        Session(access_token="access", refresh_token="refresh", user_id="user")
+    )
+    returned = Session(
+        access_token="attacker-access",
+        refresh_token="attacker-refresh",
+        user_id="attacker-user",
+    )
+
+    with pytest.raises(ValueError, match="Hosted auth state mismatch"):
+        client.auth.adopt_hosted_auth_session(
+            returned,
+            state="attacker-state",
+            expected_state="expected-state",
+        )
+
+    assert client.auth.get_session() is established
+
+
+@pytest.mark.parametrize("argument", ["state", "expected_state"])
+def test_adopt_hosted_auth_session_rejects_empty_state(argument: str) -> None:
+    client = VolcanoClient(anon_key="anon", _transport=StateTransport())
+    options = {"state": "state-value", "expected_state": "state-value", argument: " "}
+
+    with pytest.raises(ValueError, match="Hosted auth parameters must be non-empty"):
+        client.auth.adopt_hosted_auth_session(
+            Session(access_token="access", refresh_token="refresh", user_id="user"),
+            **cast("Any", options),
+        )
+
+    assert client.auth.get_session() is None
+
+
 def test_sign_in_with_oauth_returns_an_authorization_url_without_a_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)

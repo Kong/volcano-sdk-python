@@ -102,6 +102,7 @@ _INVALID_OAUTH_STATUS = "Expected complete OAuth provider token status"
 _INVALID_OAUTH_API_RESPONSE = "Expected OAuth provider API response data"
 _INVALID_AUTH_CALLBACK = "callback must be callable"
 _INVALID_HOSTED_AUTH_PARAMETER = "Hosted auth parameters must be non-empty strings"
+_HOSTED_AUTH_STATE_MISMATCH = "Hosted auth state mismatch"
 _UNSUPPORTED_HOSTED_AUTH_ACTION = "Unsupported hosted auth action"
 _UNSUPPORTED_OAUTH_PROVIDER = "Unsupported OAuth provider"
 _UNSUPPORTED_OAUTH_API_METHOD = "Unsupported OAuth provider API method"
@@ -137,6 +138,13 @@ def _hosted_auth_parameter(value: str) -> str:
     if not _is_non_empty_string(value):
         raise ValueError(_INVALID_HOSTED_AUTH_PARAMETER)
     return value
+
+
+def _validate_hosted_auth_callback_state(state: str, expected_state: str) -> None:
+    actual = _hosted_auth_parameter(state).encode()
+    expected = _hosted_auth_parameter(expected_state).encode()
+    if not secrets.compare_digest(actual, expected):
+        raise ValueError(_HOSTED_AUTH_STATE_MISMATCH)
 
 
 def _oauth_state(value: str) -> str:
@@ -679,6 +687,17 @@ class Auth:
             f"{self._client._api_base_url()}/projects/{quote(project, safe='')}"
             f"/auth/hosted?{query}"
         )
+
+    def adopt_hosted_auth_session(
+        self,
+        session: Session,
+        *,
+        state: str,
+        expected_state: str,
+    ) -> Session:
+        """Validate returned hosted-auth state before storing its session."""
+        _validate_hosted_auth_callback_state(state, expected_state)
+        return self.set_session(session)
 
     def sign_in_with_oauth(
         self,

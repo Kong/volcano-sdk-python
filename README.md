@@ -151,8 +151,20 @@ hosted_url = client.auth.get_hosted_auth_url(
 ```
 
 Store `hosted_state` in the user's signed server-side session before redirecting to `hosted_url`.
-The SDK builds the canonical login, signup, or forgot-password URL; it does not navigate or persist
-state.
+After parsing the returned fragment into a `Session`, validate and adopt it atomically:
+
+```python
+session = client.auth.adopt_hosted_auth_session(
+    returned_session,
+    state=returned_state,
+    expected_state=hosted_state,
+)
+```
+
+The SDK rejects a mismatched state before changing local authentication. It builds and adopts the
+flow but does not parse browser URLs, navigate, or persist state. The `action` deep link applies to
+Volcano's built-in page; a customized login page must implement its own signup or forgot-password
+flow.
 
 Build the URL that starts an OAuth sign-in flow:
 
