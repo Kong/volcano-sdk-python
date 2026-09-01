@@ -30,6 +30,9 @@ from ._generated.api.authentication.auth_confirm_email import (
 from ._generated.api.authentication.auth_delete_all_my_sessions import (
     _get_kwargs as delete_all_my_sessions_kwargs,
 )
+from ._generated.api.authentication.auth_delete_my_session import (
+    _get_kwargs as delete_my_session_kwargs,
+)
 from ._generated.api.authentication.auth_forgot_password import (
     _get_kwargs as forgot_password_kwargs,
 )
@@ -254,6 +257,15 @@ class AuthDeleteAllMySessionsTransport(Protocol):
         self,
         *,
         authorization: str,
+    ) -> TransportResponse: ...
+
+
+class AuthDeleteMySessionTransport(Protocol):
+    def auth_delete_my_session(
+        self,
+        *,
+        authorization: str,
+        session_id: str,
     ) -> TransportResponse: ...
 
 
@@ -624,6 +636,18 @@ class GeneratedTransport:
         with self._client(authorization) as client:
             response = client.get_httpx_client().request(
                 **delete_all_my_sessions_kwargs()
+            )
+        return self._raw_response(response)
+
+    def auth_delete_my_session(
+        self,
+        *,
+        authorization: str,
+        session_id: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **delete_my_session_kwargs(session_id=cast("UUID", session_id))
             )
         return self._raw_response(response)
 

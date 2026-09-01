@@ -122,6 +122,9 @@ class StateTransport:
         self.delete_other_sessions_response = Response(204)
         self.delete_other_sessions_calls: list[dict[str, Any]] = []
         self.on_delete_other_sessions: Callable[[], None] | None = None
+        self.delete_session_response = Response(204)
+        self.delete_session_calls: list[dict[str, Any]] = []
+        self.on_delete_session: Callable[[], None] | None = None
         self.forgot_password_response = Response(
             200,
             {"message": "If the email exists, a password reset link has been sent."},
@@ -221,6 +224,13 @@ class StateTransport:
         if self.on_delete_other_sessions is not None:
             self.on_delete_other_sessions()
         return self.delete_other_sessions_response
+
+    def auth_delete_my_session(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("delete_session", kwargs["authorization"]))
+        self.delete_session_calls.append(kwargs)
+        if self.on_delete_session is not None:
+            self.on_delete_session()
+        return self.delete_session_response
 
     def auth_forgot_password(self, **kwargs: Any) -> Response:
         self.authorizations.append(("forgot_password", kwargs["authorization"]))
@@ -715,6 +725,53 @@ def test_delete_all_other_sessions_rejects_a_stale_response() -> None:
 
     with pytest.raises(SessionChangedError):
         client.auth.delete_all_other_sessions()
+
+    assert client.auth.get_session() == replacement
+
+
+def test_delete_session_preserves_the_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+
+    client.auth.delete_session(session_id="00000000-0000-4000-8000-000000000099")
+
+    assert client.auth.get_session() is established
+    assert transport.delete_session_calls == [
+        {
+            "authorization": "access-1",
+            "session_id": "00000000-0000-4000-8000-000000000099",
+        }
+    ]
+
+
+def test_delete_session_requires_a_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="No active session"):
+        client.auth.delete_session(session_id="00000000-0000-4000-8000-000000000099")
+
+    assert transport.delete_session_calls == []
+
+
+def test_delete_session_rejects_a_stale_response() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="replacement-user",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_delete_session = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.delete_session(session_id="00000000-0000-4000-8000-000000000099")
 
     assert client.auth.get_session() == replacement
 

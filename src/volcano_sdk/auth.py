@@ -20,6 +20,7 @@ from ._transport import (
     AuthConfirmEmailTransport,
     AuthConvertAnonymousTransport,
     AuthDeleteAllMySessionsTransport,
+    AuthDeleteMySessionTransport,
     AuthForgotPasswordTransport,
     AuthGetUserTransport,
     AuthLogoutTransport,
@@ -325,6 +326,21 @@ class Auth:
         response = invoke(
             transport.auth_delete_all_my_sessions,
             authorization=current.access_token,
+        )
+        response_payload(response, 204)
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
+
+    def delete_session(self, *, session_id: str) -> None:
+        """Delete one session without changing local session state."""
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast("AuthDeleteMySessionTransport", self._client._transport)
+        response = invoke(
+            transport.auth_delete_my_session,
+            authorization=current.access_token,
+            session_id=session_id,
         )
         response_payload(response, 204)
         if self._client._capture_session()[0] != generation:

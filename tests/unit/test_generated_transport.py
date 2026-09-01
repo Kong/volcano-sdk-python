@@ -227,6 +227,32 @@ def test_generated_transport_deletes_all_other_sessions() -> None:
     assert requests[0].headers["authorization"] == "Bearer access-token"
 
 
+def test_generated_transport_deletes_one_session() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(204)
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_delete_my_session(
+        authorization="access-token",
+        session_id="00000000-0000-4000-8000-000000000099",
+    )
+
+    assert response.status_code == 204
+    assert requests[0].method == "DELETE"
+    assert (
+        requests[0].url.path
+        == "/auth/user/sessions/00000000-0000-4000-8000-000000000099"
+    )
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
 def test_generated_transport_requests_a_password_reset_with_the_anon_key() -> None:
     requests: list[httpx.Request] = []
 

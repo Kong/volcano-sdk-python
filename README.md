@@ -135,6 +135,16 @@ Success returns `None`. Do not replace the client's session while this request i
 server may revoke that replacement as an "other" session. If replacement occurs, the method raises
 `SessionChangedError` instead of acknowledging a stale result.
 
+Revoke one session by ID without changing local session state:
+
+```python
+client.auth.delete_session(session_id="00000000-0000-4000-8000-000000000099")
+```
+
+The request uses the current access token. If another authentication operation replaces the session
+before deletion finishes, the method raises `SessionChangedError` instead of acknowledging a stale
+result.
+
 Create an anonymous account and make its tokens the current session:
 
 ```python
