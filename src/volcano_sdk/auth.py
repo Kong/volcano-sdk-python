@@ -6,6 +6,7 @@ import base64
 import binascii
 import json
 from collections.abc import Mapping
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, TypeVar, cast
 
 from ._generated.models.auth_confirm_email_change_response_200 import (
@@ -18,6 +19,9 @@ from ._generated.models.auth_get_my_sessions_response_200 import (
     AuthGetMySessionsResponse200,
 )
 from ._generated.models.auth_get_user_response_200 import AuthGetUserResponse200
+from ._generated.models.auth_list_o_auth_providers_response_200 import (
+    AuthListOAuthProvidersResponse200,
+)
 from ._generated.models.auth_update_user_response_200 import AuthUpdateUserResponse200
 from ._generated.types import Unset
 from ._transport import (
@@ -30,6 +34,7 @@ from ._transport import (
     AuthForgotPasswordTransport,
     AuthGetMySessionsTransport,
     AuthGetUserTransport,
+    AuthListOAuthProvidersTransport,
     AuthLogoutTransport,
     AuthRefreshTransport,
     AuthRequestEmailChangeTransport,
@@ -52,6 +57,7 @@ from .models import (
     AuthSession,
     EmailChangeResult,
     JSONValue,
+    LinkedOAuthProvider,
     Session,
     SessionPage,
     SignUpResult,
@@ -63,11 +69,15 @@ _INVALID_SIGN_UP_RESULT = "Expected a complete sign-up acknowledgement"
 _INVALID_EMAIL_CHANGE_RESULT = "Expected a valid email-change acknowledgement"
 _INVALID_USER = "Expected a complete user profile"
 _INVALID_SESSION_PAGE = "Expected a complete session page"
+_INVALID_LINKED_OAUTH_PROVIDERS = "Expected complete linked OAuth providers"
 _JWT_PARTS = 3
 _NO_ACTIVE_SESSION = "No active session"
 _T = TypeVar("_T")
 
 if TYPE_CHECKING:
+    from ._generated.models import (
+        AuthListOAuthProvidersResponse200ProvidersItem,
+    )
     from ._generated.models.auth_session import AuthSession as GeneratedAuthSession
 
 
@@ -264,6 +274,37 @@ def _session_page_from_payload(payload: object) -> SessionPage:
     )
 
 
+def _linked_oauth_provider_from_model(
+    item: AuthListOAuthProvidersResponse200ProvidersItem,
+) -> LinkedOAuthProvider:
+    provider = item.provider
+    if not isinstance(provider, str) or not provider.strip():
+        raise VolcanoError(_INVALID_LINKED_OAUTH_PROVIDERS)
+    return LinkedOAuthProvider(
+        provider=provider,
+        linked_at=_linked_oauth_datetime(item.linked_at),
+        updated_at=_linked_oauth_datetime(item.updated_at),
+    )
+
+
+def _linked_oauth_datetime(value: object) -> datetime:
+    if not isinstance(value, datetime):
+        raise VolcanoError(_INVALID_LINKED_OAUTH_PROVIDERS)
+    return value
+
+
+def _linked_oauth_providers_from_payload(
+    payload: object,
+) -> tuple[LinkedOAuthProvider, ...]:
+    if not isinstance(payload, AuthListOAuthProvidersResponse200) or isinstance(
+        payload.providers, Unset
+    ):
+        raise VolcanoError(_INVALID_LINKED_OAUTH_PROVIDERS)
+    return tuple(
+        _linked_oauth_provider_from_model(provider) for provider in payload.providers
+    )
+
+
 class AuthContext(Protocol):
     """Client capabilities required by the authentication facade."""
 
@@ -445,6 +486,21 @@ class Auth:
             limit=limit,
         )
         result = _session_page_from_payload(response_payload(response, 200))
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
+        return result
+
+    def list_linked_oauth_providers(self) -> tuple[LinkedOAuthProvider, ...]:
+        """List OAuth providers linked to the current account."""
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast("AuthListOAuthProvidersTransport", self._client._transport)
+        response = invoke(
+            transport.auth_list_oauth_providers,
+            authorization=current.access_token,
+        )
+        result = _linked_oauth_providers_from_payload(response_payload(response, 200))
         if self._client._capture_session()[0] != generation:
             raise SessionChangedError
         return result

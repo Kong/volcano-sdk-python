@@ -108,6 +108,15 @@ class SessionPage:
 
 
 @dataclass(frozen=True, slots=True)
+class LinkedOAuthProvider:
+    """OAuth provider linked to the current account."""
+
+    provider: str
+    linked_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class SignUpResult:
     """Session-less acknowledgement returned after sign-up."""
 

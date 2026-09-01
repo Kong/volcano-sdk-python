@@ -137,6 +137,17 @@ The method returns immutable `SessionPage` and `AuthSession` values. It raises
 `SessionChangedError` instead of returning a page for a session that was replaced while the request
 was in flight. Sort, filter, and cursor controls are not yet exposed by this facade.
 
+List the OAuth providers linked to the current account:
+
+```python
+providers = client.auth.list_linked_oauth_providers()
+for provider in providers:
+    print(provider.provider, provider.linked_at)
+```
+
+The method returns an immutable tuple of `LinkedOAuthProvider` values and raises
+`SessionChangedError` if the active session changes while the request is in flight.
+
 Sign out every other device while keeping the current session active:
 
 ```python
