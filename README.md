@@ -167,6 +167,16 @@ client.auth.unlink_oauth_provider(provider="github")
 The server rejects removal of the account's only authentication method. A successful stale response
 raises `SessionChangedError` instead of acknowledging work authorized by a replaced session.
 
+Check whether Volcano has a valid server-held provider token:
+
+```python
+status = client.auth.get_oauth_provider_token(provider="github")
+print(status.provider, status.expires_in)
+```
+
+The immutable `OAuthProviderTokenStatus` contains provider and expiry metadata, not the credential.
+Volcano refreshes an expired token on the server. A stale result raises `SessionChangedError`.
+
 Sign out every other device while keeping the current session active:
 
 ```python

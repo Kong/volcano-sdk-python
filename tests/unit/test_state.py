@@ -13,6 +13,7 @@ from volcano_sdk import (
     AuthenticationError,
     AuthSession,
     LinkedOAuthProvider,
+    OAuthProviderTokenStatus,
     RateLimitedError,
     ServerError,
     Session,
@@ -42,6 +43,9 @@ from volcano_sdk._generated.models.auth_list_o_auth_providers_response_200 impor
 )
 from volcano_sdk._generated.models.auth_update_user_response_200 import (
     AuthUpdateUserResponse200,
+)
+from volcano_sdk._generated.models.get_o_auth_provider_token_response_200 import (
+    GetOAuthProviderTokenResponse200,
 )
 
 if TYPE_CHECKING:
@@ -254,6 +258,18 @@ class StateTransport:
         self.unlink_oauth_provider_response = Response(204)
         self.unlink_oauth_provider_calls: list[dict[str, Any]] = []
         self.on_unlink_oauth_provider: Callable[[], None] | None = None
+        self.oauth_provider_token_status_response = Response(
+            200,
+            GetOAuthProviderTokenResponse200.from_dict(
+                {
+                    "message": "Provider token is valid",
+                    "provider": "google",
+                    "expires_in": 3600,
+                }
+            ),
+        )
+        self.oauth_provider_token_status_calls: list[dict[str, Any]] = []
+        self.on_oauth_provider_token_status: Callable[[], None] | None = None
 
     def auth_signin(self, **kwargs: Any) -> Response:
         self.authorizations.append(("auth", kwargs["authorization"]))
@@ -347,6 +363,13 @@ class StateTransport:
         if self.on_unlink_oauth_provider is not None:
             self.on_unlink_oauth_provider()
         return self.unlink_oauth_provider_response
+
+    def auth_get_oauth_provider_token(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("oauth_token_status", kwargs["authorization"]))
+        self.oauth_provider_token_status_calls.append(kwargs)
+        if self.on_oauth_provider_token_status is not None:
+            self.on_oauth_provider_token_status()
+        return self.oauth_provider_token_status_response
 
     def auth_forgot_password(self, **kwargs: Any) -> Response:
         self.authorizations.append(("forgot_password", kwargs["authorization"]))
@@ -1117,6 +1140,117 @@ def test_unlink_oauth_provider_rejects_a_stale_response() -> None:
 
     with pytest.raises(SessionChangedError):
         client.auth.unlink_oauth_provider(provider="google")
+
+    assert client.auth.get_session() == replacement
+
+
+def test_get_oauth_provider_token_returns_immutable_status() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+
+    result = client.auth.get_oauth_provider_token(provider="google")
+
+    assert result == OAuthProviderTokenStatus(
+        message="Provider token is valid",
+        provider="google",
+        expires_in=3600,
+    )
+    assert client.auth.get_session() is established
+    assert transport.oauth_provider_token_status_calls == [
+        {"authorization": "access-1", "provider": "google"}
+    ]
+    with pytest.raises(FrozenInstanceError):
+        result.provider = "github"  # type: ignore[misc]
+
+
+def test_get_oauth_provider_token_rejects_an_unknown_provider() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(ValueError, match="Unsupported OAuth provider"):
+        client.auth.get_oauth_provider_token(provider="invalid")  # type: ignore[arg-type]
+
+    assert transport.oauth_provider_token_status_calls == []
+
+
+def test_get_oauth_provider_token_requires_a_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="No active session"):
+        client.auth.get_oauth_provider_token(provider="google")
+
+    assert transport.oauth_provider_token_status_calls == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"provider": "google", "expires_in": 3600},
+        {"message": "Provider token is valid", "expires_in": 3600},
+        {"message": "Provider token is valid", "provider": "google"},
+        {
+            "message": "Provider token is valid",
+            "provider": "google",
+            "expires_in": True,
+        },
+    ],
+)
+def test_get_oauth_provider_token_rejects_incomplete_status(
+    payload: dict[str, object],
+) -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    transport.oauth_provider_token_status_response = Response(
+        200,
+        GetOAuthProviderTokenResponse200.from_dict(payload),
+    )
+
+    with pytest.raises(
+        VolcanoError, match="Expected complete OAuth provider token status"
+    ):
+        client.auth.get_oauth_provider_token(provider="google")
+
+
+def test_get_oauth_provider_token_accepts_a_future_provider_name() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    transport.oauth_provider_token_status_response = Response(
+        200,
+        GetOAuthProviderTokenResponse200.from_dict(
+            {
+                "message": "Provider token is valid",
+                "provider": "future-provider",
+                "expires_in": 3600,
+            }
+        ),
+    )
+
+    result = client.auth.get_oauth_provider_token(provider="google")
+
+    assert result.provider == "future-provider"
+
+
+def test_get_oauth_provider_token_rejects_a_stale_response() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="replacement-user",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_oauth_provider_token_status = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.get_oauth_provider_token(provider="google")
 
     assert client.auth.get_session() == replacement
 

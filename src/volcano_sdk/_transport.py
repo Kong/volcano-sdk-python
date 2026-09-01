@@ -62,6 +62,9 @@ from ._generated.api.o_auth_authentication.auth_list_o_auth_providers import (
 from ._generated.api.o_auth_authentication.auth_unlink_o_auth_provider import (
     _get_kwargs as unlink_oauth_provider_kwargs,
 )
+from ._generated.api.o_auth_authentication.get_o_auth_provider_token import (
+    _get_kwargs as get_oauth_provider_token_kwargs,
+)
 from ._generated.api.storage_objects import (
     download_storage_object,
     upload_storage_object,
@@ -102,6 +105,9 @@ from ._generated.models.auth_update_user_body_user_metadata import (
     AuthUpdateUserBodyUserMetadata,
 )
 from ._generated.models.database_select_request import DatabaseSelectRequest
+from ._generated.models.get_o_auth_provider_token_response_200 import (
+    GetOAuthProviderTokenResponse200,
+)
 from ._generated.models.project_lock_lease_request import ProjectLockLeaseRequest
 from ._generated.models.upload_storage_object_files_body import (
     UploadStorageObjectFilesBody,
@@ -127,6 +133,9 @@ if TYPE_CHECKING:
     from ._generated.models.auth_unlink_o_auth_provider_provider import (
         AuthUnlinkOAuthProviderProvider,
     )
+    from ._generated.models.get_o_auth_provider_token_provider import (
+        GetOAuthProviderTokenProvider,
+    )
 
 HTTP_NOT_FOUND = 404
 HTTP_CONFLICT = 409
@@ -138,6 +147,7 @@ _MALFORMED_USER_PROFILE = "Expected a complete user profile"
 _MALFORMED_SESSION_PAGE = "Expected a complete session page"
 _MALFORMED_LINKED_OAUTH_PROVIDERS = "Expected complete linked OAuth providers"
 _MALFORMED_OAUTH_LINK = "Expected an OAuth authorization URL"
+_MALFORMED_OAUTH_STATUS = "Expected complete OAuth provider token status"
 ERROR_TYPES_BY_STATUS: dict[int, type[VolcanoError]] = {
     400: ValidationError,
     401: AuthenticationError,
@@ -333,6 +343,15 @@ class AuthUnlinkOAuthProviderTransport(Protocol):
         *,
         authorization: str,
         provider: AuthUnlinkOAuthProviderProvider,
+    ) -> TransportResponse: ...
+
+
+class AuthGetOAuthProviderTokenTransport(Protocol):
+    def auth_get_oauth_provider_token(
+        self,
+        *,
+        authorization: str,
+        provider: GetOAuthProviderTokenProvider,
     ) -> TransportResponse: ...
 
 
@@ -816,6 +835,35 @@ class GeneratedTransport:
                 **unlink_oauth_provider_kwargs(provider)
             )
         return self._raw_response(response)
+
+    def auth_get_oauth_provider_token(
+        self,
+        *,
+        authorization: str,
+        provider: GetOAuthProviderTokenProvider,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **get_oauth_provider_token_kwargs(provider)
+            )
+        if response.status_code != HTTP_OK:
+            return self._raw_response(response)
+        try:
+            payload = GetOAuthProviderTokenResponse200.from_dict(response.json())
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
+            raise VolcanoError(_MALFORMED_OAUTH_STATUS) from error
+        return _GeneratedTransportResponse(
+            status_code=response.status_code,
+            payload=payload,
+            content=response.content,
+            headers=dict(response.headers),
+        )
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
         try:
