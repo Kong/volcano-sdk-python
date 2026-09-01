@@ -96,6 +96,16 @@ Success returns `None` whether the account is unknown, already confirmed, or eli
 mail only for an existing unconfirmed account when transactional email is configured. Rate limits
 raise `RateLimitedError` with `retry_after` when the server supplies it.
 
+Request confirmation for a new email address while keeping the current session:
+
+```python
+result = client.auth.request_email_change(new_email="new@example.com")
+print(result.new_email)
+```
+
+The immutable result contains the server acknowledgement. Its `message` and `new_email` fields may
+be `None`. The request fails if there is no active session or that session changes in flight.
+
 Create an anonymous account and make its tokens the current session:
 
 ```python

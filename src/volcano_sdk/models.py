@@ -86,6 +86,14 @@ class SignUpResult:
 
 
 @dataclass(frozen=True, slots=True)
+class EmailChangeResult:
+    """Acknowledgement returned after requesting an email change."""
+
+    message: str | None
+    new_email: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class LockLease:
     """Lease returned for an acquired distributed lock."""
 

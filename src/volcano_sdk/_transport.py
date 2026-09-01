@@ -26,6 +26,9 @@ from ._generated.api.authentication.auth_confirm_email import (
 from ._generated.api.authentication.auth_forgot_password import (
     _get_kwargs as forgot_password_kwargs,
 )
+from ._generated.api.authentication.auth_request_email_change import (
+    _get_kwargs as request_email_change_kwargs,
+)
 from ._generated.api.authentication.auth_resend_confirmation import (
     _get_kwargs as resend_confirmation_kwargs,
 )
@@ -50,6 +53,7 @@ from ._generated.models.auth_convert_anonymous_body_user_metadata import (
 from ._generated.models.auth_forgot_password_body import AuthForgotPasswordBody
 from ._generated.models.auth_logout_body import AuthLogoutBody
 from ._generated.models.auth_refresh_body import AuthRefreshBody
+from ._generated.models.auth_request_email_change_body import AuthRequestEmailChangeBody
 from ._generated.models.auth_resend_confirmation_body import AuthResendConfirmationBody
 from ._generated.models.auth_reset_password_body import AuthResetPasswordBody
 from ._generated.models.auth_signin_body import AuthSigninBody
@@ -208,6 +212,15 @@ class AuthResendConfirmationTransport(Protocol):
         *,
         authorization: str,
         email: str,
+    ) -> TransportResponse: ...
+
+
+class AuthRequestEmailChangeTransport(Protocol):
+    def auth_request_email_change(
+        self,
+        *,
+        authorization: str,
+        new_email: str,
     ) -> TransportResponse: ...
 
 
@@ -519,6 +532,19 @@ class GeneratedTransport:
         with self._client(authorization) as client:
             response = client.get_httpx_client().request(
                 **resend_confirmation_kwargs(body=body)
+            )
+        return self._raw_response(response)
+
+    def auth_request_email_change(
+        self,
+        *,
+        authorization: str,
+        new_email: str,
+    ) -> TransportResponse:
+        body = AuthRequestEmailChangeBody(new_email=new_email)
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **request_email_change_kwargs(body=body)
             )
         return self._raw_response(response)
 

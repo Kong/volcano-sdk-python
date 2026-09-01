@@ -130,6 +130,30 @@ def test_generated_transport_converts_an_anonymous_user() -> None:
     }
 
 
+def test_generated_transport_requests_an_email_change() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={})
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_request_email_change(
+        authorization="access-token",
+        new_email="new@example.com",
+    )
+
+    assert response.status_code == 200
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/auth/user/change-email"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert json.loads(requests[0].content) == {"new_email": "new@example.com"}
+
+
 def test_generated_transport_requests_a_password_reset_with_the_anon_key() -> None:
     requests: list[httpx.Request] = []
 
