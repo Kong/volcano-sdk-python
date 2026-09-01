@@ -13,7 +13,10 @@ from .errors import (
     VolcanoError,
 )
 from .models import (
+    AuthChangeEvent,
     AuthSession,
+    AuthStateCallback,
+    AuthSubscription,
     EmailChangeResult,
     LinkedOAuthProvider,
     LockLease,
@@ -26,7 +29,10 @@ from .models import (
 )
 
 __all__ = [
+    "AuthChangeEvent",
     "AuthSession",
+    "AuthStateCallback",
+    "AuthSubscription",
     "AuthenticationError",
     "ConflictError",
     "EmailChangeResult",

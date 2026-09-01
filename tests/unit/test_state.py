@@ -12,6 +12,7 @@ import pytest
 from volcano_sdk import (
     AuthenticationError,
     AuthSession,
+    AuthSubscription,
     LinkedOAuthProvider,
     OAuthProviderTokenStatus,
     RateLimitedError,
@@ -58,6 +59,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 _CONNECTION_LOST = "connection lost"
+_SUBSCRIBER_FAILED = "subscriber failed"
 
 
 @dataclass(frozen=True)
@@ -567,6 +569,93 @@ def test_auth_facade_reads_an_empty_session_without_transport() -> None:
 
     assert client.auth.get_session() is None
     assert transport.authorizations == []
+
+
+def test_auth_state_subscription_reports_session_transitions() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    events: list[tuple[str, Session | None]] = []
+
+    subscription = client.auth.on_auth_state_change(
+        lambda event, session: events.append((event, session))
+    )
+    signed_in = client.auth.sign_in(email="user@example.com", password="secret")
+    refreshed = client.auth.refresh_session()
+    client.auth.sign_out()
+
+    assert isinstance(subscription, AuthSubscription)
+    assert events == [
+        ("INITIAL_SESSION", None),
+        ("SIGNED_IN", signed_in),
+        ("TOKEN_REFRESHED", refreshed),
+        ("SIGNED_OUT", None),
+    ]
+
+
+def test_auth_state_subscription_unsubscribes_idempotently() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    events: list[tuple[str, Session | None]] = []
+    subscription = client.auth.on_auth_state_change(
+        lambda event, session: events.append((event, session))
+    )
+
+    subscription.unsubscribe()
+    subscription.unsubscribe()
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    assert events == [("INITIAL_SESSION", None)]
+
+
+def test_auth_state_subscription_requires_a_callable() -> None:
+    client = VolcanoClient(anon_key="anon", _transport=StateTransport())
+
+    with pytest.raises(TypeError, match="callback must be callable"):
+        client.auth.on_auth_state_change(cast("Any", None))
+
+
+def test_auth_state_callback_failure_does_not_interrupt_other_subscribers() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    received: list[tuple[str, Session | None]] = []
+
+    def fail(_event: str, _session: Session | None) -> None:
+        raise RuntimeError(_SUBSCRIBER_FAILED)
+
+    client.auth.on_auth_state_change(fail)
+    client.auth.on_auth_state_change(
+        lambda event, session: received.append((event, session))
+    )
+
+    signed_in = client.auth.sign_in(email="user@example.com", password="secret")
+
+    assert received == [
+        ("INITIAL_SESSION", None),
+        ("SIGNED_IN", signed_in),
+    ]
+
+
+def test_auth_state_callbacks_preserve_order_during_reentrant_changes() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    received: list[tuple[str, Session | None]] = []
+
+    def sign_out_after_sign_in(event: str, _session: Session | None) -> None:
+        if event == "SIGNED_IN":
+            client.auth.sign_out()
+
+    client.auth.on_auth_state_change(sign_out_after_sign_in)
+    client.auth.on_auth_state_change(
+        lambda event, session: received.append((event, session))
+    )
+    received.clear()
+
+    signed_in = client.auth.sign_in(email="user@example.com", password="secret")
+
+    assert received == [
+        ("SIGNED_IN", signed_in),
+        ("SIGNED_OUT", None),
+    ]
 
 
 def test_sign_up_returns_immutable_acknowledgement_without_session_change() -> None:

@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING
+from collections import deque
+from contextlib import suppress
 
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
 from .database import Database
 from .locks import Locks
+from .models import (
+    AuthChangeEvent,
+    AuthStateCallback,
+    AuthSubscription,
+    Session,
+)
 from .realtime import CentrifugeFactory, Realtime
 from .storage import Storage
-
-if TYPE_CHECKING:
-    from .models import Session
 
 _NO_ACTIVE_SESSION = "No active session"
 _NO_SERVICE_KEY = "No service key configured"
@@ -39,6 +43,16 @@ class VolcanoClient:
         self._session_lock = threading.Lock()
         self._session_generation = 0
         self._current_session: Session | None = None
+        self._auth_callbacks: dict[int, AuthStateCallback] = {}
+        self._next_auth_callback_id = 0
+        self._auth_notifications: deque[
+            tuple[
+                tuple[AuthStateCallback, ...],
+                AuthChangeEvent,
+                Session | None,
+            ]
+        ] = deque()
+        self._dispatching_auth_notifications = False
         self._transport: Transport = (
             _transport
             if _transport is not None
@@ -79,27 +93,112 @@ class VolcanoClient:
             raise RuntimeError(_NO_SERVICE_KEY)
         return self._service_key
 
-    def _set_session(self, session: Session) -> None:
+    def _set_session(
+        self,
+        session: Session,
+        *,
+        event: AuthChangeEvent = "SIGNED_IN",
+    ) -> None:
         with self._session_lock:
             self._current_session = session
             self._session_generation += 1
+            callbacks = tuple(self._auth_callbacks.values())
+            dispatch = self._enqueue_auth_state_change(callbacks, event, session)
+        if dispatch:
+            self._drain_auth_state_changes()
 
     def _capture_session(self) -> tuple[int, Session | None]:
         with self._session_lock:
             return self._session_generation, self._current_session
 
-    def _set_session_if_current(self, session: Session, generation: int) -> bool:
+    def _set_session_if_current(
+        self,
+        session: Session,
+        generation: int,
+        *,
+        event: AuthChangeEvent = "SIGNED_IN",
+    ) -> bool:
         with self._session_lock:
             if generation != self._session_generation:
                 return False
             self._current_session = session
             self._session_generation += 1
-            return True
+            callbacks = tuple(self._auth_callbacks.values())
+            dispatch = self._enqueue_auth_state_change(callbacks, event, session)
+        if dispatch:
+            self._drain_auth_state_changes()
+        return True
 
-    def _clear_session_if_current(self, generation: int) -> bool:
+    def _clear_session_if_current(
+        self,
+        generation: int,
+        *,
+        event: AuthChangeEvent = "SIGNED_OUT",
+    ) -> bool:
         with self._session_lock:
             if generation != self._session_generation:
                 return False
             self._current_session = None
             self._session_generation += 1
-            return True
+            callbacks = tuple(self._auth_callbacks.values())
+            dispatch = self._enqueue_auth_state_change(callbacks, event, None)
+        if dispatch:
+            self._drain_auth_state_changes()
+        return True
+
+    def _subscribe_auth_state_change(
+        self,
+        callback: AuthStateCallback,
+    ) -> AuthSubscription:
+        with self._session_lock:
+            callback_id = self._next_auth_callback_id
+            self._next_auth_callback_id += 1
+            self._auth_callbacks[callback_id] = callback
+            current = self._current_session
+            dispatch = self._enqueue_auth_state_change(
+                (callback,),
+                "INITIAL_SESSION",
+                current,
+            )
+        if dispatch:
+            self._drain_auth_state_changes()
+        return AuthSubscription(
+            lambda: self._unsubscribe_auth_state_change(callback_id)
+        )
+
+    def _unsubscribe_auth_state_change(self, callback_id: int) -> None:
+        with self._session_lock:
+            self._auth_callbacks.pop(callback_id, None)
+
+    def _enqueue_auth_state_change(
+        self,
+        callbacks: tuple[AuthStateCallback, ...],
+        event: AuthChangeEvent,
+        session: Session | None,
+    ) -> bool:
+        if not callbacks:
+            return False
+        self._auth_notifications.append((callbacks, event, session))
+        if self._dispatching_auth_notifications:
+            return False
+        self._dispatching_auth_notifications = True
+        return True
+
+    def _drain_auth_state_changes(self) -> None:
+        while True:
+            with self._session_lock:
+                if not self._auth_notifications:
+                    self._dispatching_auth_notifications = False
+                    return
+                callbacks, event, session = self._auth_notifications.popleft()
+            self._notify_auth_state_change(callbacks, event, session)
+
+    @staticmethod
+    def _notify_auth_state_change(
+        callbacks: tuple[AuthStateCallback, ...],
+        event: AuthChangeEvent,
+        session: Session | None,
+    ) -> None:
+        for callback in callbacks:
+            with suppress(Exception):
+                callback(event, session)

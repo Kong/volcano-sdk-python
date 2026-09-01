@@ -74,7 +74,10 @@ from .errors import (
     VolcanoError,
 )
 from .models import (
+    AuthChangeEvent,
     AuthSession,
+    AuthStateCallback,
+    AuthSubscription,
     EmailChangeResult,
     JSONValue,
     LinkedOAuthProvider,
@@ -96,6 +99,7 @@ _INVALID_LINKED_OAUTH_PROVIDERS = "Expected complete linked OAuth providers"
 _INVALID_OAUTH_LINK = "Expected an OAuth authorization URL"
 _INVALID_OAUTH_STATUS = "Expected complete OAuth provider token status"
 _INVALID_OAUTH_API_RESPONSE = "Expected OAuth provider API response data"
+_INVALID_AUTH_CALLBACK = "callback must be callable"
 _UNSUPPORTED_OAUTH_PROVIDER = "Unsupported OAuth provider"
 _UNSUPPORTED_OAUTH_API_METHOD = "Unsupported OAuth provider API method"
 _INVALID_OAUTH_PARAMETER = "OAuth parameters must be non-empty strings"
@@ -422,13 +426,34 @@ class AuthContext(Protocol):
 
     def _anon_token(self) -> str: ...
 
-    def _set_session(self, session: Session) -> None: ...
+    def _set_session(
+        self,
+        session: Session,
+        *,
+        event: AuthChangeEvent = "SIGNED_IN",
+    ) -> None: ...
 
     def _capture_session(self) -> tuple[int, Session | None]: ...
 
-    def _set_session_if_current(self, session: Session, generation: int) -> bool: ...
+    def _set_session_if_current(
+        self,
+        session: Session,
+        generation: int,
+        *,
+        event: AuthChangeEvent = "SIGNED_IN",
+    ) -> bool: ...
 
-    def _clear_session_if_current(self, generation: int) -> bool: ...
+    def _clear_session_if_current(
+        self,
+        generation: int,
+        *,
+        event: AuthChangeEvent = "SIGNED_OUT",
+    ) -> bool: ...
+
+    def _subscribe_auth_state_change(
+        self,
+        callback: AuthStateCallback,
+    ) -> AuthSubscription: ...
 
 
 class Auth:
@@ -441,6 +466,15 @@ class Auth:
     def get_session(self) -> Session | None:
         """Return the immutable locally held session without validating it."""
         return self._client.current_session
+
+    def on_auth_state_change(
+        self,
+        callback: AuthStateCallback,
+    ) -> AuthSubscription:
+        """Observe local session changes until the subscription is cancelled."""
+        if not callable(callback):
+            raise TypeError(_INVALID_AUTH_CALLBACK)
+        return self._client._subscribe_auth_state_change(callback)
 
     def set_session(self, session: Session) -> Session:
         """Copy a complete session into local client state."""
@@ -896,7 +930,11 @@ class Auth:
             self._client._clear_session_if_current(generation)
             raise
         refreshed = _session_from_payload(payload)
-        if not self._client._set_session_if_current(refreshed, generation):
+        if not self._client._set_session_if_current(
+            refreshed,
+            generation,
+            event="TOKEN_REFRESHED",
+        ):
             raise SessionChangedError
         return refreshed
 

@@ -1,6 +1,6 @@
 """Public Volcano SDK value objects."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from types import MappingProxyType
@@ -18,6 +18,12 @@ JSONValue: TypeAlias = (
     | None
 )
 OAuthProviderName: TypeAlias = Literal["apple", "github", "google", "microsoft"]
+AuthChangeEvent: TypeAlias = Literal[
+    "INITIAL_SESSION",
+    "SIGNED_IN",
+    "SIGNED_OUT",
+    "TOKEN_REFRESHED",
+]
 
 
 def _freeze_json(value: JSONValue) -> JSONValue:
@@ -76,6 +82,20 @@ class Session:
     access_token: str
     refresh_token: str
     user_id: str
+
+
+AuthStateCallback: TypeAlias = Callable[[AuthChangeEvent, Session | None], None]
+
+
+@dataclass(frozen=True, slots=True)
+class AuthSubscription:
+    """Handle for an authentication-state subscription."""
+
+    _unsubscribe: Callable[[], None] = field(repr=False, compare=False)
+
+    def unsubscribe(self) -> None:
+        """Stop future authentication-state notifications."""
+        self._unsubscribe()
 
 
 @dataclass(frozen=True, slots=True)

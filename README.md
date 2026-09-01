@@ -308,6 +308,26 @@ snapshot. An authentication failure clears the session that initiated the reques
 transport failures preserve it, and a late response never replaces a newer session. The SDK does
 not persist sessions.
 
+Observe local session transitions:
+
+```python
+from volcano_sdk import AuthChangeEvent, Session
+
+
+def handle_auth_change(event: AuthChangeEvent, session: Session | None) -> None:
+    print(event, session is not None)
+
+
+subscription = client.auth.on_auth_state_change(handle_auth_change)
+# Later, stop receiving events.
+subscription.unsubscribe()
+```
+
+Registration immediately emits `INITIAL_SESSION`. Successful session creation, refresh, and local
+clearing emit `SIGNED_IN`, `TOKEN_REFRESHED`, and `SIGNED_OUT`. Callbacks are delivered locally in
+transition order after the state lock is released, and callback failures cannot interrupt auth
+operations. The SDK does not broadcast between processes or persist sessions.
+
 Sign out by revoking and clearing the current session:
 
 ```python
