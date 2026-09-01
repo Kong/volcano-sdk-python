@@ -187,6 +187,18 @@ print(status.provider, status.expires_in)
 The refresh credential and new access token remain on the server. A stale result raises
 `SessionChangedError`.
 
+Call a provider API through Volcano's fixed-host server proxy:
+
+```python
+repos = client.auth.call_oauth_api(
+    provider="github",
+    endpoint="/user/repos",
+)
+```
+
+The method returns an immutable copy of the provider's JSON object. Volcano owns token refresh and
+host validation. A stale result raises `SessionChangedError`.
+
 Sign out every other device while keeping the current session active:
 
 ```python

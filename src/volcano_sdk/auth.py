@@ -26,6 +26,9 @@ from ._generated.models.auth_list_o_auth_providers_response_200 import (
     AuthListOAuthProvidersResponse200,
 )
 from ._generated.models.auth_update_user_response_200 import AuthUpdateUserResponse200
+from ._generated.models.call_o_auth_provider_api_response_200 import (
+    CallOAuthProviderAPIResponse200,
+)
 from ._generated.models.get_o_auth_provider_token_response_200 import (
     GetOAuthProviderTokenResponse200,
 )
@@ -34,6 +37,7 @@ from ._generated.models.refresh_o_auth_provider_token_response_200 import (
 )
 from ._generated.types import Unset
 from ._transport import (
+    AuthCallOAuthAPITransport,
     AuthCancelEmailChangeTransport,
     AuthConfirmEmailChangeTransport,
     AuthConfirmEmailTransport,
@@ -77,6 +81,7 @@ from .models import (
     SessionPage,
     SignUpResult,
     User,
+    _freeze_json,
 )
 
 _INCOMPLETE_SESSION = "Expected a complete Session"
@@ -87,6 +92,7 @@ _INVALID_SESSION_PAGE = "Expected a complete session page"
 _INVALID_LINKED_OAUTH_PROVIDERS = "Expected complete linked OAuth providers"
 _INVALID_OAUTH_LINK = "Expected an OAuth authorization URL"
 _INVALID_OAUTH_STATUS = "Expected complete OAuth provider token status"
+_INVALID_OAUTH_API_RESPONSE = "Expected OAuth provider API response data"
 _UNSUPPORTED_OAUTH_PROVIDER = "Unsupported OAuth provider"
 _JWT_PARTS = 3
 _NO_ACTIVE_SESSION = "No active session"
@@ -361,6 +367,20 @@ def _oauth_provider_token_status_from_payload(
         provider=cast("str", provider),
         expires_in=expires_in,
     )
+
+
+def _oauth_api_data_from_payload(
+    payload: object,
+) -> Mapping[str, JSONValue]:
+    if not isinstance(payload, CallOAuthProviderAPIResponse200):
+        raise VolcanoError(_INVALID_OAUTH_API_RESPONSE)
+    data = payload.to_dict().get("data")
+    if not isinstance(data, Mapping):
+        raise VolcanoError(_INVALID_OAUTH_API_RESPONSE)
+    frozen = _freeze_json(cast("Mapping[str, JSONValue]", data))
+    if not isinstance(frozen, Mapping):
+        raise VolcanoError(_INVALID_OAUTH_API_RESPONSE)
+    return frozen
 
 
 class AuthContext(Protocol):
@@ -647,6 +667,33 @@ class Auth:
         result = _oauth_provider_token_status_from_payload(
             response_payload(response, 200)
         )
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
+        return result
+
+    def call_oauth_api(
+        self,
+        *,
+        provider: OAuthProviderName,
+        endpoint: str,
+        method: str = "GET",
+        body: Mapping[str, JSONValue] | None = None,
+    ) -> Mapping[str, JSONValue]:
+        """Call a provider API through Volcano's fixed-host server proxy."""
+        provider_name = _oauth_provider_name(provider)
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast("AuthCallOAuthAPITransport", self._client._transport)
+        response = invoke(
+            transport.auth_call_oauth_api,
+            authorization=current.access_token,
+            provider=provider_name,
+            endpoint=endpoint,
+            method=method,
+            body=body,
+        )
+        result = _oauth_api_data_from_payload(response_payload(response, 200))
         if self._client._capture_session()[0] != generation:
             raise SessionChangedError
         return result

@@ -492,6 +492,45 @@ def test_generated_transport_refreshes_an_oauth_provider_token() -> None:
     assert requests[0].headers["authorization"] == "Bearer access-token"
 
 
+def test_generated_transport_calls_an_oauth_provider_api() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "provider": "github",
+                "endpoint": "/user/repos",
+                "status_code": 200,
+                "data": {"repos": [{"name": "volcano"}]},
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_call_oauth_api(
+        authorization="access-token",
+        provider="github",
+        endpoint="/user/repos",
+        method="POST",
+        body={"visibility": "private"},
+    )
+
+    assert response.status_code == 200
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/auth/oauth/github/call-api"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert json.loads(requests[0].content) == {
+        "endpoint": "/user/repos",
+        "method": "POST",
+        "body": {"visibility": "private"},
+    }
+
+
 def test_generated_transport_deletes_all_other_sessions() -> None:
     requests: list[httpx.Request] = []
 
