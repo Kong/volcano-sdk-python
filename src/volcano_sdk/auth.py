@@ -98,9 +98,9 @@ def _sign_up_result_from_payload(payload: object) -> SignUpResult:
 
 
 def _email_change_result_from_payload(payload: object) -> EmailChangeResult:
-    values: Mapping[object, object] = (
-        cast("Mapping[object, object]", payload) if isinstance(payload, Mapping) else {}
-    )
+    if not isinstance(payload, Mapping):
+        raise TypeError(_INVALID_EMAIL_CHANGE_RESULT)
+    values = cast("Mapping[object, object]", payload)
     message = values.get("message")
     new_email = values.get("new_email")
     if not all(

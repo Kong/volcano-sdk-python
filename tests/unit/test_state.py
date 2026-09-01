@@ -494,6 +494,16 @@ def test_request_email_change_accepts_optional_response_fields() -> None:
     assert result.new_email is None
 
 
+def test_request_email_change_rejects_a_non_object_response() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    transport.email_change_response = Response(200, [])
+
+    with pytest.raises(TypeError, match="valid email-change acknowledgement"):
+        client.auth.request_email_change(new_email="new@example.com")
+
+
 def test_request_email_change_requires_a_current_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
