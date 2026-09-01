@@ -3,20 +3,46 @@
 from __future__ import annotations
 
 import threading
+from collections import deque
 from typing import TYPE_CHECKING
 
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
 from .database import Database
 from .locks import Locks
+from .models import (
+    AuthChangeEvent,
+    AuthStateCallback,
+    AuthSubscription,
+    Session,
+)
 from .realtime import CentrifugeFactory, Realtime
 from .storage import Storage
 
 if TYPE_CHECKING:
-    from .models import Session
+    from types import TracebackType
 
 _NO_ACTIVE_SESSION = "No active session"
 _NO_SERVICE_KEY = "No service key configured"
+
+
+class _CallbackOutcome:
+    """Capture a callback failure without unwinding dispatcher ownership."""
+
+    def __init__(self) -> None:
+        self.error: BaseException | None = None
+
+    def __enter__(self) -> None:
+        return None
+
+    def __exit__(
+        self,
+        _error_type: type[BaseException] | None,
+        error: BaseException | None,
+        _traceback: TracebackType | None,
+    ) -> bool:
+        self.error = error
+        return error is not None
 
 
 class VolcanoClient:
@@ -39,6 +65,16 @@ class VolcanoClient:
         self._session_lock = threading.Lock()
         self._session_generation = 0
         self._current_session: Session | None = None
+        self._auth_callbacks: dict[int, AuthStateCallback] = {}
+        self._next_auth_callback_id = 0
+        self._auth_notifications: deque[
+            tuple[
+                tuple[int, ...],
+                AuthChangeEvent,
+                Session | None,
+            ]
+        ] = deque()
+        self._dispatching_auth_notifications = False
         self._transport: Transport = (
             _transport
             if _transport is not None
@@ -79,27 +115,133 @@ class VolcanoClient:
             raise RuntimeError(_NO_SERVICE_KEY)
         return self._service_key
 
-    def _set_session(self, session: Session) -> None:
+    def _set_session(
+        self,
+        session: Session,
+        *,
+        event: AuthChangeEvent = "SIGNED_IN",
+    ) -> None:
         with self._session_lock:
             self._current_session = session
             self._session_generation += 1
+            callback_ids = tuple(self._auth_callbacks)
+            dispatch = self._enqueue_auth_state_change(callback_ids, event, session)
+        if dispatch:
+            self._drain_auth_state_changes()
 
     def _capture_session(self) -> tuple[int, Session | None]:
         with self._session_lock:
             return self._session_generation, self._current_session
 
-    def _set_session_if_current(self, session: Session, generation: int) -> bool:
+    def _set_session_if_current(
+        self,
+        session: Session,
+        generation: int,
+        *,
+        event: AuthChangeEvent = "SIGNED_IN",
+    ) -> bool:
         with self._session_lock:
             if generation != self._session_generation:
                 return False
             self._current_session = session
             self._session_generation += 1
-            return True
+            callback_ids = tuple(self._auth_callbacks)
+            dispatch = self._enqueue_auth_state_change(callback_ids, event, session)
+        if dispatch:
+            self._drain_auth_state_changes()
+        return True
 
-    def _clear_session_if_current(self, generation: int) -> bool:
+    def _clear_session_if_current(
+        self,
+        generation: int,
+        *,
+        event: AuthChangeEvent = "SIGNED_OUT",
+    ) -> bool:
         with self._session_lock:
             if generation != self._session_generation:
                 return False
             self._current_session = None
             self._session_generation += 1
-            return True
+            callback_ids = tuple(self._auth_callbacks)
+            dispatch = self._enqueue_auth_state_change(callback_ids, event, None)
+        if dispatch:
+            self._drain_auth_state_changes()
+        return True
+
+    def _subscribe_auth_state_change(
+        self,
+        callback: AuthStateCallback,
+    ) -> AuthSubscription:
+        with self._session_lock:
+            callback_id = self._next_auth_callback_id
+            self._next_auth_callback_id += 1
+            self._auth_callbacks[callback_id] = callback
+            current = self._current_session
+            dispatch = self._enqueue_auth_state_change(
+                (callback_id,),
+                "INITIAL_SESSION",
+                current,
+            )
+        if dispatch:
+            self._drain_auth_state_changes()
+        return AuthSubscription(
+            lambda: self._unsubscribe_auth_state_change(callback_id)
+        )
+
+    def _unsubscribe_auth_state_change(self, callback_id: int) -> None:
+        with self._session_lock:
+            self._auth_callbacks.pop(callback_id, None)
+
+    def _enqueue_auth_state_change(
+        self,
+        callback_ids: tuple[int, ...],
+        event: AuthChangeEvent,
+        session: Session | None,
+    ) -> bool:
+        if not callback_ids:
+            return False
+        self._auth_notifications.append((callback_ids, event, session))
+        if self._dispatching_auth_notifications:
+            return False
+        self._dispatching_auth_notifications = True
+        return True
+
+    def _drain_auth_state_changes(self) -> None:
+        failure: BaseException | None = None
+        while True:
+            with self._session_lock:
+                if not self._auth_notifications:
+                    self._dispatching_auth_notifications = False
+                    break
+                callback_ids, event, session = self._auth_notifications.popleft()
+            current_failure = self._notify_auth_state_change(
+                callback_ids,
+                event,
+                session,
+            )
+            if failure is None:
+                failure = current_failure
+        if failure is not None:
+            raise failure
+
+    def _notify_auth_state_change(
+        self,
+        callback_ids: tuple[int, ...],
+        event: AuthChangeEvent,
+        session: Session | None,
+    ) -> BaseException | None:
+        failure: BaseException | None = None
+        for callback_id in callback_ids:
+            with self._session_lock:
+                callback = self._auth_callbacks.get(callback_id)
+            if callback is None:
+                continue
+            outcome = _CallbackOutcome()
+            with outcome:
+                callback(event, session)
+            if outcome.error is None or isinstance(outcome.error, Exception):
+                continue
+            self._unsubscribe_auth_state_change(callback_id)
+            if failure is None:
+                failure = outcome.error
+        return failure
