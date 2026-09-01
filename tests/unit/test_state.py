@@ -34,6 +34,9 @@ from volcano_sdk._generated.models.auth_get_my_sessions_response_200 import (
 from volcano_sdk._generated.models.auth_get_user_response_200 import (
     AuthGetUserResponse200,
 )
+from volcano_sdk._generated.models.auth_link_o_auth_provider_response_200 import (
+    AuthLinkOAuthProviderResponse200,
+)
 from volcano_sdk._generated.models.auth_list_o_auth_providers_response_200 import (
     AuthListOAuthProvidersResponse200,
 )
@@ -193,9 +196,7 @@ class StateTransport:
         self.list_sessions_response = Response(200, _sessions_page())
         self.list_sessions_calls: list[dict[str, Any]] = []
         self.on_list_sessions: Callable[[], None] | None = None
-        self.list_oauth_providers_response = Response(200, _linked_oauth_providers())
-        self.list_oauth_providers_calls: list[dict[str, Any]] = []
-        self.on_list_oauth_providers: Callable[[], None] | None = None
+        self._configure_oauth()
         self.forgot_password_response = Response(
             200,
             {"message": "If the email exists, a password reset link has been sent."},
@@ -237,6 +238,19 @@ class StateTransport:
         self.on_logout: Callable[[], None] | None = None
         self.query_calls: list[dict[str, Any]] = []
         self.authorizations: list[tuple[str, str]] = []
+
+    def _configure_oauth(self) -> None:
+        self.list_oauth_providers_response = Response(200, _linked_oauth_providers())
+        self.list_oauth_providers_calls: list[dict[str, Any]] = []
+        self.on_list_oauth_providers: Callable[[], None] | None = None
+        self.link_oauth_provider_response = Response(
+            200,
+            AuthLinkOAuthProviderResponse200.from_dict(
+                {"authorization_url": "https://accounts.example/link"}
+            ),
+        )
+        self.link_oauth_provider_calls: list[dict[str, Any]] = []
+        self.on_link_oauth_provider: Callable[[], None] | None = None
 
     def auth_signin(self, **kwargs: Any) -> Response:
         self.authorizations.append(("auth", kwargs["authorization"]))
@@ -316,6 +330,13 @@ class StateTransport:
         if self.on_list_oauth_providers is not None:
             self.on_list_oauth_providers()
         return self.list_oauth_providers_response
+
+    def auth_link_oauth_provider(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("link_oauth_provider", kwargs["authorization"]))
+        self.link_oauth_provider_calls.append(kwargs)
+        if self.on_link_oauth_provider is not None:
+            self.on_link_oauth_provider()
+        return self.link_oauth_provider_response
 
     def auth_forgot_password(self, **kwargs: Any) -> Response:
         self.authorizations.append(("forgot_password", kwargs["authorization"]))
@@ -940,6 +961,74 @@ def test_list_linked_oauth_providers_rejects_a_stale_response() -> None:
 
     with pytest.raises(SessionChangedError):
         client.auth.list_linked_oauth_providers()
+
+    assert client.auth.get_session() == replacement
+
+
+def test_link_oauth_provider_returns_an_authorization_url() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+
+    result = client.auth.link_oauth_provider(provider="github")
+
+    assert result == "https://accounts.example/link"
+    assert client.auth.get_session() is established
+    assert transport.link_oauth_provider_calls == [
+        {"authorization": "access-1", "provider": "github"}
+    ]
+
+
+def test_link_oauth_provider_rejects_an_unknown_provider() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(ValueError, match="Unsupported OAuth provider"):
+        client.auth.link_oauth_provider(provider="invalid")  # type: ignore[arg-type]
+
+    assert transport.link_oauth_provider_calls == []
+
+
+def test_link_oauth_provider_requires_a_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="No active session"):
+        client.auth.link_oauth_provider(provider="google")
+
+    assert transport.link_oauth_provider_calls == []
+
+
+def test_link_oauth_provider_rejects_an_incomplete_response() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    transport.link_oauth_provider_response = Response(
+        200,
+        AuthLinkOAuthProviderResponse200(),
+    )
+
+    with pytest.raises(VolcanoError, match="Expected an OAuth authorization URL"):
+        client.auth.link_oauth_provider(provider="google")
+
+
+def test_link_oauth_provider_rejects_a_stale_response() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="replacement-user",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_link_oauth_provider = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.link_oauth_provider(provider="google")
 
     assert client.auth.get_session() == replacement
 
