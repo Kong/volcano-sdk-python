@@ -6,6 +6,9 @@ import httpx
 import pytest
 
 from volcano_sdk import AuthenticationError, RateLimitedError
+from volcano_sdk._generated.models.auth_convert_anonymous_response_200 import (
+    AuthConvertAnonymousResponse200,
+)
 from volcano_sdk._generated.models.auth_get_user_response_200 import (
     AuthGetUserResponse200,
 )
@@ -116,6 +119,7 @@ def test_generated_transport_converts_an_anonymous_user() -> None:
     )
 
     assert response.status_code == 200
+    assert isinstance(response.payload, AuthConvertAnonymousResponse200)
     assert requests[0].method == "POST"
     assert requests[0].url.path == "/auth/user/convert-anonymous"
     assert requests[0].headers["authorization"] == "Bearer anonymous-access"

@@ -448,9 +448,28 @@ class GeneratedTransport:
             password=password,
             user_metadata=AuthConvertAnonymousBodyUserMetadata.from_dict(metadata),
         )
-        with self._client(authorization) as client:
-            response = auth_convert_anonymous.sync_detailed(client=client, body=body)
-        return self._response(response)
+        try:
+            with self._client(authorization) as client:
+                response = auth_convert_anonymous.sync_detailed(
+                    client=client,
+                    body=body,
+                )
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
+            raise AuthenticationError(_MALFORMED_USER_PROFILE) from error
+        if int(response.status_code) != HTTP_OK:
+            return self._response(response)
+        return _GeneratedTransportResponse(
+            status_code=int(response.status_code),
+            payload=response.parsed,
+            content=response.content,
+            headers=dict(response.headers),
+        )
 
     def auth_forgot_password(
         self,
