@@ -59,6 +59,9 @@ from ._generated.api.o_auth_authentication.auth_link_o_auth_provider import (
 from ._generated.api.o_auth_authentication.auth_list_o_auth_providers import (
     _get_kwargs as list_oauth_providers_kwargs,
 )
+from ._generated.api.o_auth_authentication.auth_unlink_o_auth_provider import (
+    _get_kwargs as unlink_oauth_provider_kwargs,
+)
 from ._generated.api.storage_objects import (
     download_storage_object,
     upload_storage_object,
@@ -120,6 +123,9 @@ if TYPE_CHECKING:
 
     from ._generated.models.auth_link_o_auth_provider_provider import (
         AuthLinkOAuthProviderProvider,
+    )
+    from ._generated.models.auth_unlink_o_auth_provider_provider import (
+        AuthUnlinkOAuthProviderProvider,
     )
 
 HTTP_NOT_FOUND = 404
@@ -318,6 +324,15 @@ class AuthLinkOAuthProviderTransport(Protocol):
         *,
         authorization: str,
         provider: AuthLinkOAuthProviderProvider,
+    ) -> TransportResponse: ...
+
+
+class AuthUnlinkOAuthProviderTransport(Protocol):
+    def auth_unlink_oauth_provider(
+        self,
+        *,
+        authorization: str,
+        provider: AuthUnlinkOAuthProviderProvider,
     ) -> TransportResponse: ...
 
 
@@ -789,6 +804,18 @@ class GeneratedTransport:
             content=response.content,
             headers=dict(response.headers),
         )
+
+    def auth_unlink_oauth_provider(
+        self,
+        *,
+        authorization: str,
+        provider: AuthUnlinkOAuthProviderProvider,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **unlink_oauth_provider_kwargs(provider)
+            )
+        return self._raw_response(response)
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
         try:

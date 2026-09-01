@@ -409,6 +409,29 @@ def test_generated_transport_preserves_a_malformed_oauth_link_auth_error() -> No
     assert caught.value.status == 401
 
 
+def test_generated_transport_unlinks_an_oauth_provider() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(204)
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_unlink_oauth_provider(
+        authorization="access-token",
+        provider="github",
+    )
+
+    assert response.status_code == 204
+    assert requests[0].method == "DELETE"
+    assert requests[0].url.path == "/auth/oauth/github/unlink"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
 def test_generated_transport_deletes_all_other_sessions() -> None:
     requests: list[httpx.Request] = []
 

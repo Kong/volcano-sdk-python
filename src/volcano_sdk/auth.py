@@ -46,6 +46,7 @@ from ._transport import (
     AuthResetPasswordTransport,
     AuthSignUpAnonymousTransport,
     AuthSignUpTransport,
+    AuthUnlinkOAuthProviderTransport,
     AuthUpdateUserTransport,
     Transport,
     invoke,
@@ -544,6 +545,25 @@ class Auth:
         if self._client._capture_session()[0] != generation:
             raise SessionChangedError
         return result
+
+    def unlink_oauth_provider(self, *, provider: OAuthProviderName) -> None:
+        """Unlink an OAuth provider from the current account."""
+        provider_name = _oauth_provider_name(provider)
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast(
+            "AuthUnlinkOAuthProviderTransport",
+            self._client._transport,
+        )
+        response = invoke(
+            transport.auth_unlink_oauth_provider,
+            authorization=current.access_token,
+            provider=provider_name,
+        )
+        response_payload(response, 204)
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
 
     def delete_session(self, *, session_id: str) -> None:
         """Delete one session and clear local state when it is current."""
