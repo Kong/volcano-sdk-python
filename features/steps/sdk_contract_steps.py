@@ -26,6 +26,15 @@ def confirmed_contract_user(context: Any) -> None:
     assert _world(context).fixture["user_id"]
 
 
+@given("the client listens for auth state changes")
+def listen_for_auth_state_changes(context: Any) -> None:
+    world = _world(context)
+    subscription = world.client.auth.on_auth_state_change(
+        lambda event, session: world.auth_state_events.append((event, session))
+    )
+    world.cleanup_callbacks.append(subscription.unsubscribe)
+
+
 @when("the client signs in with the contract user's credentials")
 def sign_in(context: Any) -> None:
     world = _world(context)
@@ -131,6 +140,17 @@ def session_exposes_tokens(context: Any) -> None:
     assert session is not None
     assert session.access_token
     assert session.refresh_token
+
+
+@then("the auth-state listener observes the signed-in contract user")
+def auth_state_listener_observes_signed_in_user(context: Any) -> None:
+    world = _world(context)
+    assert any(
+        event == "SIGNED_IN"
+        and session is not None
+        and session.user_id == world.fixture["user_id"]
+        for event, session in world.auth_state_events
+    )
 
 
 @given("an authenticated client")
