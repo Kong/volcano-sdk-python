@@ -19,6 +19,7 @@ from ._transport import (
     AuthConfirmEmailChangeTransport,
     AuthConfirmEmailTransport,
     AuthConvertAnonymousTransport,
+    AuthDeleteAllMySessionsTransport,
     AuthForgotPasswordTransport,
     AuthGetUserTransport,
     AuthLogoutTransport,
@@ -314,6 +315,20 @@ class Auth:
         if self._client._capture_session()[0] != generation:
             raise SessionChangedError
         return user
+
+    def delete_all_other_sessions(self) -> None:
+        """Delete every other session while preserving the current session."""
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast("AuthDeleteAllMySessionsTransport", self._client._transport)
+        response = invoke(
+            transport.auth_delete_all_my_sessions,
+            authorization=current.access_token,
+        )
+        response_payload(response, 204)
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
 
     def confirm_email(self, *, token: str) -> None:
         """Confirm an email with its token without changing local state."""

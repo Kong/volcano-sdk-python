@@ -125,6 +125,15 @@ print(user.email)
 The method returns the immutable updated user without replacing the active session. A successful
 stale response is rejected if another authentication operation replaces that session in flight.
 
+Sign out every other device while keeping the current session active:
+
+```python
+client.auth.delete_all_other_sessions()
+```
+
+Success returns `None`. A successful stale response is rejected if another authentication operation
+replaces the current session while deletion is in flight.
+
 Create an anonymous account and make its tokens the current session:
 
 ```python
