@@ -18,6 +18,7 @@ from ._transport import (
     AuthGetUserTransport,
     AuthLogoutTransport,
     AuthRefreshTransport,
+    AuthRequestEmailChangeTransport,
     AuthResendConfirmationTransport,
     AuthResetPasswordTransport,
     AuthSignUpAnonymousTransport,
@@ -28,10 +29,11 @@ from ._transport import (
     response_payload,
 )
 from .errors import AuthenticationError, SessionChangedError, VolcanoError
-from .models import JSONValue, Session, SignUpResult, User
+from .models import EmailChangeResult, JSONValue, Session, SignUpResult, User
 
 _INCOMPLETE_SESSION = "Expected a complete Session"
 _INVALID_SIGN_UP_RESULT = "Expected a complete sign-up acknowledgement"
+_INVALID_EMAIL_CHANGE_RESULT = "Expected a valid email-change acknowledgement"
 _INVALID_USER = "Expected a complete user profile"
 _NO_ACTIVE_SESSION = "No active session"
 _T = TypeVar("_T")
@@ -92,6 +94,22 @@ def _sign_up_result_from_payload(payload: object) -> SignUpResult:
     return SignUpResult(
         confirmation_required=confirmation_required,
         message=message,
+    )
+
+
+def _email_change_result_from_payload(payload: object) -> EmailChangeResult:
+    values: Mapping[object, object] = (
+        cast("Mapping[object, object]", payload) if isinstance(payload, Mapping) else {}
+    )
+    message = values.get("message")
+    new_email = values.get("new_email")
+    if not all(
+        value is None or isinstance(value, str) for value in (message, new_email)
+    ):
+        raise TypeError(_INVALID_EMAIL_CHANGE_RESULT)
+    return EmailChangeResult(
+        message=cast("str | None", message),
+        new_email=cast("str | None", new_email),
     )
 
 
@@ -244,6 +262,22 @@ class Auth:
             email=email,
         )
         response_payload(response, 200)
+
+    def request_email_change(self, *, new_email: str) -> EmailChangeResult:
+        """Request a confirmation email without changing the current session."""
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast("AuthRequestEmailChangeTransport", self._client._transport)
+        response = invoke(
+            transport.auth_request_email_change,
+            authorization=current.access_token,
+            new_email=new_email,
+        )
+        result = _email_change_result_from_payload(response_payload(response, 200))
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
+        return result
 
     def confirm_email(self, *, token: str) -> None:
         """Confirm an email with its token without changing local state."""

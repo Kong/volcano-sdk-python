@@ -95,6 +95,12 @@ class StateTransport:
         self.anonymous_conversion_response = Response(200, _converted_user_profile())
         self.anonymous_conversion_calls: list[dict[str, Any]] = []
         self.on_anonymous_conversion: Callable[[], None] | None = None
+        self.email_change_response = Response(
+            200,
+            {"message": "Confirmation email sent", "new_email": "new@example.com"},
+        )
+        self.email_change_calls: list[dict[str, Any]] = []
+        self.on_email_change: Callable[[], None] | None = None
         self.forgot_password_response = Response(
             200,
             {"message": "If the email exists, a password reset link has been sent."},
@@ -166,6 +172,13 @@ class StateTransport:
         if self.on_anonymous_conversion is not None:
             self.on_anonymous_conversion()
         return self.anonymous_conversion_response
+
+    def auth_request_email_change(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("email_change", kwargs["authorization"]))
+        self.email_change_calls.append(kwargs)
+        if self.on_email_change is not None:
+            self.on_email_change()
+        return self.email_change_response
 
     def auth_forgot_password(self, **kwargs: Any) -> Response:
         self.authorizations.append(("forgot_password", kwargs["authorization"]))
@@ -450,6 +463,64 @@ def test_convert_anonymous_does_not_return_a_stale_response() -> None:
 
     with pytest.raises(SessionChangedError):
         client.auth.convert_anonymous(email="converted@example.com", password="secret")
+
+    assert client.auth.get_session() == replacement
+
+
+def test_request_email_change_returns_acknowledgement_without_session_change() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+
+    result = client.auth.request_email_change(new_email="new@example.com")
+
+    assert result.message == "Confirmation email sent"
+    assert result.new_email == "new@example.com"
+    assert client.auth.get_session() is established
+    assert transport.email_change_calls == [
+        {"authorization": "access-1", "new_email": "new@example.com"}
+    ]
+
+
+def test_request_email_change_accepts_optional_response_fields() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    transport.email_change_response = Response(200, {})
+
+    result = client.auth.request_email_change(new_email="new@example.com")
+
+    assert result.message is None
+    assert result.new_email is None
+
+
+def test_request_email_change_requires_a_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="No active session"):
+        client.auth.request_email_change(new_email="new@example.com")
+
+    assert transport.email_change_calls == []
+
+
+def test_request_email_change_rejects_a_stale_response() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="replacement-user",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_email_change = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.request_email_change(new_email="new@example.com")
 
     assert client.auth.get_session() == replacement
 

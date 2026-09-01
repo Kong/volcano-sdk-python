@@ -12,11 +12,12 @@ from .errors import (
     ValidationError,
     VolcanoError,
 )
-from .models import LockLease, Session, SignUpResult, User
+from .models import EmailChangeResult, LockLease, Session, SignUpResult, User
 
 __all__ = [
     "AuthenticationError",
     "ConflictError",
+    "EmailChangeResult",
     "LockLease",
     "NotFoundError",
     "RateLimitedError",
