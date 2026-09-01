@@ -807,6 +807,28 @@ def test_list_sessions_rejects_non_integer_pagination_values() -> None:
         client.auth.list_sessions()
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("is_active", "false"), ("user_agent", 42)],
+)
+def test_list_sessions_rejects_invalid_session_scalars(
+    field: str,
+    value: object,
+) -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    payload = _sessions_page().to_dict()
+    payload["sessions"][0][field] = value
+    transport.list_sessions_response = Response(
+        200,
+        AuthGetMySessionsResponse200.from_dict(payload),
+    )
+
+    with pytest.raises(VolcanoError, match="Expected a complete session page"):
+        client.auth.list_sessions()
+
+
 def test_list_sessions_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)

@@ -214,16 +214,30 @@ def _auth_session_from_model(session: GeneratedAuthSession) -> AuthSession:
         user_id=str(session.user_id),
         provider=session.provider,
         expires_at=session.expires_at,
-        is_active=session.is_active,
-        is_current=session.is_current,
-        user_agent=_none_if_unset(session.user_agent),
-        ip_address=_none_if_unset(session.ip_address),
-        last_ip_address=_none_if_unset(session.last_ip_address),
+        is_active=_session_bool(session.is_active),
+        is_current=_session_bool(session.is_current),
+        user_agent=_optional_session_string(session.user_agent),
+        ip_address=_optional_session_string(session.ip_address),
+        last_ip_address=_optional_session_string(session.last_ip_address),
         last_activity_at=_none_if_unset(session.last_activity_at),
         session_started_at=_none_if_unset(session.session_started_at),
         created_at=_none_if_unset(session.created_at),
         updated_at=_none_if_unset(session.updated_at),
     )
+
+
+def _session_bool(value: object) -> bool:
+    if not isinstance(value, bool):
+        raise VolcanoError(_INVALID_SESSION_PAGE)
+    return value
+
+
+def _optional_session_string(value: object) -> str | None:
+    if isinstance(value, Unset) or value is None:
+        return None
+    if not isinstance(value, str):
+        raise VolcanoError(_INVALID_SESSION_PAGE)
+    return value
 
 
 def _session_page_from_payload(payload: object) -> SessionPage:
