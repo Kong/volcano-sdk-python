@@ -1180,6 +1180,20 @@ def test_exchange_oauth_code_rejects_a_state_mismatch_without_a_request() -> Non
     assert transport.oauth_exchange_calls == []
 
 
+def test_exchange_oauth_code_accepts_matching_unicode_state() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    result = client.auth.exchange_oauth_code(
+        code="oauth-code",
+        redirect_to="https://app.example/callback",
+        state="état",
+        expected_state="état",
+    )
+
+    assert client.auth.get_session() is result
+
+
 def test_exchange_oauth_code_does_not_replace_a_concurrent_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)

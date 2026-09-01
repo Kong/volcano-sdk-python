@@ -133,7 +133,9 @@ def _oauth_state(value: str) -> str:
 
 
 def _validate_oauth_callback_state(state: str, expected_state: str) -> None:
-    if not secrets.compare_digest(_oauth_state(state), _oauth_state(expected_state)):
+    actual = _oauth_state(state).encode()
+    expected = _oauth_state(expected_state).encode()
+    if not secrets.compare_digest(actual, expected):
         raise ValueError(_OAUTH_STATE_MISMATCH)
 
 
