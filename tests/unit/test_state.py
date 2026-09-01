@@ -607,6 +607,16 @@ def test_auth_state_subscription_unsubscribes_idempotently() -> None:
     assert events == [("INITIAL_SESSION", None)]
 
 
+def test_auth_state_subscription_handles_preserve_identity() -> None:
+    client = VolcanoClient(anon_key="anon", _transport=StateTransport())
+
+    first = client.auth.on_auth_state_change(lambda _event, _session: None)
+    second = client.auth.on_auth_state_change(lambda _event, _session: None)
+
+    assert first != second
+    assert len({first, second}) == 2
+
+
 def test_auth_state_subscription_requires_a_callable() -> None:
     client = VolcanoClient(anon_key="anon", _transport=StateTransport())
 

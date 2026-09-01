@@ -87,7 +87,7 @@ class Session:
 AuthStateCallback: TypeAlias = Callable[[AuthChangeEvent, Session | None], None]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class AuthSubscription:
     """Handle for an authentication-state subscription."""
 
