@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import secrets
 from collections.abc import Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
@@ -51,6 +52,8 @@ from ._transport import (
     AuthLinkOAuthProviderTransport,
     AuthListOAuthProvidersTransport,
     AuthLogoutTransport,
+    AuthOAuthAuthorizationURLTransport,
+    AuthOAuthExchangeTransport,
     AuthRefreshOAuthProviderTokenTransport,
     AuthRefreshTransport,
     AuthRequestEmailChangeTransport,
@@ -95,6 +98,10 @@ _INVALID_OAUTH_STATUS = "Expected complete OAuth provider token status"
 _INVALID_OAUTH_API_RESPONSE = "Expected OAuth provider API response data"
 _UNSUPPORTED_OAUTH_PROVIDER = "Unsupported OAuth provider"
 _UNSUPPORTED_OAUTH_API_METHOD = "Unsupported OAuth provider API method"
+_INVALID_OAUTH_PARAMETER = "OAuth parameters must be non-empty strings"
+_INVALID_OAUTH_STATE = "OAuth state must not exceed 255 characters"
+_OAUTH_STATE_MISMATCH = "OAuth state mismatch"
+_MAX_OAUTH_STATE_LENGTH = 255
 _JWT_PARTS = 3
 _NO_ACTIVE_SESSION = "No active session"
 _T = TypeVar("_T")
@@ -110,6 +117,26 @@ if TYPE_CHECKING:
 
 def _is_non_empty_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def _oauth_parameter(value: str) -> str:
+    if not _is_non_empty_string(value):
+        raise ValueError(_INVALID_OAUTH_PARAMETER)
+    return value
+
+
+def _oauth_state(value: str) -> str:
+    state = _oauth_parameter(value)
+    if len(state) > _MAX_OAUTH_STATE_LENGTH:
+        raise ValueError(_INVALID_OAUTH_STATE)
+    return state
+
+
+def _validate_oauth_callback_state(state: str, expected_state: str) -> None:
+    actual = _oauth_state(state).encode()
+    expected = _oauth_state(expected_state).encode()
+    if not secrets.compare_digest(actual, expected):
+        raise ValueError(_OAUTH_STATE_MISMATCH)
 
 
 def _session_id_from_access_token(access_token: str) -> str | None:
@@ -582,6 +609,49 @@ class Auth:
         if self._client._capture_session()[0] != generation:
             raise SessionChangedError
         return result
+
+    def sign_in_with_oauth(
+        self,
+        *,
+        provider: OAuthProviderName,
+        redirect_to: str,
+        state: str,
+    ) -> str:
+        """Return the URL that starts an OAuth sign-in flow."""
+        provider_name = _oauth_provider_name(provider)
+        transport = cast(
+            "AuthOAuthAuthorizationURLTransport",
+            self._client._transport,
+        )
+        return transport.auth_oauth_authorization_url(
+            anon_key=self._client._anon_token(),
+            provider=provider_name,
+            redirect_url=_oauth_parameter(redirect_to),
+            client_state=_oauth_state(state),
+        )
+
+    def exchange_oauth_code(
+        self,
+        *,
+        code: str,
+        redirect_to: str,
+        state: str,
+        expected_state: str,
+    ) -> Session:
+        """Validate callback state, exchange a code, and store the session."""
+        _validate_oauth_callback_state(state, expected_state)
+        generation, _ = self._client._capture_session()
+        transport = cast("AuthOAuthExchangeTransport", self._client._transport)
+        response = invoke(
+            transport.auth_oauth_exchange,
+            authorization=self._client._anon_token(),
+            code=_oauth_parameter(code),
+            redirect_url=_oauth_parameter(redirect_to),
+        )
+        session = _session_from_payload(response_payload(response, 200))
+        if not self._client._set_session_if_current(session, generation):
+            raise SessionChangedError
+        return session
 
     def link_oauth_provider(self, *, provider: OAuthProviderName) -> str:
         """Return the authorization URL for linking an OAuth provider."""

@@ -54,11 +54,15 @@ from ._generated.api.authentication.auth_signup_anonymous import (
 )
 from ._generated.api.database_queries import query_database_select
 from ._generated.api.locks import acquire_project_lock, release_project_lock
+from ._generated.api.o_auth_authentication import auth_o_auth_exchange
 from ._generated.api.o_auth_authentication.auth_link_o_auth_provider import (
     _get_kwargs as link_oauth_provider_kwargs,
 )
 from ._generated.api.o_auth_authentication.auth_list_o_auth_providers import (
     _get_kwargs as list_oauth_providers_kwargs,
+)
+from ._generated.api.o_auth_authentication.auth_o_auth_authorize import (
+    _get_kwargs as oauth_authorize_kwargs,
 )
 from ._generated.api.o_auth_authentication.auth_unlink_o_auth_provider import (
     _get_kwargs as unlink_oauth_provider_kwargs,
@@ -94,6 +98,7 @@ from ._generated.models.auth_list_o_auth_providers_response_200 import (
     AuthListOAuthProvidersResponse200,
 )
 from ._generated.models.auth_logout_body import AuthLogoutBody
+from ._generated.models.auth_o_auth_exchange_body import AuthOAuthExchangeBody
 from ._generated.models.auth_refresh_body import AuthRefreshBody
 from ._generated.models.auth_request_email_change_body import AuthRequestEmailChangeBody
 from ._generated.models.auth_resend_confirmation_body import AuthResendConfirmationBody
@@ -143,6 +148,9 @@ if TYPE_CHECKING:
 
     from ._generated.models.auth_link_o_auth_provider_provider import (
         AuthLinkOAuthProviderProvider,
+    )
+    from ._generated.models.auth_o_auth_authorize_provider import (
+        AuthOAuthAuthorizeProvider,
     )
     from ._generated.models.auth_unlink_o_auth_provider_provider import (
         AuthUnlinkOAuthProviderProvider,
@@ -355,6 +363,27 @@ class AuthListOAuthProvidersTransport(Protocol):
         self,
         *,
         authorization: str,
+    ) -> TransportResponse: ...
+
+
+class AuthOAuthAuthorizationURLTransport(Protocol):
+    def auth_oauth_authorization_url(
+        self,
+        *,
+        anon_key: str,
+        provider: AuthOAuthAuthorizeProvider,
+        redirect_url: str,
+        client_state: str,
+    ) -> str: ...
+
+
+class AuthOAuthExchangeTransport(Protocol):
+    def auth_oauth_exchange(
+        self,
+        *,
+        authorization: str,
+        code: str,
+        redirect_url: str,
     ) -> TransportResponse: ...
 
 
@@ -845,6 +874,42 @@ class GeneratedTransport:
             content=response.content,
             headers=dict(response.headers),
         )
+
+    def auth_oauth_authorization_url(
+        self,
+        *,
+        anon_key: str,
+        provider: AuthOAuthAuthorizeProvider,
+        redirect_url: str,
+        client_state: str,
+    ) -> str:
+        request = oauth_authorize_kwargs(
+            provider,
+            anon_key=anon_key,
+            redirect_url=redirect_url,
+            client_state=client_state,
+            response_mode="code",
+        )
+        return str(
+            httpx.URL(
+                f"{self._api_url}{request['url']}",
+                params=request["params"],
+            )
+        )
+
+    def auth_oauth_exchange(
+        self,
+        *,
+        authorization: str,
+        code: str,
+        redirect_url: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_o_auth_exchange.sync_detailed(
+                client=client,
+                body=AuthOAuthExchangeBody(code=code, redirect_url=redirect_url),
+            )
+        return self._response(response)
 
     def auth_link_oauth_provider(
         self,
