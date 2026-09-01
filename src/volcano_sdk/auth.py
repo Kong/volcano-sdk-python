@@ -229,19 +229,19 @@ def _auth_session_from_model(session: GeneratedAuthSession) -> AuthSession:
 def _session_page_from_payload(payload: object) -> SessionPage:
     if not isinstance(payload, AuthGetMySessionsResponse200):
         raise VolcanoError(_INVALID_SESSION_PAGE)
-    values = (
-        payload.sessions,
+    pagination = (
         payload.total,
         payload.page,
         payload.limit,
         payload.total_pages,
     )
-    if any(isinstance(value, Unset) for value in values):
+    if isinstance(payload.sessions, Unset) or any(
+        type(value) is not int for value in pagination
+    ):
         raise VolcanoError(_INVALID_SESSION_PAGE)
     return SessionPage(
         sessions=tuple(
-            _auth_session_from_model(session)
-            for session in cast("list[GeneratedAuthSession]", payload.sessions)
+            _auth_session_from_model(session) for session in payload.sessions
         ),
         total=cast("int", payload.total),
         page=cast("int", payload.page),

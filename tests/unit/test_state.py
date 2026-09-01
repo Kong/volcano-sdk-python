@@ -19,6 +19,7 @@ from volcano_sdk import (
     SessionPage,
     TransportError,
     VolcanoClient,
+    VolcanoError,
 )
 from volcano_sdk._generated.models.auth_confirm_email_change_response_200 import (
     AuthConfirmEmailChangeResponse200,
@@ -789,6 +790,21 @@ def test_list_sessions_requires_a_current_session() -> None:
         client.auth.list_sessions()
 
     assert transport.list_sessions_calls == []
+
+
+def test_list_sessions_rejects_non_integer_pagination_values() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    payload = _sessions_page().to_dict()
+    payload["total"] = "21"
+    transport.list_sessions_response = Response(
+        200,
+        AuthGetMySessionsResponse200.from_dict(payload),
+    )
+
+    with pytest.raises(VolcanoError, match="Expected a complete session page"):
+        client.auth.list_sessions()
 
 
 def test_list_sessions_rejects_a_stale_response() -> None:
