@@ -295,7 +295,7 @@ class StateTransport:
                     "provider": "github",
                     "endpoint": "/user/repos",
                     "status_code": 200,
-                    "data": {"repos": [{"name": "volcano"}]},
+                    "data": [{"name": "volcano"}],
                 }
             ),
         )
@@ -1390,7 +1390,7 @@ def test_call_oauth_api_returns_immutable_provider_data() -> None:
         body={"visibility": "private"},
     )
 
-    assert result == {"repos": ({"name": "volcano"},)}
+    assert result == ({"name": "volcano"},)
     assert client.auth.get_session() is established
     assert transport.call_oauth_api_calls == [
         {
@@ -1401,9 +1401,7 @@ def test_call_oauth_api_returns_immutable_provider_data() -> None:
             "body": {"visibility": "private"},
         }
     ]
-    with pytest.raises(TypeError):
-        result["repos"] = ()  # type: ignore[index]
-    repos = cast("tuple[dict[str, object], ...]", result["repos"])
+    repos = cast("tuple[dict[str, object], ...]", result)
     with pytest.raises(TypeError):
         repos[0]["name"] = "changed"
 

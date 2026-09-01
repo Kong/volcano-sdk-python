@@ -504,7 +504,7 @@ def test_generated_transport_calls_an_oauth_provider_api() -> None:
                 "provider": "github",
                 "endpoint": "/user/repos",
                 "status_code": 200,
-                "data": {"repos": [{"name": "volcano"}]},
+                "data": [{"name": "volcano"}],
             },
         )
 
@@ -537,7 +537,15 @@ def test_generated_transport_normalizes_immutable_oauth_api_body() -> None:
 
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        return httpx.Response(200, json={"data": {}})
+        return httpx.Response(
+            200,
+            json={
+                "provider": "github",
+                "endpoint": "/user/repos",
+                "status_code": 200,
+                "data": {},
+            },
+        )
 
     transport = GeneratedTransport(
         api_url="https://api.test.volcano.dev",

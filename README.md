@@ -194,6 +194,7 @@ repos = client.auth.call_oauth_api(
     provider="github",
     endpoint="/user/repos",
 )
+print(repos[0]["name"])
 ```
 
 The method returns an immutable copy of the provider's JSON object. Volcano owns token refresh and

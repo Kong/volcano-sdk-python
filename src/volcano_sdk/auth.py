@@ -377,18 +377,10 @@ def _oauth_provider_token_status_from_payload(
     )
 
 
-def _oauth_api_data_from_payload(
-    payload: object,
-) -> Mapping[str, JSONValue]:
+def _oauth_api_data_from_payload(payload: object) -> JSONValue:
     if not isinstance(payload, CallOAuthProviderAPIResponse200):
         raise VolcanoError(_INVALID_OAUTH_API_RESPONSE)
-    data = payload.to_dict().get("data")
-    if not isinstance(data, Mapping):
-        raise VolcanoError(_INVALID_OAUTH_API_RESPONSE)
-    frozen = _freeze_json(cast("Mapping[str, JSONValue]", data))
-    if not isinstance(frozen, Mapping):
-        raise VolcanoError(_INVALID_OAUTH_API_RESPONSE)
-    return frozen
+    return _freeze_json(cast("JSONValue", payload.data))
 
 
 class AuthContext(Protocol):
@@ -686,7 +678,7 @@ class Auth:
         endpoint: str,
         method: Literal["GET", "POST"] = "GET",
         body: Mapping[str, JSONValue] | None = None,
-    ) -> Mapping[str, JSONValue]:
+    ) -> JSONValue:
         """Call a provider API through Volcano's fixed-host server proxy."""
         provider_name = _oauth_provider_name(provider)
         request_method = _oauth_api_method(method)
