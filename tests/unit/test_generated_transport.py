@@ -159,7 +159,7 @@ def test_generated_transport_cancels_an_email_change() -> None:
 
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        return httpx.Response(200, json={})
+        return httpx.Response(200, content=b"")
 
     transport = GeneratedTransport(
         api_url="https://api.test.volcano.dev",
