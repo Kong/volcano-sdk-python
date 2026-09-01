@@ -1305,16 +1305,15 @@ def test_link_oauth_provider_returns_an_authorization_url() -> None:
 
 
 @pytest.mark.parametrize(
-    ("action", "path"),
+    "action",
     [
-        ("login", "hosted"),
-        ("signup", "hosted/signup"),
-        ("forgot-password", "hosted/forgot-password"),
+        "login",
+        "signup",
+        "forgot-password",
     ],
 )
 def test_get_hosted_auth_url_builds_the_canonical_action_url(
     action: str,
-    path: str,
 ) -> None:
     client = VolcanoClient(
         api_url="https://api.example.com/root/",
@@ -1329,8 +1328,8 @@ def test_get_hosted_auth_url_builds_the_canonical_action_url(
     )
 
     assert result == (
-        f"https://api.example.com/root/projects/project%2Fid/auth/{path}"
-        "?anon_key=anon+key&state=state+value"
+        "https://api.example.com/root/projects/project%2Fid/auth/hosted"
+        f"?action={action}&anon_key=anon+key&state=state+value"
     )
     assert client.auth.get_session() is None
 

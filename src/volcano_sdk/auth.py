@@ -114,11 +114,7 @@ _NO_ACTIVE_SESSION = "No active session"
 _T = TypeVar("_T")
 _OAUTH_PROVIDERS: frozenset[str] = frozenset({"apple", "github", "google", "microsoft"})
 _OAUTH_API_METHODS: frozenset[str] = frozenset({"GET", "POST"})
-_HOSTED_AUTH_PATHS = {
-    "login": "hosted",
-    "signup": "hosted/signup",
-    "forgot-password": "hosted/forgot-password",
-}
+_HOSTED_AUTH_ACTIONS: frozenset[str] = frozenset({"login", "signup", "forgot-password"})
 
 if TYPE_CHECKING:
     from ._generated.models import (
@@ -670,19 +666,18 @@ class Auth:
         """Build a managed hosted-auth URL without navigating or persisting state."""
         project = _hosted_auth_parameter(project_id).strip()
         auth_state = _hosted_auth_parameter(state)
-        try:
-            path = _HOSTED_AUTH_PATHS[action]
-        except KeyError as error:
-            raise ValueError(_UNSUPPORTED_HOSTED_AUTH_ACTION) from error
+        if action not in _HOSTED_AUTH_ACTIONS:
+            raise ValueError(_UNSUPPORTED_HOSTED_AUTH_ACTION)
         query = urlencode(
             {
+                "action": action,
                 "anon_key": self._client._anon_token(),
                 "state": auth_state,
             }
         )
         return (
             f"{self._client._api_base_url()}/projects/{quote(project, safe='')}"
-            f"/auth/{path}?{query}"
+            f"/auth/hosted?{query}"
         )
 
     def sign_in_with_oauth(
