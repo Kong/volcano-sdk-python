@@ -370,7 +370,6 @@ class AuthOAuthAuthorizationURLTransport(Protocol):
         *,
         anon_key: str,
         provider: AuthOAuthAuthorizeProvider,
-        redirect_url: str | None,
     ) -> str: ...
 
 
@@ -867,17 +866,8 @@ class GeneratedTransport:
         *,
         anon_key: str,
         provider: AuthOAuthAuthorizeProvider,
-        redirect_url: str | None,
     ) -> str:
-        if redirect_url is None:
-            request = oauth_authorize_kwargs(provider, anon_key=anon_key)
-        else:
-            request = oauth_authorize_kwargs(
-                provider,
-                anon_key=anon_key,
-                redirect_url=redirect_url,
-                response_mode="code",
-            )
+        request = oauth_authorize_kwargs(provider, anon_key=anon_key)
         return str(
             httpx.URL(
                 f"{self._api_url}{request['url']}",

@@ -1091,10 +1091,7 @@ def test_sign_in_with_oauth_returns_an_authorization_url_without_a_session() -> 
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
-    result = client.auth.sign_in_with_oauth(
-        provider="github",
-        redirect_to="https://app.example/callback",
-    )
+    result = client.auth.sign_in_with_oauth(provider="github")
 
     assert result == "https://api.example/auth/oauth/github/authorize"
     assert client.auth.get_session() is None
@@ -1102,7 +1099,6 @@ def test_sign_in_with_oauth_returns_an_authorization_url_without_a_session() -> 
         {
             "anon_key": "anon",
             "provider": "github",
-            "redirect_url": "https://app.example/callback",
         }
     ]
 

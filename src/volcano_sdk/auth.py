@@ -588,7 +588,6 @@ class Auth:
         self,
         *,
         provider: OAuthProviderName,
-        redirect_to: str | None = None,
     ) -> str:
         """Return the URL that starts an OAuth sign-in flow."""
         provider_name = _oauth_provider_name(provider)
@@ -599,7 +598,6 @@ class Auth:
         return transport.auth_oauth_authorization_url(
             anon_key=self._client._anon_token(),
             provider=provider_name,
-            redirect_url=redirect_to,
         )
 
     def link_oauth_provider(self, *, provider: OAuthProviderName) -> str:

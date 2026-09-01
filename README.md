@@ -140,15 +140,12 @@ was in flight. Sort, filter, and cursor controls are not yet exposed by this fac
 Build the URL that starts an OAuth sign-in flow:
 
 ```python
-authorization_url = client.auth.sign_in_with_oauth(
-    provider="github",
-    redirect_to="https://app.example.com/auth/callback",
-)
+authorization_url = client.auth.sign_in_with_oauth(provider="github")
 ```
 
-Redirect the user to the returned URL. `redirect_to` must be registered in the project's allowed
-redirect URLs. The method does not open a browser or persist flow state, which keeps it usable from
-web frameworks, command-line applications, and other non-browser runtimes.
+Redirect the user to the returned URL to continue through the project's managed hosted-auth flow.
+The method does not open a browser or create a local session. Custom callbacks, code exchange, and
+session persistence are not yet exposed by this facade.
 
 List the OAuth providers linked to the current account:
 
