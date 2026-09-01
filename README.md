@@ -197,7 +197,7 @@ repos = client.auth.call_oauth_api(
 print(repos[0]["name"])
 ```
 
-The method returns an immutable copy of the provider's JSON object. Volcano owns token refresh and
+The method returns an immutable copy of the provider's JSON value. Volcano owns token refresh and
 host validation. A stale result raises `SessionChangedError`.
 
 Sign out every other device while keeping the current session active:
@@ -307,8 +307,8 @@ await client.realtime.disconnect()
 The POC supports Python 3.11 and 3.14. Its public facade is intentionally
 independent of generated httpx types. Compatibility is verified against the
 bundled Volcano API contract from hosting commit
-`a3f4a6e9d0fb48a16621383bd796d8b0d1378630`; `openapi/openapi.yaml` has SHA-256
-`c26ab2f32961699b19f710c1174906b7baae077eefcec299a6c19a36d2f559f6`.
+`cb12eb4636252cb658f13850dad930fa73a5dc4c`; `openapi/openapi.yaml` has SHA-256
+`95e5c102830db382064180afca4c62ad8b11faabf58148f9d21236046b930090`.
 
 The realtime wrapper includes a narrow compatibility adapter for Volcano's
 project-prefixed publication channels. It still delegates connection,
