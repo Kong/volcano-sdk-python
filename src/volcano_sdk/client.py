@@ -104,6 +104,9 @@ class VolcanoClient:
     def _anon_token(self) -> str:
         return self._anon_key
 
+    def _api_base_url(self) -> str:
+        return self._api_url
+
     def _session_token(self) -> str:
         session = self._capture_session()[1]
         if session is None:

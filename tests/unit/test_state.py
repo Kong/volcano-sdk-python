@@ -1304,6 +1304,71 @@ def test_link_oauth_provider_returns_an_authorization_url() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("action", "path"),
+    [
+        ("login", "hosted"),
+        ("signup", "hosted/signup"),
+        ("forgot-password", "hosted/forgot-password"),
+    ],
+)
+def test_get_hosted_auth_url_builds_the_canonical_action_url(
+    action: str,
+    path: str,
+) -> None:
+    client = VolcanoClient(
+        api_url="https://api.example.com/root/",
+        anon_key="anon key",
+        _transport=StateTransport(),
+    )
+
+    result = client.auth.get_hosted_auth_url(
+        project_id="project/id",
+        action=cast("Any", action),
+        state="state value",
+    )
+
+    assert result == (
+        f"https://api.example.com/root/projects/project%2Fid/auth/{path}"
+        "?anon_key=anon+key&state=state+value"
+    )
+    assert client.auth.get_session() is None
+
+
+@pytest.mark.parametrize(
+    ("argument", "value"),
+    [
+        ("project_id", " "),
+        ("state", ""),
+    ],
+)
+def test_get_hosted_auth_url_rejects_empty_parameters(
+    argument: str,
+    value: str,
+) -> None:
+    client = VolcanoClient(anon_key="anon", _transport=StateTransport())
+    options = {
+        "project_id": "project-id",
+        "action": "login",
+        "state": "state-value",
+        argument: value,
+    }
+
+    with pytest.raises(ValueError, match="Hosted auth parameters must be non-empty"):
+        client.auth.get_hosted_auth_url(**cast("Any", options))
+
+
+def test_get_hosted_auth_url_rejects_an_unknown_action() -> None:
+    client = VolcanoClient(anon_key="anon", _transport=StateTransport())
+
+    with pytest.raises(ValueError, match="Unsupported hosted auth action"):
+        client.auth.get_hosted_auth_url(
+            project_id="project-id",
+            action=cast("Any", "device"),
+            state="state-value",
+        )
+
+
 def test_sign_in_with_oauth_returns_an_authorization_url_without_a_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)

@@ -137,6 +137,23 @@ The method returns immutable `SessionPage` and `AuthSession` values. It raises
 `SessionChangedError` instead of returning a page for a session that was replaced while the request
 was in flight. Sort, filter, and cursor controls are not yet exposed by this facade.
 
+Build a managed hosted-auth URL:
+
+```python
+import secrets
+
+hosted_state = secrets.token_urlsafe(32)
+hosted_url = client.auth.get_hosted_auth_url(
+    project_id="00000000-0000-4000-8000-000000000020",
+    action="signup",
+    state=hosted_state,
+)
+```
+
+Store `hosted_state` in the user's signed server-side session before redirecting to `hosted_url`.
+The SDK builds the canonical login, signup, or forgot-password URL; it does not navigate or persist
+state.
+
 Build the URL that starts an OAuth sign-in flow:
 
 ```python

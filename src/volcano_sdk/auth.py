@@ -9,6 +9,7 @@ import secrets
 from collections.abc import Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
+from urllib.parse import quote, urlencode
 
 from ._generated.models.auth_confirm_email_change_response_200 import (
     AuthConfirmEmailChangeResponse200,
@@ -100,6 +101,8 @@ _INVALID_OAUTH_LINK = "Expected an OAuth authorization URL"
 _INVALID_OAUTH_STATUS = "Expected complete OAuth provider token status"
 _INVALID_OAUTH_API_RESPONSE = "Expected OAuth provider API response data"
 _INVALID_AUTH_CALLBACK = "callback must be callable"
+_INVALID_HOSTED_AUTH_PARAMETER = "Hosted auth parameters must be non-empty strings"
+_UNSUPPORTED_HOSTED_AUTH_ACTION = "Unsupported hosted auth action"
 _UNSUPPORTED_OAUTH_PROVIDER = "Unsupported OAuth provider"
 _UNSUPPORTED_OAUTH_API_METHOD = "Unsupported OAuth provider API method"
 _INVALID_OAUTH_PARAMETER = "OAuth parameters must be non-empty strings"
@@ -111,6 +114,11 @@ _NO_ACTIVE_SESSION = "No active session"
 _T = TypeVar("_T")
 _OAUTH_PROVIDERS: frozenset[str] = frozenset({"apple", "github", "google", "microsoft"})
 _OAUTH_API_METHODS: frozenset[str] = frozenset({"GET", "POST"})
+_HOSTED_AUTH_PATHS = {
+    "login": "hosted",
+    "signup": "hosted/signup",
+    "forgot-password": "hosted/forgot-password",
+}
 
 if TYPE_CHECKING:
     from ._generated.models import (
@@ -126,6 +134,12 @@ def _is_non_empty_string(value: object) -> bool:
 def _oauth_parameter(value: str) -> str:
     if not _is_non_empty_string(value):
         raise ValueError(_INVALID_OAUTH_PARAMETER)
+    return value
+
+
+def _hosted_auth_parameter(value: str) -> str:
+    if not _is_non_empty_string(value):
+        raise ValueError(_INVALID_HOSTED_AUTH_PARAMETER)
     return value
 
 
@@ -426,6 +440,8 @@ class AuthContext(Protocol):
 
     def _anon_token(self) -> str: ...
 
+    def _api_base_url(self) -> str: ...
+
     def _set_session(
         self,
         session: Session,
@@ -643,6 +659,31 @@ class Auth:
         if self._client._capture_session()[0] != generation:
             raise SessionChangedError
         return result
+
+    def get_hosted_auth_url(
+        self,
+        *,
+        project_id: str,
+        state: str,
+        action: Literal["login", "signup", "forgot-password"] = "login",
+    ) -> str:
+        """Build a managed hosted-auth URL without navigating or persisting state."""
+        project = _hosted_auth_parameter(project_id).strip()
+        auth_state = _hosted_auth_parameter(state)
+        try:
+            path = _HOSTED_AUTH_PATHS[action]
+        except KeyError as error:
+            raise ValueError(_UNSUPPORTED_HOSTED_AUTH_ACTION) from error
+        query = urlencode(
+            {
+                "anon_key": self._client._anon_token(),
+                "state": auth_state,
+            }
+        )
+        return (
+            f"{self._client._api_base_url()}/projects/{quote(project, safe='')}"
+            f"/auth/{path}?{query}"
+        )
 
     def sign_in_with_oauth(
         self,
