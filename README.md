@@ -137,6 +137,19 @@ The method returns immutable `SessionPage` and `AuthSession` values. It raises
 `SessionChangedError` instead of returning a page for a session that was replaced while the request
 was in flight. Sort, filter, and cursor controls are not yet exposed by this facade.
 
+Build the URL that starts an OAuth sign-in flow:
+
+```python
+authorization_url = client.auth.sign_in_with_oauth(
+    provider="github",
+    redirect_to="https://app.example.com/auth/callback",
+)
+```
+
+Redirect the user to the returned URL. `redirect_to` must be registered in the project's allowed
+redirect URLs. The method does not open a browser or persist flow state, which keeps it usable from
+web frameworks, command-line applications, and other non-browser runtimes.
+
 List the OAuth providers linked to the current account:
 
 ```python

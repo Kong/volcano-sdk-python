@@ -60,6 +60,9 @@ from ._generated.api.o_auth_authentication.auth_link_o_auth_provider import (
 from ._generated.api.o_auth_authentication.auth_list_o_auth_providers import (
     _get_kwargs as list_oauth_providers_kwargs,
 )
+from ._generated.api.o_auth_authentication.auth_o_auth_authorize import (
+    _get_kwargs as oauth_authorize_kwargs,
+)
 from ._generated.api.o_auth_authentication.auth_unlink_o_auth_provider import (
     _get_kwargs as unlink_oauth_provider_kwargs,
 )
@@ -143,6 +146,9 @@ if TYPE_CHECKING:
 
     from ._generated.models.auth_link_o_auth_provider_provider import (
         AuthLinkOAuthProviderProvider,
+    )
+    from ._generated.models.auth_o_auth_authorize_provider import (
+        AuthOAuthAuthorizeProvider,
     )
     from ._generated.models.auth_unlink_o_auth_provider_provider import (
         AuthUnlinkOAuthProviderProvider,
@@ -356,6 +362,16 @@ class AuthListOAuthProvidersTransport(Protocol):
         *,
         authorization: str,
     ) -> TransportResponse: ...
+
+
+class AuthOAuthAuthorizationURLTransport(Protocol):
+    def auth_oauth_authorization_url(
+        self,
+        *,
+        anon_key: str,
+        provider: AuthOAuthAuthorizeProvider,
+        redirect_url: str | None,
+    ) -> str: ...
 
 
 class AuthLinkOAuthProviderTransport(Protocol):
@@ -844,6 +860,29 @@ class GeneratedTransport:
             payload=payload,
             content=response.content,
             headers=dict(response.headers),
+        )
+
+    def auth_oauth_authorization_url(
+        self,
+        *,
+        anon_key: str,
+        provider: AuthOAuthAuthorizeProvider,
+        redirect_url: str | None,
+    ) -> str:
+        if redirect_url is None:
+            request = oauth_authorize_kwargs(provider, anon_key=anon_key)
+        else:
+            request = oauth_authorize_kwargs(
+                provider,
+                anon_key=anon_key,
+                redirect_url=redirect_url,
+                response_mode="code",
+            )
+        return str(
+            httpx.URL(
+                f"{self._api_url}{request['url']}",
+                params=request["params"],
+            )
         )
 
     def auth_link_oauth_provider(

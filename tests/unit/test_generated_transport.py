@@ -20,6 +20,38 @@ from volcano_sdk._generated.types import Unset
 from volcano_sdk._transport import GeneratedTransport, response_payload
 
 
+def test_generated_transport_builds_an_oauth_authorization_url() -> None:
+    transport = GeneratedTransport(api_url="https://api.test.volcano.dev")
+
+    result = transport.auth_oauth_authorization_url(
+        anon_key="anon key",
+        provider="github",
+        redirect_url="https://app.example/callback?next=/repos",
+    )
+
+    url = httpx.URL(result)
+    assert url.scheme == "https"
+    assert url.host == "api.test.volcano.dev"
+    assert url.path == "/auth/oauth/github/authorize"
+    assert dict(url.params) == {
+        "anon_key": "anon key",
+        "redirect_url": "https://app.example/callback?next=/repos",
+        "response_mode": "code",
+    }
+
+
+def test_generated_transport_omits_oauth_code_mode_without_a_redirect() -> None:
+    transport = GeneratedTransport(api_url="https://api.test.volcano.dev")
+
+    result = transport.auth_oauth_authorization_url(
+        anon_key="anon-key",
+        provider="google",
+        redirect_url=None,
+    )
+
+    assert dict(httpx.URL(result).params) == {"anon_key": "anon-key"}
+
+
 def test_generated_transport_signs_up_with_the_anon_key_and_metadata() -> None:
     requests: list[httpx.Request] = []
 

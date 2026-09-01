@@ -51,6 +51,7 @@ from ._transport import (
     AuthLinkOAuthProviderTransport,
     AuthListOAuthProvidersTransport,
     AuthLogoutTransport,
+    AuthOAuthAuthorizationURLTransport,
     AuthRefreshOAuthProviderTokenTransport,
     AuthRefreshTransport,
     AuthRequestEmailChangeTransport,
@@ -582,6 +583,24 @@ class Auth:
         if self._client._capture_session()[0] != generation:
             raise SessionChangedError
         return result
+
+    def sign_in_with_oauth(
+        self,
+        *,
+        provider: OAuthProviderName,
+        redirect_to: str | None = None,
+    ) -> str:
+        """Return the URL that starts an OAuth sign-in flow."""
+        provider_name = _oauth_provider_name(provider)
+        transport = cast(
+            "AuthOAuthAuthorizationURLTransport",
+            self._client._transport,
+        )
+        return transport.auth_oauth_authorization_url(
+            anon_key=self._client._anon_token(),
+            provider=provider_name,
+            redirect_url=redirect_to,
+        )
 
     def link_oauth_provider(self, *, provider: OAuthProviderName) -> str:
         """Return the authorization URL for linking an OAuth provider."""

@@ -250,6 +250,8 @@ class StateTransport:
         self.authorizations: list[tuple[str, str]] = []
 
     def _configure_oauth(self) -> None:
+        self.oauth_authorization_url = "https://api.example/auth/oauth/github/authorize"
+        self.oauth_authorization_url_calls: list[dict[str, Any]] = []
         self.list_oauth_providers_response = Response(200, _linked_oauth_providers())
         self.list_oauth_providers_calls: list[dict[str, Any]] = []
         self.on_list_oauth_providers: Callable[[], None] | None = None
@@ -380,6 +382,10 @@ class StateTransport:
         if self.on_list_oauth_providers is not None:
             self.on_list_oauth_providers()
         return self.list_oauth_providers_response
+
+    def auth_oauth_authorization_url(self, **kwargs: Any) -> str:
+        self.oauth_authorization_url_calls.append(kwargs)
+        return self.oauth_authorization_url
 
     def auth_link_oauth_provider(self, **kwargs: Any) -> Response:
         self.authorizations.append(("link_oauth_provider", kwargs["authorization"]))
@@ -1079,6 +1085,36 @@ def test_link_oauth_provider_returns_an_authorization_url() -> None:
     assert transport.link_oauth_provider_calls == [
         {"authorization": "access-1", "provider": "github"}
     ]
+
+
+def test_sign_in_with_oauth_returns_an_authorization_url_without_a_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    result = client.auth.sign_in_with_oauth(
+        provider="github",
+        redirect_to="https://app.example/callback",
+    )
+
+    assert result == "https://api.example/auth/oauth/github/authorize"
+    assert client.auth.get_session() is None
+    assert transport.oauth_authorization_url_calls == [
+        {
+            "anon_key": "anon",
+            "provider": "github",
+            "redirect_url": "https://app.example/callback",
+        }
+    ]
+
+
+def test_sign_in_with_oauth_rejects_an_unknown_provider() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(ValueError, match="Unsupported OAuth provider"):
+        client.auth.sign_in_with_oauth(provider="invalid")  # type: ignore[arg-type]
+
+    assert transport.oauth_authorization_url_calls == []
 
 
 def test_link_oauth_provider_rejects_an_unknown_provider() -> None:
