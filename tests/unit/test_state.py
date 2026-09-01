@@ -72,6 +72,16 @@ class StateTransport:
             },
         )
         self.signup_calls: list[dict[str, Any]] = []
+        self.anonymous_signin_response = Response(
+            201,
+            {
+                "access_token": "anonymous-access",
+                "refresh_token": "anonymous-refresh",
+                "user": {"id": "00000000-0000-4000-8000-000000000099"},
+            },
+        )
+        self.anonymous_signin_calls: list[dict[str, Any]] = []
+        self.on_anonymous_signin: Callable[[], None] | None = None
         self.forgot_password_response = Response(
             200,
             {"message": "If the email exists, a password reset link has been sent."},
@@ -129,6 +139,13 @@ class StateTransport:
         self.authorizations.append(("signup", kwargs["authorization"]))
         self.signup_calls.append(kwargs)
         return self.signup_response
+
+    def auth_signup_anonymous(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("anonymous_signin", kwargs["authorization"]))
+        self.anonymous_signin_calls.append(kwargs)
+        if self.on_anonymous_signin is not None:
+            self.on_anonymous_signin()
+        return self.anonymous_signin_response
 
     def auth_forgot_password(self, **kwargs: Any) -> Response:
         self.authorizations.append(("forgot_password", kwargs["authorization"]))
@@ -306,6 +323,58 @@ def test_sign_up_raises_typed_errors_without_changing_session() -> None:
 
     with pytest.raises(AuthenticationError, match="Signups are disabled"):
         client.auth.sign_up(email="new@example.com", password="secret")
+
+    assert client.auth.get_session() is established
+
+
+def test_sign_in_anonymously_stores_the_returned_session_and_metadata() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    session = client.auth.sign_in_anonymously(metadata={"device": "mobile"})
+
+    assert session == Session(
+        access_token="anonymous-access",
+        refresh_token="anonymous-refresh",
+        user_id="00000000-0000-4000-8000-000000000099",
+    )
+    assert client.auth.get_session() is session
+    assert transport.anonymous_signin_calls == [
+        {"authorization": "anon", "metadata": {"device": "mobile"}}
+    ]
+
+
+def test_sign_in_anonymously_does_not_replace_a_newer_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="00000000-0000-4000-8000-000000000010",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_anonymous_signin = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.sign_in_anonymously()
+
+    assert client.auth.get_session() == replacement
+
+
+def test_sign_in_anonymously_preserves_session_when_disabled() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+    transport.anonymous_signin_response = Response(
+        403,
+        {"error": "Anonymous sign-ins are disabled"},
+    )
+
+    with pytest.raises(AuthenticationError, match="Anonymous sign-ins are disabled"):
+        client.auth.sign_in_anonymously()
 
     assert client.auth.get_session() is established
 

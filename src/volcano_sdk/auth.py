@@ -16,6 +16,7 @@ from ._transport import (
     AuthRefreshTransport,
     AuthResendConfirmationTransport,
     AuthResetPasswordTransport,
+    AuthSignUpAnonymousTransport,
     AuthSignUpTransport,
     AuthUpdateUserTransport,
     Transport,
@@ -183,6 +184,24 @@ class Auth:
             metadata=dict(metadata or {}),
         )
         return _sign_up_result_from_payload(response_payload(response, 201))
+
+    def sign_in_anonymously(
+        self,
+        *,
+        metadata: Mapping[str, object] | None = None,
+    ) -> Session:
+        """Create an anonymous account and store its session."""
+        generation, _ = self._client._capture_session()
+        transport = cast("AuthSignUpAnonymousTransport", self._client._transport)
+        response = invoke(
+            transport.auth_signup_anonymous,
+            authorization=self._client._anon_token(),
+            metadata=dict(metadata or {}),
+        )
+        session = _session_from_payload(response_payload(response, 201))
+        if not self._client._set_session_if_current(session, generation):
+            raise SessionChangedError
+        return session
 
     def reset_password_for_email(self, *, email: str) -> None:
         """Request a reset email without revealing whether the account exists."""

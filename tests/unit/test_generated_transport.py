@@ -56,6 +56,37 @@ def test_generated_transport_signs_up_with_the_anon_key_and_metadata() -> None:
     }
 
 
+def test_generated_transport_signs_in_anonymously_with_metadata() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            201,
+            json={
+                "access_token": "anonymous-access",
+                "refresh_token": "anonymous-refresh",
+                "user": {"id": "00000000-0000-4000-8000-000000000099"},
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_signup_anonymous(
+        authorization="anon-key",
+        metadata={"device": "mobile"},
+    )
+
+    assert response.status_code == 201
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/auth/signup-anonymous"
+    assert requests[0].headers["authorization"] == "Bearer anon-key"
+    assert json.loads(requests[0].content) == {"user_metadata": {"device": "mobile"}}
+
+
 def test_generated_transport_requests_a_password_reset_with_the_anon_key() -> None:
     requests: list[httpx.Request] = []
 
