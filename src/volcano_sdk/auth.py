@@ -7,7 +7,7 @@ import binascii
 import json
 from collections.abc import Mapping
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 
 from ._generated.models.auth_confirm_email_change_response_200 import (
     AuthConfirmEmailChangeResponse200,
@@ -94,10 +94,12 @@ _INVALID_OAUTH_LINK = "Expected an OAuth authorization URL"
 _INVALID_OAUTH_STATUS = "Expected complete OAuth provider token status"
 _INVALID_OAUTH_API_RESPONSE = "Expected OAuth provider API response data"
 _UNSUPPORTED_OAUTH_PROVIDER = "Unsupported OAuth provider"
+_UNSUPPORTED_OAUTH_API_METHOD = "Unsupported OAuth provider API method"
 _JWT_PARTS = 3
 _NO_ACTIVE_SESSION = "No active session"
 _T = TypeVar("_T")
 _OAUTH_PROVIDERS: frozenset[str] = frozenset({"apple", "github", "google", "microsoft"})
+_OAUTH_API_METHODS: frozenset[str] = frozenset({"GET", "POST"})
 
 if TYPE_CHECKING:
     from ._generated.models import (
@@ -334,6 +336,12 @@ def _oauth_provider_name(value: object) -> OAuthProviderName:
     if not isinstance(value, str) or value not in _OAUTH_PROVIDERS:
         raise ValueError(_UNSUPPORTED_OAUTH_PROVIDER)
     return cast("OAuthProviderName", value)
+
+
+def _oauth_api_method(value: object) -> Literal["GET", "POST"]:
+    if not isinstance(value, str) or value not in _OAUTH_API_METHODS:
+        raise ValueError(_UNSUPPORTED_OAUTH_API_METHOD)
+    return cast('Literal["GET", "POST"]', value)
 
 
 def _oauth_link_from_payload(payload: object) -> str:
@@ -676,11 +684,12 @@ class Auth:
         *,
         provider: OAuthProviderName,
         endpoint: str,
-        method: str = "GET",
+        method: Literal["GET", "POST"] = "GET",
         body: Mapping[str, JSONValue] | None = None,
     ) -> Mapping[str, JSONValue]:
         """Call a provider API through Volcano's fixed-host server proxy."""
         provider_name = _oauth_provider_name(provider)
+        request_method = _oauth_api_method(method)
         generation, current = self._client._capture_session()
         if current is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
@@ -690,7 +699,7 @@ class Auth:
             authorization=current.access_token,
             provider=provider_name,
             endpoint=endpoint,
-            method=method,
+            method=request_method,
             body=body,
         )
         result = _oauth_api_data_from_payload(response_payload(response, 200))

@@ -1421,6 +1421,20 @@ def test_call_oauth_api_rejects_an_unknown_provider() -> None:
     assert transport.call_oauth_api_calls == []
 
 
+def test_call_oauth_api_rejects_an_unsupported_method() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(ValueError, match="Unsupported OAuth provider API method"):
+        client.auth.call_oauth_api(
+            provider="github",
+            endpoint="/user",
+            method="DELETE",  # type: ignore[arg-type]
+        )
+
+    assert transport.call_oauth_api_calls == []
+
+
 def test_call_oauth_api_requires_a_current_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)

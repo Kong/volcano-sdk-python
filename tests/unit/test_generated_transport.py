@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import MappingProxyType
 
 import httpx
 import pytest
@@ -528,6 +529,33 @@ def test_generated_transport_calls_an_oauth_provider_api() -> None:
         "endpoint": "/user/repos",
         "method": "POST",
         "body": {"visibility": "private"},
+    }
+
+
+def test_generated_transport_normalizes_immutable_oauth_api_body() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"data": {}})
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    transport.auth_call_oauth_api(
+        authorization="access-token",
+        provider="github",
+        endpoint="/user/repos",
+        method="POST",
+        body=MappingProxyType({"filters": MappingProxyType({"visibility": "private"})}),
+    )
+
+    assert json.loads(requests[0].content) == {
+        "endpoint": "/user/repos",
+        "method": "POST",
+        "body": {"filters": {"visibility": "private"}},
     }
 
 

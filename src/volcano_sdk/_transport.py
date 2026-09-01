@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
@@ -138,7 +139,7 @@ from .errors import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable
 
     from ._generated.models.auth_link_o_auth_provider_provider import (
         AuthLinkOAuthProviderProvider,
@@ -155,6 +156,7 @@ if TYPE_CHECKING:
     from ._generated.models.refresh_o_auth_provider_token_provider import (
         RefreshOAuthProviderTokenProvider,
     )
+    from .models import JSONValue
 
 HTTP_NOT_FOUND = 404
 HTTP_CONFLICT = 409
@@ -177,6 +179,14 @@ ERROR_TYPES_BY_STATUS: dict[int, type[VolcanoError]] = {
     422: ValidationError,
     HTTP_RATE_LIMITED: RateLimitedError,
 }
+
+
+def _plain_json(value: JSONValue) -> JSONValue:
+    if isinstance(value, Mapping):
+        return {key: _plain_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain_json(item) for item in value]
+    return value
 
 
 class TransportResponse(Protocol):
@@ -946,7 +956,7 @@ class GeneratedTransport:
     ) -> TransportResponse:
         request_values: dict[str, Any] = {"endpoint": endpoint, "method": method}
         if body is not None:
-            request_values["body"] = body
+            request_values["body"] = _plain_json(body)
         request_body = CallOAuthProviderAPIBody.from_dict(request_values)
         with self._client(authorization) as client:
             response = client.get_httpx_client().request(
