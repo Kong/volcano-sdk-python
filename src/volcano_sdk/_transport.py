@@ -31,6 +31,9 @@ from ._generated.api.authentication.auth_resend_confirmation import (
 from ._generated.api.authentication.auth_reset_password import (
     _get_kwargs as reset_password_kwargs,
 )
+from ._generated.api.authentication.auth_signup_anonymous import (
+    _get_kwargs as signup_anonymous_kwargs,
+)
 from ._generated.api.database_queries import query_database_select
 from ._generated.api.locks import acquire_project_lock, release_project_lock
 from ._generated.api.storage_objects import (
@@ -45,6 +48,10 @@ from ._generated.models.auth_refresh_body import AuthRefreshBody
 from ._generated.models.auth_resend_confirmation_body import AuthResendConfirmationBody
 from ._generated.models.auth_reset_password_body import AuthResetPasswordBody
 from ._generated.models.auth_signin_body import AuthSigninBody
+from ._generated.models.auth_signup_anonymous_body import AuthSignupAnonymousBody
+from ._generated.models.auth_signup_anonymous_body_user_metadata import (
+    AuthSignupAnonymousBodyUserMetadata,
+)
 from ._generated.models.auth_signup_body import AuthSignupBody
 from ._generated.models.auth_signup_body_user_metadata import (
     AuthSignupBodyUserMetadata,
@@ -138,6 +145,15 @@ class AuthSignUpTransport(Protocol):
         authorization: str,
         email: str,
         password: str,
+        metadata: dict[str, object],
+    ) -> TransportResponse: ...
+
+
+class AuthSignUpAnonymousTransport(Protocol):
+    def auth_signup_anonymous(
+        self,
+        *,
+        authorization: str,
         metadata: dict[str, object],
     ) -> TransportResponse: ...
 
@@ -387,6 +403,21 @@ class GeneratedTransport:
         with self._client(authorization) as client:
             response = auth_signup.sync_detailed(client=client, body=body)
         return self._response(response)
+
+    def auth_signup_anonymous(
+        self,
+        *,
+        authorization: str,
+        metadata: dict[str, object],
+    ) -> TransportResponse:
+        body = AuthSignupAnonymousBody(
+            user_metadata=AuthSignupAnonymousBodyUserMetadata.from_dict(metadata)
+        )
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **signup_anonymous_kwargs(body=body)
+            )
+        return self._raw_response(response)
 
     def auth_forgot_password(
         self,

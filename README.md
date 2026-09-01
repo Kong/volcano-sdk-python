@@ -96,6 +96,15 @@ Success returns `None` whether the account is unknown, already confirmed, or eli
 mail only for an existing unconfirmed account when transactional email is configured. Rate limits
 raise `RateLimitedError` with `retry_after` when the server supplies it.
 
+Create an anonymous account and make its tokens the current session:
+
+```python
+session = client.auth.sign_in_anonymously(metadata={"device": "mobile"})
+```
+
+Anonymous sign-ins must be enabled for the project. Convert the account before signing out if the
+user needs to recover it later.
+
 Set a new password with the recovery token from that email:
 
 ```python
