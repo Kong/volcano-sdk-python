@@ -71,6 +71,11 @@ class StateTransport:
             },
         )
         self.signup_calls: list[dict[str, Any]] = []
+        self.forgot_password_response = Response(
+            200,
+            {"message": "If the email exists, a password reset link has been sent."},
+        )
+        self.forgot_password_calls: list[dict[str, Any]] = []
         self.user_response = Response(
             200,
             _user_profile(),
@@ -108,6 +113,11 @@ class StateTransport:
         self.authorizations.append(("signup", kwargs["authorization"]))
         self.signup_calls.append(kwargs)
         return self.signup_response
+
+    def auth_forgot_password(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("forgot_password", kwargs["authorization"]))
+        self.forgot_password_calls.append(kwargs)
+        return self.forgot_password_response
 
     def auth_get_user(self, **kwargs: Any) -> Response:
         self.authorizations.append(("get_user", kwargs["authorization"]))
@@ -299,6 +309,42 @@ def test_get_user_returns_an_immutable_server_validated_profile() -> None:
         mutable_metadata["display_name"] = "Changed"
     with pytest.raises(TypeError):
         mutable_app_metadata["provider"] = "oauth"
+
+
+def test_reset_password_for_email_returns_the_generic_acknowledgement() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+
+    client.auth.reset_password_for_email(email="user@example.com")
+
+    assert transport.forgot_password_calls == [
+        {"authorization": "anon", "email": "user@example.com"}
+    ]
+    assert client.auth.get_session() is established
+
+
+def test_reset_password_for_email_raises_typed_errors_without_session_change() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+    transport.forgot_password_response = Response(
+        403,
+        {"error": "Password reset disabled"},
+    )
+
+    with pytest.raises(AuthenticationError, match="Password reset disabled"):
+        client.auth.reset_password_for_email(email="user@example.com")
+
+    assert client.auth.get_session() is established
+
+
+def test_reset_password_for_email_accepts_a_message_less_acknowledgement() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    transport.forgot_password_response = Response(200, {})
+
+    client.auth.reset_password_for_email(email="user@example.com")
 
 
 def test_get_user_accepts_a_server_profile_without_an_email() -> None:

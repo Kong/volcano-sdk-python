@@ -67,6 +67,16 @@ omitted keys remain unchanged, and setting a key to `None` removes it. The metho
 immutable profile type as `get_user()` and does not replace the active session. It also rejects a
 response if another authentication operation replaces the session while the update is in flight.
 
+Request a password reset email without creating or changing a session:
+
+```python
+client.auth.reset_password_for_email(email="user@example.com")
+```
+
+When transactional email is configured, Volcano sends the reset link. Success returns `None`, and
+the response is intentionally identical whether or not the email belongs to an account. Failures
+raise the same typed Volcano errors as other authentication operations.
+
 Copy a complete native session into another client's memory:
 
 ```python

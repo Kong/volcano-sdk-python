@@ -9,6 +9,7 @@ from ._generated.models.auth_get_user_response_200 import AuthGetUserResponse200
 from ._generated.models.auth_update_user_response_200 import AuthUpdateUserResponse200
 from ._generated.types import Unset
 from ._transport import (
+    AuthForgotPasswordTransport,
     AuthGetUserTransport,
     AuthLogoutTransport,
     AuthRefreshTransport,
@@ -179,6 +180,16 @@ class Auth:
             metadata=dict(metadata or {}),
         )
         return _sign_up_result_from_payload(response_payload(response, 201))
+
+    def reset_password_for_email(self, *, email: str) -> None:
+        """Request a reset email without revealing whether the account exists."""
+        transport = cast("AuthForgotPasswordTransport", self._client._transport)
+        response = invoke(
+            transport.auth_forgot_password,
+            authorization=self._client._anon_token(),
+            email=email,
+        )
+        response_payload(response, 200)
 
     def get_user(self) -> User:
         """Load a server-validated profile for the current session."""

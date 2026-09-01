@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from volcano_sdk import AuthenticationError
+from volcano_sdk import AuthenticationError, RateLimitedError
 from volcano_sdk._generated.models.auth_get_user_response_200 import (
     AuthGetUserResponse200,
 )
@@ -13,7 +13,7 @@ from volcano_sdk._generated.models.auth_update_user_response_200 import (
     AuthUpdateUserResponse200,
 )
 from volcano_sdk._generated.types import Unset
-from volcano_sdk._transport import GeneratedTransport
+from volcano_sdk._transport import GeneratedTransport, response_payload
 
 
 def test_generated_transport_signs_up_with_the_anon_key_and_metadata() -> None:
@@ -54,6 +54,85 @@ def test_generated_transport_signs_up_with_the_anon_key_and_metadata() -> None:
         "password": "secret",
         "user_metadata": {"display_name": "New User"},
     }
+
+
+def test_generated_transport_requests_a_password_reset_with_the_anon_key() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "message": "If the email exists, a password reset link has been sent."
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_forgot_password(
+        authorization="anon-key",
+        email="user@example.com",
+    )
+
+    assert response.status_code == 200
+    assert response.payload == {
+        "message": "If the email exists, a password reset link has been sent."
+    }
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/auth/forgot-password"
+    assert requests[0].headers["authorization"] == "Bearer anon-key"
+    assert json.loads(requests[0].content) == {"email": "user@example.com"}
+
+
+def test_generated_transport_accepts_a_malformed_password_reset_success_body() -> None:
+    def handle(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"not-json",
+            headers={"Content-Type": "application/json"},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_forgot_password(
+        authorization="anon-key",
+        email="user@example.com",
+    )
+
+    assert response.status_code == 200
+    assert response.payload is None
+
+
+def test_generated_transport_preserves_a_malformed_rate_limit_response() -> None:
+    def handle(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            429,
+            content=b"not-json",
+            headers={"Content-Type": "application/json", "Retry-After": "17"},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_forgot_password(
+        authorization="anon-key",
+        email="user@example.com",
+    )
+
+    with pytest.raises(RateLimitedError) as caught:
+        response_payload(response, 200)
+
+    assert caught.value.status == 429
+    assert caught.value.retry_after == 17
 
 
 def test_generated_transport_gets_the_current_user_with_the_access_token() -> None:
