@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from volcano_sdk import AuthenticationError, RateLimitedError
+from volcano_sdk import AuthenticationError, RateLimitedError, VolcanoError
 from volcano_sdk._generated.models.auth_convert_anonymous_response_200 import (
     AuthConvertAnonymousResponse200,
 )
@@ -252,6 +252,22 @@ def test_generated_transport_lists_sessions_with_offset_pagination() -> None:
         "sort": "last_activity",
     }
     assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
+def test_generated_transport_rejects_a_malformed_session_page() -> None:
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, content=b"not-json")
+        ),
+    )
+
+    with pytest.raises(VolcanoError, match="Expected a complete session page"):
+        transport.auth_get_my_sessions(
+            authorization="access-token",
+            page=1,
+            limit=20,
+        )
 
 
 def test_generated_transport_deletes_all_other_sessions() -> None:

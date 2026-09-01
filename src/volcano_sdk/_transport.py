@@ -108,6 +108,7 @@ HTTP_OK = 200
 HTTP_SERVER_ERROR_MIN = 500
 HTTP_SERVER_ERROR_MAX = 599
 _MALFORMED_USER_PROFILE = "Expected a complete user profile"
+_MALFORMED_SESSION_PAGE = "Expected a complete session page"
 ERROR_TYPES_BY_STATUS: dict[int, type[VolcanoError]] = {
     400: ValidationError,
     401: AuthenticationError,
@@ -669,12 +670,21 @@ class GeneratedTransport:
         page: int,
         limit: int,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
-            response = auth_get_my_sessions.sync_detailed(
-                client=client,
-                page=page,
-                limit=limit,
-            )
+        try:
+            with self._client(authorization) as client:
+                response = auth_get_my_sessions.sync_detailed(
+                    client=client,
+                    page=page,
+                    limit=limit,
+                )
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
+            raise VolcanoError(_MALFORMED_SESSION_PAGE) from error
         if int(response.status_code) != HTTP_OK:
             return self._response(response)
         return _GeneratedTransportResponse(
