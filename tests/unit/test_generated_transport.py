@@ -88,6 +88,26 @@ def test_generated_transport_requests_a_password_reset_with_the_anon_key() -> No
     assert json.loads(requests[0].content) == {"email": "user@example.com"}
 
 
+def test_generated_transport_normalizes_a_malformed_password_reset_response() -> None:
+    def handle(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"not-json",
+            headers={"Content-Type": "application/json"},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    with pytest.raises(AuthenticationError, match="password reset response"):
+        transport.auth_forgot_password(
+            authorization="anon-key",
+            email="user@example.com",
+        )
+
+
 def test_generated_transport_gets_the_current_user_with_the_access_token() -> None:
     requests: list[httpx.Request] = []
 

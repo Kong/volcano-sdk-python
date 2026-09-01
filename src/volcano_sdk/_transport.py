@@ -66,6 +66,7 @@ HTTP_OK = 200
 HTTP_SERVER_ERROR_MIN = 500
 HTTP_SERVER_ERROR_MAX = 599
 _MALFORMED_USER_PROFILE = "Expected a complete user profile"
+_MALFORMED_RECOVERY_RESPONSE = "Expected a valid password reset response"
 ERROR_TYPES_BY_STATUS: dict[int, type[VolcanoError]] = {
     400: ValidationError,
     401: AuthenticationError,
@@ -339,11 +340,20 @@ class GeneratedTransport:
         authorization: str,
         email: str,
     ) -> TransportResponse:
-        with self._client(authorization) as client:
-            response = auth_forgot_password.sync_detailed(
-                client=client,
-                body=AuthForgotPasswordBody(email=email),
-            )
+        try:
+            with self._client(authorization) as client:
+                response = auth_forgot_password.sync_detailed(
+                    client=client,
+                    body=AuthForgotPasswordBody(email=email),
+                )
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
+            raise AuthenticationError(_MALFORMED_RECOVERY_RESPONSE) from error
         return self._response(response)
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:

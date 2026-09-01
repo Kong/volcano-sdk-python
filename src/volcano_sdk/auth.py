@@ -24,7 +24,6 @@ from .models import JSONValue, Session, SignUpResult, User
 
 _INCOMPLETE_SESSION = "Expected a complete Session"
 _INVALID_SIGN_UP_RESULT = "Expected a complete sign-up acknowledgement"
-_INVALID_RECOVERY_RESULT = "Expected a complete password reset acknowledgement"
 _INVALID_USER = "Expected a complete user profile"
 _NO_ACTIVE_SESSION = "No active session"
 _T = TypeVar("_T")
@@ -182,7 +181,7 @@ class Auth:
         )
         return _sign_up_result_from_payload(response_payload(response, 201))
 
-    def reset_password_for_email(self, *, email: str) -> str:
+    def reset_password_for_email(self, *, email: str) -> None:
         """Request a reset email without revealing whether the account exists."""
         transport = cast("AuthForgotPasswordTransport", self._client._transport)
         response = invoke(
@@ -190,16 +189,7 @@ class Auth:
             authorization=self._client._anon_token(),
             email=email,
         )
-        payload = response_payload(response, 200)
-        values: Mapping[object, object] = (
-            cast("Mapping[object, object]", payload)
-            if isinstance(payload, Mapping)
-            else {}
-        )
-        message = values.get("message")
-        if not _is_non_empty_string(message):
-            raise AuthenticationError(_INVALID_RECOVERY_RESULT)
-        return cast("str", message)
+        response_payload(response, 200)
 
     def get_user(self) -> User:
         """Load a server-validated profile for the current session."""

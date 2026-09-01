@@ -316,9 +316,8 @@ def test_reset_password_for_email_returns_the_generic_acknowledgement() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
     established = client.auth.sign_in(email="user@example.com", password="secret")
 
-    message = client.auth.reset_password_for_email(email="user@example.com")
+    client.auth.reset_password_for_email(email="user@example.com")
 
-    assert message == "If the email exists, a password reset link has been sent."
     assert transport.forgot_password_calls == [
         {"authorization": "anon", "email": "user@example.com"}
     ]
@@ -340,13 +339,12 @@ def test_reset_password_for_email_raises_typed_errors_without_session_change() -
     assert client.auth.get_session() is established
 
 
-def test_reset_password_for_email_rejects_a_malformed_acknowledgement() -> None:
+def test_reset_password_for_email_accepts_a_message_less_acknowledgement() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    transport.forgot_password_response = Response(200, {"message": None})
+    transport.forgot_password_response = Response(200, {})
 
-    with pytest.raises(AuthenticationError, match="password reset acknowledgement"):
-        client.auth.reset_password_for_email(email="user@example.com")
+    client.auth.reset_password_for_email(email="user@example.com")
 
 
 def test_get_user_accepts_a_server_profile_without_an_email() -> None:

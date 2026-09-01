@@ -70,11 +70,11 @@ response if another authentication operation replaces the session while the upda
 Request a password reset email without creating or changing a session:
 
 ```python
-message = client.auth.reset_password_for_email(email="user@example.com")
-print(message)
+client.auth.reset_password_for_email(email="user@example.com")
 ```
 
-The response is intentionally identical whether or not the email belongs to an account. Failures
+When transactional email is configured, Volcano sends the reset link. Success returns `None`, and
+the response is intentionally identical whether or not the email belongs to an account. Failures
 raise the same typed Volcano errors as other authentication operations.
 
 Copy a complete native session into another client's memory:
