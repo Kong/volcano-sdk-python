@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 import httpx
 
 from ._generated.api.authentication import (
+    auth_convert_anonymous,
     auth_get_user,
     auth_logout,
     auth_refresh,
@@ -42,6 +43,10 @@ from ._generated.api.storage_objects import (
 )
 from ._generated.client import AuthenticatedClient
 from ._generated.models.auth_confirm_email_body import AuthConfirmEmailBody
+from ._generated.models.auth_convert_anonymous_body import AuthConvertAnonymousBody
+from ._generated.models.auth_convert_anonymous_body_user_metadata import (
+    AuthConvertAnonymousBodyUserMetadata,
+)
 from ._generated.models.auth_forgot_password_body import AuthForgotPasswordBody
 from ._generated.models.auth_logout_body import AuthLogoutBody
 from ._generated.models.auth_refresh_body import AuthRefreshBody
@@ -154,6 +159,17 @@ class AuthSignUpAnonymousTransport(Protocol):
         self,
         *,
         authorization: str,
+        metadata: dict[str, object],
+    ) -> TransportResponse: ...
+
+
+class AuthConvertAnonymousTransport(Protocol):
+    def auth_convert_anonymous(
+        self,
+        *,
+        authorization: str,
+        email: str,
+        password: str,
         metadata: dict[str, object],
     ) -> TransportResponse: ...
 
@@ -418,6 +434,42 @@ class GeneratedTransport:
                 **signup_anonymous_kwargs(body=body)
             )
         return self._raw_response(response)
+
+    def auth_convert_anonymous(
+        self,
+        *,
+        authorization: str,
+        email: str,
+        password: str,
+        metadata: dict[str, object],
+    ) -> TransportResponse:
+        body = AuthConvertAnonymousBody(
+            email=email,
+            password=password,
+            user_metadata=AuthConvertAnonymousBodyUserMetadata.from_dict(metadata),
+        )
+        try:
+            with self._client(authorization) as client:
+                response = auth_convert_anonymous.sync_detailed(
+                    client=client,
+                    body=body,
+                )
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
+            raise AuthenticationError(_MALFORMED_USER_PROFILE) from error
+        if int(response.status_code) != HTTP_OK:
+            return self._response(response)
+        return _GeneratedTransportResponse(
+            status_code=int(response.status_code),
+            payload=response.parsed,
+            content=response.content,
+            headers=dict(response.headers),
+        )
 
     def auth_forgot_password(
         self,
