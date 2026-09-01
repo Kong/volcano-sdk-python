@@ -270,6 +270,26 @@ def test_generated_transport_rejects_a_malformed_session_page() -> None:
         )
 
 
+def test_generated_transport_preserves_a_malformed_session_auth_error() -> None:
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(
+            lambda _request: httpx.Response(401, content=b"not-json")
+        ),
+    )
+
+    response = transport.auth_get_my_sessions(
+        authorization="access-token",
+        page=1,
+        limit=20,
+    )
+
+    with pytest.raises(AuthenticationError) as caught:
+        response_payload(response, 200)
+
+    assert caught.value.status == 401
+
+
 def test_generated_transport_deletes_all_other_sessions() -> None:
     requests: list[httpx.Request] = []
 

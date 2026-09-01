@@ -14,7 +14,6 @@ import httpx
 from ._generated.api.authentication import (
     auth_confirm_email_change,
     auth_convert_anonymous,
-    auth_get_my_sessions,
     auth_get_user,
     auth_logout,
     auth_refresh,
@@ -36,6 +35,9 @@ from ._generated.api.authentication.auth_delete_my_session import (
 )
 from ._generated.api.authentication.auth_forgot_password import (
     _get_kwargs as forgot_password_kwargs,
+)
+from ._generated.api.authentication.auth_get_my_sessions import (
+    _get_kwargs as get_my_sessions_kwargs,
 )
 from ._generated.api.authentication.auth_request_email_change import (
     _get_kwargs as request_email_change_kwargs,
@@ -63,6 +65,9 @@ from ._generated.models.auth_convert_anonymous_body_user_metadata import (
     AuthConvertAnonymousBodyUserMetadata,
 )
 from ._generated.models.auth_forgot_password_body import AuthForgotPasswordBody
+from ._generated.models.auth_get_my_sessions_response_200 import (
+    AuthGetMySessionsResponse200,
+)
 from ._generated.models.auth_logout_body import AuthLogoutBody
 from ._generated.models.auth_refresh_body import AuthRefreshBody
 from ._generated.models.auth_request_email_change_body import AuthRequestEmailChangeBody
@@ -670,13 +675,14 @@ class GeneratedTransport:
         page: int,
         limit: int,
     ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **get_my_sessions_kwargs(page=page, limit=limit)
+            )
+        if response.status_code != HTTP_OK:
+            return self._raw_response(response)
         try:
-            with self._client(authorization) as client:
-                response = auth_get_my_sessions.sync_detailed(
-                    client=client,
-                    page=page,
-                    limit=limit,
-                )
+            payload = AuthGetMySessionsResponse200.from_dict(response.json())
         except (
             AttributeError,
             KeyError,
@@ -685,11 +691,9 @@ class GeneratedTransport:
             ValueError,
         ) as error:
             raise VolcanoError(_MALFORMED_SESSION_PAGE) from error
-        if int(response.status_code) != HTTP_OK:
-            return self._response(response)
         return _GeneratedTransportResponse(
-            status_code=int(response.status_code),
-            payload=response.parsed,
+            status_code=response.status_code,
+            payload=payload,
             content=response.content,
             headers=dict(response.headers),
         )
