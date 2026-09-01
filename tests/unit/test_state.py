@@ -4,7 +4,7 @@ import json
 from base64 import urlsafe_b64encode
 from dataclasses import FrozenInstanceError, dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import pytest
@@ -43,6 +43,9 @@ from volcano_sdk._generated.models.auth_list_o_auth_providers_response_200 impor
 )
 from volcano_sdk._generated.models.auth_update_user_response_200 import (
     AuthUpdateUserResponse200,
+)
+from volcano_sdk._generated.models.call_o_auth_provider_api_response_200 import (
+    CallOAuthProviderAPIResponse200,
 )
 from volcano_sdk._generated.models.get_o_auth_provider_token_response_200 import (
     GetOAuthProviderTokenResponse200,
@@ -285,6 +288,19 @@ class StateTransport:
         )
         self.refresh_oauth_provider_token_calls: list[dict[str, Any]] = []
         self.on_refresh_oauth_provider_token: Callable[[], None] | None = None
+        self.call_oauth_api_response = Response(
+            200,
+            CallOAuthProviderAPIResponse200.from_dict(
+                {
+                    "provider": "github",
+                    "endpoint": "/user/repos",
+                    "status_code": 200,
+                    "data": [{"name": "volcano"}],
+                }
+            ),
+        )
+        self.call_oauth_api_calls: list[dict[str, Any]] = []
+        self.on_call_oauth_api: Callable[[], None] | None = None
 
     def auth_signin(self, **kwargs: Any) -> Response:
         self.authorizations.append(("auth", kwargs["authorization"]))
@@ -392,6 +408,13 @@ class StateTransport:
         if self.on_refresh_oauth_provider_token is not None:
             self.on_refresh_oauth_provider_token()
         return self.refresh_oauth_provider_token_response
+
+    def auth_call_oauth_api(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("call_oauth_api", kwargs["authorization"]))
+        self.call_oauth_api_calls.append(kwargs)
+        if self.on_call_oauth_api is not None:
+            self.on_call_oauth_api()
+        return self.call_oauth_api_response
 
     def auth_forgot_password(self, **kwargs: Any) -> Response:
         self.authorizations.append(("forgot_password", kwargs["authorization"]))
@@ -1351,6 +1374,92 @@ def test_refresh_oauth_provider_token_rejects_a_stale_response() -> None:
 
     with pytest.raises(SessionChangedError):
         client.auth.refresh_oauth_provider_token(provider="google")
+
+    assert client.auth.get_session() == replacement
+
+
+def test_call_oauth_api_returns_immutable_provider_data() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+
+    result = client.auth.call_oauth_api(
+        provider="github",
+        endpoint="/user/repos",
+        method="POST",
+        body={"visibility": "private"},
+    )
+
+    assert result == ({"name": "volcano"},)
+    assert client.auth.get_session() is established
+    assert transport.call_oauth_api_calls == [
+        {
+            "authorization": "access-1",
+            "provider": "github",
+            "endpoint": "/user/repos",
+            "method": "POST",
+            "body": {"visibility": "private"},
+        }
+    ]
+    repos = cast("tuple[dict[str, object], ...]", result)
+    with pytest.raises(TypeError):
+        repos[0]["name"] = "changed"
+
+
+def test_call_oauth_api_rejects_an_unknown_provider() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(ValueError, match="Unsupported OAuth provider"):
+        client.auth.call_oauth_api(
+            provider="invalid",  # type: ignore[arg-type]
+            endpoint="/user",
+        )
+
+    assert transport.call_oauth_api_calls == []
+
+
+def test_call_oauth_api_rejects_an_unsupported_method() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(ValueError, match="Unsupported OAuth provider API method"):
+        client.auth.call_oauth_api(
+            provider="github",
+            endpoint="/user",
+            method="DELETE",  # type: ignore[arg-type]
+        )
+
+    assert transport.call_oauth_api_calls == []
+
+
+def test_call_oauth_api_requires_a_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="No active session"):
+        client.auth.call_oauth_api(provider="github", endpoint="/user")
+
+    assert transport.call_oauth_api_calls == []
+
+
+def test_call_oauth_api_rejects_a_stale_response() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="replacement-user",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_call_oauth_api = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.call_oauth_api(provider="github", endpoint="/user")
 
     assert client.auth.get_session() == replacement
 

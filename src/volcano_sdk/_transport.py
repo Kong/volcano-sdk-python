@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
@@ -62,6 +63,9 @@ from ._generated.api.o_auth_authentication.auth_list_o_auth_providers import (
 from ._generated.api.o_auth_authentication.auth_unlink_o_auth_provider import (
     _get_kwargs as unlink_oauth_provider_kwargs,
 )
+from ._generated.api.o_auth_authentication.call_o_auth_provider_api import (
+    _get_kwargs as call_oauth_provider_api_kwargs,
+)
 from ._generated.api.o_auth_authentication.get_o_auth_provider_token import (
     _get_kwargs as get_oauth_provider_token_kwargs,
 )
@@ -107,6 +111,10 @@ from ._generated.models.auth_update_user_body import AuthUpdateUserBody
 from ._generated.models.auth_update_user_body_user_metadata import (
     AuthUpdateUserBodyUserMetadata,
 )
+from ._generated.models.call_o_auth_provider_api_body import CallOAuthProviderAPIBody
+from ._generated.models.call_o_auth_provider_api_response_200 import (
+    CallOAuthProviderAPIResponse200,
+)
 from ._generated.models.database_select_request import DatabaseSelectRequest
 from ._generated.models.get_o_auth_provider_token_response_200 import (
     GetOAuthProviderTokenResponse200,
@@ -131,7 +139,7 @@ from .errors import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable
 
     from ._generated.models.auth_link_o_auth_provider_provider import (
         AuthLinkOAuthProviderProvider,
@@ -139,12 +147,16 @@ if TYPE_CHECKING:
     from ._generated.models.auth_unlink_o_auth_provider_provider import (
         AuthUnlinkOAuthProviderProvider,
     )
+    from ._generated.models.call_o_auth_provider_api_provider import (
+        CallOAuthProviderAPIProvider,
+    )
     from ._generated.models.get_o_auth_provider_token_provider import (
         GetOAuthProviderTokenProvider,
     )
     from ._generated.models.refresh_o_auth_provider_token_provider import (
         RefreshOAuthProviderTokenProvider,
     )
+    from .models import JSONValue
 
 HTTP_NOT_FOUND = 404
 HTTP_CONFLICT = 409
@@ -157,6 +169,7 @@ _MALFORMED_SESSION_PAGE = "Expected a complete session page"
 _MALFORMED_LINKED_OAUTH_PROVIDERS = "Expected complete linked OAuth providers"
 _MALFORMED_OAUTH_LINK = "Expected an OAuth authorization URL"
 _MALFORMED_OAUTH_STATUS = "Expected complete OAuth provider token status"
+_MALFORMED_OAUTH_API_RESPONSE = "Expected OAuth provider API response data"
 ERROR_TYPES_BY_STATUS: dict[int, type[VolcanoError]] = {
     400: ValidationError,
     401: AuthenticationError,
@@ -166,6 +179,14 @@ ERROR_TYPES_BY_STATUS: dict[int, type[VolcanoError]] = {
     422: ValidationError,
     HTTP_RATE_LIMITED: RateLimitedError,
 }
+
+
+def _plain_json(value: JSONValue) -> JSONValue:
+    if isinstance(value, Mapping):
+        return {key: _plain_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain_json(item) for item in value]
+    return value
 
 
 class TransportResponse(Protocol):
@@ -370,6 +391,18 @@ class AuthRefreshOAuthProviderTokenTransport(Protocol):
         *,
         authorization: str,
         provider: RefreshOAuthProviderTokenProvider,
+    ) -> TransportResponse: ...
+
+
+class AuthCallOAuthAPITransport(Protocol):
+    def auth_call_oauth_api(
+        self,
+        *,
+        authorization: str,
+        provider: CallOAuthProviderAPIProvider,
+        endpoint: str,
+        method: str,
+        body: Mapping[str, Any] | None,
     ) -> TransportResponse: ...
 
 
@@ -905,6 +938,42 @@ class GeneratedTransport:
             ValueError,
         ) as error:
             raise VolcanoError(_MALFORMED_OAUTH_STATUS) from error
+        return _GeneratedTransportResponse(
+            status_code=response.status_code,
+            payload=payload,
+            content=response.content,
+            headers=dict(response.headers),
+        )
+
+    def auth_call_oauth_api(
+        self,
+        *,
+        authorization: str,
+        provider: CallOAuthProviderAPIProvider,
+        endpoint: str,
+        method: str,
+        body: Mapping[str, Any] | None,
+    ) -> TransportResponse:
+        request_values: dict[str, Any] = {"endpoint": endpoint, "method": method}
+        if body is not None:
+            request_values["body"] = _plain_json(body)
+        request_body = CallOAuthProviderAPIBody.from_dict(request_values)
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **call_oauth_provider_api_kwargs(provider, body=request_body)
+            )
+        if response.status_code != HTTP_OK:
+            return self._raw_response(response)
+        try:
+            payload = CallOAuthProviderAPIResponse200.from_dict(response.json())
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
+            raise VolcanoError(_MALFORMED_OAUTH_API_RESPONSE) from error
         return _GeneratedTransportResponse(
             status_code=response.status_code,
             payload=payload,
