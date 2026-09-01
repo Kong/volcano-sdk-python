@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 from collections.abc import Mapping
 from typing import Protocol, TypeVar, cast
 
@@ -42,12 +45,33 @@ _INCOMPLETE_SESSION = "Expected a complete Session"
 _INVALID_SIGN_UP_RESULT = "Expected a complete sign-up acknowledgement"
 _INVALID_EMAIL_CHANGE_RESULT = "Expected a valid email-change acknowledgement"
 _INVALID_USER = "Expected a complete user profile"
+_JWT_PARTS = 3
 _NO_ACTIVE_SESSION = "No active session"
 _T = TypeVar("_T")
 
 
 def _is_non_empty_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def _session_id_from_access_token(access_token: str) -> str | None:
+    parts = access_token.split(".")
+    if len(parts) != _JWT_PARTS:
+        return None
+    padding = "=" * (-len(parts[1]) % 4)
+    try:
+        payload: object = json.loads(
+            base64.urlsafe_b64decode(parts[1] + padding).decode()
+        )
+    except (binascii.Error, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    values = cast("Mapping[object, object]", payload)
+    session_id = values.get("session_id")
+    if not isinstance(session_id, str) or not session_id.strip():
+        return None
+    return session_id.strip()
 
 
 def _has_complete_values(session: Session) -> bool:
@@ -332,10 +356,13 @@ class Auth:
             raise SessionChangedError
 
     def delete_session(self, *, session_id: str) -> None:
-        """Delete one session without changing local session state."""
+        """Delete one session and clear local state when it is current."""
         generation, current = self._client._capture_session()
         if current is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
+        deletes_current = (
+            _session_id_from_access_token(current.access_token) == session_id
+        )
         transport = cast("AuthDeleteMySessionTransport", self._client._transport)
         response = invoke(
             transport.auth_delete_my_session,
@@ -343,7 +370,11 @@ class Auth:
             session_id=session_id,
         )
         response_payload(response, 204)
-        if self._client._capture_session()[0] != generation:
+        if deletes_current:
+            current_unchanged = self._client._clear_session_if_current(generation)
+        else:
+            current_unchanged = self._client._capture_session()[0] == generation
+        if not current_unchanged:
             raise SessionChangedError
 
     def confirm_email(self, *, token: str) -> None:

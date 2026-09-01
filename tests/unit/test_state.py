@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from base64 import urlsafe_b64encode
 from dataclasses import FrozenInstanceError, dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -78,6 +80,13 @@ def _confirmed_email_change_profile() -> AuthConfirmEmailChangeResponse200:
     return AuthConfirmEmailChangeResponse200.from_dict(
         _user_profile(email="new@example.com").to_dict()
     )
+
+
+def _access_token_with_session_id(session_id: str) -> str:
+    payload = urlsafe_b64encode(json.dumps({"session_id": session_id}).encode()).rstrip(
+        b"="
+    )
+    return f"header.{payload.decode()}.signature"
 
 
 class StateTransport:
@@ -758,7 +767,14 @@ def test_delete_session_requires_a_current_session() -> None:
 def test_delete_session_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    session_id = "00000000-0000-4000-8000-000000000099"
+    client.auth.set_session(
+        Session(
+            access_token=_access_token_with_session_id(session_id),
+            refresh_token="original-refresh",
+            user_id="original-user",
+        )
+    )
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -771,9 +787,26 @@ def test_delete_session_rejects_a_stale_response() -> None:
     transport.on_delete_session = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.delete_session(session_id="00000000-0000-4000-8000-000000000099")
+        client.auth.delete_session(session_id=session_id)
 
     assert client.auth.get_session() == replacement
+
+
+def test_delete_session_clears_the_deleted_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    session_id = "00000000-0000-4000-8000-000000000099"
+    client.auth.set_session(
+        Session(
+            access_token=_access_token_with_session_id(session_id),
+            refresh_token="current-refresh",
+            user_id="current-user",
+        )
+    )
+
+    client.auth.delete_session(session_id=session_id)
+
+    assert client.auth.get_session() is None
 
 
 def test_get_user_returns_an_immutable_server_validated_profile() -> None:
