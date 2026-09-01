@@ -9,6 +9,9 @@ from volcano_sdk import AuthenticationError
 from volcano_sdk._generated.models.auth_get_user_response_200 import (
     AuthGetUserResponse200,
 )
+from volcano_sdk._generated.models.auth_update_user_response_200 import (
+    AuthUpdateUserResponse200,
+)
 from volcano_sdk._generated.types import Unset
 from volcano_sdk._transport import GeneratedTransport
 
@@ -104,6 +107,77 @@ def test_generated_transport_normalizes_malformed_current_user_json() -> None:
 
     with pytest.raises(AuthenticationError, match="Expected a complete user profile"):
         transport.auth_get_user(authorization="access-token")
+
+
+def test_generated_transport_updates_the_current_user() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "user": {
+                    "id": "00000000-0000-4000-8000-000000000010",
+                    "email": "user@example.com",
+                    "status": "active",
+                    "user_metadata": {"display_name": "Grace"},
+                }
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_update_user(
+        authorization="access-token",
+        password="new-secret",
+        metadata={"display_name": "Grace", "avatar": None},
+    )
+
+    assert response.status_code == 200
+    assert isinstance(response.payload, AuthUpdateUserResponse200)
+    assert not isinstance(response.payload.user, Unset)
+    assert response.payload.user.email == "user@example.com"
+    assert requests[0].method == "PUT"
+    assert requests[0].url.path == "/auth/user"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert json.loads(requests[0].content) == {
+        "password": "new-secret",
+        "user_metadata": {"display_name": "Grace", "avatar": None},
+    }
+
+
+def test_generated_transport_omits_absent_update_fields() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "user": {
+                    "id": "00000000-0000-4000-8000-000000000010",
+                    "email": "user@example.com",
+                    "status": "active",
+                }
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    transport.auth_update_user(
+        authorization="access-token",
+        password=None,
+        metadata=None,
+    )
+
+    assert json.loads(requests[0].content) == {}
 
 
 def test_generated_transport_logs_out_with_the_anon_key_and_refresh_token() -> None:
