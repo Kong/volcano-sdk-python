@@ -471,7 +471,7 @@ class Auth:
         self,
         callback: AuthStateCallback,
     ) -> AuthSubscription:
-        """Observe local session changes until the subscription is cancelled."""
+        """Queue initial state, then observe changes until cancellation."""
         if not callable(callback):
             raise TypeError(_INVALID_AUTH_CALLBACK)
         return self._client._subscribe_auth_state_change(callback)

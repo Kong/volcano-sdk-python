@@ -323,9 +323,10 @@ subscription = client.auth.on_auth_state_change(handle_auth_change)
 subscription.unsubscribe()
 ```
 
-Registration immediately emits `INITIAL_SESSION`. Successful session creation, refresh, and local
-clearing emit `SIGNED_IN`, `TOKEN_REFRESHED`, and `SIGNED_OUT`. Callbacks are delivered locally in
-transition order after the state lock is released, and callback failures cannot interrupt auth
+Registration queues `INITIAL_SESSION`. It normally arrives before registration returns, but an
+existing notification dispatch may deliver it afterward. Successful session creation, refresh, and
+local clearing emit `SIGNED_IN`, `TOKEN_REFRESHED`, and `SIGNED_OUT`. Callbacks are delivered locally
+in transition order after the state lock is released, and callback failures cannot interrupt auth
 operations. Unsubscribing prevents queued and future delivery; a callback already selected for
 delivery may finish after `unsubscribe()` returns. The SDK does not broadcast between processes or
 persist sessions.
