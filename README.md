@@ -106,6 +106,15 @@ print(result.new_email)
 The immutable result contains the server acknowledgement. Its `message` and `new_email` fields may
 be `None`. The request fails if there is no active session or that session changes in flight.
 
+Cancel the pending change while keeping the current session:
+
+```python
+client.auth.cancel_email_change()
+```
+
+Success returns `None`. A successful stale response is rejected if another authentication operation
+replaces the session while cancellation is in flight.
+
 Create an anonymous account and make its tokens the current session:
 
 ```python

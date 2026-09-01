@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 import httpx
 
 from ._generated.api.authentication import (
+    auth_cancel_email_change,
     auth_convert_anonymous,
     auth_get_user,
     auth_logout,
@@ -221,6 +222,14 @@ class AuthRequestEmailChangeTransport(Protocol):
         *,
         authorization: str,
         new_email: str,
+    ) -> TransportResponse: ...
+
+
+class AuthCancelEmailChangeTransport(Protocol):
+    def auth_cancel_email_change(
+        self,
+        *,
+        authorization: str,
     ) -> TransportResponse: ...
 
 
@@ -547,6 +556,11 @@ class GeneratedTransport:
                 **request_email_change_kwargs(body=body)
             )
         return self._raw_response(response)
+
+    def auth_cancel_email_change(self, *, authorization: str) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_cancel_email_change.sync_detailed(client=client)
+        return self._response(response)
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
         try:

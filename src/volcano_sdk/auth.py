@@ -12,6 +12,7 @@ from ._generated.models.auth_get_user_response_200 import AuthGetUserResponse200
 from ._generated.models.auth_update_user_response_200 import AuthUpdateUserResponse200
 from ._generated.types import Unset
 from ._transport import (
+    AuthCancelEmailChangeTransport,
     AuthConfirmEmailTransport,
     AuthConvertAnonymousTransport,
     AuthForgotPasswordTransport,
@@ -278,6 +279,20 @@ class Auth:
         if self._client._capture_session()[0] != generation:
             raise SessionChangedError
         return result
+
+    def cancel_email_change(self) -> None:
+        """Cancel a pending email change without changing the current session."""
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast("AuthCancelEmailChangeTransport", self._client._transport)
+        response = invoke(
+            transport.auth_cancel_email_change,
+            authorization=current.access_token,
+        )
+        response_payload(response, 200)
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
 
     def confirm_email(self, *, token: str) -> None:
         """Confirm an email with its token without changing local state."""
