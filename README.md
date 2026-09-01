@@ -131,8 +131,9 @@ Sign out every other device while keeping the current session active:
 client.auth.delete_all_other_sessions()
 ```
 
-Success returns `None`. A successful stale response is rejected if another authentication operation
-replaces the current session while deletion is in flight.
+Success returns `None`. Do not replace the client's session while this request is in flight: the
+server may revoke that replacement as an "other" session. If replacement occurs, the method raises
+`SessionChangedError` instead of acknowledging a stale result.
 
 Create an anonymous account and make its tokens the current session:
 
