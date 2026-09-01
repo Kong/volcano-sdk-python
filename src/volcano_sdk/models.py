@@ -112,7 +112,7 @@ class SessionPage:
 class LinkedOAuthProvider:
     """OAuth provider linked to the current account."""
 
-    provider: OAuthProviderName
+    provider: str
     linked_at: datetime
     updated_at: datetime
 

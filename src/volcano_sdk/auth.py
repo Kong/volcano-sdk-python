@@ -285,10 +285,9 @@ def _session_page_from_payload(payload: object) -> SessionPage:
 def _linked_oauth_provider_from_model(
     item: AuthListOAuthProvidersResponse200ProvidersItem,
 ) -> LinkedOAuthProvider:
-    try:
-        provider = _oauth_provider_name(item.provider)
-    except ValueError as error:
-        raise VolcanoError(_INVALID_LINKED_OAUTH_PROVIDERS) from error
+    provider = item.provider
+    if not isinstance(provider, str) or not provider.strip():
+        raise VolcanoError(_INVALID_LINKED_OAUTH_PROVIDERS)
     return LinkedOAuthProvider(
         provider=provider,
         linked_at=_linked_oauth_datetime(item.linked_at),

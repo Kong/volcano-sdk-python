@@ -944,6 +944,30 @@ def test_list_linked_oauth_providers_rejects_an_incomplete_item() -> None:
         client.auth.list_linked_oauth_providers()
 
 
+def test_list_linked_oauth_providers_accepts_a_future_provider_name() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    transport.list_oauth_providers_response = Response(
+        200,
+        AuthListOAuthProvidersResponse200.from_dict(
+            {
+                "providers": [
+                    {
+                        "provider": "future-provider",
+                        "linked_at": "2026-08-30T12:00:00Z",
+                        "updated_at": "2026-09-01T12:00:00Z",
+                    }
+                ]
+            }
+        ),
+    )
+
+    result = client.auth.list_linked_oauth_providers()
+
+    assert result[0].provider == "future-provider"
+
+
 def test_list_linked_oauth_providers_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
