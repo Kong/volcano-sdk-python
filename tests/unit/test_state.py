@@ -14,6 +14,9 @@ from volcano_sdk import (
     SessionChangedError,
     VolcanoClient,
 )
+from volcano_sdk._generated.models.auth_convert_anonymous_response_200 import (
+    AuthConvertAnonymousResponse200,
+)
 from volcano_sdk._generated.models.auth_get_user_response_200 import (
     AuthGetUserResponse200,
 )
@@ -61,6 +64,13 @@ def _updated_user_profile() -> AuthUpdateUserResponse200:
     return AuthUpdateUserResponse200.from_dict(_user_profile().to_dict())
 
 
+def _converted_user_profile() -> AuthConvertAnonymousResponse200:
+    payload = _user_profile().to_dict()
+    payload["user"]["email"] = "converted@example.com"
+    payload["user"]["email_confirmed"] = False
+    return AuthConvertAnonymousResponse200.from_dict(payload)
+
+
 class StateTransport:
     def __init__(self) -> None:
         self.next_access_token = "access-1"
@@ -82,6 +92,9 @@ class StateTransport:
         )
         self.anonymous_signin_calls: list[dict[str, Any]] = []
         self.on_anonymous_signin: Callable[[], None] | None = None
+        self.anonymous_conversion_response = Response(200, _converted_user_profile())
+        self.anonymous_conversion_calls: list[dict[str, Any]] = []
+        self.on_anonymous_conversion: Callable[[], None] | None = None
         self.forgot_password_response = Response(
             200,
             {"message": "If the email exists, a password reset link has been sent."},
@@ -146,6 +159,13 @@ class StateTransport:
         if self.on_anonymous_signin is not None:
             self.on_anonymous_signin()
         return self.anonymous_signin_response
+
+    def auth_convert_anonymous(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("anonymous_conversion", kwargs["authorization"]))
+        self.anonymous_conversion_calls.append(kwargs)
+        if self.on_anonymous_conversion is not None:
+            self.on_anonymous_conversion()
+        return self.anonymous_conversion_response
 
     def auth_forgot_password(self, **kwargs: Any) -> Response:
         self.authorizations.append(("forgot_password", kwargs["authorization"]))
@@ -377,6 +397,61 @@ def test_sign_in_anonymously_preserves_session_when_disabled() -> None:
         client.auth.sign_in_anonymously()
 
     assert client.auth.get_session() is established
+
+
+def test_convert_anonymous_returns_the_user_without_replacing_the_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in_anonymously()
+
+    user = client.auth.convert_anonymous(
+        email="converted@example.com",
+        password="secret",
+        metadata={"display_name": "Ada"},
+    )
+
+    assert user.email == "converted@example.com"
+    assert user.email_confirmed is False
+    assert client.auth.get_session() is established
+    assert transport.anonymous_conversion_calls == [
+        {
+            "authorization": "anonymous-access",
+            "email": "converted@example.com",
+            "password": "secret",
+            "metadata": {"display_name": "Ada"},
+        }
+    ]
+
+
+def test_convert_anonymous_requires_a_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="No active session"):
+        client.auth.convert_anonymous(email="converted@example.com", password="secret")
+
+    assert transport.anonymous_conversion_calls == []
+
+
+def test_convert_anonymous_does_not_return_a_stale_response() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in_anonymously()
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="replacement-user",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_anonymous_conversion = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.convert_anonymous(email="converted@example.com", password="secret")
+
+    assert client.auth.get_session() == replacement
 
 
 def test_get_user_returns_an_immutable_server_validated_profile() -> None:

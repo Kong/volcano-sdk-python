@@ -87,6 +87,45 @@ def test_generated_transport_signs_in_anonymously_with_metadata() -> None:
     assert json.loads(requests[0].content) == {"user_metadata": {"device": "mobile"}}
 
 
+def test_generated_transport_converts_an_anonymous_user() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "user": {
+                    "id": "00000000-0000-4000-8000-000000000099",
+                    "email": "converted@example.com",
+                    "status": "active",
+                }
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_convert_anonymous(
+        authorization="anonymous-access",
+        email="converted@example.com",
+        password="secret",
+        metadata={"display_name": "Ada"},
+    )
+
+    assert response.status_code == 200
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/auth/user/convert-anonymous"
+    assert requests[0].headers["authorization"] == "Bearer anonymous-access"
+    assert json.loads(requests[0].content) == {
+        "email": "converted@example.com",
+        "password": "secret",
+        "user_metadata": {"display_name": "Ada"},
+    }
+
+
 def test_generated_transport_requests_a_password_reset_with_the_anon_key() -> None:
     requests: list[httpx.Request] = []
 

@@ -5,11 +5,15 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol, TypeVar, cast
 
+from ._generated.models.auth_convert_anonymous_response_200 import (
+    AuthConvertAnonymousResponse200,
+)
 from ._generated.models.auth_get_user_response_200 import AuthGetUserResponse200
 from ._generated.models.auth_update_user_response_200 import AuthUpdateUserResponse200
 from ._generated.types import Unset
 from ._transport import (
     AuthConfirmEmailTransport,
+    AuthConvertAnonymousTransport,
     AuthForgotPasswordTransport,
     AuthGetUserTransport,
     AuthLogoutTransport,
@@ -94,7 +98,11 @@ def _sign_up_result_from_payload(payload: object) -> SignUpResult:
 def _user_from_payload(payload: object) -> User:
     if not isinstance(
         payload,
-        (AuthGetUserResponse200, AuthUpdateUserResponse200),
+        (
+            AuthConvertAnonymousResponse200,
+            AuthGetUserResponse200,
+            AuthUpdateUserResponse200,
+        ),
     ) or isinstance(payload.user, Unset):
         raise AuthenticationError(_INVALID_USER)
     user = payload.user
@@ -202,6 +210,30 @@ class Auth:
         if not self._client._set_session_if_current(session, generation):
             raise SessionChangedError
         return session
+
+    def convert_anonymous(
+        self,
+        *,
+        email: str,
+        password: str,
+        metadata: Mapping[str, object] | None = None,
+    ) -> User:
+        """Attach email credentials to the current anonymous account."""
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast("AuthConvertAnonymousTransport", self._client._transport)
+        response = invoke(
+            transport.auth_convert_anonymous,
+            authorization=current.access_token,
+            email=email,
+            password=password,
+            metadata=dict(metadata or {}),
+        )
+        user = _user_from_payload(response_payload(response, 200))
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
+        return user
 
     def reset_password_for_email(self, *, email: str) -> None:
         """Request a reset email without revealing whether the account exists."""
