@@ -9,6 +9,7 @@ from ._generated.models.auth_get_user_response_200 import AuthGetUserResponse200
 from ._generated.models.auth_update_user_response_200 import AuthUpdateUserResponse200
 from ._generated.types import Unset
 from ._transport import (
+    AuthConfirmEmailTransport,
     AuthForgotPasswordTransport,
     AuthGetUserTransport,
     AuthLogoutTransport,
@@ -189,6 +190,16 @@ class Auth:
             transport.auth_forgot_password,
             authorization=self._client._anon_token(),
             email=email,
+        )
+        response_payload(response, 200)
+
+    def confirm_email(self, *, token: str) -> None:
+        """Confirm an email with its token without changing local state."""
+        transport = cast("AuthConfirmEmailTransport", self._client._transport)
+        response = invoke(
+            transport.auth_confirm_email,
+            authorization=self._client._anon_token(),
+            token=token,
         )
         response_payload(response, 200)
 
