@@ -27,6 +27,9 @@ from ._generated.api.authentication.auth_cancel_email_change import (
 from ._generated.api.authentication.auth_confirm_email import (
     _get_kwargs as confirm_email_kwargs,
 )
+from ._generated.api.authentication.auth_delete_all_my_sessions import (
+    _get_kwargs as delete_all_my_sessions_kwargs,
+)
 from ._generated.api.authentication.auth_forgot_password import (
     _get_kwargs as forgot_password_kwargs,
 )
@@ -243,6 +246,14 @@ class AuthConfirmEmailChangeTransport(Protocol):
         *,
         authorization: str,
         token: str,
+    ) -> TransportResponse: ...
+
+
+class AuthDeleteAllMySessionsTransport(Protocol):
+    def auth_delete_all_my_sessions(
+        self,
+        *,
+        authorization: str,
     ) -> TransportResponse: ...
 
 
@@ -604,6 +615,17 @@ class GeneratedTransport:
             content=response.content,
             headers=dict(response.headers),
         )
+
+    def auth_delete_all_my_sessions(
+        self,
+        *,
+        authorization: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **delete_all_my_sessions_kwargs()
+            )
+        return self._raw_response(response)
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
         try:

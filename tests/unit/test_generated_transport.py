@@ -207,6 +207,26 @@ def test_generated_transport_confirms_an_email_change() -> None:
     assert json.loads(requests[0].content) == {"email_change_token": "change-token"}
 
 
+def test_generated_transport_deletes_all_other_sessions() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(204)
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_delete_all_my_sessions(authorization="access-token")
+
+    assert response.status_code == 204
+    assert requests[0].method == "DELETE"
+    assert requests[0].url.path == "/auth/user/sessions"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
 def test_generated_transport_requests_a_password_reset_with_the_anon_key() -> None:
     requests: list[httpx.Request] = []
 
