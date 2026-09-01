@@ -6,6 +6,7 @@ from dataclasses import FrozenInstanceError, dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+import httpx
 import pytest
 
 from volcano_sdk import (
@@ -14,6 +15,7 @@ from volcano_sdk import (
     ServerError,
     Session,
     SessionChangedError,
+    TransportError,
     VolcanoClient,
 )
 from volcano_sdk._generated.models.auth_confirm_email_change_response_200 import (
@@ -31,6 +33,8 @@ from volcano_sdk._generated.models.auth_update_user_response_200 import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+_CONNECTION_LOST = "connection lost"
 
 
 @dataclass(frozen=True)
@@ -795,6 +799,23 @@ def test_delete_session_rejects_a_stale_response() -> None:
 def test_delete_session_clears_the_deleted_current_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
+    session_id = "00000000-0000-4000-8000-0000000000ab"
+    client.auth.set_session(
+        Session(
+            access_token=_access_token_with_session_id(session_id),
+            refresh_token="current-refresh",
+            user_id="current-user",
+        )
+    )
+
+    client.auth.delete_session(session_id=session_id.upper())
+
+    assert client.auth.get_session() is None
+
+
+def test_delete_session_clears_current_state_when_the_response_is_lost() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
     session_id = "00000000-0000-4000-8000-000000000099"
     client.auth.set_session(
         Session(
@@ -804,7 +825,13 @@ def test_delete_session_clears_the_deleted_current_session() -> None:
         )
     )
 
-    client.auth.delete_session(session_id=session_id)
+    def lose_response() -> None:
+        raise httpx.ReadError(_CONNECTION_LOST)
+
+    transport.on_delete_session = lose_response
+
+    with pytest.raises(TransportError, match="connection lost"):
+        client.auth.delete_session(session_id=session_id)
 
     assert client.auth.get_session() is None
 

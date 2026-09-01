@@ -360,16 +360,25 @@ class Auth:
         generation, current = self._client._capture_session()
         if current is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
+        current_session_id = _session_id_from_access_token(current.access_token)
         deletes_current = (
-            _session_id_from_access_token(current.access_token) == session_id
+            current_session_id is not None
+            and current_session_id.casefold() == session_id.casefold()
         )
         transport = cast("AuthDeleteMySessionTransport", self._client._transport)
-        response = invoke(
-            transport.auth_delete_my_session,
-            authorization=current.access_token,
-            session_id=session_id,
-        )
-        response_payload(response, 204)
+        try:
+            response = invoke(
+                transport.auth_delete_my_session,
+                authorization=current.access_token,
+                session_id=session_id,
+            )
+            response_payload(response, 204)
+        except VolcanoError as error:
+            if deletes_current and not self._client._clear_session_if_current(
+                generation
+            ):
+                raise SessionChangedError from error
+            raise
         if deletes_current:
             current_unchanged = self._client._clear_session_if_current(generation)
         else:
