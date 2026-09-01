@@ -12,13 +12,15 @@ from uuid import UUID, uuid4
 import httpx
 
 from ._generated.api.authentication import (
-    auth_forgot_password,
     auth_get_user,
     auth_logout,
     auth_refresh,
     auth_signin,
     auth_signup,
     auth_update_user,
+)
+from ._generated.api.authentication.auth_forgot_password import (
+    _get_kwargs as forgot_password_kwargs,
 )
 from ._generated.api.database_queries import query_database_select
 from ._generated.api.locks import acquire_project_lock, release_project_lock
@@ -66,7 +68,6 @@ HTTP_OK = 200
 HTTP_SERVER_ERROR_MIN = 500
 HTTP_SERVER_ERROR_MAX = 599
 _MALFORMED_USER_PROFILE = "Expected a complete user profile"
-_MALFORMED_RECOVERY_RESPONSE = "Expected a valid password reset response"
 ERROR_TYPES_BY_STATUS: dict[int, type[VolcanoError]] = {
     400: ValidationError,
     401: AuthenticationError,
@@ -303,6 +304,19 @@ class GeneratedTransport:
             headers=dict(response.headers),
         )
 
+    @staticmethod
+    def _raw_response(response: httpx.Response) -> TransportResponse:
+        try:
+            payload = json.loads(response.content)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            payload = None
+        return _GeneratedTransportResponse(
+            status_code=response.status_code,
+            payload=payload,
+            content=response.content,
+            headers=dict(response.headers),
+        )
+
     def auth_signin(
         self,
         *,
@@ -340,21 +354,11 @@ class GeneratedTransport:
         authorization: str,
         email: str,
     ) -> TransportResponse:
-        try:
-            with self._client(authorization) as client:
-                response = auth_forgot_password.sync_detailed(
-                    client=client,
-                    body=AuthForgotPasswordBody(email=email),
-                )
-        except (
-            AttributeError,
-            KeyError,
-            TypeError,
-            UnicodeDecodeError,
-            ValueError,
-        ) as error:
-            raise AuthenticationError(_MALFORMED_RECOVERY_RESPONSE) from error
-        return self._response(response)
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **forgot_password_kwargs(body=AuthForgotPasswordBody(email=email))
+            )
+        return self._raw_response(response)
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
         try:
