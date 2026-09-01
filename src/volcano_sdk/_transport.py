@@ -22,6 +22,9 @@ from ._generated.api.authentication import (
 from ._generated.api.authentication.auth_forgot_password import (
     _get_kwargs as forgot_password_kwargs,
 )
+from ._generated.api.authentication.auth_reset_password import (
+    _get_kwargs as reset_password_kwargs,
+)
 from ._generated.api.database_queries import query_database_select
 from ._generated.api.locks import acquire_project_lock, release_project_lock
 from ._generated.api.storage_objects import (
@@ -32,6 +35,7 @@ from ._generated.client import AuthenticatedClient
 from ._generated.models.auth_forgot_password_body import AuthForgotPasswordBody
 from ._generated.models.auth_logout_body import AuthLogoutBody
 from ._generated.models.auth_refresh_body import AuthRefreshBody
+from ._generated.models.auth_reset_password_body import AuthResetPasswordBody
 from ._generated.models.auth_signin_body import AuthSigninBody
 from ._generated.models.auth_signup_body import AuthSignupBody
 from ._generated.models.auth_signup_body_user_metadata import (
@@ -136,6 +140,16 @@ class AuthForgotPasswordTransport(Protocol):
         *,
         authorization: str,
         email: str,
+    ) -> TransportResponse: ...
+
+
+class AuthResetPasswordTransport(Protocol):
+    def auth_reset_password(
+        self,
+        *,
+        authorization: str,
+        token: str,
+        new_password: str,
     ) -> TransportResponse: ...
 
 
@@ -357,6 +371,20 @@ class GeneratedTransport:
         with self._client(authorization) as client:
             response = client.get_httpx_client().request(
                 **forgot_password_kwargs(body=AuthForgotPasswordBody(email=email))
+            )
+        return self._raw_response(response)
+
+    def auth_reset_password(
+        self,
+        *,
+        authorization: str,
+        token: str,
+        new_password: str,
+    ) -> TransportResponse:
+        body = AuthResetPasswordBody(token=token, new_password=new_password)
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **reset_password_kwargs(body=body)
             )
         return self._raw_response(response)
 

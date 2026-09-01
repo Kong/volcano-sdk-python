@@ -77,6 +77,19 @@ When transactional email is configured, Volcano sends the reset link. Success re
 the response is intentionally identical whether or not the email belongs to an account. Failures
 raise the same typed Volcano errors as other authentication operations.
 
+Set a new password with the recovery token from that email:
+
+```python
+client.auth.reset_password(
+    token="recovery-token",
+    new_password="new-secret",
+)
+```
+
+Success returns `None`. The reset revokes the recovered account's existing sessions and does not
+sign it in. The client keeps any unrelated local session unchanged; sign in with the new password
+when the reset flow completes.
+
 Copy a complete native session into another client's memory:
 
 ```python

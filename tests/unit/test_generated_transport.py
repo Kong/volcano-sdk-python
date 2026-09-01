@@ -135,6 +135,34 @@ def test_generated_transport_preserves_a_malformed_rate_limit_response() -> None
     assert caught.value.retry_after == 17
 
 
+def test_generated_transport_resets_a_password_with_the_anon_key() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"message": "Password reset successful"})
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_reset_password(
+        authorization="anon-key",
+        token="recovery-token",
+        new_password="new-secret",
+    )
+
+    assert response.status_code == 200
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/auth/reset-password"
+    assert requests[0].headers["authorization"] == "Bearer anon-key"
+    assert json.loads(requests[0].content) == {
+        "token": "recovery-token",
+        "new_password": "new-secret",
+    }
+
+
 def test_generated_transport_gets_the_current_user_with_the_access_token() -> None:
     requests: list[httpx.Request] = []
 
