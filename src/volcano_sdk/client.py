@@ -47,7 +47,7 @@ class VolcanoClient:
         self._next_auth_callback_id = 0
         self._auth_notifications: deque[
             tuple[
-                tuple[AuthStateCallback, ...],
+                tuple[int, ...],
                 AuthChangeEvent,
                 Session | None,
             ]
@@ -102,8 +102,8 @@ class VolcanoClient:
         with self._session_lock:
             self._current_session = session
             self._session_generation += 1
-            callbacks = tuple(self._auth_callbacks.values())
-            dispatch = self._enqueue_auth_state_change(callbacks, event, session)
+            callback_ids = tuple(self._auth_callbacks)
+            dispatch = self._enqueue_auth_state_change(callback_ids, event, session)
         if dispatch:
             self._drain_auth_state_changes()
 
@@ -123,8 +123,8 @@ class VolcanoClient:
                 return False
             self._current_session = session
             self._session_generation += 1
-            callbacks = tuple(self._auth_callbacks.values())
-            dispatch = self._enqueue_auth_state_change(callbacks, event, session)
+            callback_ids = tuple(self._auth_callbacks)
+            dispatch = self._enqueue_auth_state_change(callback_ids, event, session)
         if dispatch:
             self._drain_auth_state_changes()
         return True
@@ -140,8 +140,8 @@ class VolcanoClient:
                 return False
             self._current_session = None
             self._session_generation += 1
-            callbacks = tuple(self._auth_callbacks.values())
-            dispatch = self._enqueue_auth_state_change(callbacks, event, None)
+            callback_ids = tuple(self._auth_callbacks)
+            dispatch = self._enqueue_auth_state_change(callback_ids, event, None)
         if dispatch:
             self._drain_auth_state_changes()
         return True
@@ -156,7 +156,7 @@ class VolcanoClient:
             self._auth_callbacks[callback_id] = callback
             current = self._current_session
             dispatch = self._enqueue_auth_state_change(
-                (callback,),
+                (callback_id,),
                 "INITIAL_SESSION",
                 current,
             )
@@ -172,33 +172,45 @@ class VolcanoClient:
 
     def _enqueue_auth_state_change(
         self,
-        callbacks: tuple[AuthStateCallback, ...],
+        callback_ids: tuple[int, ...],
         event: AuthChangeEvent,
         session: Session | None,
     ) -> bool:
-        if not callbacks:
+        if not callback_ids:
             return False
-        self._auth_notifications.append((callbacks, event, session))
+        self._auth_notifications.append((callback_ids, event, session))
         if self._dispatching_auth_notifications:
             return False
         self._dispatching_auth_notifications = True
         return True
 
     def _drain_auth_state_changes(self) -> None:
-        while True:
-            with self._session_lock:
-                if not self._auth_notifications:
+        completed = False
+        try:
+            while True:
+                with self._session_lock:
+                    if not self._auth_notifications:
+                        self._dispatching_auth_notifications = False
+                        completed = True
+                        return
+                    callback_ids, event, session = self._auth_notifications.popleft()
+                self._notify_auth_state_change(callback_ids, event, session)
+        finally:
+            if not completed:
+                with self._session_lock:
+                    self._auth_notifications.clear()
                     self._dispatching_auth_notifications = False
-                    return
-                callbacks, event, session = self._auth_notifications.popleft()
-            self._notify_auth_state_change(callbacks, event, session)
 
-    @staticmethod
     def _notify_auth_state_change(
-        callbacks: tuple[AuthStateCallback, ...],
+        self,
+        callback_ids: tuple[int, ...],
         event: AuthChangeEvent,
         session: Session | None,
     ) -> None:
-        for callback in callbacks:
+        for callback_id in callback_ids:
+            with self._session_lock:
+                callback = self._auth_callbacks.get(callback_id)
+            if callback is None:
+                continue
             with suppress(Exception):
                 callback(event, session)

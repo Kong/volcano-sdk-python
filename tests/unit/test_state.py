@@ -668,6 +668,53 @@ def test_auth_state_callbacks_preserve_order_during_reentrant_changes() -> None:
     ]
 
 
+def test_auth_state_unsubscribe_skips_queued_reentrant_changes() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    received: list[str] = []
+
+    def sign_out_after_sign_in(event: str, _session: Session | None) -> None:
+        if event == "SIGNED_IN":
+            client.auth.sign_out()
+
+    client.auth.on_auth_state_change(sign_out_after_sign_in)
+    subscription: AuthSubscription
+
+    def unsubscribe_after_sign_in(event: str, _session: Session | None) -> None:
+        received.append(event)
+        if event == "SIGNED_IN":
+            subscription.unsubscribe()
+
+    subscription = client.auth.on_auth_state_change(unsubscribe_after_sign_in)
+    received.clear()
+
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    assert received == ["SIGNED_IN"]
+
+
+def test_auth_state_dispatch_recovers_after_a_base_exception() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    received: list[str] = []
+
+    def interrupt_after_sign_in(event: str, _session: Session | None) -> None:
+        if event == "SIGNED_IN":
+            raise KeyboardInterrupt
+
+    interrupting = client.auth.on_auth_state_change(interrupt_after_sign_in)
+    client.auth.on_auth_state_change(lambda event, _session: received.append(event))
+    received.clear()
+
+    with pytest.raises(KeyboardInterrupt):
+        client.auth.sign_in(email="user@example.com", password="secret")
+
+    interrupting.unsubscribe()
+    client.auth.sign_out()
+
+    assert received == ["SIGNED_OUT"]
+
+
 def test_sign_up_returns_immutable_acknowledgement_without_session_change() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
