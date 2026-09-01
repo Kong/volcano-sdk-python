@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from volcano_sdk import AuthenticationError, RateLimitedError
+from volcano_sdk import AuthenticationError, RateLimitedError, VolcanoError
 from volcano_sdk._generated.models.auth_convert_anonymous_response_200 import (
     AuthConvertAnonymousResponse200,
 )
@@ -205,6 +205,89 @@ def test_generated_transport_confirms_an_email_change() -> None:
     assert requests[0].url.path == "/auth/user/confirm-email-change"
     assert requests[0].headers["authorization"] == "Bearer access-token"
     assert json.loads(requests[0].content) == {"email_change_token": "change-token"}
+
+
+def test_generated_transport_lists_sessions_with_offset_pagination() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "sessions": [
+                    {
+                        "id": "00000000-0000-4000-8000-000000000099",
+                        "user_id": "00000000-0000-4000-8000-000000000010",
+                        "provider": "email",
+                        "expires_at": "2026-09-02T12:00:00Z",
+                        "is_active": True,
+                        "is_current": True,
+                    }
+                ],
+                "total": 21,
+                "page": 2,
+                "limit": 10,
+                "total_pages": 3,
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_get_my_sessions(
+        authorization="access-token",
+        page=2,
+        limit=10,
+    )
+
+    assert response.status_code == 200
+    assert requests[0].method == "GET"
+    assert requests[0].url.path == "/auth/user/sessions"
+    assert dict(requests[0].url.params) == {
+        "page": "2",
+        "limit": "10",
+        "sort": "last_activity",
+    }
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
+def test_generated_transport_rejects_a_malformed_session_page() -> None:
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, content=b"not-json")
+        ),
+    )
+
+    with pytest.raises(VolcanoError, match="Expected a complete session page"):
+        transport.auth_get_my_sessions(
+            authorization="access-token",
+            page=1,
+            limit=20,
+        )
+
+
+def test_generated_transport_preserves_a_malformed_session_auth_error() -> None:
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(
+            lambda _request: httpx.Response(401, content=b"not-json")
+        ),
+    )
+
+    response = transport.auth_get_my_sessions(
+        authorization="access-token",
+        page=1,
+        limit=20,
+    )
+
+    with pytest.raises(AuthenticationError) as caught:
+        response_payload(response, 200)
+
+    assert caught.value.status == 401
 
 
 def test_generated_transport_deletes_all_other_sessions() -> None:

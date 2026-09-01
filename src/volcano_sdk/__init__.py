@@ -12,9 +12,18 @@ from .errors import (
     ValidationError,
     VolcanoError,
 )
-from .models import EmailChangeResult, LockLease, Session, SignUpResult, User
+from .models import (
+    AuthSession,
+    EmailChangeResult,
+    LockLease,
+    Session,
+    SessionPage,
+    SignUpResult,
+    User,
+)
 
 __all__ = [
+    "AuthSession",
     "AuthenticationError",
     "ConflictError",
     "EmailChangeResult",
@@ -24,6 +33,7 @@ __all__ = [
     "ServerError",
     "Session",
     "SessionChangedError",
+    "SessionPage",
     "SignUpResult",
     "TransportError",
     "User",

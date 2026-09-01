@@ -36,6 +36,9 @@ from ._generated.api.authentication.auth_delete_my_session import (
 from ._generated.api.authentication.auth_forgot_password import (
     _get_kwargs as forgot_password_kwargs,
 )
+from ._generated.api.authentication.auth_get_my_sessions import (
+    _get_kwargs as get_my_sessions_kwargs,
+)
 from ._generated.api.authentication.auth_request_email_change import (
     _get_kwargs as request_email_change_kwargs,
 )
@@ -62,6 +65,9 @@ from ._generated.models.auth_convert_anonymous_body_user_metadata import (
     AuthConvertAnonymousBodyUserMetadata,
 )
 from ._generated.models.auth_forgot_password_body import AuthForgotPasswordBody
+from ._generated.models.auth_get_my_sessions_response_200 import (
+    AuthGetMySessionsResponse200,
+)
 from ._generated.models.auth_logout_body import AuthLogoutBody
 from ._generated.models.auth_refresh_body import AuthRefreshBody
 from ._generated.models.auth_request_email_change_body import AuthRequestEmailChangeBody
@@ -107,6 +113,7 @@ HTTP_OK = 200
 HTTP_SERVER_ERROR_MIN = 500
 HTTP_SERVER_ERROR_MAX = 599
 _MALFORMED_USER_PROFILE = "Expected a complete user profile"
+_MALFORMED_SESSION_PAGE = "Expected a complete session page"
 ERROR_TYPES_BY_STATUS: dict[int, type[VolcanoError]] = {
     400: ValidationError,
     401: AuthenticationError,
@@ -266,6 +273,16 @@ class AuthDeleteMySessionTransport(Protocol):
         *,
         authorization: str,
         session_id: str,
+    ) -> TransportResponse: ...
+
+
+class AuthGetMySessionsTransport(Protocol):
+    def auth_get_my_sessions(
+        self,
+        *,
+        authorization: str,
+        page: int,
+        limit: int,
     ) -> TransportResponse: ...
 
 
@@ -650,6 +667,36 @@ class GeneratedTransport:
                 **delete_my_session_kwargs(session_id=cast("UUID", session_id))
             )
         return self._raw_response(response)
+
+    def auth_get_my_sessions(
+        self,
+        *,
+        authorization: str,
+        page: int,
+        limit: int,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **get_my_sessions_kwargs(page=page, limit=limit)
+            )
+        if response.status_code != HTTP_OK:
+            return self._raw_response(response)
+        try:
+            payload = AuthGetMySessionsResponse200.from_dict(response.json())
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
+            raise VolcanoError(_MALFORMED_SESSION_PAGE) from error
+        return _GeneratedTransportResponse(
+            status_code=response.status_code,
+            payload=payload,
+            content=response.content,
+            headers=dict(response.headers),
+        )
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
         try:

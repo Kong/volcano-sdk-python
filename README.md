@@ -125,6 +125,18 @@ print(user.email)
 The method returns the immutable updated user without replacing the active session. A successful
 stale response is rejected if another authentication operation replaces that session in flight.
 
+List sessions using the stable activity-ordered offset pagination:
+
+```python
+page = client.auth.list_sessions(page=1, limit=20)
+for session in page.sessions:
+    print(session.id, session.user_agent, session.is_current)
+```
+
+The method returns immutable `SessionPage` and `AuthSession` values. It raises
+`SessionChangedError` instead of returning a page for a session that was replaced while the request
+was in flight. Sort, filter, and cursor controls are not yet exposed by this facade.
+
 Sign out every other device while keeping the current session active:
 
 ```python
