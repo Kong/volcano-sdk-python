@@ -76,6 +76,11 @@ class StateTransport:
             {"message": "If the email exists, a password reset link has been sent."},
         )
         self.forgot_password_calls: list[dict[str, Any]] = []
+        self.reset_password_response = Response(
+            200,
+            {"message": "Password reset successful. Please sign in again."},
+        )
+        self.reset_password_calls: list[dict[str, Any]] = []
         self.user_response = Response(
             200,
             _user_profile(),
@@ -118,6 +123,11 @@ class StateTransport:
         self.authorizations.append(("forgot_password", kwargs["authorization"]))
         self.forgot_password_calls.append(kwargs)
         return self.forgot_password_response
+
+    def auth_reset_password(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("reset_password", kwargs["authorization"]))
+        self.reset_password_calls.append(kwargs)
+        return self.reset_password_response
 
     def auth_get_user(self, **kwargs: Any) -> Response:
         self.authorizations.append(("get_user", kwargs["authorization"]))
@@ -345,6 +355,35 @@ def test_reset_password_for_email_accepts_a_message_less_acknowledgement() -> No
     transport.forgot_password_response = Response(200, {})
 
     client.auth.reset_password_for_email(email="user@example.com")
+
+
+def test_reset_password_uses_the_recovery_token_without_session_change() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="other@example.com", password="secret")
+
+    client.auth.reset_password(token="recovery-token", new_password="new-secret")
+
+    assert transport.reset_password_calls == [
+        {
+            "authorization": "anon",
+            "token": "recovery-token",
+            "new_password": "new-secret",
+        }
+    ]
+    assert client.auth.get_session() is established
+
+
+def test_reset_password_raises_a_typed_error_without_session_change() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="other@example.com", password="secret")
+    transport.reset_password_response = Response(401)
+
+    with pytest.raises(AuthenticationError):
+        client.auth.reset_password(token="expired-token", new_password="new-secret")
+
+    assert client.auth.get_session() is established
 
 
 def test_get_user_accepts_a_server_profile_without_an_email() -> None:

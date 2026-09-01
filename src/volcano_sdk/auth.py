@@ -13,6 +13,7 @@ from ._transport import (
     AuthGetUserTransport,
     AuthLogoutTransport,
     AuthRefreshTransport,
+    AuthResetPasswordTransport,
     AuthSignUpTransport,
     AuthUpdateUserTransport,
     Transport,
@@ -188,6 +189,17 @@ class Auth:
             transport.auth_forgot_password,
             authorization=self._client._anon_token(),
             email=email,
+        )
+        response_payload(response, 200)
+
+    def reset_password(self, *, token: str, new_password: str) -> None:
+        """Set a new password with a recovery token without changing local state."""
+        transport = cast("AuthResetPasswordTransport", self._client._transport)
+        response = invoke(
+            transport.auth_reset_password,
+            authorization=self._client._anon_token(),
+            token=token,
+            new_password=new_password,
         )
         response_payload(response, 200)
 
