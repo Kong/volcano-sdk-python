@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 import httpx
 
 from ._generated.api.authentication import (
+    auth_confirm_email_change,
     auth_convert_anonymous,
     auth_get_user,
     auth_logout,
@@ -49,6 +50,7 @@ from ._generated.api.storage_objects import (
 )
 from ._generated.client import AuthenticatedClient
 from ._generated.models.auth_confirm_email_body import AuthConfirmEmailBody
+from ._generated.models.auth_confirm_email_change_body import AuthConfirmEmailChangeBody
 from ._generated.models.auth_convert_anonymous_body import AuthConvertAnonymousBody
 from ._generated.models.auth_convert_anonymous_body_user_metadata import (
     AuthConvertAnonymousBodyUserMetadata,
@@ -232,6 +234,15 @@ class AuthCancelEmailChangeTransport(Protocol):
         self,
         *,
         authorization: str,
+    ) -> TransportResponse: ...
+
+
+class AuthConfirmEmailChangeTransport(Protocol):
+    def auth_confirm_email_change(
+        self,
+        *,
+        authorization: str,
+        token: str,
     ) -> TransportResponse: ...
 
 
@@ -563,6 +574,36 @@ class GeneratedTransport:
         with self._client(authorization) as client:
             response = client.get_httpx_client().request(**cancel_email_change_kwargs())
         return self._raw_response(response)
+
+    def auth_confirm_email_change(
+        self,
+        *,
+        authorization: str,
+        token: str,
+    ) -> TransportResponse:
+        body = AuthConfirmEmailChangeBody(email_change_token=token)
+        try:
+            with self._client(authorization) as client:
+                response = auth_confirm_email_change.sync_detailed(
+                    client=client,
+                    body=body,
+                )
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
+            raise AuthenticationError(_MALFORMED_USER_PROFILE) from error
+        if int(response.status_code) != HTTP_OK:
+            return self._response(response)
+        return _GeneratedTransportResponse(
+            status_code=int(response.status_code),
+            payload=response.parsed,
+            content=response.content,
+            headers=dict(response.headers),
+        )
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
         try:
