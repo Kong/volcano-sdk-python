@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).parents[2]
 FEATURE_SHA256 = {
-    "auth.feature": "f776b250138013fd7a9040781a8d30bb5d7784a35573abbc2c1e010d515e251d",
+    "auth.feature": "c237deb0b3be98d64689699a0ffdcd272e7ef027a2b69439b1768195042ed493",
     "database.feature": (
         "4685b29357a621068b25984ff0de29cd4c504eebe5cfb597f0b999e29878a668"
     ),
@@ -65,11 +65,13 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "an authenticated client",
         "exactly the fixture row is returned",
         "one client subscribes and the other publishes the contract message",
+        "the auth-state listener observes the signed-in contract user",
         "the SDK operation succeeds",
         "the client acquires and releases the contract lock",
         'the client selects the contract table where "slug" equals the fixture slug',
         "the client reads the current session",
         "the client refreshes the current session",
+        "the client listens for auth state changes",
         "the client signs out",
         "the client signs in with the contract user's credentials",
         "the client uploads and downloads the contract object",
