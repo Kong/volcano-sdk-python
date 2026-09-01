@@ -4,6 +4,7 @@ import json
 from base64 import urlsafe_b64encode
 from dataclasses import FrozenInstanceError, dataclass
 from datetime import datetime
+from threading import Event, Thread
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
@@ -712,7 +713,54 @@ def test_auth_state_dispatch_recovers_after_a_base_exception() -> None:
     interrupting.unsubscribe()
     client.auth.sign_out()
 
-    assert received == ["SIGNED_OUT"]
+    assert received == ["SIGNED_IN", "SIGNED_OUT"]
+
+
+def test_auth_state_subscription_rolls_back_when_initial_delivery_aborts() -> None:
+    client = VolcanoClient(anon_key="anon", _transport=StateTransport())
+    received: list[str] = []
+
+    def interrupt(event: str, _session: Session | None) -> None:
+        received.append(event)
+        raise GeneratorExit
+
+    with pytest.raises(GeneratorExit):
+        client.auth.on_auth_state_change(interrupt)
+
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    assert received == ["INITIAL_SESSION"]
+
+
+def test_auth_state_dispatch_preserves_concurrent_notifications_on_abort() -> None:
+    client = VolcanoClient(anon_key="anon", _transport=StateTransport())
+    entered = Event()
+    release = Event()
+    received: list[str] = []
+
+    def interrupt(event: str, _session: Session | None) -> None:
+        if event == "SIGNED_IN":
+            entered.set()
+            assert release.wait(timeout=1)
+            raise GeneratorExit
+
+    client.auth.on_auth_state_change(interrupt)
+    client.auth.on_auth_state_change(lambda event, _session: received.append(event))
+    received.clear()
+
+    def sign_out() -> None:
+        assert entered.wait(timeout=1)
+        client.auth.sign_out()
+        release.set()
+
+    sign_out_thread = Thread(target=sign_out)
+    sign_out_thread.start()
+    with pytest.raises(GeneratorExit):
+        client.auth.sign_in(email="user@example.com", password="secret")
+    sign_out_thread.join(timeout=1)
+
+    assert not sign_out_thread.is_alive()
+    assert received == ["SIGNED_IN", "SIGNED_OUT"]
 
 
 def test_sign_up_returns_immutable_acknowledgement_without_session_change() -> None:

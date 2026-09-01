@@ -185,32 +185,40 @@ class VolcanoClient:
         return True
 
     def _drain_auth_state_changes(self) -> None:
-        completed = False
-        try:
-            while True:
-                with self._session_lock:
-                    if not self._auth_notifications:
-                        self._dispatching_auth_notifications = False
-                        completed = True
-                        return
-                    callback_ids, event, session = self._auth_notifications.popleft()
-                self._notify_auth_state_change(callback_ids, event, session)
-        finally:
-            if not completed:
-                with self._session_lock:
-                    self._auth_notifications.clear()
+        failure: BaseException | None = None
+        while True:
+            with self._session_lock:
+                if not self._auth_notifications:
                     self._dispatching_auth_notifications = False
+                    break
+                callback_ids, event, session = self._auth_notifications.popleft()
+            current_failure = self._notify_auth_state_change(
+                callback_ids,
+                event,
+                session,
+            )
+            if failure is None:
+                failure = current_failure
+        if failure is not None:
+            raise failure
 
     def _notify_auth_state_change(
         self,
         callback_ids: tuple[int, ...],
         event: AuthChangeEvent,
         session: Session | None,
-    ) -> None:
+    ) -> BaseException | None:
+        failure: BaseException | None = None
         for callback_id in callback_ids:
             with self._session_lock:
                 callback = self._auth_callbacks.get(callback_id)
             if callback is None:
                 continue
-            with suppress(Exception):
-                callback(event, session)
+            try:
+                with suppress(Exception):
+                    callback(event, session)
+            except (GeneratorExit, KeyboardInterrupt, SystemExit) as caught:
+                self._unsubscribe_auth_state_change(callback_id)
+                if failure is None:
+                    failure = caught
+        return failure
