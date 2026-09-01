@@ -56,6 +56,38 @@ def test_generated_transport_signs_up_with_the_anon_key_and_metadata() -> None:
     }
 
 
+def test_generated_transport_requests_a_password_reset_with_the_anon_key() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "message": "If the email exists, a password reset link has been sent."
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_forgot_password(
+        authorization="anon-key",
+        email="user@example.com",
+    )
+
+    assert response.status_code == 200
+    assert response.payload == {
+        "message": "If the email exists, a password reset link has been sent."
+    }
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/auth/forgot-password"
+    assert requests[0].headers["authorization"] == "Bearer anon-key"
+    assert json.loads(requests[0].content) == {"email": "user@example.com"}
+
+
 def test_generated_transport_gets_the_current_user_with_the_access_token() -> None:
     requests: list[httpx.Request] = []
 

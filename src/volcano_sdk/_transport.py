@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 import httpx
 
 from ._generated.api.authentication import (
+    auth_forgot_password,
     auth_get_user,
     auth_logout,
     auth_refresh,
@@ -26,6 +27,7 @@ from ._generated.api.storage_objects import (
     upload_storage_object,
 )
 from ._generated.client import AuthenticatedClient
+from ._generated.models.auth_forgot_password_body import AuthForgotPasswordBody
 from ._generated.models.auth_logout_body import AuthLogoutBody
 from ._generated.models.auth_refresh_body import AuthRefreshBody
 from ._generated.models.auth_signin_body import AuthSigninBody
@@ -123,6 +125,15 @@ class AuthSignUpTransport(Protocol):
         email: str,
         password: str,
         metadata: dict[str, object],
+    ) -> TransportResponse: ...
+
+
+class AuthForgotPasswordTransport(Protocol):
+    def auth_forgot_password(
+        self,
+        *,
+        authorization: str,
+        email: str,
     ) -> TransportResponse: ...
 
 
@@ -320,6 +331,19 @@ class GeneratedTransport:
         )
         with self._client(authorization) as client:
             response = auth_signup.sync_detailed(client=client, body=body)
+        return self._response(response)
+
+    def auth_forgot_password(
+        self,
+        *,
+        authorization: str,
+        email: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = auth_forgot_password.sync_detailed(
+                client=client,
+                body=AuthForgotPasswordBody(email=email),
+            )
         return self._response(response)
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
