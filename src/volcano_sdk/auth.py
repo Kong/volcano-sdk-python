@@ -26,6 +26,9 @@ from ._generated.models.auth_list_o_auth_providers_response_200 import (
     AuthListOAuthProvidersResponse200,
 )
 from ._generated.models.auth_update_user_response_200 import AuthUpdateUserResponse200
+from ._generated.models.get_o_auth_provider_token_response_200 import (
+    GetOAuthProviderTokenResponse200,
+)
 from ._generated.types import Unset
 from ._transport import (
     AuthCancelEmailChangeTransport,
@@ -36,6 +39,7 @@ from ._transport import (
     AuthDeleteMySessionTransport,
     AuthForgotPasswordTransport,
     AuthGetMySessionsTransport,
+    AuthGetOAuthProviderTokenTransport,
     AuthGetUserTransport,
     AuthLinkOAuthProviderTransport,
     AuthListOAuthProvidersTransport,
@@ -64,6 +68,7 @@ from .models import (
     JSONValue,
     LinkedOAuthProvider,
     OAuthProviderName,
+    OAuthProviderTokenStatus,
     Session,
     SessionPage,
     SignUpResult,
@@ -77,6 +82,7 @@ _INVALID_USER = "Expected a complete user profile"
 _INVALID_SESSION_PAGE = "Expected a complete session page"
 _INVALID_LINKED_OAUTH_PROVIDERS = "Expected complete linked OAuth providers"
 _INVALID_OAUTH_LINK = "Expected an OAuth authorization URL"
+_INVALID_OAUTH_STATUS = "Expected complete OAuth provider token status"
 _UNSUPPORTED_OAUTH_PROVIDER = "Unsupported OAuth provider"
 _JWT_PARTS = 3
 _NO_ACTIVE_SESSION = "No active session"
@@ -329,6 +335,27 @@ def _oauth_link_from_payload(payload: object) -> str:
     return authorization_url
 
 
+def _oauth_provider_token_status_from_payload(
+    payload: object,
+) -> OAuthProviderTokenStatus:
+    if not isinstance(payload, GetOAuthProviderTokenResponse200):
+        raise VolcanoError(_INVALID_OAUTH_STATUS)
+    message = payload.message
+    provider = payload.provider
+    expires_in = payload.expires_in
+    if (
+        not _is_non_empty_string(message)
+        or not _is_non_empty_string(provider)
+        or type(expires_in) is not int
+    ):
+        raise VolcanoError(_INVALID_OAUTH_STATUS)
+    return OAuthProviderTokenStatus(
+        message=cast("str", message),
+        provider=cast("str", provider),
+        expires_in=expires_in,
+    )
+
+
 class AuthContext(Protocol):
     """Client capabilities required by the authentication facade."""
 
@@ -564,6 +591,32 @@ class Auth:
         response_payload(response, 204)
         if self._client._capture_session()[0] != generation:
             raise SessionChangedError
+
+    def get_oauth_provider_token(
+        self,
+        *,
+        provider: OAuthProviderName,
+    ) -> OAuthProviderTokenStatus:
+        """Return validity metadata for a server-held OAuth provider token."""
+        provider_name = _oauth_provider_name(provider)
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast(
+            "AuthGetOAuthProviderTokenTransport",
+            self._client._transport,
+        )
+        response = invoke(
+            transport.auth_get_oauth_provider_token,
+            authorization=current.access_token,
+            provider=provider_name,
+        )
+        result = _oauth_provider_token_status_from_payload(
+            response_payload(response, 200)
+        )
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
+        return result
 
     def delete_session(self, *, session_id: str) -> None:
         """Delete one session and clear local state when it is current."""

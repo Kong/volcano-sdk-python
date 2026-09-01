@@ -118,6 +118,15 @@ class LinkedOAuthProvider:
 
 
 @dataclass(frozen=True, slots=True)
+class OAuthProviderTokenStatus:
+    """Validity metadata for a server-held OAuth provider token."""
+
+    message: str
+    provider: str
+    expires_in: int
+
+
+@dataclass(frozen=True, slots=True)
 class SignUpResult:
     """Session-less acknowledgement returned after sign-up."""
 
