@@ -20,6 +20,9 @@ from ._generated.api.authentication import (
     auth_signup,
     auth_update_user,
 )
+from ._generated.api.authentication.auth_cancel_email_change import (
+    _get_kwargs as cancel_email_change_kwargs,
+)
 from ._generated.api.authentication.auth_confirm_email import (
     _get_kwargs as confirm_email_kwargs,
 )
@@ -221,6 +224,14 @@ class AuthRequestEmailChangeTransport(Protocol):
         *,
         authorization: str,
         new_email: str,
+    ) -> TransportResponse: ...
+
+
+class AuthCancelEmailChangeTransport(Protocol):
+    def auth_cancel_email_change(
+        self,
+        *,
+        authorization: str,
     ) -> TransportResponse: ...
 
 
@@ -546,6 +557,11 @@ class GeneratedTransport:
             response = client.get_httpx_client().request(
                 **request_email_change_kwargs(body=body)
             )
+        return self._raw_response(response)
+
+    def auth_cancel_email_change(self, *, authorization: str) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(**cancel_email_change_kwargs())
         return self._raw_response(response)
 
     def auth_get_user(self, *, authorization: str) -> TransportResponse:

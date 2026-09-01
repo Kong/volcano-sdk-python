@@ -154,6 +154,26 @@ def test_generated_transport_requests_an_email_change() -> None:
     assert json.loads(requests[0].content) == {"new_email": "new@example.com"}
 
 
+def test_generated_transport_cancels_an_email_change() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, content=b"")
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_cancel_email_change(authorization="access-token")
+
+    assert response.status_code == 200
+    assert requests[0].method == "DELETE"
+    assert requests[0].url.path == "/auth/user/cancel-email-change"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
 def test_generated_transport_requests_a_password_reset_with_the_anon_key() -> None:
     requests: list[httpx.Request] = []
 
