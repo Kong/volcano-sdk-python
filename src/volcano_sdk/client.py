@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 from collections import deque
-from contextlib import suppress
+from typing import TYPE_CHECKING
 
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
@@ -19,8 +19,30 @@ from .models import (
 from .realtime import CentrifugeFactory, Realtime
 from .storage import Storage
 
+if TYPE_CHECKING:
+    from types import TracebackType
+
 _NO_ACTIVE_SESSION = "No active session"
 _NO_SERVICE_KEY = "No service key configured"
+
+
+class _CallbackOutcome:
+    """Capture a callback failure without unwinding dispatcher ownership."""
+
+    def __init__(self) -> None:
+        self.error: BaseException | None = None
+
+    def __enter__(self) -> None:
+        return None
+
+    def __exit__(
+        self,
+        _error_type: type[BaseException] | None,
+        error: BaseException | None,
+        _traceback: TracebackType | None,
+    ) -> bool:
+        self.error = error
+        return error is not None
 
 
 class VolcanoClient:
@@ -214,11 +236,12 @@ class VolcanoClient:
                 callback = self._auth_callbacks.get(callback_id)
             if callback is None:
                 continue
-            try:
-                with suppress(Exception):
-                    callback(event, session)
-            except (GeneratorExit, KeyboardInterrupt, SystemExit) as caught:
-                self._unsubscribe_auth_state_change(callback_id)
-                if failure is None:
-                    failure = caught
+            outcome = _CallbackOutcome()
+            with outcome:
+                callback(event, session)
+            if outcome.error is None or isinstance(outcome.error, Exception):
+                continue
+            self._unsubscribe_auth_state_change(callback_id)
+            if failure is None:
+                failure = outcome.error
         return failure

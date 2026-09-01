@@ -63,6 +63,10 @@ _CONNECTION_LOST = "connection lost"
 _SUBSCRIBER_FAILED = "subscriber failed"
 
 
+class _SubscriberAbortError(BaseException):
+    pass
+
+
 @dataclass(frozen=True)
 class Response:
     status_code: int
@@ -719,17 +723,20 @@ def test_auth_state_dispatch_recovers_after_a_base_exception() -> None:
 def test_auth_state_subscription_rolls_back_when_initial_delivery_aborts() -> None:
     client = VolcanoClient(anon_key="anon", _transport=StateTransport())
     received: list[str] = []
+    observed: list[str] = []
 
     def interrupt(event: str, _session: Session | None) -> None:
         received.append(event)
-        raise GeneratorExit
+        raise _SubscriberAbortError
 
-    with pytest.raises(GeneratorExit):
+    with pytest.raises(_SubscriberAbortError):
         client.auth.on_auth_state_change(interrupt)
 
+    client.auth.on_auth_state_change(lambda event, _session: observed.append(event))
     client.auth.sign_in(email="user@example.com", password="secret")
 
     assert received == ["INITIAL_SESSION"]
+    assert observed == ["INITIAL_SESSION", "SIGNED_IN"]
 
 
 def test_auth_state_dispatch_preserves_concurrent_notifications_on_abort() -> None:
@@ -742,7 +749,7 @@ def test_auth_state_dispatch_preserves_concurrent_notifications_on_abort() -> No
         if event == "SIGNED_IN":
             entered.set()
             assert release.wait(timeout=1)
-            raise GeneratorExit
+            raise _SubscriberAbortError
 
     client.auth.on_auth_state_change(interrupt)
     client.auth.on_auth_state_change(lambda event, _session: received.append(event))
@@ -755,7 +762,7 @@ def test_auth_state_dispatch_preserves_concurrent_notifications_on_abort() -> No
 
     sign_out_thread = Thread(target=sign_out)
     sign_out_thread.start()
-    with pytest.raises(GeneratorExit):
+    with pytest.raises(_SubscriberAbortError):
         client.auth.sign_in(email="user@example.com", password="secret")
     sign_out_thread.join(timeout=1)
 
