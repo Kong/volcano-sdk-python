@@ -17,6 +17,7 @@ from ._generated.api.authentication import (
     auth_refresh,
     auth_signin,
     auth_signup,
+    auth_update_user,
 )
 from ._generated.api.database_queries import query_database_select
 from ._generated.api.locks import acquire_project_lock, release_project_lock
@@ -32,12 +33,16 @@ from ._generated.models.auth_signup_body import AuthSignupBody
 from ._generated.models.auth_signup_body_user_metadata import (
     AuthSignupBodyUserMetadata,
 )
+from ._generated.models.auth_update_user_body import AuthUpdateUserBody
+from ._generated.models.auth_update_user_body_user_metadata import (
+    AuthUpdateUserBodyUserMetadata,
+)
 from ._generated.models.database_select_request import DatabaseSelectRequest
 from ._generated.models.project_lock_lease_request import ProjectLockLeaseRequest
 from ._generated.models.upload_storage_object_files_body import (
     UploadStorageObjectFilesBody,
 )
-from ._generated.types import File
+from ._generated.types import UNSET, File
 from .errors import (
     AuthenticationError,
     ConflictError,
@@ -123,6 +128,16 @@ class AuthSignUpTransport(Protocol):
 
 class AuthGetUserTransport(Protocol):
     def auth_get_user(self, *, authorization: str) -> TransportResponse: ...
+
+
+class AuthUpdateUserTransport(Protocol):
+    def auth_update_user(
+        self,
+        *,
+        authorization: str,
+        password: str | None,
+        metadata: dict[str, object] | None,
+    ) -> TransportResponse: ...
 
 
 class Transport(Protocol):
@@ -311,6 +326,41 @@ class GeneratedTransport:
         try:
             with self._client(authorization) as client:
                 response = auth_get_user.sync_detailed(client=client)
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
+            raise AuthenticationError(_MALFORMED_USER_PROFILE) from error
+        if int(response.status_code) != HTTP_OK:
+            return self._response(response)
+        return _GeneratedTransportResponse(
+            status_code=int(response.status_code),
+            payload=response.parsed,
+            content=response.content,
+            headers=dict(response.headers),
+        )
+
+    def auth_update_user(
+        self,
+        *,
+        authorization: str,
+        password: str | None,
+        metadata: dict[str, object] | None,
+    ) -> TransportResponse:
+        body = AuthUpdateUserBody(
+            password=UNSET if password is None else password,
+            user_metadata=(
+                UNSET
+                if metadata is None
+                else AuthUpdateUserBodyUserMetadata.from_dict(metadata)
+            ),
+        )
+        try:
+            with self._client(authorization) as client:
+                response = auth_update_user.sync_detailed(client=client, body=body)
         except (
             AttributeError,
             KeyError,

@@ -6,12 +6,14 @@ from collections.abc import Mapping
 from typing import Protocol, TypeVar, cast
 
 from ._generated.models.auth_get_user_response_200 import AuthGetUserResponse200
+from ._generated.models.auth_update_user_response_200 import AuthUpdateUserResponse200
 from ._generated.types import Unset
 from ._transport import (
     AuthGetUserTransport,
     AuthLogoutTransport,
     AuthRefreshTransport,
     AuthSignUpTransport,
+    AuthUpdateUserTransport,
     Transport,
     invoke,
     response_payload,
@@ -85,10 +87,10 @@ def _sign_up_result_from_payload(payload: object) -> SignUpResult:
 
 
 def _user_from_payload(payload: object) -> User:
-    if not isinstance(payload, AuthGetUserResponse200) or isinstance(
-        payload.user,
-        Unset,
-    ):
+    if not isinstance(
+        payload,
+        (AuthGetUserResponse200, AuthUpdateUserResponse200),
+    ) or isinstance(payload.user, Unset):
         raise AuthenticationError(_INVALID_USER)
     user = payload.user
     project_id = _none_if_unset(user.project_id)
@@ -185,6 +187,28 @@ class Auth:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast("AuthGetUserTransport", self._client._transport)
         response = invoke(transport.auth_get_user, authorization=current.access_token)
+        user = _user_from_payload(response_payload(response, 200))
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
+        return user
+
+    def update_user(
+        self,
+        *,
+        password: str | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> User:
+        """Update and return the current user's server-validated profile."""
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast("AuthUpdateUserTransport", self._client._transport)
+        response = invoke(
+            transport.auth_update_user,
+            authorization=current.access_token,
+            password=password,
+            metadata=None if metadata is None else dict(metadata),
+        )
         user = _user_from_payload(response_payload(response, 200))
         if self._client._capture_session()[0] != generation:
             raise SessionChangedError

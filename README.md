@@ -32,6 +32,12 @@ assert current_session == session
 user = client.auth.get_user()
 assert user.id == session.user_id
 
+updated_user = client.auth.update_user(
+    password="new-secret",
+    metadata={"display_name": "Grace", "avatar": None},
+)
+assert updated_user.id == session.user_id
+
 rows = client.database("main").from_("items").select("*").eq("slug", "a").execute()
 
 bucket = client.storage.from_("assets")
@@ -55,6 +61,11 @@ values, and nested user and application metadata are immutable. The request does
 session or cache the profile. If another authentication operation replaces the session while the
 request is in flight, `get_user()` raises `SessionChangedError` instead of returning a profile for
 stale credentials.
+
+`update_user()` updates the current user's password, metadata, or both. Metadata is a shallow patch:
+omitted keys remain unchanged, and setting a key to `None` removes it. The method returns the same
+immutable profile type as `get_user()` and does not replace the active session. It also rejects a
+response if another authentication operation replaces the session while the update is in flight.
 
 Copy a complete native session into another client's memory:
 

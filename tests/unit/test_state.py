@@ -16,6 +16,9 @@ from volcano_sdk import (
 from volcano_sdk._generated.models.auth_get_user_response_200 import (
     AuthGetUserResponse200,
 )
+from volcano_sdk._generated.models.auth_update_user_response_200 import (
+    AuthUpdateUserResponse200,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -53,6 +56,10 @@ def _user_profile(*, email: str = "user@example.com") -> AuthGetUserResponse200:
     )
 
 
+def _updated_user_profile() -> AuthUpdateUserResponse200:
+    return AuthUpdateUserResponse200.from_dict(_user_profile().to_dict())
+
+
 class StateTransport:
     def __init__(self) -> None:
         self.next_access_token = "access-1"
@@ -69,6 +76,9 @@ class StateTransport:
             _user_profile(),
         )
         self.on_get_user: Callable[[], None] | None = None
+        self.update_user_response = Response(200, _updated_user_profile())
+        self.update_user_calls: list[dict[str, Any]] = []
+        self.on_update_user: Callable[[], None] | None = None
         self.refresh_response = Response(
             200,
             {
@@ -104,6 +114,13 @@ class StateTransport:
         if self.on_get_user is not None:
             self.on_get_user()
         return self.user_response
+
+    def auth_update_user(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("update_user", kwargs["authorization"]))
+        self.update_user_calls.append(kwargs)
+        if self.on_update_user is not None:
+            self.on_update_user()
+        return self.update_user_response
 
     def auth_refresh(self, **kwargs: Any) -> Response:
         self.authorizations.append(("refresh", kwargs["authorization"]))
@@ -344,6 +361,71 @@ def test_get_user_rejects_a_profile_loaded_for_a_replaced_session() -> None:
 
     with pytest.raises(SessionChangedError):
         client.auth.get_user()
+
+    assert client.auth.get_session() == replacement
+
+
+def test_update_user_returns_the_updated_profile_without_replacing_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+
+    user = client.auth.update_user(
+        password="new-secret",
+        metadata={"display_name": "Grace", "avatar": None},
+    )
+
+    assert user.id == established.user_id
+    assert user.user_metadata == {"display_name": "Ada", "roles": ("admin",)}
+    assert transport.update_user_calls == [
+        {
+            "authorization": "access-1",
+            "password": "new-secret",
+            "metadata": {"display_name": "Grace", "avatar": None},
+        }
+    ]
+    assert client.auth.get_session() is established
+
+
+def test_update_user_without_a_session_fails_before_transport() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="No active session"):
+        client.auth.update_user(metadata={"display_name": "Grace"})
+
+    assert transport.update_user_calls == []
+
+
+def test_update_user_authentication_failure_preserves_the_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+    transport.update_user_response = Response(401, {"error": "expired"})
+
+    with pytest.raises(AuthenticationError, match="expired"):
+        client.auth.update_user(password="new-secret")
+
+    assert client.auth.get_session() is established
+
+
+def test_update_user_rejects_a_profile_for_a_replaced_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="replacement-user",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_update_user = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.update_user(metadata={"display_name": "Grace"})
 
     assert client.auth.get_session() == replacement
 
