@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
+from base64 import urlsafe_b64encode
 from dataclasses import FrozenInstanceError, dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+import httpx
 import pytest
 
 from volcano_sdk import (
@@ -12,6 +15,7 @@ from volcano_sdk import (
     ServerError,
     Session,
     SessionChangedError,
+    TransportError,
     VolcanoClient,
 )
 from volcano_sdk._generated.models.auth_confirm_email_change_response_200 import (
@@ -29,6 +33,8 @@ from volcano_sdk._generated.models.auth_update_user_response_200 import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+_CONNECTION_LOST = "connection lost"
 
 
 @dataclass(frozen=True)
@@ -80,6 +86,13 @@ def _confirmed_email_change_profile() -> AuthConfirmEmailChangeResponse200:
     )
 
 
+def _access_token_with_session_id(session_id: str) -> str:
+    payload = urlsafe_b64encode(json.dumps({"session_id": session_id}).encode()).rstrip(
+        b"="
+    )
+    return f"header.{payload.decode()}.signature"
+
+
 class StateTransport:
     def __init__(self) -> None:
         self.next_access_token = "access-1"
@@ -122,6 +135,9 @@ class StateTransport:
         self.delete_other_sessions_response = Response(204)
         self.delete_other_sessions_calls: list[dict[str, Any]] = []
         self.on_delete_other_sessions: Callable[[], None] | None = None
+        self.delete_session_response = Response(204)
+        self.delete_session_calls: list[dict[str, Any]] = []
+        self.on_delete_session: Callable[[], None] | None = None
         self.forgot_password_response = Response(
             200,
             {"message": "If the email exists, a password reset link has been sent."},
@@ -221,6 +237,13 @@ class StateTransport:
         if self.on_delete_other_sessions is not None:
             self.on_delete_other_sessions()
         return self.delete_other_sessions_response
+
+    def auth_delete_my_session(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("delete_session", kwargs["authorization"]))
+        self.delete_session_calls.append(kwargs)
+        if self.on_delete_session is not None:
+            self.on_delete_session()
+        return self.delete_session_response
 
     def auth_forgot_password(self, **kwargs: Any) -> Response:
         self.authorizations.append(("forgot_password", kwargs["authorization"]))
@@ -717,6 +740,119 @@ def test_delete_all_other_sessions_rejects_a_stale_response() -> None:
         client.auth.delete_all_other_sessions()
 
     assert client.auth.get_session() == replacement
+
+
+def test_delete_session_preserves_the_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+
+    client.auth.delete_session(session_id="00000000-0000-4000-8000-000000000099")
+
+    assert client.auth.get_session() is established
+    assert transport.delete_session_calls == [
+        {
+            "authorization": "access-1",
+            "session_id": "00000000-0000-4000-8000-000000000099",
+        }
+    ]
+
+
+def test_delete_session_requires_a_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="No active session"):
+        client.auth.delete_session(session_id="00000000-0000-4000-8000-000000000099")
+
+    assert transport.delete_session_calls == []
+
+
+def test_delete_session_rejects_a_stale_response() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    session_id = "00000000-0000-4000-8000-000000000099"
+    client.auth.set_session(
+        Session(
+            access_token=_access_token_with_session_id(session_id),
+            refresh_token="original-refresh",
+            user_id="original-user",
+        )
+    )
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="replacement-user",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_delete_session = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.delete_session(session_id=session_id)
+
+    assert client.auth.get_session() == replacement
+
+
+def test_delete_session_clears_the_deleted_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    session_id = "00000000-0000-4000-8000-0000000000ab"
+    client.auth.set_session(
+        Session(
+            access_token=_access_token_with_session_id(session_id),
+            refresh_token="current-refresh",
+            user_id="current-user",
+        )
+    )
+
+    client.auth.delete_session(session_id=session_id.upper())
+
+    assert client.auth.get_session() is None
+
+
+def test_delete_session_clears_current_state_when_the_response_is_lost() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    session_id = "00000000-0000-4000-8000-000000000099"
+    client.auth.set_session(
+        Session(
+            access_token=_access_token_with_session_id(session_id),
+            refresh_token="current-refresh",
+            user_id="current-user",
+        )
+    )
+
+    def lose_response() -> None:
+        raise httpx.ReadError(_CONNECTION_LOST)
+
+    transport.on_delete_session = lose_response
+
+    with pytest.raises(TransportError, match="connection lost"):
+        client.auth.delete_session(session_id=session_id)
+
+    assert client.auth.get_session() is None
+
+
+def test_delete_session_preserves_current_state_when_the_server_rejects_it() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    session_id = "00000000-0000-4000-8000-000000000099"
+    current = Session(
+        access_token=_access_token_with_session_id(session_id),
+        refresh_token="current-refresh",
+        user_id="current-user",
+    )
+    client.auth.set_session(current)
+    stored = client.auth.get_session()
+    transport.delete_session_response = Response(401, {"error": "expired"})
+
+    with pytest.raises(AuthenticationError, match="expired"):
+        client.auth.delete_session(session_id=session_id)
+
+    assert client.auth.get_session() is stored
 
 
 def test_get_user_returns_an_immutable_server_validated_profile() -> None:

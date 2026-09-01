@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 from collections.abc import Mapping
 from typing import Protocol, TypeVar, cast
 
@@ -20,6 +23,7 @@ from ._transport import (
     AuthConfirmEmailTransport,
     AuthConvertAnonymousTransport,
     AuthDeleteAllMySessionsTransport,
+    AuthDeleteMySessionTransport,
     AuthForgotPasswordTransport,
     AuthGetUserTransport,
     AuthLogoutTransport,
@@ -34,19 +38,45 @@ from ._transport import (
     invoke,
     response_payload,
 )
-from .errors import AuthenticationError, SessionChangedError, VolcanoError
+from .errors import (
+    AuthenticationError,
+    SessionChangedError,
+    TransportError,
+    VolcanoError,
+)
 from .models import EmailChangeResult, JSONValue, Session, SignUpResult, User
 
 _INCOMPLETE_SESSION = "Expected a complete Session"
 _INVALID_SIGN_UP_RESULT = "Expected a complete sign-up acknowledgement"
 _INVALID_EMAIL_CHANGE_RESULT = "Expected a valid email-change acknowledgement"
 _INVALID_USER = "Expected a complete user profile"
+_JWT_PARTS = 3
 _NO_ACTIVE_SESSION = "No active session"
 _T = TypeVar("_T")
 
 
 def _is_non_empty_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def _session_id_from_access_token(access_token: str) -> str | None:
+    parts = access_token.split(".")
+    if len(parts) != _JWT_PARTS:
+        return None
+    padding = "=" * (-len(parts[1]) % 4)
+    try:
+        payload: object = json.loads(
+            base64.urlsafe_b64decode(parts[1] + padding).decode()
+        )
+    except (binascii.Error, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    values = cast("Mapping[object, object]", payload)
+    session_id = values.get("session_id")
+    if not isinstance(session_id, str) or not session_id.strip():
+        return None
+    return session_id.strip()
 
 
 def _has_complete_values(session: Session) -> bool:
@@ -328,6 +358,37 @@ class Auth:
         )
         response_payload(response, 204)
         if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
+
+    def delete_session(self, *, session_id: str) -> None:
+        """Delete one session and clear local state when it is current."""
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        current_session_id = _session_id_from_access_token(current.access_token)
+        deletes_current = (
+            current_session_id is not None
+            and current_session_id.casefold() == session_id.casefold()
+        )
+        transport = cast("AuthDeleteMySessionTransport", self._client._transport)
+        try:
+            response = invoke(
+                transport.auth_delete_my_session,
+                authorization=current.access_token,
+                session_id=session_id,
+            )
+            response_payload(response, 204)
+        except TransportError as error:
+            if deletes_current and not self._client._clear_session_if_current(
+                generation
+            ):
+                raise SessionChangedError from error
+            raise
+        if deletes_current:
+            current_unchanged = self._client._clear_session_if_current(generation)
+        else:
+            current_unchanged = self._client._capture_session()[0] == generation
+        if not current_unchanged:
             raise SessionChangedError
 
     def confirm_email(self, *, token: str) -> None:
