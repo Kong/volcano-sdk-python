@@ -115,6 +115,16 @@ client.auth.cancel_email_change()
 Success returns `None`. A successful stale response is rejected if another authentication operation
 replaces the session while cancellation is in flight.
 
+Confirm the pending change with the token delivered to the new address:
+
+```python
+user = client.auth.confirm_email_change(token="email-change-token")
+print(user.email)
+```
+
+The method returns the immutable updated user without replacing the active session. A successful
+stale response is rejected if another authentication operation replaces that session in flight.
+
 Create an anonymous account and make its tokens the current session:
 
 ```python

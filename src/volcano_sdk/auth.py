@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol, TypeVar, cast
 
+from ._generated.models.auth_confirm_email_change_response_200 import (
+    AuthConfirmEmailChangeResponse200,
+)
 from ._generated.models.auth_convert_anonymous_response_200 import (
     AuthConvertAnonymousResponse200,
 )
@@ -13,6 +16,7 @@ from ._generated.models.auth_update_user_response_200 import AuthUpdateUserRespo
 from ._generated.types import Unset
 from ._transport import (
     AuthCancelEmailChangeTransport,
+    AuthConfirmEmailChangeTransport,
     AuthConfirmEmailTransport,
     AuthConvertAnonymousTransport,
     AuthForgotPasswordTransport,
@@ -119,6 +123,7 @@ def _user_from_payload(payload: object) -> User:
         payload,
         (
             AuthConvertAnonymousResponse200,
+            AuthConfirmEmailChangeResponse200,
             AuthGetUserResponse200,
             AuthUpdateUserResponse200,
         ),
@@ -293,6 +298,22 @@ class Auth:
         response_payload(response, 200)
         if self._client._capture_session()[0] != generation:
             raise SessionChangedError
+
+    def confirm_email_change(self, *, token: str) -> User:
+        """Confirm a pending email change and return the updated user."""
+        generation, current = self._client._capture_session()
+        if current is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast("AuthConfirmEmailChangeTransport", self._client._transport)
+        response = invoke(
+            transport.auth_confirm_email_change,
+            authorization=current.access_token,
+            token=token,
+        )
+        user = _user_from_payload(response_payload(response, 200))
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
+        return user
 
     def confirm_email(self, *, token: str) -> None:
         """Confirm an email with its token without changing local state."""

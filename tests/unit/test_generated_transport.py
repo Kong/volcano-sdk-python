@@ -174,6 +174,39 @@ def test_generated_transport_cancels_an_email_change() -> None:
     assert requests[0].headers["authorization"] == "Bearer access-token"
 
 
+def test_generated_transport_confirms_an_email_change() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "user": {
+                    "id": "00000000-0000-4000-8000-000000000010",
+                    "email": "new@example.com",
+                    "status": "active",
+                }
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.auth_confirm_email_change(
+        authorization="access-token",
+        token="change-token",
+    )
+
+    assert response.status_code == 200
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/auth/user/confirm-email-change"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert json.loads(requests[0].content) == {"email_change_token": "change-token"}
+
+
 def test_generated_transport_requests_a_password_reset_with_the_anon_key() -> None:
     requests: list[httpx.Request] = []
 

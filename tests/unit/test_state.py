@@ -14,6 +14,9 @@ from volcano_sdk import (
     SessionChangedError,
     VolcanoClient,
 )
+from volcano_sdk._generated.models.auth_confirm_email_change_response_200 import (
+    AuthConfirmEmailChangeResponse200,
+)
 from volcano_sdk._generated.models.auth_convert_anonymous_response_200 import (
     AuthConvertAnonymousResponse200,
 )
@@ -71,6 +74,12 @@ def _converted_user_profile() -> AuthConvertAnonymousResponse200:
     return AuthConvertAnonymousResponse200.from_dict(payload)
 
 
+def _confirmed_email_change_profile() -> AuthConfirmEmailChangeResponse200:
+    return AuthConfirmEmailChangeResponse200.from_dict(
+        _user_profile(email="new@example.com").to_dict()
+    )
+
+
 class StateTransport:
     def __init__(self) -> None:
         self.next_access_token = "access-1"
@@ -104,6 +113,12 @@ class StateTransport:
         self.cancel_email_change_response = Response(200, {})
         self.cancel_email_change_calls: list[dict[str, Any]] = []
         self.on_cancel_email_change: Callable[[], None] | None = None
+        self.confirm_email_change_response = Response(
+            200,
+            _confirmed_email_change_profile(),
+        )
+        self.confirm_email_change_calls: list[dict[str, Any]] = []
+        self.on_confirm_email_change: Callable[[], None] | None = None
         self.forgot_password_response = Response(
             200,
             {"message": "If the email exists, a password reset link has been sent."},
@@ -189,6 +204,13 @@ class StateTransport:
         if self.on_cancel_email_change is not None:
             self.on_cancel_email_change()
         return self.cancel_email_change_response
+
+    def auth_confirm_email_change(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("confirm_email_change", kwargs["authorization"]))
+        self.confirm_email_change_calls.append(kwargs)
+        if self.on_confirm_email_change is not None:
+            self.on_confirm_email_change()
+        return self.confirm_email_change_response
 
     def auth_forgot_password(self, **kwargs: Any) -> Response:
         self.authorizations.append(("forgot_password", kwargs["authorization"]))
@@ -583,6 +605,64 @@ def test_cancel_email_change_rejects_a_stale_response() -> None:
 
     with pytest.raises(SessionChangedError):
         client.auth.cancel_email_change()
+
+    assert client.auth.get_session() == replacement
+
+
+def test_confirm_email_change_returns_user_without_replacing_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+
+    user = client.auth.confirm_email_change(token="change-token")
+
+    assert user.email == "new@example.com"
+    assert client.auth.get_session() is established
+    assert transport.confirm_email_change_calls == [
+        {"authorization": "access-1", "token": "change-token"}
+    ]
+
+
+def test_confirm_email_change_requires_a_current_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(AuthenticationError, match="No active session"):
+        client.auth.confirm_email_change(token="change-token")
+
+    assert transport.confirm_email_change_calls == []
+
+
+def test_confirm_email_change_rejects_a_missing_user() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    transport.confirm_email_change_response = Response(
+        200,
+        AuthConfirmEmailChangeResponse200(),
+    )
+
+    with pytest.raises(AuthenticationError, match="complete user profile"):
+        client.auth.confirm_email_change(token="change-token")
+
+
+def test_confirm_email_change_rejects_a_stale_response() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    replacement = Session(
+        access_token="replacement-access",
+        refresh_token="replacement-refresh",
+        user_id="replacement-user",
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_confirm_email_change = replace_session
+
+    with pytest.raises(SessionChangedError):
+        client.auth.confirm_email_change(token="change-token")
 
     assert client.auth.get_session() == replacement
 
