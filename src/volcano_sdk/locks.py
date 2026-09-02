@@ -94,23 +94,12 @@ def _validate_ttl(ttl: object) -> None:
 
 def _renewal_delay(
     ttl: int,
-    lease: LockLease,
     *,
-    deadline: float | None = None,
+    remaining: float | None = None,
 ) -> float:
     delay = min(ttl / 3, MAX_RENEWAL_DELAY_SECONDS)
     latest_delay: float | None = None
-    if deadline is not None:
-        latest_delay = max(
-            0.0,
-            deadline
-            - time.monotonic()
-            - RENEWAL_SAFETY_MARGIN_SECONDS
-            - RENEWAL_REQUEST_BUDGET_SECONDS,
-        )
-        delay = min(delay, latest_delay)
-    elif lease.expires_at is not None:
-        remaining = lease.expires_at.timestamp() - time.time()
+    if remaining is not None:
         latest_delay = max(
             0.0,
             remaining - RENEWAL_SAFETY_MARGIN_SECONDS - RENEWAL_REQUEST_BUDGET_SECONDS,
@@ -121,23 +110,23 @@ def _renewal_delay(
     return jittered_delay if latest_delay is None else min(jittered_delay, latest_delay)
 
 
-def _lease_deadline(ttl: int, lease: LockLease, *, started_at: float) -> float:
-    request_deadline = started_at + ttl
-    if lease.expires_at is None:
-        return request_deadline
-    wall_remaining = max(0.0, lease.expires_at.timestamp() - time.time())
-    return min(request_deadline, time.monotonic() + wall_remaining)
-
-
 class LockGuard:
     """Thread-safe state for an automatically renewed lock lease."""
 
-    def __init__(self, lease: LockLease, *, ttl: int, started_at: float) -> None:
+    def __init__(
+        self,
+        lease: LockLease,
+        *,
+        ttl: int,
+        started_at: float,
+        wall_started_at: float,
+    ) -> None:
         """Create a guard around an acquired lease."""
         self._state_lock = threading.Lock()
         self._lease = lease
         self._ttl = ttl
-        self._lease_deadline = _lease_deadline(ttl, lease, started_at=started_at)
+        self._lease_deadline = started_at + ttl
+        self._wall_deadline = wall_started_at + ttl
         self._failure: Exception | None = None
         self._lost = threading.Event()
         self._expiry_timer: threading.Timer | None = None
@@ -153,7 +142,9 @@ class LockGuard:
     @property
     def lost(self) -> bool:
         """Return whether renewal failed or the latest lease expired."""
-        return self._lost.is_set()
+        with self._state_lock:
+            self._expire_if_needed_locked()
+            return self._lost.is_set()
 
     def wait_lost(self, timeout: float | None = None) -> bool:
         """Wait until renewal fails or the timeout expires."""
@@ -164,16 +155,19 @@ class LockGuard:
             self._expiry_active = True
             self._schedule_expiry_locked()
 
-    def _replace_lease(self, lease: LockLease, *, started_at: float) -> bool:
+    def _replace_lease(
+        self,
+        lease: LockLease,
+        *,
+        started_at: float,
+        wall_started_at: float,
+    ) -> bool:
         with self._state_lock:
             if self._lost.is_set():
                 return False
             self._lease = lease
-            self._lease_deadline = _lease_deadline(
-                self._ttl,
-                lease,
-                started_at=started_at,
-            )
+            self._lease_deadline = started_at + self._ttl
+            self._wall_deadline = wall_started_at + self._ttl
             if self._renewal_delay_locked() == 0:
                 self._failure = TimeoutError(UNSAFE_RENEWAL_MESSAGE)
                 self._lost.set()
@@ -196,6 +190,7 @@ class LockGuard:
 
     def _stop_expiry_watch(self) -> None:
         with self._state_lock:
+            self._expire_if_needed_locked()
             self._expiry_active = False
             self._cancel_expiry_locked()
 
@@ -206,15 +201,14 @@ class LockGuard:
     def _renewal_delay_locked(self) -> float:
         return _renewal_delay(
             self._ttl,
-            self._lease,
-            deadline=self._lease_deadline,
+            remaining=self._remaining_seconds_locked(),
         )
 
     def _schedule_expiry_locked(self) -> None:
         self._cancel_expiry_locked()
         self._expiry_generation += 1
         generation = self._expiry_generation
-        delay = self._expiry_delay()
+        delay = self._remaining_seconds_locked()
         timer = threading.Timer(delay, self._expire, args=(generation,))
         timer.daemon = True
         self._expiry_timer = timer
@@ -226,8 +220,23 @@ class LockGuard:
             self._expiry_timer.cancel()
             self._expiry_timer = None
 
+    def _remaining_seconds_locked(self) -> float:
+        return max(
+            0.0,
+            min(
+                self._lease_deadline - time.monotonic(),
+                self._wall_deadline - time.time(),
+            ),
+        )
+
     def _expiry_delay(self) -> float:
-        return max(0.0, self._lease_deadline - time.monotonic())
+        with self._state_lock:
+            return self._remaining_seconds_locked()
+
+    def _expire_if_needed_locked(self) -> None:
+        if self._failure is None and self._remaining_seconds_locked() == 0:
+            self._failure = TimeoutError("lock lease expired before renewal completed")
+            self._lost.set()
 
     def _expire(self, generation: int) -> None:
         with self._state_lock:
@@ -239,6 +248,7 @@ class LockGuard:
 
     def _renewal_failure(self) -> Exception | None:
         with self._state_lock:
+            self._expire_if_needed_locked()
             return self._failure
 
 
@@ -268,6 +278,7 @@ class _LockRenewer:
                 return
             try:
                 started_at = time.monotonic()
+                wall_started_at = time.time()
                 lease = self._locks.renew(
                     self._key,
                     self._guard.lease,
@@ -276,7 +287,11 @@ class _LockRenewer:
             except (KeyError, TypeError, ValueError, VolcanoError) as error:
                 self._guard._mark_lost(error)
                 return
-            if not self._guard._replace_lease(lease, started_at=started_at):
+            if not self._guard._replace_lease(
+                lease,
+                started_at=started_at,
+                wall_started_at=wall_started_at,
+            ):
                 return
 
 
@@ -363,10 +378,12 @@ class Locks:
         """Hold and automatically renew a lock for the context's lifetime."""
         _validate_ttl(ttl)
         started_at = time.monotonic()
+        wall_started_at = time.time()
         guard = LockGuard(
             self.acquire(key, ttl=ttl),
             ttl=ttl,
             started_at=started_at,
+            wall_started_at=wall_started_at,
         )
         renewer = _LockRenewer(self, key, guard, ttl)
         renewer_started = False
@@ -392,8 +409,13 @@ class Locks:
         if guard._renewal_delay() != 0:
             return
         started_at = time.monotonic()
+        wall_started_at = time.time()
         renewed = self.renew(key, guard.lease, ttl=ttl)
-        if guard._replace_lease(renewed, started_at=started_at):
+        if guard._replace_lease(
+            renewed,
+            started_at=started_at,
+            wall_started_at=wall_started_at,
+        ):
             return
         failure = guard._renewal_failure()
         if failure is not None:
