@@ -161,6 +161,7 @@ class FakeSubscription:
         self.presence_error: Exception | None = None
         self.presence_entered: asyncio.Event | None = None
         self.presence_release: asyncio.Event | None = None
+        self.inside_subscribed_handler = False
         self.unsubscribe_error: Exception | None = None
         self.unsubscribe_entered: asyncio.Event | None = None
         self.unsubscribe_release: asyncio.Event | None = None
@@ -185,6 +186,9 @@ class FakeSubscription:
         )
 
     async def presence(self) -> Any:
+        if self.inside_subscribed_handler:
+            message = "presence must run outside the subscription callback"
+            raise AssertionError(message)
         self.calls.append(("presence", None))
         if self.presence_error is not None:
             raise self.presence_error
@@ -196,17 +200,21 @@ class FakeSubscription:
         return SimpleNamespace(clients=clients)
 
     async def emit_subscribed(self) -> None:
-        await self.events.on_subscribed(
-            SimpleNamespace(
-                channel=self.name,
-                recoverable=self.recoverable,
-                positioned=False,
-                stream_position=None,
-                was_recovering=False,
-                recovered=False,
-                data=None,
+        self.inside_subscribed_handler = True
+        try:
+            await self.events.on_subscribed(
+                SimpleNamespace(
+                    channel=self.name,
+                    recoverable=self.recoverable,
+                    positioned=False,
+                    stream_position=None,
+                    was_recovering=False,
+                    recovered=False,
+                    data=None,
+                )
             )
-        )
+        finally:
+            self.inside_subscribed_handler = False
 
     async def emit(self, data: Any) -> None:
         await self.events.on_publication(
@@ -214,9 +222,11 @@ class FakeSubscription:
         )
 
     async def emit_join(self, info: Any) -> None:
+        self.presence_clients[str(info.client)] = info
         await self.events.on_join(SimpleNamespace(info=info))
 
     async def emit_leave(self, info: Any) -> None:
+        self.presence_clients.pop(str(info.client), None)
         await self.events.on_leave(SimpleNamespace(info=info))
 
 
@@ -409,8 +419,11 @@ def test_realtime_presence_resyncs_after_resubscription() -> None:
                 conn_info={"display_name": "Carol"},
             )
         }
+        official.subscription.presence_entered = asyncio.Event()
 
         await official.subscription.emit_subscribed()
+        await official.subscription.presence_entered.wait()
+        await asyncio.sleep(0)
 
         assert set(channel.get_presence_state()) == {"carol-client"}
         await client.realtime.disconnect()

@@ -271,7 +271,7 @@ class _ChannelEvents:
         del ctx
         self._channel._subscribed = True
         if self._channel._type == "presence":
-            await self._channel._realtime._sync_presence(self._channel)
+            self._channel._schedule_presence_sync()
 
     async def on_unsubscribed(self, ctx: Any) -> None:
         del ctx
@@ -359,6 +359,7 @@ class Channel:
         self._subscription: CentrifugeSubscription | None = None
         self._subscribed = False
         self._presence_lock = asyncio.Lock()
+        self._presence_sync_task: asyncio.Task[None] | None = None
         self._callback_queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue(
             maxsize=CALLBACK_QUEUE_LIMIT
         )
@@ -539,6 +540,7 @@ class Channel:
     async def _presence_unsubscribed(self) -> None:
         if self._type != "presence":
             return
+        await self._cancel_presence_sync()
         async with self._presence_lock:
             self._presence_state.clear()
             self._tracked_state = MappingProxyType({})
@@ -557,8 +559,30 @@ class Channel:
             data=typed_data,
         )
 
+    def _schedule_presence_sync(self) -> None:
+        task = self._presence_sync_task
+        if task is not None and not task.done():
+            return
+        self._presence_sync_task = asyncio.create_task(self._run_presence_sync())
+
+    async def _run_presence_sync(self) -> None:
+        try:
+            await self._realtime._sync_presence(self)
+        finally:
+            if asyncio.current_task() is self._presence_sync_task:
+                self._presence_sync_task = None
+
+    async def _cancel_presence_sync(self) -> None:
+        task = self._presence_sync_task
+        self._presence_sync_task = None
+        if task is None or task.done():
+            return
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
     async def _reset(self) -> None:
         self._subscription = None
+        await self._cancel_presence_sync()
         task = self._callback_task
         active_task = self._active_callback_task
         if self._callback_stop is not None:
