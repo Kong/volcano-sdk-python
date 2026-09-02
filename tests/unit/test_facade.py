@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -142,6 +144,12 @@ class FakeTransport:
     def release_project_lock(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("releaseProjectLock", kwargs))
         return FakeResponse(204)
+
+
+def anon_key_with_project_id(project_id: str | None) -> str:
+    payload = {} if project_id is None else {"project_id": project_id}
+    encoded = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b"=")
+    return f"header.{encoded.decode()}.signature"
 
 
 def test_public_facade_delegates_to_the_contract_operations() -> None:
@@ -418,3 +426,45 @@ def test_storage_update_visibility_rejects_invalid_input_before_transport(
         )
 
     assert transport.calls == calls_after_sign_in
+
+
+def test_storage_get_public_url_encodes_path_segments_without_a_request() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(
+        api_url="https://api.test.volcano.dev/",
+        anon_key=anon_key_with_project_id("project-123"),
+        _transport=transport,
+    )
+
+    public_url = client.storage.from_("assets").get_public_url(
+        "avatars/Ada photo.png",
+    )
+
+    assert public_url == (
+        "https://api.test.volcano.dev/public/project-123/assets/avatars/Ada%20photo.png"
+    )
+    assert transport.calls == []
+
+
+@pytest.mark.parametrize(
+    "anon_key",
+    ["not-a-jwt", anon_key_with_project_id(None), "header.%%%.signature"],
+)
+def test_storage_get_public_url_rejects_invalid_anon_keys(anon_key: str) -> None:
+    client = VolcanoClient(anon_key=anon_key, _transport=FakeTransport())
+
+    with pytest.raises(ValueError, match="project ID"):
+        client.storage.from_("assets").get_public_url("avatars/a.png")
+
+
+def test_storage_get_public_url_rejects_an_empty_path() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(
+        anon_key=anon_key_with_project_id("project-123"),
+        _transport=transport,
+    )
+
+    with pytest.raises(ValueError, match="non-empty strings"):
+        client.storage.from_("assets").get_public_url("")
+
+    assert transport.calls == []

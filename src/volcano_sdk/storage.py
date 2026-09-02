@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol, cast
+from urllib.parse import quote
 
 from ._transport import Transport, TransportResponse, invoke, response_payload
 from .models import JSONValue, StorageObject, StoragePage
@@ -13,6 +17,8 @@ from .models import JSONValue, StorageObject, StoragePage
 _INVALID_STORAGE_PAGE = "Expected a complete storage page"
 _INVALID_STORAGE_PATHS = "Storage paths must be non-empty strings"
 _INVALID_STORAGE_VISIBILITY = "is_public must be a boolean"
+_INVALID_STORAGE_ANON_KEY = "Anon key must contain a project ID"
+_JWT_PART_COUNT = 3
 
 
 def _optional_datetime(value: object) -> datetime | None:
@@ -91,10 +97,39 @@ def _storage_visibility(value: object) -> bool:
     return value
 
 
+def _project_id_from_anon_key(anon_key: str) -> str:
+    parts = anon_key.split(".")
+    if len(parts) != _JWT_PART_COUNT:
+        raise ValueError(_INVALID_STORAGE_ANON_KEY)
+    try:
+        encoded = parts[1].encode("ascii")
+        padded = encoded + (b"=" * (-len(encoded) % 4))
+        payload = json.loads(
+            base64.b64decode(padded, altchars=b"-_", validate=True).decode(),
+        )
+    except (binascii.Error, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError(_INVALID_STORAGE_ANON_KEY) from error
+    claims: Mapping[str, object] = {}
+    if isinstance(payload, Mapping):
+        claims = cast("Mapping[str, object]", payload)
+    project_id = claims.get("project_id")
+    if not isinstance(project_id, str) or not project_id.strip():
+        raise ValueError(_INVALID_STORAGE_ANON_KEY)
+    return project_id
+
+
+def _encoded_storage_path(path: str) -> str:
+    return "/".join(quote(segment, safe="") for segment in path.split("/"))
+
+
 class StorageContext(Protocol):
     """Client capabilities required by object storage."""
 
     _transport: Transport
+
+    def _anon_token(self) -> str: ...
+
+    def _api_base_url(self) -> str: ...
 
     def _session_token(self) -> str: ...
 
@@ -277,6 +312,16 @@ class StorageBucket:
             is_public=visibility,
         )
         return _storage_object(response_payload(response, 200))
+
+    def get_public_url(self, path: str) -> str:
+        """Construct this object's public URL without making a request."""
+        object_path = _storage_paths(path)[0]
+        project_id = _project_id_from_anon_key(self._client._anon_token())
+        return (
+            f"{self._client._api_base_url()}/public/"
+            f"{quote(project_id, safe='')}/{quote(self._name, safe='')}/"
+            f"{_encoded_storage_path(object_path)}"
+        )
 
 
 class Storage:
