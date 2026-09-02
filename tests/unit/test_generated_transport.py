@@ -48,6 +48,53 @@ def test_generated_transport_builds_an_oauth_authorization_url() -> None:
     }
 
 
+def test_generated_transport_resolves_and_invokes_a_function() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/functions/resolve":
+            return httpx.Response(
+                200,
+                json={
+                    "name": "send-welcome",
+                    "function_id": "00000000-0000-4000-8000-000000000040",
+                    "cache_ttl_seconds": 60,
+                },
+            )
+        return httpx.Response(
+            422,
+            json={"error": "invalid order"},
+            headers={"X-Volcano-Version": "staging-v1"},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    resolved = transport.resolve_function_for_invocation(
+        authorization="access-token",
+        name="send-welcome",
+    )
+    response = transport.invoke_function(
+        authorization="access-token",
+        function_id="00000000-0000-4000-8000-000000000040",
+        payload={"user_id": "user-123"},
+    )
+
+    assert resolved.payload["function_id"] == ("00000000-0000-4000-8000-000000000040")
+    assert response.status_code == 422
+    assert response.payload == {"error": "invalid order"}
+    assert [request.url.path for request in requests] == [
+        "/functions/resolve",
+        "/functions/00000000-0000-4000-8000-000000000040/invoke",
+    ]
+    assert requests[0].url.params["name"] == "send-welcome"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert json.loads(requests[1].content) == {"payload": {"user_id": "user-123"}}
+
+
 def test_generated_transport_exchanges_an_oauth_code() -> None:
     requests: list[httpx.Request] = []
 

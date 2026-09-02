@@ -29,14 +29,20 @@ def test_generate_emits_required_contract_operations(tmp_path: Path) -> None:
         "acquire_project_lock.py",
         "force_release_project_lock.py",
         "get_project_lock.py",
+        "invoke_function.py",
         "release_project_lock.py",
+        "resolve_function_for_invocation.py",
         "renew_project_lock.py",
     }
 
 
 @pytest.mark.parametrize(
     "missing_operation",
-    ["force_release_project_lock.py", "update_storage_object_visibility.py"],
+    [
+        "force_release_project_lock.py",
+        "invoke_function.py",
+        "update_storage_object_visibility.py",
+    ],
 )
 def test_generate_rejects_a_missing_required_operation(
     tmp_path: Path,

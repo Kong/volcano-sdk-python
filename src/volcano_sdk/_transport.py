@@ -58,6 +58,10 @@ from ._generated.api.database_queries import (
     query_database_select,
     query_database_update,
 )
+from ._generated.api.functions import (
+    invoke_function,
+    resolve_function_for_invocation,
+)
 from ._generated.api.locks import (
     acquire_project_lock,
     force_release_project_lock,
@@ -142,6 +146,10 @@ from ._generated.models.database_delete_request import DatabaseDeleteRequest
 from ._generated.models.database_insert_request import DatabaseInsertRequest
 from ._generated.models.database_select_request import DatabaseSelectRequest
 from ._generated.models.database_update_request import DatabaseUpdateRequest
+from ._generated.models.function_invocation_request import FunctionInvocationRequest
+from ._generated.models.function_invocation_request_payload import (
+    FunctionInvocationRequestPayload,
+)
 from ._generated.models.get_o_auth_provider_token_response_200 import (
     GetOAuthProviderTokenResponse200,
 )
@@ -1487,6 +1495,37 @@ class GeneratedTransport:
                 path,
                 client=client,
                 body=StorageVisibilityRequest(is_public=is_public),
+            )
+        return self._response(response)
+
+    def resolve_function_for_invocation(
+        self,
+        *,
+        authorization: str,
+        name: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = resolve_function_for_invocation.sync_detailed(
+                client=client,
+                name=name,
+            )
+        return self._response(response)
+
+    def invoke_function(
+        self,
+        *,
+        authorization: str,
+        function_id: str,
+        payload: Mapping[str, JSONValue],
+    ) -> TransportResponse:
+        body = FunctionInvocationRequest(
+            payload=FunctionInvocationRequestPayload.from_dict(dict(payload))
+        )
+        with self._client(authorization) as client:
+            response = invoke_function.sync_detailed(
+                UUID(function_id),
+                client=client,
+                body=body,
             )
         return self._response(response)
 

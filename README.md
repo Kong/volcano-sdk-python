@@ -38,6 +38,12 @@ updated_user = client.auth.update_user(
 )
 assert updated_user.id == session.user_id
 
+function = client.functions.invoke(
+    "send-welcome",
+    {"user_id": session.user_id},
+)
+print(function.status, function.version, function.data)
+
 rows = client.database("main").from_("items").select("*").eq("slug", "a").execute()
 
 bucket = client.storage.from_("assets")
@@ -128,6 +134,12 @@ resuming an interrupted upload.
 object.
 `abort_upload_session(path, session_id=...)` abandons a session and discards its
 uploaded parts.
+
+`functions.invoke()` resolves a DNS-safe function name and sends a JSON object.
+It uses the active user session when present, then a configured service key,
+then the anonymous key. The immutable result includes the response body, status,
+headers, and `X-Volcano-Version`. A function's own non-2xx response is returned
+when the version header proves it ran; platform failures raise typed SDK errors.
 
 Database builders are immutable, so you can safely reuse a base query. Chain `neq()`, `gt()`,
 `gte()`, `lt()`, and `lte()` for comparison filters:
