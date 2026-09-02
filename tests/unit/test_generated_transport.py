@@ -1531,6 +1531,40 @@ def test_generated_transport_gets_project_lock_state() -> None:
     assert requests[0].headers["x-volcano-request-id"]
 
 
+def test_generated_transport_renews_a_project_lock() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={"expires_at": "2026-08-26T12:01:00Z", "fencing_token": 7},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.renew_project_lock(
+        authorization="service-key",
+        key="build:queue",
+        ttl=60,
+        token="00000000-0000-4000-8000-000000000001",
+    )
+
+    assert response.payload["fencing_token"] == 7
+    assert len(requests) == 1
+    assert requests[0].method == "PATCH"
+    assert requests[0].url.path == "/locks/build:queue/lease"
+    assert json.loads(requests[0].content) == {"ttl_seconds": 60}
+    assert requests[0].headers["authorization"] == "Bearer service-key"
+    assert requests[0].headers["x-volcano-lock-token"] == (
+        "00000000-0000-4000-8000-000000000001"
+    )
+    assert requests[0].headers["x-volcano-request-id"]
+
+
 def test_generated_transport_moves_a_storage_object() -> None:
     requests: list[httpx.Request] = []
 

@@ -62,6 +62,7 @@ from ._generated.api.locks import (
     acquire_project_lock,
     get_project_lock,
     release_project_lock,
+    renew_project_lock,
 )
 from ._generated.api.o_auth_authentication import auth_o_auth_exchange
 from ._generated.api.o_auth_authentication.auth_link_o_auth_provider import (
@@ -1516,6 +1517,24 @@ class GeneratedTransport:
             response = get_project_lock.sync_detailed(
                 key,
                 client=client,
+                x_volcano_request_id=cast("UUID", str(uuid4())),
+            )
+        return self._response(response)
+
+    def renew_project_lock(
+        self,
+        *,
+        authorization: str,
+        key: str,
+        ttl: int,
+        token: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = renew_project_lock.sync_detailed(
+                key,
+                client=client,
+                body=ProjectLockLeaseRequest(ttl_seconds=ttl),
+                x_volcano_lock_token=cast("UUID", token),
                 x_volcano_request_id=cast("UUID", str(uuid4())),
             )
         return self._response(response)

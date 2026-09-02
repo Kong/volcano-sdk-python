@@ -249,6 +249,13 @@ class FakeTransport:
             },
         )
 
+    def renew_project_lock(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("renewProjectLock", kwargs))
+        return FakeResponse(
+            200,
+            {"expires_at": "2026-08-26T12:01:00Z", "fencing_token": 7},
+        )
+
 
 def anon_key_with_project_id(project_id: str | None) -> str:
     payload = {} if project_id is None else {"project_id": project_id}
@@ -448,6 +455,42 @@ def test_locks_gets_immutable_current_state() -> None:
         (
             "getProjectLock",
             {"authorization": "service-key", "key": "build"},
+        )
+    ]
+
+
+def test_locks_renews_a_lease_without_mutating_the_original() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+    lease = LockLease(
+        key="build",
+        token="00000000-0000-4000-8000-000000000001",
+        expires_at=datetime(2026, 8, 26, 12, 0, 30, tzinfo=UTC),
+        fencing_token=7,
+    )
+
+    renewed = client.locks.renew("build", lease, ttl=60)
+
+    assert renewed == LockLease(
+        key="build",
+        token=lease.token,
+        expires_at=datetime(2026, 8, 26, 12, 1, tzinfo=UTC),
+        fencing_token=7,
+    )
+    assert lease.expires_at == datetime(2026, 8, 26, 12, 0, 30, tzinfo=UTC)
+    assert transport.calls == [
+        (
+            "renewProjectLock",
+            {
+                "authorization": "service-key",
+                "key": "build",
+                "ttl": 60,
+                "token": lease.token,
+            },
         )
     ]
 
