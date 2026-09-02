@@ -123,7 +123,7 @@ def _upload_part(payload: object) -> UploadPart:
 
 def _upload_session_status(payload: object) -> UploadSessionStatus:
     values = cast("Mapping[str, object]", payload)
-    raw_parts = cast("list[object]", values["parts"])
+    raw_parts = cast("list[object]", values.get("parts", []))
     return UploadSessionStatus(
         session_id=cast("str", values["session_id"]),
         status=cast("UploadSessionState", values["status"]),

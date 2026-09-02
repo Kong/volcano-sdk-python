@@ -33,6 +33,7 @@ class FakeTransport:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.list_cursor = "cursor-2"
         self.range_download_status = 206
+        self.include_upload_session_parts = True
 
     def auth_signin(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("authSignin", kwargs))
@@ -115,29 +116,28 @@ class FakeTransport:
     def get_upload_session(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("getUploadSession", kwargs))
         request = kwargs["request"]
-        return FakeResponse(
-            200,
-            {
-                "session_id": request.session_id,
-                "status": "uploading",
-                "path": request.path,
-                "content_type": "video/mp4",
-                "total_size": 20_000_000,
-                "part_size": 8_388_608,
-                "total_parts": 3,
-                "parts_uploaded": 1,
-                "bytes_uploaded": 8_388_608,
-                "parts": [
-                    {
-                        "part_number": 1,
-                        "etag": "etag-part-1",
-                        "size": 8_388_608,
-                    }
-                ],
-                "expires_at": "2026-09-09T12:00:00Z",
-                "created_at": "2026-09-02T12:00:00Z",
-            },
-        )
+        payload = {
+            "session_id": request.session_id,
+            "status": "uploading",
+            "path": request.path,
+            "content_type": "video/mp4",
+            "total_size": 20_000_000,
+            "part_size": 8_388_608,
+            "total_parts": 3,
+            "parts_uploaded": 1,
+            "bytes_uploaded": 8_388_608,
+            "expires_at": "2026-09-09T12:00:00Z",
+            "created_at": "2026-09-02T12:00:00Z",
+        }
+        if self.include_upload_session_parts:
+            payload["parts"] = [
+                {
+                    "part_number": 1,
+                    "etag": "etag-part-1",
+                    "size": 8_388_608,
+                }
+            ]
+        return FakeResponse(200, payload)
 
     def list_storage_objects(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("listStorageObjects", kwargs))
@@ -544,6 +544,20 @@ def test_storage_gets_immutable_upload_session_status() -> None:
         "videos/demo.mp4",
         "session-123",
     )
+
+
+def test_storage_defaults_omitted_upload_parts_to_an_empty_snapshot() -> None:
+    transport = FakeTransport()
+    transport.include_upload_session_parts = False
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    status = client.storage.from_("assets").get_upload_session(
+        "videos/demo.mp4",
+        session_id="session-123",
+    )
+
+    assert status.parts == ()
 
 
 @pytest.mark.parametrize("invalid_paths", [[], [""], b"abc"])
