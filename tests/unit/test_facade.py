@@ -716,6 +716,28 @@ def test_locks_with_lock_preserves_body_errors_and_releases() -> None:
     assert transport.calls[-1][0] == "releaseProjectLock"
 
 
+def test_locks_with_lock_does_not_expire_while_waiting_for_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [0.0]
+
+    class SlowReleaseTransport(FakeTransport):
+        def release_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("releaseProjectLock", kwargs))
+            clock[0] = 31.0
+            return FakeResponse(204, None)
+
+    monkeypatch.setattr("volcano_sdk.locks._lease_now", lambda: clock[0])
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=SlowReleaseTransport(),
+    )
+
+    with client.locks.with_lock("build", ttl=30):
+        pass
+
+
 def test_locks_with_lock_marks_a_stalled_renewal_lost_at_expiry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -777,8 +799,7 @@ def test_locks_with_lock_renews_an_expired_acquisition_before_body(
             self.calls.append(("renewProjectLock", kwargs))
             return FakeResponse(409, {"message": "lock ownership lost"})
 
-    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
-    monkeypatch.setattr(time, "time", lambda: clock[0])
+    monkeypatch.setattr("volcano_sdk.locks._lease_now", lambda: clock[0])
     transport = ExpiredAcquireTransport()
     client = VolcanoClient(
         anon_key="anon-key",
@@ -819,8 +840,7 @@ def test_locks_with_lock_rejects_an_expired_renewal_before_body(
             expires_at = datetime.now(UTC) - timedelta(seconds=1)
             return FakeResponse(200, {"expires_at": expires_at.isoformat()})
 
-    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
-    monkeypatch.setattr(time, "time", lambda: clock[0])
+    monkeypatch.setattr("volcano_sdk.locks._lease_now", lambda: clock[0])
     transport = ExpiredRenewTransport()
     client = VolcanoClient(
         anon_key="anon-key",
@@ -836,10 +856,10 @@ def test_locks_with_lock_rejects_an_expired_renewal_before_body(
     assert transport.calls[-1][0] == "releaseProjectLock"
 
 
-@pytest.mark.parametrize("clock_offset", [-10, 10])
-def test_lock_guard_uses_monotonic_ttl_despite_wall_clock_skew(
+@pytest.mark.parametrize("clock_correction", [-10, 10])
+def test_lock_guard_ignores_wall_clock_corrections(
     monkeypatch: pytest.MonkeyPatch,
-    clock_offset: int,
+    clock_correction: int,
 ) -> None:
     ttl = 5
     lease = LockLease(
@@ -848,22 +868,47 @@ def test_lock_guard_uses_monotonic_ttl_despite_wall_clock_skew(
         expires_at=datetime.now(UTC) + timedelta(seconds=ttl),
         fencing_token=7,
     )
+    started_at = locks_module._lease_now()
+    guard = locks_module.LockGuard(lease, ttl=ttl, started_at=started_at)
     real_time = time.time()
-    monkeypatch.setattr(
-        "volcano_sdk.locks.time.time",
-        lambda: real_time + clock_offset,
-    )
-    started_at = time.monotonic()
-    wall_started_at = time.time()
-
-    guard = locks_module.LockGuard(
-        lease,
-        ttl=ttl,
-        started_at=started_at,
-        wall_started_at=wall_started_at,
-    )
+    monkeypatch.setattr(time, "time", lambda: real_time + clock_correction)
 
     assert 0 < guard._expiry_delay() <= ttl
+
+
+def test_lock_guard_detects_suspend_aware_expiry_while_waiting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [0.0]
+    lease = LockLease(key="build", token="token", expires_at=None, fencing_token=7)
+    monkeypatch.setattr("volcano_sdk.locks._lease_now", lambda: clock[0])
+    monkeypatch.setattr(locks_module, "EXPIRY_POLL_INTERVAL_SECONDS", 0.01)
+    guard = locks_module.LockGuard(lease, ttl=5, started_at=clock[0])
+    guard._start_expiry_watch()
+
+    clock[0] = 6.0
+
+    assert guard.wait_lost(timeout=0.1)
+    guard._stop_expiry_watch()
+
+
+def test_lock_guard_preserves_the_absolute_acquisition_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [0.0]
+    lease = LockLease(key="build", token="token", expires_at=None, fencing_token=7)
+    monkeypatch.setattr("volcano_sdk.locks._lease_now", lambda: clock[0])
+    guard = locks_module.LockGuard(
+        lease,
+        ttl=locks_module.MAX_LOCK_TTL_SECONDS,
+        started_at=clock[0],
+    )
+
+    clock[0] = locks_module.MAX_LOCK_TTL_SECONDS - 1
+    replaced = guard._replace_lease(lease, started_at=clock[0])
+
+    assert replaced is False
+    assert guard._expiry_delay() == 1
 
 
 @pytest.mark.parametrize("ttl", [5.5, "5", True])
