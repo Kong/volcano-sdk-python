@@ -1258,6 +1258,6 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
     assert requests[6].headers["x-volcano-lock-token"] == (
         "00000000-0000-4000-8000-000000000001"
     )
-    assert requests[6].headers["x-volcano-lock-token"] == (
+    assert requests[7].headers["x-volcano-lock-token"] == (
         "00000000-0000-4000-8000-000000000001"
     )

@@ -18,6 +18,7 @@ class FakeResponse:
 class FakeTransport:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.list_cursor = "cursor-2"
 
     def auth_signin(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("authSignin", kwargs))
@@ -74,7 +75,7 @@ class FakeTransport:
                         "updated_at": "2026-08-26T12:01:00Z",
                     }
                 ],
-                "next_cursor": "cursor-2",
+                "next_cursor": self.list_cursor,
             },
         )
 
@@ -231,3 +232,12 @@ def test_public_facade_delegates_to_the_nine_contract_operations() -> None:
     assert transport.calls[9][1]["authorization"] == "service-key"
     assert transport.calls[9][1]["key"] == "build"
     assert transport.calls[9][1]["token"] == lease.token
+
+
+def test_storage_list_normalizes_an_empty_terminal_cursor() -> None:
+    transport = FakeTransport()
+    transport.list_cursor = ""
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    assert client.storage.from_("assets").list().next_cursor is None
