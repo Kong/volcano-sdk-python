@@ -57,6 +57,8 @@ moved = bucket.move("drafts/a.txt", "published/a.txt")
 copied = bucket.copy("templates/a.txt", "drafts/a.txt")
 public_object = bucket.update_visibility("avatars/a.png", is_public=True)
 print(public_object.public_url)
+public_url = bucket.get_public_url("avatars/a.png")
+print(public_url)
 
 lease = client.locks.acquire("build", ttl=30)
 client.locks.release("build", lease)
@@ -65,6 +67,7 @@ client.locks.release("build", lease)
 Storage removals run in input order. A failed request raises after any earlier
 paths have already been deleted. Visibility updates return the server-confirmed
 object; `public_url` is set only when the object is public.
+`get_public_url()` constructs a URL locally and does not check object visibility.
 
 Database builders are immutable, so you can safely reuse a base query. Chain `neq()`, `gt()`,
 `gte()`, `lt()`, and `lte()` for comparison filters:
