@@ -188,13 +188,11 @@ def insert_contract_row(context: Any) -> None:
     )
 
     def operation() -> list[dict[str, Any]]:
-        result = table.insert(row).execute()
-
         def cleanup() -> None:
             table.delete().eq("slug", row["slug"]).execute()
 
         world.cleanup_callbacks.append(cleanup)
-        return result
+        return table.insert(row).execute()
 
     world.record(operation)
 
@@ -216,12 +214,6 @@ def update_contract_row(context: Any) -> None:
     )
 
     def operation() -> list[dict[str, Any]]:
-        result = (
-            table.update({"value": row["after"]["value"]})
-            .eq("slug", row["before"]["slug"])
-            .execute()
-        )
-
         def cleanup() -> None:
             (
                 table.update({"value": row["before"]["value"]})
@@ -230,7 +222,11 @@ def update_contract_row(context: Any) -> None:
             )
 
         world.cleanup_callbacks.append(cleanup)
-        return result
+        return (
+            table.update({"value": row["after"]["value"]})
+            .eq("slug", row["before"]["slug"])
+            .execute()
+        )
 
     world.record(operation)
 
@@ -252,13 +248,12 @@ def delete_contract_row(context: Any) -> None:
     )
 
     def operation() -> list[dict[str, Any]]:
-        result = table.delete().eq("slug", row["slug"]).execute()
-
         def cleanup() -> None:
+            table.delete().eq("slug", row["slug"]).execute()
             table.insert(row).execute()
 
         world.cleanup_callbacks.append(cleanup)
-        return result
+        return table.delete().eq("slug", row["slug"]).execute()
 
     world.record(operation)
 
