@@ -326,6 +326,169 @@ def test_realtime_channel_exposes_its_canonical_name() -> None:
         client.realtime.channel("contract", channel_type="presence").name
         == "presence:contract"
     )
+    assert (
+        client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        ).name
+        == "postgres:public:messages"
+    )
+
+
+def test_realtime_routes_immutable_rls_scoped_postgres_changes() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        updates: list[Any] = []
+        inserts: list[Any] = []
+        received = asyncio.Event()
+
+        def on_update(change: Any) -> None:
+            updates.append(change)
+            received.set()
+
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        channel.on_postgres_changes(
+            "UPDATE",
+            schema="public",
+            table="messages",
+            callback=on_update,
+        )
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=inserts.append,
+        )
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "UPDATE",
+                "schema": "public",
+                "table": "messages",
+                "record": {"id": 1, "body": "updated"},
+                "old_record": {"id": 1, "body": "old"},
+                "columns": ["body"],
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.1)
+
+        change = updates[0]
+        assert change.type == "UPDATE"
+        assert change.schema == "public"
+        assert change.table == "messages"
+        assert change.record == {"id": 1, "body": "updated"}
+        assert change.old_record == {"id": 1, "body": "old"}
+        assert change.columns == ("body",)
+        assert change.timestamp == "2026-09-02T12:00:00Z"
+        assert inserts == []
+        with pytest.raises(TypeError):
+            cast("dict[str, Any]", change.record)["body"] = "mutated"
+
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:extra:user-id",
+            {
+                "type": "UPDATE",
+                "schema": "public",
+                "table": "messages",
+                "timestamp": "2026-09-02T12:01:00Z",
+            },
+        )
+        await asyncio.sleep(0)
+        assert len(updates) == 1
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_preserves_lightweight_postgres_metadata() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        received = asyncio.Event()
+
+        def on_insert(change: Any) -> None:
+            changes.append(change)
+            received.set()
+
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=on_insert,
+        )
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "id": 42,
+                "mode": "lightweight",
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.1)
+
+        assert changes[0].id == 42
+        assert changes[0].mode == "lightweight"
+        assert changes[0].record is None
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_validates_postgres_change_operations() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
+    broadcast = client.realtime.channel("contract")
+    postgres = client.realtime.channel(
+        "public:messages",
+        channel_type="postgres",
+    )
+
+    with pytest.raises(ValueError, match="only available for postgres"):
+        broadcast.on_postgres_changes(
+            "*",
+            schema="public",
+            table="messages",
+            callback=lambda _change: None,
+        )
+    with pytest.raises(ValueError, match="unsupported Postgres change event"):
+        postgres.on_postgres_changes(
+            "UPSERT",  # type: ignore[arg-type]
+            schema="public",
+            table="messages",
+            callback=lambda _change: None,
+        )
+
+    async def send() -> None:
+        with pytest.raises(ValueError, match="only available for broadcast"):
+            await postgres.send({"body": "not allowed"})
+
+    asyncio.run(send())
 
 
 def test_realtime_presence_sync_tracks_initial_join_and_leave_state() -> None:

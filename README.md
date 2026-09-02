@@ -586,6 +586,27 @@ optional local state in `tracked_state` but does not replace that server-managed
 identity. Presence is resynchronized after reconnects. Query failures are
 reported through `realtime.on_error()` and clear the current snapshot.
 
+Postgres channels deliver immutable, RLS-scoped row changes and filter
+callbacks by event, schema, and table:
+
+```python
+changes = client.realtime.channel(
+    "public:messages",
+    channel_type="postgres",
+)
+stop_changes = changes.on_postgres_changes(
+    "INSERT",
+    schema="public",
+    table="messages",
+    callback=lambda change: print(change.record),
+)
+await changes.subscribe()
+stop_changes()
+```
+
+When the server sends only a lightweight notification, `record` is `None` and
+the change retains its `id` and `mode` for fallback handling.
+
 ## Compatibility
 
 The POC supports Python 3.11 and 3.14. Its public facade is intentionally
