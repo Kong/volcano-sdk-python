@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 from ._transport import Transport, invoke, response_payload
 
@@ -56,6 +59,22 @@ class QueryBuilder:
     def lte(self, column: str, value: object) -> QueryBuilder:
         """Add a less-than-or-equal filter."""
         return self._filter(column, "lte", value)
+
+    def like(self, column: str, pattern: str) -> QueryBuilder:
+        """Add a case-sensitive pattern filter."""
+        return self._filter(column, "like", pattern)
+
+    def ilike(self, column: str, pattern: str) -> QueryBuilder:
+        """Add a case-insensitive pattern filter."""
+        return self._filter(column, "ilike", pattern)
+
+    def is_(self, column: str, value: object) -> QueryBuilder:
+        """Add a null or boolean identity filter."""
+        return self._filter(column, "is", value)
+
+    def in_(self, column: str, values: Sequence[object]) -> QueryBuilder:
+        """Add a membership filter."""
+        return self._filter(column, "in", list(values))
 
     def order(self, column: str, *, ascending: bool = True) -> QueryBuilder:
         """Add an ordering clause."""
