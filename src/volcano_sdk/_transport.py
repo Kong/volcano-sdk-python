@@ -82,6 +82,7 @@ from ._generated.api.o_auth_authentication.refresh_o_auth_provider_token import 
     _get_kwargs as refresh_oauth_provider_token_kwargs,
 )
 from ._generated.api.storage_objects import (
+    copy_storage_object,
     delete_storage_object,
     download_storage_object,
     list_storage_objects,
@@ -139,6 +140,7 @@ from ._generated.models.project_lock_lease_request import ProjectLockLeaseReques
 from ._generated.models.refresh_o_auth_provider_token_response_200 import (
     RefreshOAuthProviderTokenResponse200,
 )
+from ._generated.models.storage_copy_request import StorageCopyRequest
 from ._generated.models.storage_move_request import StorageMoveRequest
 from ._generated.models.upload_storage_object_files_body import (
     UploadStorageObjectFilesBody,
@@ -1311,6 +1313,22 @@ class GeneratedTransport:
                 bucket_name,
                 client=client,
                 body=StorageMoveRequest(from_=from_path, to=to_path),
+            )
+        return self._response(response)
+
+    def copy_storage_object(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        from_path: str,
+        to_path: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = copy_storage_object.sync_detailed(
+                bucket_name,
+                client=client,
+                body=StorageCopyRequest(from_=from_path, to=to_path),
             )
         return self._response(response)
 

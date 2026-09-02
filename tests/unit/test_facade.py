@@ -99,6 +99,20 @@ class FakeTransport:
             },
         )
 
+    def copy_storage_object(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("copyStorageObject", kwargs))
+        return FakeResponse(
+            201,
+            {
+                "id": "00000000-0000-4000-8000-000000000021",
+                "bucket_id": "00000000-0000-4000-8000-000000000030",
+                "name": kwargs["to_path"],
+                "size": 5,
+                "mime_type": "text/plain",
+                "is_public": False,
+            },
+        )
+
     def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("acquireProjectLock", kwargs))
         return FakeResponse(
@@ -322,3 +336,19 @@ def test_storage_move_returns_the_destination_object() -> None:
             "to_path": "published/a.txt",
         },
     )
+
+
+def test_storage_copy_returns_the_destination_object() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    copied = client.storage.from_("assets").copy(
+        "templates/a.txt",
+        "drafts/a.txt",
+    )
+
+    assert copied.name == "drafts/a.txt"
+    assert transport.calls[-1][0] == "copyStorageObject"
+    assert transport.calls[-1][1]["from_path"] == "templates/a.txt"
+    assert transport.calls[-1][1]["to_path"] == "drafts/a.txt"

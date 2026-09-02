@@ -54,6 +54,7 @@ if page.next_cursor is not None:
 
 removed_paths = bucket.remove(["archive/a.txt", "archive/b.txt"])
 moved = bucket.move("drafts/a.txt", "published/a.txt")
+copied = bucket.copy("templates/a.txt", "drafts/a.txt")
 
 lease = client.locks.acquire("build", ttl=30)
 client.locks.release("build", lease)

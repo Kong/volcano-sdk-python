@@ -1324,3 +1324,39 @@ def test_generated_transport_moves_a_storage_object() -> None:
         "from": "drafts/a.txt",
         "to": "published/a.txt",
     }
+
+
+def test_generated_transport_copies_a_storage_object() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            201,
+            json={
+                "id": "00000000-0000-4000-8000-000000000021",
+                "bucket_id": "00000000-0000-4000-8000-000000000030",
+                "name": "drafts/a.txt",
+                "size": 5,
+                "mime_type": "text/plain",
+                "is_public": False,
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+    response = transport.copy_storage_object(
+        authorization="access-token",
+        bucket_name="assets",
+        from_path="templates/a.txt",
+        to_path="drafts/a.txt",
+    )
+
+    assert response.status_code == 201
+    assert requests[0].url.path == "/storage/assets/copy"
+    assert json.loads(requests[0].content) == {
+        "from": "templates/a.txt",
+        "to": "drafts/a.txt",
+    }
