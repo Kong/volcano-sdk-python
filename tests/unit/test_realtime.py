@@ -158,12 +158,14 @@ class FakeSubscription:
         self.recoverable = recoverable
         self.calls: list[tuple[str, Any]] = []
         self.presence_clients: dict[str, Any] = {}
+        self.presence_error: Exception | None = None
         self.unsubscribe_error: Exception | None = None
         self.unsubscribe_entered: asyncio.Event | None = None
         self.unsubscribe_release: asyncio.Event | None = None
 
     async def subscribe(self) -> None:
         self.calls.append(("subscribe", None))
+        await self.emit_subscribed()
 
     async def publish(self, data: Any) -> None:
         self.calls.append(("publish", data))
@@ -176,10 +178,28 @@ class FakeSubscription:
             await self.unsubscribe_release.wait()
         if self.unsubscribe_error is not None:
             raise self.unsubscribe_error
+        await self.events.on_unsubscribed(
+            SimpleNamespace(code=0, reason="unsubscribe called")
+        )
 
     async def presence(self) -> Any:
         self.calls.append(("presence", None))
+        if self.presence_error is not None:
+            raise self.presence_error
         return SimpleNamespace(clients=self.presence_clients.copy())
+
+    async def emit_subscribed(self) -> None:
+        await self.events.on_subscribed(
+            SimpleNamespace(
+                channel=self.name,
+                recoverable=self.recoverable,
+                positioned=False,
+                stream_position=None,
+                was_recovering=False,
+                recovered=False,
+                data=None,
+            )
+        )
 
     async def emit(self, data: Any) -> None:
         await self.events.on_publication(
@@ -199,6 +219,7 @@ class FakeCentrifugeClient:
         self.events = events
         self.state = SimpleNamespace(value="disconnected")
         self.presence_clients: dict[str, Any] = {}
+        self.presence_error: Exception | None = None
         self.subscription: FakeSubscription | None = None
         self._subs: dict[str, FakeSubscription] = {}
 
@@ -240,6 +261,7 @@ class FakeCentrifugeClient:
             recoverable=recoverable,
         )
         self.subscription.presence_clients = self.presence_clients.copy()
+        self.subscription.presence_error = self.presence_error
         self._subs[name] = self.subscription
         return self.subscription
 
@@ -354,8 +376,98 @@ def test_realtime_presence_sync_tracks_initial_join_and_leave_state() -> None:
 
         stop_sync()
         stop_sync()
-        await channel.track({"status": "online"})
         await client.realtime.remove_channel("lobby", channel_type="presence")
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_presence_resyncs_after_resubscription() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("lobby", channel_type="presence")
+        await channel.subscribe()
+        assert official.subscription is not None
+        official.subscription.presence_clients = {
+            "carol-client": SimpleNamespace(
+                client="carol-client",
+                user="carol",
+                conn_info={"display_name": "Carol"},
+            )
+        }
+
+        await official.subscription.emit_subscribed()
+
+        assert set(channel.get_presence_state()) == {"carol-client"}
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_track_exposes_immutable_local_state() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("lobby", channel_type="presence")
+        await channel.subscribe()
+        tracked = {"status": "online"}
+
+        await channel.track(tracked)
+        tracked["status"] = "away"
+
+        assert channel.tracked_state == {"status": "online"}
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_unsubscribe_clears_presence_state() -> None:
+    official = FakeCentrifugeClient()
+    official.presence_clients = {
+        "alice-client": SimpleNamespace(
+            client="alice-client",
+            user="alice",
+            conn_info={},
+        )
+    }
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("lobby", channel_type="presence")
+        states: list[Any] = []
+        cleared = asyncio.Event()
+
+        def on_sync(state: Any) -> None:
+            states.append(state)
+            if not state:
+                cleared.set()
+
+        channel.on_presence_sync(on_sync)
+        await channel.subscribe()
+
+        await channel.unsubscribe()
+        await asyncio.wait_for(cleared.wait(), timeout=0.1)
+
+        assert channel.get_presence_state() == {}
+        assert states[-1] == {}
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -373,6 +485,71 @@ def test_realtime_presence_operations_reject_broadcast_channels() -> None:
             await channel.track()
 
     asyncio.run(scenario())
+
+
+def test_realtime_rejects_unsupported_channel_types() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
+    unsupported = cast("Any", "presense")
+
+    with pytest.raises(ValueError, match="channel type"):
+        client.realtime.channel("contract", channel_type=unsupported)
+
+    async def scenario() -> None:
+        with pytest.raises(ValueError, match="channel type"):
+            await client.realtime.remove_channel(
+                "contract",
+                channel_type=unsupported,
+            )
+
+    asyncio.run(scenario())
+
+
+def test_realtime_presence_values_are_hashable_without_metadata() -> None:
+    first = RealtimePresenceInfo(
+        client="client-1",
+        user="user-1",
+        data={"status": "online"},
+    )
+    second = RealtimePresenceInfo(
+        client="client-1",
+        user="user-1",
+        data={"status": "away"},
+    )
+
+    assert hash(first) == hash(second)
+
+
+def test_realtime_reports_presence_query_failures() -> None:
+    official = FakeCentrifugeClient()
+    official.presence_error = centrifuge_error("presence unavailable")
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    errors: list[RealtimeErrorContext] = []
+
+    async def scenario() -> None:
+        reported = asyncio.Event()
+
+        def on_error(context: RealtimeErrorContext) -> None:
+            errors.append(context)
+            reported.set()
+
+        client.realtime.on_error(on_error)
+        await client.realtime.channel(
+            "lobby",
+            channel_type="presence",
+        ).subscribe()
+        await asyncio.wait_for(reported.wait(), timeout=0.1)
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+    assert len(errors) == 1
+    assert errors[0].message == "presence unavailable"
+    assert errors[0].error is official.presence_error
 
 
 def test_realtime_wraps_official_client_without_exposing_it() -> None:
@@ -409,6 +586,7 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
         assert channel.on("message", received.append) is channel
         await channel.subscribe()
         assert official.subscription is not None
+        assert official.subscription.recoverable is False
         await official.emit_wire_publication(
             "project-id:broadcast:contract",
             {"event": "message", "value": "contract"},

@@ -17,6 +17,7 @@ MessageCallback = Callable[[Any], Any]
 RealtimeCallback = Callable[[Any], Any]
 UnsubscribeCallback = Callable[[], None]
 ChannelType: TypeAlias = Literal["broadcast", "presence"]
+SUPPORTED_CHANNEL_TYPES = frozenset({"broadcast", "presence"})
 CENTRIFUGE_ERROR = cast(
     "type[Exception]",
     importlib.import_module("centrifuge").CentrifugeError,
@@ -38,6 +39,13 @@ SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
 
 def _empty_presence_data() -> Mapping[str, JSONValue]:
     return MappingProxyType({})
+
+
+def _validate_channel_type(channel_type: str) -> ChannelType:
+    if channel_type not in SUPPORTED_CHANNEL_TYPES:
+        message = f"unsupported realtime channel type: {channel_type}"
+        raise ValueError(message)
+    return cast("ChannelType", channel_type)
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +78,10 @@ class RealtimePresenceInfo:
 
     client: str
     user: str | None = None
-    data: Mapping[str, JSONValue] = field(default_factory=_empty_presence_data)
+    data: Mapping[str, JSONValue] = field(
+        default_factory=_empty_presence_data,
+        hash=False,
+    )
 
     def __post_init__(self) -> None:
         """Defensively freeze nested connection metadata."""
@@ -257,9 +268,12 @@ class _ChannelEvents:
 
     async def on_subscribed(self, ctx: Any) -> None:
         del ctx
+        if self._channel._type == "presence":
+            await self._channel._realtime._sync_presence(self._channel)
 
     async def on_unsubscribed(self, ctx: Any) -> None:
         del ctx
+        await self._channel._presence_unsubscribed()
 
     async def on_join(self, ctx: Any) -> None:
         await self._channel._presence_join(getattr(ctx, "info", None))
@@ -390,6 +404,12 @@ class Channel:
         self._ensure_presence()
         return MappingProxyType(dict(self._presence_state))
 
+    @property
+    def tracked_state(self) -> Mapping[str, JSONValue]:
+        """Return an immutable snapshot of this client's local presence state."""
+        self._ensure_presence()
+        return MappingProxyType(dict(self._tracked_state))
+
     def _ensure_presence(self) -> None:
         if self._type != "presence":
             raise ValueError(PRESENCE_ONLY)
@@ -487,6 +507,12 @@ class Channel:
         presence = self._presence_info(info)
         self._presence_state.pop(presence.client, None)
         await self._emit("leave", presence)
+        await self._emit("presence_sync", self.get_presence_state())
+
+    async def _presence_unsubscribed(self) -> None:
+        if self._type != "presence":
+            return
+        self._presence_state.clear()
         await self._emit("presence_sync", self.get_presence_state())
 
     def _presence_info(self, info: Any) -> RealtimePresenceInfo:
@@ -637,6 +663,7 @@ class Realtime:
         channel_type: ChannelType = "broadcast",
     ) -> Channel:
         """Return a stable channel facade for a broadcast or presence name."""
+        channel_type = _validate_channel_type(channel_type)
         wire_name = f"{channel_type}:{name}"
         if wire_name in self._removing_channels:
             raise RuntimeError(CHANNEL_REMOVAL_IN_PROGRESS)
@@ -656,6 +683,7 @@ class Realtime:
         channel_type: ChannelType = "broadcast",
     ) -> None:
         """Unsubscribe and forget one broadcast or presence channel."""
+        channel_type = _validate_channel_type(channel_type)
         wire_name = f"{channel_type}:{name}"
         async with self._connection_lock:
             channel = self._channels.get(wire_name)
@@ -732,18 +760,25 @@ class Realtime:
                     channel._name,
                     events=_ChannelEvents(channel),
                     join_leave=channel._type == "presence",
-                    recoverable=True,
+                    recoverable=channel._type == "presence",
                 )
             await channel._subscription.subscribe()
-            if channel._type == "presence":
-                await self._sync_presence(channel)
 
     async def _sync_presence(self, channel: Channel) -> None:
         if channel._subscription is None:
             return
         try:
             result = await channel._subscription.presence()
-        except CENTRIFUGE_ERROR:
+        except CENTRIFUGE_ERROR as error:
+            await channel._replace_presence({})
+            self._enqueue_connection_callbacks(
+                "error",
+                RealtimeErrorContext(
+                    code=getattr(error, "code", None),
+                    message=str(error),
+                    error=error,
+                ),
+            )
             return
         clients = getattr(result, "clients", None)
         if isinstance(clients, Mapping):

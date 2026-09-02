@@ -568,6 +568,7 @@ stop_sync = presence.on_presence_sync(
 
 await presence.subscribe()
 await presence.track({"status": "online"})
+assert presence.tracked_state == {"status": "online"}
 current = presence.get_presence_state()
 await client.realtime.remove_channel("lobby", channel_type="presence")
 stop_sync()
@@ -581,7 +582,9 @@ and run outside the transport event processor. Each registration returns an
 idempotent function that stops future delivery.
 Presence state and client metadata are immutable snapshots. Volcano derives
 the remote identity and metadata from the authenticated user; `track()` stores
-optional local state but does not replace that server-managed identity.
+optional local state in `tracked_state` but does not replace that server-managed
+identity. Presence is resynchronized after reconnects. Query failures are
+reported through `realtime.on_error()` and clear the current snapshot.
 
 ## Compatibility
 
