@@ -8,7 +8,14 @@ from typing import Any
 
 import pytest
 
-from volcano_sdk import LockLease, Session, StorageObject, StoragePage, VolcanoClient
+from volcano_sdk import (
+    LockLease,
+    Session,
+    StorageObject,
+    StoragePage,
+    UploadSession,
+    VolcanoClient,
+)
 
 
 @dataclass(frozen=True)
@@ -60,6 +67,18 @@ class FakeTransport:
         self.calls.append(("downloadStorageObject", kwargs))
         status = self.range_download_status if kwargs.get("byte_range") else 200
         return FakeResponse(status, content=b"hello")
+
+    def create_upload_session(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("createUploadSession", kwargs))
+        return FakeResponse(
+            201,
+            {
+                "session_id": "session-123",
+                "part_size": 8_388_608,
+                "total_parts": 3,
+                "expires_at": "2026-09-09T12:00:00Z",
+            },
+        )
 
     def list_storage_objects(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("listStorageObjects", kwargs))
@@ -346,6 +365,37 @@ def test_storage_download_accepts_a_full_response_when_range_is_ignored() -> Non
     )
 
     assert downloaded == b"hello"
+
+
+def test_storage_creates_an_immutable_upload_session() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    session = client.storage.from_("assets").create_upload_session(
+        "videos/demo.mp4",
+        total_size=20_000_000,
+        content_type="video/mp4",
+        part_size=8_388_608,
+    )
+
+    assert session == UploadSession(
+        session_id="session-123",
+        part_size=8_388_608,
+        total_parts=3,
+        expires_at=datetime(2026, 9, 9, 12, 0, tzinfo=UTC),
+    )
+    operation, arguments = transport.calls[-1]
+    assert operation == "createUploadSession"
+    assert arguments["authorization"] == "access-token"
+    assert arguments["bucket_name"] == "assets"
+    request = arguments["request"]
+    assert (
+        request.path,
+        request.content_type,
+        request.total_size,
+        request.part_size,
+    ) == ("videos/demo.mp4", "video/mp4", 20_000_000, 8_388_608)
 
 
 @pytest.mark.parametrize("invalid_paths", [[], [""], b"abc"])

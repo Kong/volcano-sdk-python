@@ -11,8 +11,14 @@ from datetime import datetime
 from typing import Any, Protocol, cast
 from urllib.parse import quote
 
-from ._transport import Transport, TransportResponse, invoke, response_payload
-from .models import JSONValue, StorageObject, StoragePage
+from ._transport import (
+    StorageUploadSessionRequest,
+    Transport,
+    TransportResponse,
+    invoke,
+    response_payload,
+)
+from .models import JSONValue, StorageObject, StoragePage, UploadSession
 
 _INVALID_STORAGE_PAGE = "Expected a complete storage page"
 _INVALID_STORAGE_PATH = "Storage path must be a non-empty string"
@@ -77,6 +83,22 @@ def _storage_page(payload: object) -> StoragePage:
         next_cursor=(
             None if next_cursor is None or next_cursor == "" else str(next_cursor)
         ),
+    )
+
+
+def _upload_session(payload: object) -> UploadSession:
+    values = cast("Mapping[str, object]", payload)
+    raw_expires_at = values["expires_at"]
+    expires_at = (
+        datetime.fromisoformat(raw_expires_at)
+        if isinstance(raw_expires_at, str)
+        else cast("datetime", raw_expires_at)
+    )
+    return UploadSession(
+        session_id=cast("str", values["session_id"]),
+        part_size=cast("int", values["part_size"]),
+        total_parts=cast("int", values["total_parts"]),
+        expires_at=expires_at,
     )
 
 
@@ -223,6 +245,20 @@ class StorageVisibilityTransport(Protocol):
         ...
 
 
+class StorageUploadSessionTransport(Protocol):
+    """Transport capability required to create resumable upload sessions."""
+
+    def create_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionRequest,
+    ) -> TransportResponse:
+        """Create one resumable upload session."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class StorageBucket:
     """Operations scoped to one storage bucket."""
@@ -258,6 +294,29 @@ class StorageBucket:
         )
         response_payload(response, expected_status)
         return bytes(response.content)
+
+    def create_upload_session(
+        self,
+        path: str,
+        *,
+        total_size: int,
+        content_type: str = "application/octet-stream",
+        part_size: int | None = None,
+    ) -> UploadSession:
+        """Create server state for a resumable upload."""
+        transport = cast("StorageUploadSessionTransport", self._client._transport)
+        response = invoke(
+            transport.create_upload_session,
+            authorization=self._client._session_token(),
+            bucket_name=self._name,
+            request=StorageUploadSessionRequest(
+                path=_storage_path(path),
+                content_type=content_type,
+                total_size=total_size,
+                part_size=part_size,
+            ),
+        )
+        return _upload_session(response_payload(response, 201))
 
     def list(
         self,

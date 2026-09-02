@@ -17,7 +17,11 @@ from volcano_sdk._generated.models.auth_update_user_response_200 import (
     AuthUpdateUserResponse200,
 )
 from volcano_sdk._generated.types import Unset
-from volcano_sdk._transport import GeneratedTransport, response_payload
+from volcano_sdk._transport import (
+    GeneratedTransport,
+    StorageUploadSessionRequest,
+    response_payload,
+)
 
 
 def test_generated_transport_builds_an_oauth_authorization_url() -> None:
@@ -1288,6 +1292,51 @@ def test_generated_transport_deletes_a_storage_object() -> None:
     assert requests[0].method == "DELETE"
     assert requests[0].url.path == "/storage/assets/archive/a.txt"
     assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
+def test_generated_transport_creates_an_upload_session_with_json() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            201,
+            json={
+                "session_id": "session-123",
+                "part_size": 8_388_608,
+                "total_parts": 3,
+                "expires_at": "2026-09-09T12:00:00Z",
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.create_upload_session(
+        authorization="access-token",
+        bucket_name="assets",
+        request=StorageUploadSessionRequest(
+            path="videos/demo clip.mp4",
+            content_type="video/mp4",
+            total_size=20_000_000,
+            part_size=8_388_608,
+        ),
+    )
+
+    assert response.status_code == 201
+    assert response.payload["session_id"] == "session-123"
+    assert len(requests) == 1
+    assert requests[0].url.path == "/storage/assets/videos/demo clip.mp4"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert requests[0].headers["content-type"] == "application/json"
+    assert json.loads(requests[0].content) == {
+        "object_path": "videos/demo clip.mp4",
+        "content_type": "video/mp4",
+        "total_size": 20_000_000,
+        "part_size": 8_388_608,
+    }
 
 
 def test_generated_transport_moves_a_storage_object() -> None:

@@ -177,6 +177,16 @@ class LockLease:
 
 
 @dataclass(frozen=True, slots=True)
+class UploadSession:
+    """Server-created state for a resumable storage upload."""
+
+    session_id: str
+    part_size: int
+    total_parts: int
+    expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class StorageObject:
     """Object metadata returned by a storage bucket."""
 
