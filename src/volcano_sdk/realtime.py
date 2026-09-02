@@ -47,6 +47,8 @@ class CentrifugeSubscription(Protocol):
 class CentrifugeConnection(Protocol):
     """Centrifuge connection operations used by the SDK."""
 
+    state: Any
+
     async def connect(self) -> None:
         """Open the remote connection."""
         ...
@@ -62,6 +64,10 @@ class CentrifugeConnection(Protocol):
         events: Any,
     ) -> CentrifugeSubscription:
         """Create a subscription for a remote channel."""
+        ...
+
+    def remove_subscription(self, subscription: Any) -> None:
+        """Remove an unsubscribed channel from the connection registry."""
         ...
 
 
@@ -148,6 +154,11 @@ class _VolcanoCentrifugeConnection:
     async def disconnect(self) -> None:
         await self._connection.disconnect()
 
+    @property
+    def is_connected(self) -> bool:
+        state = self._connection.state
+        return getattr(state, "value", None) == "connected"
+
     def new_subscription(
         self,
         name: str,
@@ -155,6 +166,9 @@ class _VolcanoCentrifugeConnection:
         events: Any,
     ) -> CentrifugeSubscription:
         return self._connection.new_subscription(name, events=events)
+
+    def remove_subscription(self, subscription: CentrifugeSubscription) -> None:
+        self._connection.remove_subscription(subscription)
 
 
 class _ChannelEvents:
@@ -311,7 +325,7 @@ class Realtime:
         self._client_context = client
         self._api_url = api_url
         self._client_factory = client_factory
-        self._connection: CentrifugeConnection | None = None
+        self._connection: _VolcanoCentrifugeConnection | None = None
         self._connection_lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
 
@@ -325,36 +339,33 @@ class Realtime:
     @property
     def is_connected(self) -> bool:
         """Return whether the realtime transport is connected."""
-        return self._connection is not None
+        return self._connection is not None and self._connection.is_connected
 
     async def remove_channel(self, name: str) -> None:
         """Unsubscribe and forget one broadcast channel."""
         wire_name = f"broadcast:{name}"
         async with self._connection_lock:
-            channel = self._channels.pop(wire_name, None)
-            if channel is not None:
-                await self._remove_channel(channel)
+            channel = self._channels.get(wire_name)
+            if channel is None:
+                return
+            await self._remove_channel(channel)
+            self._channels.pop(wire_name, None)
 
     async def remove_all_channels(self) -> None:
         """Unsubscribe and forget every managed channel."""
         async with self._connection_lock:
-            channels = tuple(self._channels.values())
-            self._channels.clear()
-            results = await asyncio.gather(
-                *(self._remove_channel(channel) for channel in channels),
-                return_exceptions=True,
-            )
-            for result in results:
-                if isinstance(result, BaseException):
-                    raise result
+            for wire_name, channel in tuple(self._channels.items()):
+                await self._remove_channel(channel)
+                if self._channels.get(wire_name) is channel:
+                    del self._channels[wire_name]
 
-    @staticmethod
-    async def _remove_channel(channel: Channel) -> None:
-        try:
-            if channel._subscription is not None:
-                await channel._subscription.unsubscribe()
-        finally:
-            await channel._reset()
+    async def _remove_channel(self, channel: Channel) -> None:
+        subscription = channel._subscription
+        if subscription is not None:
+            await subscription.unsubscribe()
+            if self._connection is not None:
+                self._connection.remove_subscription(subscription)
+        await channel._reset()
 
     async def _token(self) -> str:
         return self._client_context._session_token()
@@ -365,11 +376,11 @@ class Realtime:
         query = f"apikey={quote(self._client_context._anon_token(), safe='')}"
         return urlunsplit((scheme, parsed.netloc, "/realtime/v1/websocket", query, ""))
 
-    async def _connect(self) -> CentrifugeConnection:
+    async def _connect(self) -> _VolcanoCentrifugeConnection:
         async with self._connection_lock:
             return await self._connect_locked()
 
-    async def _connect_locked(self) -> CentrifugeConnection:
+    async def _connect_locked(self) -> _VolcanoCentrifugeConnection:
         if self._connection is not None:
             return self._connection
         connection = _VolcanoCentrifugeConnection(
