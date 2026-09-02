@@ -268,11 +268,13 @@ class _ChannelEvents:
 
     async def on_subscribed(self, ctx: Any) -> None:
         del ctx
+        self._channel._subscribed = True
         if self._channel._type == "presence":
             await self._channel._realtime._sync_presence(self._channel)
 
     async def on_unsubscribed(self, ctx: Any) -> None:
         del ctx
+        self._channel._subscribed = False
         await self._channel._presence_unsubscribed()
 
     async def on_join(self, ctx: Any) -> None:
@@ -354,6 +356,8 @@ class Channel:
         self._presence_state: dict[str, RealtimePresenceInfo] = {}
         self._tracked_state: Mapping[str, JSONValue] = MappingProxyType({})
         self._subscription: CentrifugeSubscription | None = None
+        self._subscribed = False
+        self._presence_lock = asyncio.Lock()
         self._callback_queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue(
             maxsize=CALLBACK_QUEUE_LIMIT
         )
@@ -394,7 +398,7 @@ class Channel:
     async def track(self, state: Mapping[str, JSONValue] | None = None) -> None:
         """Store local presence state while server identity remains authoritative."""
         self._ensure_presence()
-        if self._subscription is None:
+        if not self._subscribed:
             raise RuntimeError(CHANNEL_NOT_SUBSCRIBED)
         frozen = _freeze_json(cast("JSONValue", dict(state or {})))
         self._tracked_state = cast("Mapping[str, JSONValue]", frozen)
@@ -496,24 +500,28 @@ class Channel:
     async def _presence_join(self, info: Any) -> None:
         if self._type != "presence" or info is None:
             return
-        presence = self._presence_info(info)
-        self._presence_state[presence.client] = presence
-        await self._emit("join", presence)
-        await self._emit("presence_sync", self.get_presence_state())
+        async with self._presence_lock:
+            presence = self._presence_info(info)
+            self._presence_state[presence.client] = presence
+            await self._emit("join", presence)
+            await self._emit("presence_sync", self.get_presence_state())
 
     async def _presence_leave(self, info: Any) -> None:
         if self._type != "presence" or info is None:
             return
-        presence = self._presence_info(info)
-        self._presence_state.pop(presence.client, None)
-        await self._emit("leave", presence)
-        await self._emit("presence_sync", self.get_presence_state())
+        async with self._presence_lock:
+            presence = self._presence_info(info)
+            self._presence_state.pop(presence.client, None)
+            await self._emit("leave", presence)
+            await self._emit("presence_sync", self.get_presence_state())
 
     async def _presence_unsubscribed(self) -> None:
         if self._type != "presence":
             return
-        self._presence_state.clear()
-        await self._emit("presence_sync", self.get_presence_state())
+        async with self._presence_lock:
+            self._presence_state.clear()
+            self._tracked_state = MappingProxyType({})
+            await self._emit("presence_sync", self.get_presence_state())
 
     def _presence_info(self, info: Any) -> RealtimePresenceInfo:
         data = getattr(info, "conn_info", None)
@@ -545,6 +553,7 @@ class Channel:
             self._callback_queue.task_done()
         self._presence_state.clear()
         self._tracked_state = MappingProxyType({})
+        self._subscribed = False
 
 
 class Realtime:
@@ -767,30 +776,32 @@ class Realtime:
     async def _sync_presence(self, channel: Channel) -> None:
         if channel._subscription is None:
             return
-        try:
-            result = await channel._subscription.presence()
-        except CENTRIFUGE_ERROR as error:
-            await channel._replace_presence({})
-            self._enqueue_connection_callbacks(
-                "error",
-                RealtimeErrorContext(
-                    code=getattr(error, "code", None),
-                    message=str(error),
-                    error=error,
-                ),
-            )
-            return
-        clients = getattr(result, "clients", None)
-        if isinstance(clients, Mapping):
-            await channel._replace_presence(cast("Mapping[str, Any]", clients))
+        async with channel._presence_lock:
+            try:
+                result = await channel._subscription.presence()
+            except CENTRIFUGE_ERROR as error:
+                await channel._replace_presence({})
+                self._enqueue_connection_callbacks(
+                    "error",
+                    RealtimeErrorContext(
+                        code=getattr(error, "code", None),
+                        message=str(error),
+                        error=error,
+                    ),
+                )
+                return
+            clients = getattr(result, "clients", None)
+            if isinstance(clients, Mapping):
+                await channel._replace_presence(cast("Mapping[str, Any]", clients))
 
     async def _publish(self, channel: Channel, data: Any) -> None:
         async with self._connection_lock:
             if channel._type != "broadcast":
                 raise ValueError(BROADCAST_ONLY)
-            if channel._subscription is None:
+            subscription = channel._subscription
+            if not channel._subscribed or subscription is None:
                 raise RuntimeError(CHANNEL_NOT_SUBSCRIBED)
-            await channel._subscription.publish(data)
+            await subscription.publish(data)
 
     async def _unsubscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
