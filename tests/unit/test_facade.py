@@ -13,6 +13,7 @@ from volcano_sdk import (
     Session,
     StorageObject,
     StoragePage,
+    UploadPart,
     UploadSession,
     VolcanoClient,
 )
@@ -77,6 +78,18 @@ class FakeTransport:
                 "part_size": 8_388_608,
                 "total_parts": 3,
                 "expires_at": "2026-09-09T12:00:00Z",
+            },
+        )
+
+    def upload_part(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("uploadPart", kwargs))
+        request = kwargs["request"]
+        return FakeResponse(
+            200,
+            {
+                "part_number": request.part_number,
+                "etag": "etag-part-1",
+                "size": len(request.data),
             },
         )
 
@@ -396,6 +409,30 @@ def test_storage_creates_an_immutable_upload_session() -> None:
         request.total_size,
         request.part_size,
     ) == ("videos/demo.mp4", "video/mp4", 20_000_000, 8_388_608)
+
+
+def test_storage_uploads_a_part_and_returns_immutable_metadata() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    part = client.storage.from_("assets").upload_part(
+        "videos/demo.mp4",
+        session_id="session-123",
+        part_number=1,
+        data=b"chunk\x00",
+    )
+
+    assert part == UploadPart(part_number=1, etag="etag-part-1", size=6)
+    operation, arguments = transport.calls[-1]
+    assert operation == "uploadPart"
+    request = arguments["request"]
+    assert (request.path, request.session_id, request.part_number, request.data) == (
+        "videos/demo.mp4",
+        "session-123",
+        1,
+        b"chunk\x00",
+    )
 
 
 @pytest.mark.parametrize("invalid_paths", [[], [""], b"abc"])

@@ -187,6 +187,15 @@ class UploadSession:
 
 
 @dataclass(frozen=True, slots=True)
+class UploadPart:
+    """Metadata returned after uploading one resumable part."""
+
+    part_number: int
+    etag: str
+    size: int
+
+
+@dataclass(frozen=True, slots=True)
 class StorageObject:
     """Object metadata returned by a storage bucket."""
 

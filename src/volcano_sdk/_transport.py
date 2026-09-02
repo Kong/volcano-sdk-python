@@ -88,6 +88,7 @@ from ._generated.api.storage_objects import (
     list_storage_objects,
     move_storage_object,
     update_storage_object_visibility,
+    upload_part,
     upload_storage_object,
 )
 from ._generated.client import AuthenticatedClient
@@ -236,6 +237,16 @@ class StorageUploadSessionRequest:
     content_type: str
     total_size: int
     part_size: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class StorageUploadPartRequest:
+    """Values needed to upload one resumable storage part."""
+
+    path: str
+    session_id: str
+    part_number: int
+    data: bytes
 
 
 @dataclass(frozen=True, slots=True)
@@ -1284,6 +1295,24 @@ class GeneratedTransport:
                 request.path,
                 client=client,
                 body=body,
+            )
+        return self._response(response)
+
+    def upload_part(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadPartRequest,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = upload_part.sync_detailed(
+                bucket_name,
+                request.path,
+                client=client,
+                body=File(payload=BytesIO(request.data)),
+                x_upload_session=request.session_id,
+                x_part_number=request.part_number,
             )
         return self._response(response)
 
