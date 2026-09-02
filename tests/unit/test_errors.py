@@ -55,6 +55,16 @@ class ErrorTransport:
         del authorization, database_name, body
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
+    def query_database_insert(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> ErrorResponse:
+        del authorization, database_name, body
+        raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
+
     def upload_storage_object(
         self,
         *,

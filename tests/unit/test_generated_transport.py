@@ -978,6 +978,40 @@ def test_generated_transport_logs_out_with_the_anon_key_and_refresh_token() -> N
     assert json.loads(requests[0].content) == {"refresh_token": "refresh-1"}
 
 
+def test_generated_transport_inserts_a_database_row() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={"data": [{"id": "item-1", "name": "Volcano"}], "count": 1},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.query_database_insert(
+        authorization="access-token",
+        database_name="main",
+        body={"table": "items", "values": {"name": "Volcano"}},
+    )
+
+    assert response.payload == {
+        "data": [{"id": "item-1", "name": "Volcano"}],
+        "count": 1,
+    }
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/databases/main/query/insert"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert json.loads(requests[0].content) == {
+        "table": "items",
+        "values": {"name": "Volcano"},
+    }
+
+
 def test_generated_transport_calls_the_seven_openapi_operations() -> None:
     requests: list[httpx.Request] = []
 

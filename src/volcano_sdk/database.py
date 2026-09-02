@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
+
+    from .models import JSONValue
 
 from ._transport import Transport, invoke, response_payload
 
@@ -76,6 +79,15 @@ class QueryBuilder:
         """Add a membership filter."""
         return self._filter(column, "in", list(values))
 
+    def insert(self, values: Mapping[str, JSONValue]) -> InsertBuilder:
+        """Build an insert for this table."""
+        return InsertBuilder(
+            self._client,
+            self._database_name,
+            self._table,
+            deepcopy(dict(values)),
+        )
+
     def order(self, column: str, *, ascending: bool = True) -> QueryBuilder:
         """Add an ordering clause."""
         clause = {"column": column, "ascending": ascending}
@@ -111,6 +123,27 @@ class QueryBuilder:
             authorization=self._client._session_token(),
             database_name=self._database_name,
             body=body,
+        )
+        payload = response_payload(response, 200)
+        return list(payload["data"])
+
+
+@dataclass(frozen=True, slots=True)
+class InsertBuilder:
+    """Build and execute an immutable database insert."""
+
+    _client: DatabaseContext
+    _database_name: str
+    _table: str
+    _values: dict[str, JSONValue]
+
+    def execute(self) -> list[dict[str, Any]]:
+        """Insert one row and return the inserted rows."""
+        response = invoke(
+            self._client._transport.query_database_insert,
+            authorization=self._client._session_token(),
+            database_name=self._database_name,
+            body={"table": self._table, "values": deepcopy(self._values)},
         )
         payload = response_payload(response, 200)
         return list(payload["data"])
