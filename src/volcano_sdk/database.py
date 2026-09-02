@@ -25,6 +25,9 @@ class QueryBuilder:
     _table: str
     _columns: tuple[str, ...] = ()
     _filters: tuple[dict[str, Any], ...] = ()
+    _order: tuple[dict[str, Any], ...] = ()
+    _limit: int | None = None
+    _offset: int | None = None
 
     def select(self, *columns: str) -> QueryBuilder:
         """Select the requested columns."""
@@ -54,6 +57,19 @@ class QueryBuilder:
         """Add a less-than-or-equal filter."""
         return self._filter(column, "lte", value)
 
+    def order(self, column: str, *, ascending: bool = True) -> QueryBuilder:
+        """Add an ordering clause."""
+        clause = {"column": column, "ascending": ascending}
+        return replace(self, _order=(*self._order, clause))
+
+    def limit(self, count: int) -> QueryBuilder:
+        """Limit the number of returned rows."""
+        return replace(self, _limit=count)
+
+    def offset(self, count: int) -> QueryBuilder:
+        """Skip rows before returning results."""
+        return replace(self, _offset=count)
+
     def _filter(self, column: str, operator: str, value: object) -> QueryBuilder:
         condition = {"column": column, "operator": operator, "value": value}
         return replace(self, _filters=(*self._filters, condition))
@@ -65,6 +81,12 @@ class QueryBuilder:
             body["select"] = list(self._columns)
         if self._filters:
             body["filters"] = list(self._filters)
+        if self._order:
+            body["order"] = list(self._order)
+        if self._limit is not None:
+            body["limit"] = self._limit
+        if self._offset is not None:
+            body["offset"] = self._offset
         response = invoke(
             self._client._transport.query_database_select,
             authorization=self._client._session_token(),
