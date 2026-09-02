@@ -93,6 +93,24 @@ class FakeTransport:
             },
         )
 
+    def complete_upload_session(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("completeUploadSession", kwargs))
+        request = kwargs["request"]
+        return FakeResponse(
+            200,
+            {
+                "object": {
+                    "id": "00000000-0000-4000-8000-000000000020",
+                    "bucket_id": "00000000-0000-4000-8000-000000000030",
+                    "name": request.path,
+                    "size": 20_000_000,
+                    "mime_type": "video/mp4",
+                    "is_public": False,
+                    "etag": "etag-complete",
+                }
+            },
+        )
+
     def list_storage_objects(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("listStorageObjects", kwargs))
         return FakeResponse(
@@ -432,6 +450,36 @@ def test_storage_uploads_a_part_and_returns_immutable_metadata() -> None:
         "session-123",
         1,
         b"chunk\x00",
+    )
+
+
+def test_storage_completes_an_upload_session_and_returns_the_object() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    object_ = client.storage.from_("assets").complete_upload_session(
+        "videos/demo.mp4",
+        session_id="session-123",
+    )
+
+    assert object_ == StorageObject(
+        id="00000000-0000-4000-8000-000000000020",
+        bucket_id="00000000-0000-4000-8000-000000000030",
+        name="videos/demo.mp4",
+        size=20_000_000,
+        mime_type="video/mp4",
+        is_public=False,
+        etag="etag-complete",
+    )
+    operation, arguments = transport.calls[-1]
+    assert operation == "completeUploadSession"
+    assert arguments["authorization"] == "access-token"
+    assert arguments["bucket_name"] == "assets"
+    request = arguments["request"]
+    assert (request.path, request.session_id) == (
+        "videos/demo.mp4",
+        "session-123",
     )
 
 

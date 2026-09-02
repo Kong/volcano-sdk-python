@@ -20,6 +20,7 @@ from volcano_sdk._generated.types import Unset
 from volcano_sdk._transport import (
     GeneratedTransport,
     StorageUploadPartRequest,
+    StorageUploadSessionReference,
     StorageUploadSessionRequest,
     response_payload,
 )
@@ -1379,6 +1380,48 @@ def test_generated_transport_uploads_a_binary_part() -> None:
     assert requests[0].headers["x-upload-session"] == "session-123"
     assert requests[0].headers["x-part-number"] == "2"
     assert requests[0].content == b"chunk\x00"
+
+
+def test_generated_transport_completes_an_upload_session() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "object": {
+                    "id": "00000000-0000-4000-8000-000000000020",
+                    "bucket_id": "00000000-0000-4000-8000-000000000030",
+                    "name": "videos/demo clip.mp4",
+                    "size": 20_000_000,
+                    "mime_type": "video/mp4",
+                    "is_public": False,
+                }
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.complete_upload_session(
+        authorization="access-token",
+        bucket_name="assets",
+        request=StorageUploadSessionReference(
+            path="videos/demo clip.mp4",
+            session_id="session-123",
+        ),
+    )
+
+    assert response.payload["object"]["name"] == "videos/demo clip.mp4"
+    assert len(requests) == 1
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/storage/assets/videos/demo clip.mp4"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert requests[0].headers["x-upload-session"] == "session-123"
+    assert requests[0].headers["x-upload-complete"] == "true"
 
 
 def test_generated_transport_moves_a_storage_object() -> None:
