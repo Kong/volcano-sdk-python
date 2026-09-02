@@ -113,6 +113,25 @@ class FakeTransport:
             },
         )
 
+    def update_storage_object_visibility(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("updateStorageObjectVisibility", kwargs))
+        return FakeResponse(
+            200,
+            {
+                "id": "00000000-0000-4000-8000-000000000020",
+                "bucket_id": "00000000-0000-4000-8000-000000000030",
+                "name": kwargs["path"],
+                "size": 5,
+                "mime_type": "image/png",
+                "is_public": kwargs["is_public"],
+                "public_url": (
+                    "https://api.test.volcano.dev/public/project/assets/avatars/a.png"
+                    if kwargs["is_public"]
+                    else None
+                ),
+            },
+        )
+
     def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("acquireProjectLock", kwargs))
         return FakeResponse(
@@ -352,3 +371,50 @@ def test_storage_copy_returns_the_destination_object() -> None:
     assert transport.calls[-1][0] == "copyStorageObject"
     assert transport.calls[-1][1]["from_path"] == "templates/a.txt"
     assert transport.calls[-1][1]["to_path"] == "drafts/a.txt"
+
+
+def test_storage_update_visibility_returns_server_confirmed_metadata() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    updated = client.storage.from_("assets").update_visibility(
+        "avatars/a.png",
+        is_public=True,
+    )
+
+    assert updated.is_public is True
+    assert updated.public_url == (
+        "https://api.test.volcano.dev/public/project/assets/avatars/a.png"
+    )
+    assert transport.calls[-1] == (
+        "updateStorageObjectVisibility",
+        {
+            "authorization": "access-token",
+            "bucket_name": "assets",
+            "path": "avatars/a.png",
+            "is_public": True,
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "is_public"),
+    [("", True), ("avatars/a.png", 1), ("avatars/a.png", "true")],
+)
+def test_storage_update_visibility_rejects_invalid_input_before_transport(
+    path: str,
+    is_public: Any,
+) -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    calls_after_sign_in = transport.calls.copy()
+
+    with pytest.raises((TypeError, ValueError)):
+        client.storage.from_("assets").update_visibility(
+            path,
+            is_public=is_public,
+        )
+
+    assert transport.calls == calls_after_sign_in

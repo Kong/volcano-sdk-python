@@ -12,6 +12,7 @@ from .models import JSONValue, StorageObject, StoragePage
 
 _INVALID_STORAGE_PAGE = "Expected a complete storage page"
 _INVALID_STORAGE_PATHS = "Storage paths must be non-empty strings"
+_INVALID_STORAGE_VISIBILITY = "is_public must be a boolean"
 
 
 def _optional_datetime(value: object) -> datetime | None:
@@ -84,6 +85,12 @@ def _storage_paths(paths: object) -> tuple[str, ...]:
     return cast("tuple[str, ...]", raw_paths)
 
 
+def _storage_visibility(value: object) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(_INVALID_STORAGE_VISIBILITY)
+    return value
+
+
 class StorageContext(Protocol):
     """Client capabilities required by object storage."""
 
@@ -149,6 +156,21 @@ class StorageCopyTransport(Protocol):
         to_path: str,
     ) -> TransportResponse:
         """Copy one object within a bucket."""
+        ...
+
+
+class StorageVisibilityTransport(Protocol):
+    """Transport capability required to update object visibility."""
+
+    def update_storage_object_visibility(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        path: str,
+        is_public: bool,
+    ) -> TransportResponse:
+        """Update one object's visibility."""
         ...
 
 
@@ -241,6 +263,20 @@ class StorageBucket:
             to_path=destination,
         )
         return _storage_object(response_payload(response, 201))
+
+    def update_visibility(self, path: str, *, is_public: bool) -> StorageObject:
+        """Set an object's public visibility and return its server state."""
+        object_path = _storage_paths(path)[0]
+        visibility = _storage_visibility(is_public)
+        transport = cast("StorageVisibilityTransport", self._client._transport)
+        response = invoke(
+            transport.update_storage_object_visibility,
+            authorization=self._client._session_token(),
+            bucket_name=self._name,
+            path=object_path,
+            is_public=visibility,
+        )
+        return _storage_object(response_payload(response, 200))
 
 
 class Storage:

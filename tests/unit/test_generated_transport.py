@@ -1360,3 +1360,39 @@ def test_generated_transport_copies_a_storage_object() -> None:
         "from": "templates/a.txt",
         "to": "drafts/a.txt",
     }
+
+
+def test_generated_transport_updates_storage_object_visibility() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "id": "00000000-0000-4000-8000-000000000020",
+                "bucket_id": "00000000-0000-4000-8000-000000000030",
+                "name": "avatars/a.png",
+                "size": 5,
+                "mime_type": "image/png",
+                "is_public": True,
+                "public_url": "https://api.test.volcano.dev/public/project/assets/avatars/a.png",
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.update_storage_object_visibility(
+        authorization="access-token",
+        bucket_name="assets",
+        path="avatars/a.png",
+        is_public=True,
+    )
+
+    assert response.status_code == 200
+    assert requests[0].method == "PATCH"
+    assert requests[0].url.path == "/storage/assets/avatars/a.png/visibility"
+    assert json.loads(requests[0].content) == {"is_public": True}
