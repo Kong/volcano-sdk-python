@@ -355,6 +355,8 @@ class Channel:
         self._type = channel_type
         self._callbacks: dict[str, list[MessageCallback]] = {}
         self._presence_state: dict[str, RealtimePresenceInfo] = {}
+        self._presence_events: list[tuple[str, RealtimePresenceInfo]] = []
+        self._presence_syncing = False
         self._tracked_state: Mapping[str, JSONValue] = MappingProxyType({})
         self._subscription: CentrifugeSubscription | None = None
         self._subscribed = False
@@ -510,11 +512,44 @@ class Channel:
         if inspect.isawaitable(result):
             await result
 
-    async def _replace_presence(self, clients: Mapping[str, Any]) -> None:
+    def _replace_presence(self, clients: Mapping[str, Any]) -> None:
         self._presence_state = {
             client_id: self._presence_info(info) for client_id, info in clients.items()
         }
-        await self._emit("presence_sync", self.get_presence_state())
+
+    async def _begin_presence_sync(self) -> None:
+        async with self._presence_lock:
+            self._presence_syncing = True
+            self._presence_events.clear()
+
+    async def _complete_presence_sync(self, clients: Mapping[str, Any]) -> None:
+        async with self._presence_lock:
+            if not self._subscribed:
+                self._discard_presence_sync()
+                return
+            self._replace_presence(clients)
+            for event, presence in self._presence_events:
+                self._apply_presence_event(event, presence)
+            self._discard_presence_sync()
+            await self._emit("presence_sync", self.get_presence_state())
+
+    async def _abort_presence_sync(self) -> None:
+        async with self._presence_lock:
+            self._discard_presence_sync()
+
+    def _discard_presence_sync(self) -> None:
+        self._presence_syncing = False
+        self._presence_events.clear()
+
+    def _apply_presence_event(
+        self,
+        event: str,
+        presence: RealtimePresenceInfo,
+    ) -> None:
+        if event == "join":
+            self._presence_state[presence.client] = presence
+        else:
+            self._presence_state.pop(presence.client, None)
 
     async def _presence_join(self, info: Any) -> None:
         if self._type != "presence" or info is None:
@@ -523,7 +558,9 @@ class Channel:
             if not self._subscribed:
                 return
             presence = self._presence_info(info)
-            self._presence_state[presence.client] = presence
+            if self._presence_syncing:
+                self._presence_events.append(("join", presence))
+            self._apply_presence_event("join", presence)
             await self._emit("join", presence)
             await self._emit("presence_sync", self.get_presence_state())
 
@@ -534,7 +571,9 @@ class Channel:
             if not self._subscribed:
                 return
             presence = self._presence_info(info)
-            self._presence_state.pop(presence.client, None)
+            if self._presence_syncing:
+                self._presence_events.append(("leave", presence))
+            self._apply_presence_event("leave", presence)
             await self._emit("leave", presence)
             await self._emit("presence_sync", self.get_presence_state())
 
@@ -543,6 +582,7 @@ class Channel:
             return
         await self._cancel_presence_sync()
         async with self._presence_lock:
+            self._discard_presence_sync()
             self._presence_state.clear()
             self._tracked_state = MappingProxyType({})
             await self._emit("presence_sync", self.get_presence_state())
@@ -611,6 +651,7 @@ class Channel:
             self._callback_queue.task_done()
         self._pending_presence_sync = NO_PENDING_CALLBACK
         self._presence_state.clear()
+        self._discard_presence_sync()
         self._tracked_state = MappingProxyType({})
         self._subscribed = False
 
@@ -837,23 +878,29 @@ class Realtime:
     async def _sync_presence(self, channel: Channel) -> None:
         if channel._subscription is None:
             return
-        async with channel._presence_lock:
-            try:
-                result = await channel._subscription.presence()
-            except CENTRIFUGE_ERROR as error:
-                await channel._replace_presence({})
-                self._enqueue_connection_callbacks(
-                    "error",
-                    RealtimeErrorContext(
-                        code=getattr(error, "code", None),
-                        message=str(error),
-                        error=error,
-                    ),
-                )
-                return
-            clients = getattr(result, "clients", None)
-            if isinstance(clients, Mapping):
-                await channel._replace_presence(cast("Mapping[str, Any]", clients))
+        await channel._begin_presence_sync()
+        query_succeeded = False
+        try:
+            result = await channel._subscription.presence()
+            query_succeeded = True
+        except CENTRIFUGE_ERROR as error:
+            self._enqueue_connection_callbacks(
+                "error",
+                RealtimeErrorContext(
+                    code=getattr(error, "code", None),
+                    message=str(error),
+                    error=error,
+                ),
+            )
+            return
+        finally:
+            if not query_succeeded:
+                await channel._abort_presence_sync()
+        clients = getattr(result, "clients", None)
+        if isinstance(clients, Mapping):
+            await channel._complete_presence_sync(cast("Mapping[str, Any]", clients))
+        else:
+            await channel._abort_presence_sync()
 
     async def _publish(self, channel: Channel, data: Any) -> None:
         async with self._connection_lock:

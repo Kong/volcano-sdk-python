@@ -520,6 +520,8 @@ def test_realtime_presence_resync_replays_concurrent_join_and_leave() -> None:
         bob = SimpleNamespace(client="bob-client", user="bob", conn_info={})
         join = asyncio.create_task(official.subscription.emit_join(bob))
         leave = asyncio.create_task(official.subscription.emit_leave(carol))
+        await asyncio.wait_for(asyncio.shield(join), timeout=0.1)
+        await asyncio.wait_for(asyncio.shield(leave), timeout=0.1)
         official.subscription.presence_release.set()
         await asyncio.gather(resync, join, leave)
 
