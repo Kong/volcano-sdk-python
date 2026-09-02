@@ -193,6 +193,25 @@ class LockState:
 
 
 @dataclass(frozen=True, slots=True)
+class FunctionResponse:
+    """Response returned by an invoked function."""
+
+    data: Mapping[str, JSONValue] = field(hash=False)
+    status: int
+    headers: Mapping[str, str] = field(hash=False)
+    version: str | None
+
+    def __post_init__(self) -> None:
+        """Defensively freeze response data and headers."""
+        object.__setattr__(self, "data", _freeze_json(self.data))
+        object.__setattr__(
+            self,
+            "headers",
+            MappingProxyType(dict(self.headers)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class UploadSession:
     """Server-created state for a resumable storage upload."""
 

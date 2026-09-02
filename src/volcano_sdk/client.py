@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
 from .database import Database
+from .functions import Functions
 from .locks import Locks
 from .models import (
     AuthChangeEvent,
@@ -81,6 +82,7 @@ class VolcanoClient:
             else GeneratedTransport(api_url=self._api_url, timeout=timeout)
         )
         self.auth = Auth(self)
+        self.functions = Functions(self)
         self.storage = Storage(self)
         self.locks = Locks(self)
         if _realtime_client_factory is None:
@@ -117,6 +119,14 @@ class VolcanoClient:
         if self._service_key is None:
             raise RuntimeError(_NO_SERVICE_KEY)
         return self._service_key
+
+    def _function_token(self) -> str:
+        session = self._capture_session()[1]
+        if session is not None:
+            return session.access_token
+        if self._service_key is not None:
+            return self._service_key
+        return self._anon_key
 
     def _set_session(
         self,
