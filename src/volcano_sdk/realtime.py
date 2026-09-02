@@ -5,29 +5,48 @@ from __future__ import annotations
 import asyncio
 import importlib
 import inspect
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from typing import Any, Protocol, cast
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Any, Literal, Protocol, TypeAlias, cast
 from urllib.parse import quote, urlsplit, urlunsplit
+
+from .models import JSONValue, _freeze_json
 
 MessageCallback = Callable[[Any], Any]
 RealtimeCallback = Callable[[Any], Any]
 UnsubscribeCallback = Callable[[], None]
+ChannelType: TypeAlias = Literal["broadcast", "presence"]
+SUPPORTED_CHANNEL_TYPES = frozenset({"broadcast", "presence"})
 CENTRIFUGE_ERROR = cast(
     "type[Exception]",
     importlib.import_module("centrifuge").CentrifugeError,
 )
 CALLBACK_QUEUE_LIMIT = 128
+NO_PENDING_CALLBACK = object()
 CALLBACK_QUEUE_FULL_MESSAGE = (
     "Volcano realtime callback queue is full; publication dropped"
 )
 CHANNEL_NOT_SUBSCRIBED = "Channel must be subscribed before sending"
 CHANNEL_REMOVAL_IN_PROGRESS = "realtime channel removal is in progress"
 CHANNEL_NOT_MANAGED = "realtime channel is no longer managed"
+PRESENCE_ONLY = "operation is only available for presence channels"
+BROADCAST_ONLY = "send is only available for broadcast channels"
 CALLBACK_NOT_CALLABLE = "callback must be callable"
 SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
     "centrifuge client subscription registry is unavailable"
 )
+
+
+def _empty_presence_data() -> Mapping[str, JSONValue]:
+    return MappingProxyType({})
+
+
+def _validate_channel_type(channel_type: str) -> ChannelType:
+    if channel_type not in SUPPORTED_CHANNEL_TYPES:
+        message = f"unsupported realtime channel type: {channel_type}"
+        raise ValueError(message)
+    return cast("ChannelType", channel_type)
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +73,23 @@ class RealtimeErrorContext:
     error: Exception | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class RealtimePresenceInfo:
+    """Immutable identity and metadata for one present realtime client."""
+
+    client: str
+    user: str | None = None
+    data: Mapping[str, JSONValue] = field(
+        default_factory=_empty_presence_data,
+        hash=False,
+    )
+
+    def __post_init__(self) -> None:
+        """Defensively freeze nested connection metadata."""
+        frozen = _freeze_json(cast("JSONValue", dict(self.data)))
+        object.__setattr__(self, "data", cast("Mapping[str, JSONValue]", frozen))
+
+
 class RealtimeContext(Protocol):
     """Client capabilities required by realtime connections."""
 
@@ -77,6 +113,10 @@ class CentrifugeSubscription(Protocol):
         """Unsubscribe from the remote channel."""
         ...
 
+    async def presence(self) -> Any:
+        """Return the clients currently present on the channel."""
+        ...
+
 
 class CentrifugeConnection(Protocol):
     """Centrifuge connection operations used by the SDK."""
@@ -96,6 +136,8 @@ class CentrifugeConnection(Protocol):
         name: str,
         *,
         events: Any,
+        join_leave: bool = False,
+        recoverable: bool = False,
     ) -> CentrifugeSubscription:
         """Create a subscription for a remote channel."""
         ...
@@ -201,8 +243,15 @@ class _VolcanoCentrifugeConnection:
         name: str,
         *,
         events: Any,
+        join_leave: bool = False,
+        recoverable: bool = False,
     ) -> CentrifugeSubscription:
-        return self._connection.new_subscription(name, events=events)
+        return self._connection.new_subscription(
+            name,
+            events=events,
+            join_leave=join_leave,
+            recoverable=recoverable,
+        )
 
     def remove_subscription(self, subscription: CentrifugeSubscription) -> None:
         self._connection.remove_subscription(subscription)
@@ -213,22 +262,29 @@ class _ChannelEvents:
         self._channel = channel
 
     async def on_publication(self, ctx: PublicationContext) -> None:
-        await self._channel._emit(ctx.pub.data)
+        await self._channel._emit("message", ctx.pub.data)
 
     async def on_subscribing(self, ctx: Any) -> None:
         del ctx
+        self._channel._subscribed = False
+        await self._channel._presence_unsubscribed()
 
     async def on_subscribed(self, ctx: Any) -> None:
         del ctx
+        self._channel._subscribed = True
+        if self._channel._type == "presence":
+            self._channel._schedule_presence_sync()
 
     async def on_unsubscribed(self, ctx: Any) -> None:
         del ctx
+        self._channel._subscribed = False
+        await self._channel._presence_unsubscribed()
 
     async def on_join(self, ctx: Any) -> None:
-        del ctx
+        await self._channel._presence_join(getattr(ctx, "info", None))
 
     async def on_leave(self, ctx: Any) -> None:
-        del ctx
+        await self._channel._presence_leave(getattr(ctx, "info", None))
 
     async def on_error(self, ctx: Any) -> None:
         del ctx
@@ -287,20 +343,35 @@ class _ClientEvents:
 
 
 class Channel:
-    """Realtime broadcast channel."""
+    """Realtime broadcast or presence channel."""
 
-    def __init__(self, realtime: Realtime, name: str) -> None:
+    def __init__(
+        self,
+        realtime: Realtime,
+        name: str,
+        channel_type: ChannelType,
+    ) -> None:
         """Create a channel managed by a realtime facade."""
         self._realtime = realtime
         self._name = name
-        self._message_callbacks: list[MessageCallback] = []
+        self._type = channel_type
+        self._callbacks: dict[str, list[MessageCallback]] = {}
+        self._presence_state: dict[str, RealtimePresenceInfo] = {}
+        self._presence_events: list[tuple[str, RealtimePresenceInfo]] = []
+        self._presence_syncing = False
+        self._tracked_state: Mapping[str, JSONValue] = MappingProxyType({})
         self._subscription: CentrifugeSubscription | None = None
-        self._callback_queue: asyncio.Queue[Any] = asyncio.Queue(
+        self._subscribed = False
+        self._presence_lock = asyncio.Lock()
+        self._presence_sync_task: asyncio.Task[None] | None = None
+        self._presence_sync_pending = False
+        self._callback_queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue(
             maxsize=CALLBACK_QUEUE_LIMIT
         )
         self._callback_task: asyncio.Task[None] | None = None
         self._active_callback_task: asyncio.Task[None] | None = None
         self._callback_stop: asyncio.Event | None = None
+        self._pending_presence_sync: Any = NO_PENDING_CALLBACK
 
     @property
     def name(self) -> str:
@@ -308,12 +379,52 @@ class Channel:
         return self._name
 
     def on(self, event: str, callback: MessageCallback) -> Channel:
-        """Register a callback for broadcast messages."""
-        if event != "message":
+        """Register a callback for messages or presence events."""
+        allowed_events = (
+            {"message"}
+            if self._type == "broadcast"
+            else {"message", "join", "leave", "presence_sync"}
+        )
+        if event not in allowed_events:
             message = f"unsupported realtime event: {event}"
             raise ValueError(message)
-        self._message_callbacks.append(callback)
+        self._callbacks.setdefault(event, []).append(callback)
         return self
+
+    def on_presence_sync(self, callback: MessageCallback) -> UnsubscribeCallback:
+        """Observe immutable snapshots of a presence channel's current state."""
+        self._ensure_presence()
+        self._callbacks.setdefault("presence_sync", []).append(callback)
+
+        def unsubscribe() -> None:
+            callbacks = self._callbacks.get("presence_sync", [])
+            if callback in callbacks:
+                callbacks.remove(callback)
+
+        return unsubscribe
+
+    async def track(self, state: Mapping[str, JSONValue] | None = None) -> None:
+        """Store local presence state while server identity remains authoritative."""
+        self._ensure_presence()
+        if not self._subscribed:
+            raise RuntimeError(CHANNEL_NOT_SUBSCRIBED)
+        frozen = _freeze_json(cast("JSONValue", dict(state or {})))
+        self._tracked_state = cast("Mapping[str, JSONValue]", frozen)
+
+    def get_presence_state(self) -> Mapping[str, RealtimePresenceInfo]:
+        """Return an immutable snapshot of the clients currently present."""
+        self._ensure_presence()
+        return MappingProxyType(dict(self._presence_state))
+
+    @property
+    def tracked_state(self) -> Mapping[str, JSONValue]:
+        """Return an immutable snapshot of this client's local presence state."""
+        self._ensure_presence()
+        return MappingProxyType(dict(self._tracked_state))
+
+    def _ensure_presence(self) -> None:
+        if self._type != "presence":
+            raise ValueError(PRESENCE_ONLY)
 
     async def subscribe(self) -> None:
         """Subscribe to this channel."""
@@ -327,7 +438,11 @@ class Channel:
         """Unsubscribe from this channel."""
         await self._realtime._unsubscribe(self)
 
-    async def _emit(self, data: Any) -> None:
+    async def _emit(self, event: str, data: Any) -> None:
+        if not self._callbacks.get(event):
+            return
+        if event == "presence_sync":
+            self._pending_presence_sync = NO_PENDING_CALLBACK
         task = self._callback_task
         if task is None or task.done():
             self._start_callback_dispatcher()
@@ -337,8 +452,11 @@ class Channel:
             )
             self._callback_stop = None
         try:
-            self._callback_queue.put_nowait(data)
+            self._callback_queue.put_nowait((event, data))
         except asyncio.QueueFull:
+            if event == "presence_sync":
+                self._pending_presence_sync = data
+                return
             asyncio.get_running_loop().call_exception_handler(
                 {
                     "message": CALLBACK_QUEUE_FULL_MESSAGE,
@@ -359,9 +477,9 @@ class Channel:
 
     async def _dispatch_callbacks(self, stop: asyncio.Event) -> None:
         while not stop.is_set():
-            data = await self._callback_queue.get()
+            event, data = await self._callback_queue.get()
             try:
-                for callback in tuple(self._message_callbacks):
+                for callback in tuple(self._callbacks.get(event, [])):
                     active_task = asyncio.create_task(
                         self._run_callback(callback, data)
                     )
@@ -382,14 +500,152 @@ class Channel:
                         )
             finally:
                 self._callback_queue.task_done()
+                self._enqueue_pending_presence_sync()
+
+    def _enqueue_pending_presence_sync(self) -> None:
+        pending = self._pending_presence_sync
+        if pending is NO_PENDING_CALLBACK or self._callback_queue.full():
+            return
+        self._pending_presence_sync = NO_PENDING_CALLBACK
+        self._callback_queue.put_nowait(("presence_sync", pending))
 
     async def _run_callback(self, callback: MessageCallback, data: Any) -> None:
         result = callback(data)
         if inspect.isawaitable(result):
             await result
 
+    def _replace_presence(self, clients: Mapping[str, Any]) -> None:
+        self._presence_state = {
+            client_id: self._presence_info(info) for client_id, info in clients.items()
+        }
+
+    async def _begin_presence_sync(self) -> None:
+        async with self._presence_lock:
+            self._presence_syncing = True
+            self._presence_events.clear()
+
+    async def _complete_presence_sync(self, clients: Mapping[str, Any]) -> None:
+        async with self._presence_lock:
+            if not self._subscribed:
+                self._discard_presence_sync()
+                return
+            self._replace_presence(clients)
+            for event, presence in self._presence_events:
+                self._apply_presence_event(event, presence)
+            self._discard_presence_sync()
+            await self._emit("presence_sync", self.get_presence_state())
+
+    async def _abort_presence_sync(self) -> None:
+        async with self._presence_lock:
+            self._discard_presence_sync()
+
+    async def _fail_presence_sync(self) -> None:
+        async with self._presence_lock:
+            self._discard_presence_sync()
+            if not self._subscribed:
+                return
+            self._presence_state.clear()
+            await self._emit("presence_sync", self.get_presence_state())
+
+    def _discard_presence_sync(self) -> None:
+        self._presence_syncing = False
+        self._presence_events.clear()
+
+    def _apply_presence_event(
+        self,
+        event: str,
+        presence: RealtimePresenceInfo,
+    ) -> None:
+        if event == "join":
+            self._presence_state[presence.client] = presence
+        else:
+            self._presence_state.pop(presence.client, None)
+
+    async def _presence_join(self, info: Any) -> None:
+        if self._type != "presence" or info is None:
+            return
+        async with self._presence_lock:
+            if not self._subscribed:
+                return
+            presence = self._presence_info(info)
+            if self._presence_syncing:
+                self._presence_events.append(("join", presence))
+            self._apply_presence_event("join", presence)
+            await self._emit("join", presence)
+            await self._emit("presence_sync", self.get_presence_state())
+
+    async def _presence_leave(self, info: Any) -> None:
+        if self._type != "presence" or info is None:
+            return
+        async with self._presence_lock:
+            if not self._subscribed:
+                return
+            presence = self._presence_info(info)
+            if self._presence_syncing:
+                self._presence_events.append(("leave", presence))
+            self._apply_presence_event("leave", presence)
+            await self._emit("leave", presence)
+            await self._emit("presence_sync", self.get_presence_state())
+
+    async def _presence_unsubscribed(self) -> None:
+        if self._type != "presence":
+            return
+        await self._cancel_presence_sync()
+        async with self._presence_lock:
+            self._discard_presence_sync()
+            self._presence_state.clear()
+            self._tracked_state = MappingProxyType({})
+            await self._emit("presence_sync", self.get_presence_state())
+
+    def _presence_info(self, info: Any) -> RealtimePresenceInfo:
+        data = getattr(info, "conn_info", None)
+        typed_data = (
+            cast("Mapping[str, JSONValue]", data)
+            if isinstance(data, Mapping)
+            else _empty_presence_data()
+        )
+        return RealtimePresenceInfo(
+            client=str(getattr(info, "client", "")),
+            user=getattr(info, "user", None),
+            data=typed_data,
+        )
+
+    def _schedule_presence_sync(self) -> None:
+        task = self._presence_sync_task
+        if task is not None and not task.done():
+            self._presence_sync_pending = True
+            return
+        self._presence_sync_pending = False
+        self._presence_sync_task = asyncio.create_task(self._run_presence_sync())
+
+    async def _run_presence_sync(self) -> None:
+        try:
+            while self._subscribed:
+                await self._realtime._sync_presence(self)
+                if not self._presence_sync_pending:
+                    return
+                self._presence_sync_pending = False
+        finally:
+            if asyncio.current_task() is self._presence_sync_task:
+                self._presence_sync_task = None
+
+    async def _wait_presence_sync(self) -> None:
+        task = self._presence_sync_task
+        if task is not None:
+            await asyncio.shield(task)
+
+    async def _cancel_presence_sync(self) -> None:
+        task = self._presence_sync_task
+        self._presence_sync_task = None
+        self._presence_sync_pending = False
+        if task is None or task.done():
+            return
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
     async def _reset(self) -> None:
         self._subscription = None
+        await self._cancel_presence_sync()
         task = self._callback_task
         active_task = self._active_callback_task
         if self._callback_stop is not None:
@@ -403,6 +659,11 @@ class Channel:
         while not self._callback_queue.empty():
             self._callback_queue.get_nowait()
             self._callback_queue.task_done()
+        self._pending_presence_sync = NO_PENDING_CALLBACK
+        self._presence_state.clear()
+        self._discard_presence_sync()
+        self._tracked_state = MappingProxyType({})
+        self._subscribed = False
 
 
 class Realtime:
@@ -514,13 +775,19 @@ class Realtime:
         if inspect.isawaitable(result):
             await result
 
-    def channel(self, name: str) -> Channel:
-        """Return a stable channel facade for a broadcast name."""
-        wire_name = f"broadcast:{name}"
+    def channel(
+        self,
+        name: str,
+        *,
+        channel_type: ChannelType = "broadcast",
+    ) -> Channel:
+        """Return a stable channel facade for a broadcast or presence name."""
+        channel_type = _validate_channel_type(channel_type)
+        wire_name = f"{channel_type}:{name}"
         if wire_name in self._removing_channels:
             raise RuntimeError(CHANNEL_REMOVAL_IN_PROGRESS)
         if wire_name not in self._channels:
-            self._channels[wire_name] = Channel(self, wire_name)
+            self._channels[wire_name] = Channel(self, wire_name, channel_type)
         return self._channels[wire_name]
 
     @property
@@ -528,9 +795,15 @@ class Realtime:
         """Return whether the realtime transport is connected."""
         return self._connection is not None and self._connection.is_connected
 
-    async def remove_channel(self, name: str) -> None:
-        """Unsubscribe and forget one broadcast channel."""
-        wire_name = f"broadcast:{name}"
+    async def remove_channel(
+        self,
+        name: str,
+        *,
+        channel_type: ChannelType = "broadcast",
+    ) -> None:
+        """Unsubscribe and forget one broadcast or presence channel."""
+        channel_type = _validate_channel_type(channel_type)
+        wire_name = f"{channel_type}:{name}"
         async with self._connection_lock:
             channel = self._channels.get(wire_name)
             if channel is None:
@@ -605,14 +878,50 @@ class Realtime:
                 channel._subscription = connection.new_subscription(
                     channel._name,
                     events=_ChannelEvents(channel),
+                    join_leave=channel._type == "presence",
+                    recoverable=channel._type == "presence",
                 )
             await channel._subscription.subscribe()
+            if channel._type == "presence":
+                await channel._wait_presence_sync()
+
+    async def _sync_presence(self, channel: Channel) -> None:
+        if channel._subscription is None:
+            return
+        await channel._begin_presence_sync()
+        query_succeeded = False
+        try:
+            result = await channel._subscription.presence()
+            query_succeeded = True
+        except CENTRIFUGE_ERROR as error:
+            await channel._fail_presence_sync()
+            query_succeeded = True
+            self._enqueue_connection_callbacks(
+                "error",
+                RealtimeErrorContext(
+                    code=getattr(error, "code", None),
+                    message=str(error),
+                    error=error,
+                ),
+            )
+            return
+        finally:
+            if not query_succeeded:
+                await channel._abort_presence_sync()
+        clients = getattr(result, "clients", None)
+        if isinstance(clients, Mapping):
+            await channel._complete_presence_sync(cast("Mapping[str, Any]", clients))
+        else:
+            await channel._abort_presence_sync()
 
     async def _publish(self, channel: Channel, data: Any) -> None:
         async with self._connection_lock:
-            if channel._subscription is None:
+            if channel._type != "broadcast":
+                raise ValueError(BROADCAST_ONLY)
+            subscription = channel._subscription
+            if not channel._subscribed or subscription is None:
                 raise RuntimeError(CHANNEL_NOT_SUBSCRIBED)
-            await channel._subscription.publish(data)
+            await subscription.publish(data)
 
     async def _unsubscribe(self, channel: Channel) -> None:
         async with self._connection_lock:

@@ -41,6 +41,7 @@ from .realtime import (
     RealtimeConnectContext,
     RealtimeDisconnectContext,
     RealtimeErrorContext,
+    RealtimePresenceInfo,
 )
 
 __all__ = [
@@ -64,6 +65,7 @@ __all__ = [
     "RealtimeConnectContext",
     "RealtimeDisconnectContext",
     "RealtimeErrorContext",
+    "RealtimePresenceInfo",
     "ServerError",
     "Session",
     "SessionChangedError",

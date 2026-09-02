@@ -556,12 +556,35 @@ assert not client.realtime.is_connected
 stop_connect()
 ```
 
+Presence channels expose server-managed user metadata and join/leave events:
+
+```python
+presence = client.realtime.channel("lobby", channel_type="presence")
+presence.on("join", lambda info: print("joined", info.user, info.data))
+presence.on("leave", lambda info: print("left", info.user))
+stop_sync = presence.on_presence_sync(
+    lambda state: print("present clients", tuple(state))
+)
+
+await presence.subscribe()
+await presence.track({"status": "online"})
+assert presence.tracked_state == {"status": "online"}
+current = presence.get_presence_state()
+await client.realtime.remove_channel("lobby", channel_type="presence")
+stop_sync()
+```
+
 `remove_channel()` unsubscribes and forgets one channel. `remove_all_channels()`
 does the same for every managed channel without disconnecting the shared
 realtime transport, so later calls to `channel()` return fresh facades.
 Connection callbacks receive immutable contexts, may be synchronous or async,
 and run outside the transport event processor. Each registration returns an
 idempotent function that stops future delivery.
+Presence state and client metadata are immutable snapshots. Volcano derives
+the remote identity and metadata from the authenticated user; `track()` stores
+optional local state in `tracked_state` but does not replace that server-managed
+identity. Presence is resynchronized after reconnects. Query failures are
+reported through `realtime.on_error()` and clear the current snapshot.
 
 ## Compatibility
 
