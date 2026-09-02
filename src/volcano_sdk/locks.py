@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, cast
 from uuid import uuid4
 
 from ._transport import Transport, invoke, response_payload
-from .models import LockLease
+from .models import LockLease, LockState
 
 
 class LocksContext(Protocol):
@@ -16,6 +16,19 @@ class LocksContext(Protocol):
     _transport: Transport
 
     def _service_token(self) -> str: ...
+
+
+class LockGetTransport(Protocol):
+    """Transport capability required to inspect a lock."""
+
+    def get_project_lock(
+        self,
+        *,
+        authorization: str,
+        key: str,
+    ) -> object:
+        """Get one project-scoped lock."""
+        ...
 
 
 def _parse_datetime(value: object) -> datetime | None:
@@ -30,6 +43,21 @@ class Locks:
     def __init__(self, client: LocksContext) -> None:
         """Create a lock facade backed by a client."""
         self._client = client
+
+    def get(self, key: str) -> LockState:
+        """Return the current state of a project-scoped lock."""
+        transport = cast("LockGetTransport", self._client._transport)
+        response = invoke(
+            transport.get_project_lock,
+            authorization=self._client._service_token(),
+            key=key,
+        )
+        payload = response_payload(response, 200)
+        return LockState(
+            held=payload["held"],
+            expires_at=_parse_datetime(payload.get("expires_at")),
+            fencing_token=payload.get("fencing_token"),
+        )
 
     def acquire(self, key: str, *, ttl: int) -> LockLease:
         """Acquire a lock lease for the requested number of seconds."""

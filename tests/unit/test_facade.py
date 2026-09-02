@@ -238,6 +238,17 @@ class FakeTransport:
         self.calls.append(("releaseProjectLock", kwargs))
         return FakeResponse(204)
 
+    def get_project_lock(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("getProjectLock", kwargs))
+        return FakeResponse(
+            200,
+            {
+                "held": True,
+                "expires_at": "2026-08-26T12:00:30Z",
+                "fencing_token": 7,
+            },
+        )
+
 
 def anon_key_with_project_id(project_id: str | None) -> str:
     payload = {} if project_id is None else {"project_id": project_id}
@@ -415,6 +426,30 @@ def test_storage_list_normalizes_an_empty_terminal_cursor() -> None:
     client.auth.sign_in(email="user@example.com", password="secret")
 
     assert client.storage.from_("assets").list().next_cursor is None
+
+
+def test_locks_gets_immutable_current_state() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+
+    state = client.locks.get("build")
+
+    assert type(state).__name__ == "LockState"
+    assert (state.held, state.expires_at, state.fencing_token) == (
+        True,
+        datetime(2026, 8, 26, 12, 0, 30, tzinfo=UTC),
+        7,
+    )
+    assert transport.calls == [
+        (
+            "getProjectLock",
+            {"authorization": "service-key", "key": "build"},
+        )
+    ]
 
 
 def test_storage_remove_accepts_one_path() -> None:
