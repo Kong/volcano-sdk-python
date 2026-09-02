@@ -27,6 +27,7 @@ from .models import (
     SignUpResult,
     StorageObject,
     StoragePage,
+    UploadPart,
     UploadSession,
     User,
 )
@@ -53,6 +54,7 @@ __all__ = [
     "StorageObject",
     "StoragePage",
     "TransportError",
+    "UploadPart",
     "UploadSession",
     "User",
     "ValidationError",

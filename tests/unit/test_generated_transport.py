@@ -19,6 +19,7 @@ from volcano_sdk._generated.models.auth_update_user_response_200 import (
 from volcano_sdk._generated.types import Unset
 from volcano_sdk._transport import (
     GeneratedTransport,
+    StorageUploadPartRequest,
     StorageUploadSessionRequest,
     response_payload,
 )
@@ -1337,6 +1338,47 @@ def test_generated_transport_creates_an_upload_session_with_json() -> None:
         "total_size": 20_000_000,
         "part_size": 8_388_608,
     }
+
+
+def test_generated_transport_uploads_a_binary_part() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={"part_number": 2, "etag": "etag-part-2", "size": 6},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.upload_part(
+        authorization="access-token",
+        bucket_name="assets",
+        request=StorageUploadPartRequest(
+            path="videos/demo clip.mp4",
+            session_id="session-123",
+            part_number=2,
+            data=b"chunk\x00",
+        ),
+    )
+
+    assert response.payload == {
+        "part_number": 2,
+        "etag": "etag-part-2",
+        "size": 6,
+    }
+    assert len(requests) == 1
+    assert requests[0].method == "PUT"
+    assert requests[0].url.path == "/storage/assets/videos/demo clip.mp4"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert requests[0].headers["content-type"] == "application/octet-stream"
+    assert requests[0].headers["x-upload-session"] == "session-123"
+    assert requests[0].headers["x-part-number"] == "2"
+    assert requests[0].content == b"chunk\x00"
 
 
 def test_generated_transport_moves_a_storage_object() -> None:

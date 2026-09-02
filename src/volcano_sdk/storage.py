@@ -12,13 +12,14 @@ from typing import Any, Protocol, cast
 from urllib.parse import quote
 
 from ._transport import (
+    StorageUploadPartRequest,
     StorageUploadSessionRequest,
     Transport,
     TransportResponse,
     invoke,
     response_payload,
 )
-from .models import JSONValue, StorageObject, StoragePage, UploadSession
+from .models import JSONValue, StorageObject, StoragePage, UploadPart, UploadSession
 
 _INVALID_STORAGE_PAGE = "Expected a complete storage page"
 _INVALID_STORAGE_PATH = "Storage path must be a non-empty string"
@@ -99,6 +100,15 @@ def _upload_session(payload: object) -> UploadSession:
         part_size=cast("int", values["part_size"]),
         total_parts=cast("int", values["total_parts"]),
         expires_at=expires_at,
+    )
+
+
+def _upload_part(payload: object) -> UploadPart:
+    values = cast("Mapping[str, object]", payload)
+    return UploadPart(
+        part_number=cast("int", values["part_number"]),
+        etag=cast("str", values["etag"]),
+        size=cast("int", values["size"]),
     )
 
 
@@ -259,6 +269,20 @@ class StorageUploadSessionTransport(Protocol):
         ...
 
 
+class StorageUploadPartTransport(Protocol):
+    """Transport capability required to upload resumable storage parts."""
+
+    def upload_part(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadPartRequest,
+    ) -> TransportResponse:
+        """Upload one resumable storage part."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class StorageBucket:
     """Operations scoped to one storage bucket."""
@@ -317,6 +341,29 @@ class StorageBucket:
             ),
         )
         return _upload_session(response_payload(response, 201))
+
+    def upload_part(
+        self,
+        path: str,
+        *,
+        session_id: str,
+        part_number: int,
+        data: bytes,
+    ) -> UploadPart:
+        """Upload one part of a resumable upload session."""
+        transport = cast("StorageUploadPartTransport", self._client._transport)
+        response = invoke(
+            transport.upload_part,
+            authorization=self._client._session_token(),
+            bucket_name=self._name,
+            request=StorageUploadPartRequest(
+                path=_storage_path(path),
+                session_id=session_id,
+                part_number=part_number,
+                data=data,
+            ),
+        )
+        return _upload_part(response_payload(response, 200))
 
     def list(
         self,
