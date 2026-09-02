@@ -149,7 +149,8 @@ Use it only for administrative recovery behind fencing-token enforcement.
 `locks.with_lock()` renews in the background, releases the latest lease on
 exit, and raises a renewal failure after the context body returns. Long-running
 work can inspect `guard.lost` or call `guard.wait_lost()` to stop using a lost
-lease promptly. Continue enforcing `guard.lease.fencing_token` at every write.
+lease promptly, including when a stalled renewal reaches the lease expiry.
+Continue enforcing `guard.lease.fencing_token` at every write.
 `get_upload_session()` returns immutable progress and uploaded-part metadata for
 resuming an interrupted upload.
 `complete_upload_session()` assembles the uploaded parts and returns the stored

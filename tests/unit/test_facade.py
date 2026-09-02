@@ -10,6 +10,7 @@ from typing import Any, BinaryIO, cast
 
 import pytest
 
+import volcano_sdk.locks as locks_module
 from volcano_sdk import (
     LockLease,
     ServerError,
@@ -699,6 +700,80 @@ def test_locks_with_lock_preserves_body_errors_and_releases() -> None:
         fail_body()
 
     assert transport.calls[-1][0] == "releaseProjectLock"
+
+
+def test_locks_with_lock_marks_a_stalled_renewal_lost_at_expiry() -> None:
+    renew_entered = Event()
+    renew_release = Event()
+
+    class StalledRenewTransport(FakeTransport):
+        def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("acquireProjectLock", kwargs))
+            expires_at = datetime.now(UTC) + timedelta(milliseconds=50)
+            return FakeResponse(201, {"expires_at": expires_at.isoformat()})
+
+        def renew_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("renewProjectLock", kwargs))
+            renew_entered.set()
+            renew_release.wait(timeout=1)
+            expires_at = datetime.now(UTC) + timedelta(seconds=30)
+            return FakeResponse(200, {"expires_at": expires_at.isoformat()})
+
+    transport = StalledRenewTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+
+    def hold_until_expired() -> None:
+        with client.locks.with_lock("build", ttl=30) as guard:
+            assert renew_entered.wait(timeout=1)
+            assert guard.wait_lost(timeout=1)
+            renew_release.set()
+
+    with pytest.raises(TimeoutError, match="lease expired"):
+        hold_until_expired()
+    assert transport.calls[-1][0] == "releaseProjectLock"
+
+
+def test_lock_renewal_delay_reserves_server_safety_margin() -> None:
+    now = datetime.now(UTC)
+    lease = LockLease(
+        key="build",
+        token="token",
+        expires_at=now + timedelta(seconds=1.2),
+        fencing_token=7,
+    )
+    assert locks_module._renewal_delay(30, lease) == 0
+
+
+def test_locks_with_lock_releases_when_renewal_thread_cannot_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+    start_failure = "thread unavailable"
+    body_failure = "context body must not run"
+
+    def fail_start(_renewer: Any) -> None:
+        raise RuntimeError(start_failure)
+
+    monkeypatch.setattr(locks_module._LockRenewer, "start", fail_start)
+
+    with (
+        pytest.raises(RuntimeError, match=start_failure),
+        client.locks.with_lock("build", ttl=30),
+    ):
+        raise AssertionError(body_failure)
+    assert [name for name, _arguments in transport.calls] == [
+        "acquireProjectLock",
+        "releaseProjectLock",
+    ]
 
 
 def test_storage_remove_accepts_one_path() -> None:

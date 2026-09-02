@@ -20,7 +20,8 @@ if TYPE_CHECKING:
 MIN_LOCK_TTL_SECONDS = 5
 MAX_LOCK_TTL_SECONDS = 7_776_000
 MAX_RENEWAL_DELAY_SECONDS = 60.0
-MIN_RENEWAL_DELAY_SECONDS = 0.001
+RENEWAL_SAFETY_MARGIN_SECONDS = 1.0
+RENEWAL_REQUEST_BUDGET_SECONDS = 1.0
 
 
 class LocksContext(Protocol):
@@ -86,22 +87,31 @@ def _validate_ttl(ttl: int) -> None:
 
 def _renewal_delay(ttl: int, lease: LockLease) -> float:
     delay = min(ttl / 3, MAX_RENEWAL_DELAY_SECONDS)
+    latest_delay: float | None = None
     if lease.expires_at is not None:
-        remaining = (lease.expires_at.timestamp() - time.time()) / 3
-        delay = min(delay, max(MIN_RENEWAL_DELAY_SECONDS, remaining))
+        remaining = lease.expires_at.timestamp() - time.time()
+        latest_delay = max(
+            0.0,
+            remaining - RENEWAL_SAFETY_MARGIN_SECONDS - RENEWAL_REQUEST_BUDGET_SECONDS,
+        )
+        delay = min(delay, latest_delay)
     jitter = (secrets.randbelow(2_001) / 10_000) - 0.1
-    return max(MIN_RENEWAL_DELAY_SECONDS, delay * (1 + jitter))
+    jittered_delay = max(0.0, delay * (1 + jitter))
+    return jittered_delay if latest_delay is None else min(jittered_delay, latest_delay)
 
 
 class LockGuard:
     """Thread-safe state for an automatically renewed lock lease."""
 
-    def __init__(self, lease: LockLease) -> None:
+    def __init__(self, lease: LockLease, *, ttl: int) -> None:
         """Create a guard around an acquired lease."""
         self._state_lock = threading.Lock()
         self._lease = lease
+        self._ttl = ttl
         self._failure: Exception | None = None
         self._lost = threading.Event()
+        self._expiry_timer: threading.Timer | None = None
+        self._expiry_generation = 0
 
     @property
     def lease(self) -> LockLease:
@@ -111,21 +121,64 @@ class LockGuard:
 
     @property
     def lost(self) -> bool:
-        """Return whether automatic renewal failed."""
+        """Return whether renewal failed or the latest lease expired."""
         return self._lost.is_set()
 
     def wait_lost(self, timeout: float | None = None) -> bool:
         """Wait until renewal fails or the timeout expires."""
         return self._lost.wait(timeout)
 
-    def _replace_lease(self, lease: LockLease) -> None:
+    def _start_expiry_watch(self) -> None:
         with self._state_lock:
+            self._schedule_expiry_locked()
+
+    def _replace_lease(self, lease: LockLease) -> bool:
+        with self._state_lock:
+            if self._lost.is_set():
+                return False
             self._lease = lease
+            self._schedule_expiry_locked()
+            return True
 
     def _mark_lost(self, failure: Exception) -> None:
         with self._state_lock:
-            self._failure = failure
-        self._lost.set()
+            if self._failure is None:
+                self._failure = failure
+            self._cancel_expiry_locked()
+            self._lost.set()
+
+    def _stop_expiry_watch(self) -> None:
+        with self._state_lock:
+            self._cancel_expiry_locked()
+
+    def _schedule_expiry_locked(self) -> None:
+        self._cancel_expiry_locked()
+        self._expiry_generation += 1
+        generation = self._expiry_generation
+        delay = self._expiry_delay()
+        timer = threading.Timer(delay, self._expire, args=(generation,))
+        timer.daemon = True
+        self._expiry_timer = timer
+        timer.start()
+
+    def _cancel_expiry_locked(self) -> None:
+        self._expiry_generation += 1
+        if self._expiry_timer is not None:
+            self._expiry_timer.cancel()
+            self._expiry_timer = None
+
+    def _expiry_delay(self) -> float:
+        if self._lease.expires_at is None:
+            return float(self._ttl)
+        return max(0.0, self._lease.expires_at.timestamp() - time.time())
+
+    def _expire(self, generation: int) -> None:
+        with self._state_lock:
+            if generation != self._expiry_generation or self._failure is not None:
+                return
+            self._failure = TimeoutError("lock lease expired before renewal completed")
+            self._expiry_timer = None
+            self._lost.set()
 
     def _renewal_failure(self) -> Exception | None:
         with self._state_lock:
@@ -149,7 +202,11 @@ class _LockRenewer:
         self._thread.join()
 
     def _run(self) -> None:
-        while not self._stop.wait(_renewal_delay(self._ttl, self._guard.lease)):
+        while not self._guard.lost:
+            if self._stop.wait(_renewal_delay(self._ttl, self._guard.lease)):
+                return
+            if self._guard.lost:
+                return
             try:
                 lease = self._locks.renew(
                     self._key,
@@ -159,7 +216,8 @@ class _LockRenewer:
             except (KeyError, TypeError, ValueError, VolcanoError) as error:
                 self._guard._mark_lost(error)
                 return
-            self._guard._replace_lease(lease)
+            if not self._guard._replace_lease(lease):
+                return
 
 
 class Locks:
@@ -244,18 +302,25 @@ class Locks:
     def with_lock(self, key: str, *, ttl: int) -> Generator[LockGuard]:
         """Hold and automatically renew a lock for the context's lifetime."""
         _validate_ttl(ttl)
-        guard = LockGuard(self.acquire(key, ttl=ttl))
+        guard = LockGuard(self.acquire(key, ttl=ttl), ttl=ttl)
         renewer = _LockRenewer(self, key, guard, ttl)
-        renewer.start()
+        renewer_started = False
         body_failed = False
         try:
+            guard._start_expiry_watch()
+            renewer.start()
+            renewer_started = True
             yield guard
         except BaseException:
             body_failed = True
             raise
         finally:
-            renewer.stop()
-            self._finish_guard(key, guard, body_failed=body_failed)
+            try:
+                if renewer_started:
+                    renewer.stop()
+            finally:
+                guard._stop_expiry_watch()
+                self._finish_guard(key, guard, body_failed=body_failed)
 
     def _finish_guard(
         self,
