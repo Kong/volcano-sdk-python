@@ -16,8 +16,14 @@ from .models import JSONValue, _freeze_json
 MessageCallback = Callable[[Any], Any]
 RealtimeCallback = Callable[[Any], Any]
 UnsubscribeCallback = Callable[[], None]
-ChannelType: TypeAlias = Literal["broadcast", "presence"]
-SUPPORTED_CHANNEL_TYPES = frozenset({"broadcast", "presence"})
+ChannelType: TypeAlias = Literal["broadcast", "presence", "postgres"]
+PostgresEvent: TypeAlias = Literal["INSERT", "UPDATE", "DELETE"]
+PostgresListenerEvent: TypeAlias = Literal["INSERT", "UPDATE", "DELETE", "*"]
+PostgresChangeCallback = Callable[["PostgresChange"], Any]
+SUPPORTED_CHANNEL_TYPES = frozenset({"broadcast", "presence", "postgres"})
+POSTGRES_EVENTS = frozenset({"INSERT", "UPDATE", "DELETE"})
+POSTGRES_CHANNEL_SEGMENTS = 3
+POSTGRES_PUBLICATION_SEGMENTS = 5
 CENTRIFUGE_ERROR = cast(
     "type[Exception]",
     importlib.import_module("centrifuge").CentrifugeError,
@@ -32,6 +38,7 @@ CHANNEL_REMOVAL_IN_PROGRESS = "realtime channel removal is in progress"
 CHANNEL_NOT_MANAGED = "realtime channel is no longer managed"
 PRESENCE_ONLY = "operation is only available for presence channels"
 BROADCAST_ONLY = "send is only available for broadcast channels"
+POSTGRES_ONLY = "operation is only available for postgres channels"
 CALLBACK_NOT_CALLABLE = "callback must be callable"
 SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
     "centrifuge client subscription registry is unavailable"
@@ -47,6 +54,17 @@ def _validate_channel_type(channel_type: str) -> ChannelType:
         message = f"unsupported realtime channel type: {channel_type}"
         raise ValueError(message)
     return cast("ChannelType", channel_type)
+
+
+def _postgres_route_matches(candidate: str, publication: str) -> bool:
+    candidate_parts = candidate.split(":")
+    publication_parts = publication.split(":")
+    return (
+        len(candidate_parts) == POSTGRES_CHANNEL_SEGMENTS
+        and candidate_parts[0] == "postgres"
+        and len(publication_parts) == POSTGRES_PUBLICATION_SEGMENTS
+        and publication_parts[1:4] == candidate_parts
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +106,81 @@ class RealtimePresenceInfo:
         """Defensively freeze nested connection metadata."""
         frozen = _freeze_json(cast("JSONValue", dict(self.data)))
         object.__setattr__(self, "data", cast("Mapping[str, JSONValue]", frozen))
+
+
+@dataclass(frozen=True, slots=True)
+class PostgresChange:
+    """Immutable RLS-scoped Postgres row-change notification."""
+
+    type: PostgresEvent
+    schema: str
+    table: str
+    record: Mapping[str, JSONValue] | None = field(default=None, hash=False)
+    old_record: Mapping[str, JSONValue] | None = field(default=None, hash=False)
+    columns: tuple[str, ...] | None = None
+    timestamp: str = ""
+    id: JSONValue = field(default=None, hash=False)
+    mode: Literal["lightweight"] | None = None
+
+    def __post_init__(self) -> None:
+        """Defensively freeze nested row and identifier values."""
+        if self.record is not None:
+            frozen_record = _freeze_json(cast("JSONValue", dict(self.record)))
+            object.__setattr__(self, "record", frozen_record)
+        if self.old_record is not None:
+            frozen_old_record = _freeze_json(cast("JSONValue", dict(self.old_record)))
+            object.__setattr__(self, "old_record", frozen_old_record)
+        object.__setattr__(self, "id", _freeze_json(self.id))
+
+
+def _postgres_change(data: Any) -> PostgresChange | None:
+    if not isinstance(data, Mapping):
+        return None
+    typed_data = cast("Mapping[str, object]", data)
+    event = typed_data.get("type")
+    schema = typed_data.get("schema")
+    table = typed_data.get("table")
+    timestamp = typed_data.get("timestamp")
+    mode = typed_data.get("mode")
+    record = typed_data.get("record")
+    old_record = typed_data.get("old_record")
+    raw_columns = typed_data.get("columns")
+    if (
+        event not in POSTGRES_EVENTS
+        or not isinstance(schema, str)
+        or not isinstance(table, str)
+        or not isinstance(timestamp, str)
+        or (record is not None and not isinstance(record, Mapping))
+        or (old_record is not None and not isinstance(old_record, Mapping))
+    ):
+        return None
+    typed_mode: Literal["lightweight"] | None
+    if mode is None:
+        typed_mode = None
+    elif mode == "lightweight":
+        typed_mode = "lightweight"
+    else:
+        return None
+    if raw_columns is None:
+        columns = None
+    elif isinstance(raw_columns, (list, tuple)):
+        untyped_columns = cast("list[object] | tuple[object, ...]", raw_columns)
+        if not all(isinstance(column, str) for column in untyped_columns):
+            return None
+        columns = tuple(cast("list[str] | tuple[str, ...]", raw_columns))
+    else:
+        return None
+    return PostgresChange(
+        type=cast("PostgresEvent", event),
+        schema=schema,
+        table=table,
+        record=cast("Mapping[str, JSONValue] | None", record),
+        old_record=cast("Mapping[str, JSONValue] | None", old_record),
+        columns=columns,
+        timestamp=timestamp,
+        id=cast("JSONValue", typed_data.get("id")),
+        mode=typed_mode,
+    )
 
 
 class RealtimeContext(Protocol):
@@ -212,7 +305,7 @@ class _ProjectAwareSubscriptions(dict[str, Any]):
         matches = [
             (channel, candidate)
             for channel, candidate in self.items()
-            if key.endswith(f":{channel}")
+            if key.endswith(f":{channel}") or _postgres_route_matches(channel, key)
         ]
         return max(matches, key=lambda match: len(match[0]))[1] if matches else default
 
@@ -262,6 +355,11 @@ class _ChannelEvents:
         self._channel = channel
 
     async def on_publication(self, ctx: PublicationContext) -> None:
+        if self._channel._type == "postgres":
+            change = _postgres_change(ctx.pub.data)
+            if change is not None:
+                await self._channel._emit("*", change)
+            return
         await self._channel._emit("message", ctx.pub.data)
 
     async def on_subscribing(self, ctx: Any) -> None:
@@ -343,7 +441,7 @@ class _ClientEvents:
 
 
 class Channel:
-    """Realtime broadcast or presence channel."""
+    """Realtime broadcast, presence, or Postgres channel."""
 
     def __init__(
         self,
@@ -380,16 +478,47 @@ class Channel:
 
     def on(self, event: str, callback: MessageCallback) -> Channel:
         """Register a callback for messages or presence events."""
-        allowed_events = (
-            {"message"}
-            if self._type == "broadcast"
-            else {"message", "join", "leave", "presence_sync"}
-        )
+        allowed_events = {
+            "broadcast": {"message"},
+            "presence": {"message", "join", "leave", "presence_sync"},
+            "postgres": {"*"},
+        }[self._type]
         if event not in allowed_events:
             message = f"unsupported realtime event: {event}"
             raise ValueError(message)
         self._callbacks.setdefault(event, []).append(callback)
         return self
+
+    def on_postgres_changes(
+        self,
+        event: PostgresListenerEvent,
+        *,
+        schema: str,
+        table: str,
+        callback: PostgresChangeCallback,
+    ) -> UnsubscribeCallback:
+        """Observe Postgres changes filtered by event, schema, and table."""
+        if self._type != "postgres":
+            raise ValueError(POSTGRES_ONLY)
+        if event not in {*POSTGRES_EVENTS, "*"}:
+            message = f"unsupported Postgres change event: {event}"
+            raise ValueError(message)
+
+        def filtered(change: PostgresChange) -> Any:
+            if change.schema != schema or change.table != table:
+                return None
+            if event not in ("*", change.type):
+                return None
+            return callback(change)
+
+        self._callbacks.setdefault("*", []).append(filtered)
+
+        def unsubscribe() -> None:
+            callbacks = self._callbacks.get("*", [])
+            if filtered in callbacks:
+                callbacks.remove(filtered)
+
+        return unsubscribe
 
     def on_presence_sync(self, callback: MessageCallback) -> UnsubscribeCallback:
         """Observe immutable snapshots of a presence channel's current state."""
@@ -781,7 +910,7 @@ class Realtime:
         *,
         channel_type: ChannelType = "broadcast",
     ) -> Channel:
-        """Return a stable channel facade for a broadcast or presence name."""
+        """Return a stable channel facade for a realtime name and type."""
         channel_type = _validate_channel_type(channel_type)
         wire_name = f"{channel_type}:{name}"
         if wire_name in self._removing_channels:

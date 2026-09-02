@@ -38,6 +38,7 @@ from .models import (
     User,
 )
 from .realtime import (
+    PostgresChange,
     RealtimeConnectContext,
     RealtimeDisconnectContext,
     RealtimeErrorContext,
@@ -61,6 +62,7 @@ __all__ = [
     "NotFoundError",
     "OAuthProviderName",
     "OAuthProviderTokenStatus",
+    "PostgresChange",
     "RateLimitedError",
     "RealtimeConnectContext",
     "RealtimeDisconnectContext",
