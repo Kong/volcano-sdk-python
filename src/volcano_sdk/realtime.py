@@ -537,6 +537,14 @@ class Channel:
         async with self._presence_lock:
             self._discard_presence_sync()
 
+    async def _fail_presence_sync(self) -> None:
+        async with self._presence_lock:
+            self._discard_presence_sync()
+            if not self._subscribed:
+                return
+            self._presence_state.clear()
+            await self._emit("presence_sync", self.get_presence_state())
+
     def _discard_presence_sync(self) -> None:
         self._presence_syncing = False
         self._presence_events.clear()
@@ -884,6 +892,8 @@ class Realtime:
             result = await channel._subscription.presence()
             query_succeeded = True
         except CENTRIFUGE_ERROR as error:
+            await channel._fail_presence_sync()
+            query_succeeded = True
             self._enqueue_connection_callbacks(
                 "error",
                 RealtimeErrorContext(

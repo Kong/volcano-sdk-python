@@ -731,7 +731,11 @@ def test_realtime_presence_values_are_hashable_without_metadata() -> None:
 
 def test_realtime_reports_presence_query_failures() -> None:
     official = FakeCentrifugeClient()
-    official.presence_error = centrifuge_error("presence unavailable")
+    official.presence_clients = {
+        "alice-client": SimpleNamespace(
+            client="alice-client", user="alice", conn_info={}
+        )
+    }
     client = VolcanoClient(
         anon_key="anon-key",
         _transport=AuthTransport(),
@@ -739,6 +743,7 @@ def test_realtime_reports_presence_query_failures() -> None:
     )
     client.auth.sign_in(email="user@example.com", password="secret")
     errors: list[RealtimeErrorContext] = []
+    presence_error = centrifuge_error("presence unavailable")
 
     async def scenario() -> None:
         reported = asyncio.Event()
@@ -748,18 +753,24 @@ def test_realtime_reports_presence_query_failures() -> None:
             reported.set()
 
         client.realtime.on_error(on_error)
-        await client.realtime.channel(
+        channel = client.realtime.channel(
             "lobby",
             channel_type="presence",
-        ).subscribe()
+        )
+        await channel.subscribe()
+        assert channel.get_presence_state()
+        assert official.subscription is not None
+        official.subscription.presence_error = presence_error
+        await official.subscription.emit_subscribed()
         await asyncio.wait_for(reported.wait(), timeout=0.1)
+        assert channel.get_presence_state() == {}
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
 
     assert len(errors) == 1
     assert errors[0].message == "presence unavailable"
-    assert errors[0].error is official.presence_error
+    assert errors[0].error is presence_error
 
 
 def test_realtime_wraps_official_client_without_exposing_it() -> None:
