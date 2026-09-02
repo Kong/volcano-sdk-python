@@ -17,6 +17,9 @@ from typing import cast
 from uuid import UUID
 import datetime
 
+if TYPE_CHECKING:
+  from ..models.project_git_connection_summary import ProjectGitConnectionSummary
+  from ..models.project_health_summary import ProjectHealthSummary
 
 
 
@@ -47,6 +50,8 @@ class Project:
                 param that changes on each upload. Absent when the project has no
                 logo. The logo image is stored in the project's storage folder.
                  Example: /projects/3fa85f64-5717-4562-b3fc-2c963f66afa6/logo?v=1718524800.
+            git_connection (ProjectGitConnectionSummary | Unset):
+            health (ProjectHealthSummary | Unset):
      """
 
     id: UUID
@@ -60,6 +65,8 @@ class Project:
     aws_application_name: str | Unset = UNSET
     last_invoked_at: datetime.datetime | Unset = UNSET
     logo_url: str | Unset = UNSET
+    git_connection: ProjectGitConnectionSummary | Unset = UNSET
+    health: ProjectHealthSummary | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -67,6 +74,8 @@ class Project:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.project_git_connection_summary import ProjectGitConnectionSummary
+        from ..models.project_health_summary import ProjectHealthSummary
         id = str(self.id)
 
         name = self.name
@@ -96,6 +105,14 @@ class Project:
 
         logo_url = self.logo_url
 
+        git_connection: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.git_connection, Unset):
+            git_connection = self.git_connection.to_dict()
+
+        health: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.health, Unset):
+            health = self.health.to_dict()
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -116,6 +133,10 @@ class Project:
             field_dict["last_invoked_at"] = last_invoked_at
         if logo_url is not UNSET:
             field_dict["logo_url"] = logo_url
+        if git_connection is not UNSET:
+            field_dict["git_connection"] = git_connection
+        if health is not UNSET:
+            field_dict["health"] = health
 
         return field_dict
 
@@ -123,6 +144,8 @@ class Project:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.project_git_connection_summary import ProjectGitConnectionSummary
+        from ..models.project_health_summary import ProjectHealthSummary
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 
@@ -175,6 +198,26 @@ class Project:
 
         logo_url = d.pop("logo_url", UNSET)
 
+        _git_connection = d.pop("git_connection", UNSET)
+        git_connection: ProjectGitConnectionSummary | Unset
+        if isinstance(_git_connection,  Unset):
+            git_connection = UNSET
+        else:
+            git_connection = ProjectGitConnectionSummary.from_dict(_git_connection)
+
+
+
+
+        _health = d.pop("health", UNSET)
+        health: ProjectHealthSummary | Unset
+        if isinstance(_health,  Unset):
+            health = UNSET
+        else:
+            health = ProjectHealthSummary.from_dict(_health)
+
+
+
+
         project = cls(
             id=id,
             name=name,
@@ -187,6 +230,8 @@ class Project:
             aws_application_name=aws_application_name,
             last_invoked_at=last_invoked_at,
             logo_url=logo_url,
+            git_connection=git_connection,
+            health=health,
         )
 
 

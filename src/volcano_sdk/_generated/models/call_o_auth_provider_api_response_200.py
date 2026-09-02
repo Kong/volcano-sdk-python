@@ -8,9 +8,6 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..models.call_o_auth_provider_api_response_200_provider import CallOAuthProviderAPIResponse200Provider
-from ..models.call_o_auth_provider_api_response_200_provider import check_call_o_auth_provider_api_response_200_provider
-from typing import cast
 
 
 
@@ -23,19 +20,10 @@ T = TypeVar("T", bound="CallOAuthProviderAPIResponse200")
 
 @_attrs_define
 class CallOAuthProviderAPIResponse200:
-    """ OAuth provider API response envelope
+    """ Raw response from the OAuth provider's API
 
-        Attributes:
-            provider (CallOAuthProviderAPIResponse200Provider):
-            endpoint (str):
-            status_code (int):
-            data (Any): Raw JSON value returned by the OAuth provider's API
      """
 
-    provider: CallOAuthProviderAPIResponse200Provider
-    endpoint: str
-    status_code: int
-    data: Any
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -43,23 +31,9 @@ class CallOAuthProviderAPIResponse200:
 
 
     def to_dict(self) -> dict[str, Any]:
-        provider: str = self.provider
-
-        endpoint = self.endpoint
-
-        status_code = self.status_code
-
-        data = self.data
-
-
+        
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update({
-            "provider": provider,
-            "endpoint": endpoint,
-            "status_code": status_code,
-            "data": data,
-        })
 
         return field_dict
 
@@ -68,22 +42,7 @@ class CallOAuthProviderAPIResponse200:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        provider = check_call_o_auth_provider_api_response_200_provider(d.pop("provider"))
-
-
-
-
-        endpoint = d.pop("endpoint")
-
-        status_code = d.pop("status_code")
-
-        data = d.pop("data")
-
         call_o_auth_provider_api_response_200 = cls(
-            provider=provider,
-            endpoint=endpoint,
-            status_code=status_code,
-            data=data,
         )
 
 

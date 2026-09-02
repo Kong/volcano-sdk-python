@@ -8,6 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.error import Error
 from ...models.reset_database_password_response_200 import ResetDatabasePasswordResponse200
 from typing import cast
 from uuid import UUID
@@ -35,7 +36,7 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ResetDatabasePasswordResponse200 | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Error | ResetDatabasePasswordResponse200 | None:
     if response.status_code == 200:
         response_200 = ResetDatabasePasswordResponse200.from_dict(response.json())
 
@@ -43,13 +44,41 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_200
 
+    if response.status_code == 400:
+        response_400 = Error.from_dict(response.json())
+
+
+
+        return response_400
+
+    if response.status_code == 404:
+        response_404 = Error.from_dict(response.json())
+
+
+
+        return response_404
+
+    if response.status_code == 409:
+        response_409 = Error.from_dict(response.json())
+
+
+
+        return response_409
+
+    if response.status_code == 503:
+        response_503 = Error.from_dict(response.json())
+
+
+
+        return response_503
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[ResetDatabasePasswordResponse200]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | ResetDatabasePasswordResponse200]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -64,13 +93,17 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[ResetDatabasePasswordResponse200]:
+) -> Response[Error | ResetDatabasePasswordResponse200]:
     """ Reset database password
 
      Rotates the Volcano-managed PostgreSQL password used by clients when connecting
     through pgproxy. This does not rotate or expose the internal owner password.
     The returned password and connection string are the only client credentials that
     will authenticate through pgproxy after reset.
+
+    Existing connections are not interrupted; new ones must use the returned
+    string. Proxies pick the rotation up within a few seconds, so the previous
+    password can still open new connections until then.
 
     Args:
         id (UUID):
@@ -81,7 +114,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ResetDatabasePasswordResponse200]
+        Response[Error | ResetDatabasePasswordResponse200]
      """
 
 
@@ -103,13 +136,17 @@ def sync(
     *,
     client: AuthenticatedClient,
 
-) -> ResetDatabasePasswordResponse200 | None:
+) -> Error | ResetDatabasePasswordResponse200 | None:
     """ Reset database password
 
      Rotates the Volcano-managed PostgreSQL password used by clients when connecting
     through pgproxy. This does not rotate or expose the internal owner password.
     The returned password and connection string are the only client credentials that
     will authenticate through pgproxy after reset.
+
+    Existing connections are not interrupted; new ones must use the returned
+    string. Proxies pick the rotation up within a few seconds, so the previous
+    password can still open new connections until then.
 
     Args:
         id (UUID):
@@ -120,7 +157,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ResetDatabasePasswordResponse200
+        Error | ResetDatabasePasswordResponse200
      """
 
 
@@ -137,13 +174,17 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[ResetDatabasePasswordResponse200]:
+) -> Response[Error | ResetDatabasePasswordResponse200]:
     """ Reset database password
 
      Rotates the Volcano-managed PostgreSQL password used by clients when connecting
     through pgproxy. This does not rotate or expose the internal owner password.
     The returned password and connection string are the only client credentials that
     will authenticate through pgproxy after reset.
+
+    Existing connections are not interrupted; new ones must use the returned
+    string. Proxies pick the rotation up within a few seconds, so the previous
+    password can still open new connections until then.
 
     Args:
         id (UUID):
@@ -154,7 +195,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ResetDatabasePasswordResponse200]
+        Response[Error | ResetDatabasePasswordResponse200]
      """
 
 
@@ -176,13 +217,17 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
 
-) -> ResetDatabasePasswordResponse200 | None:
+) -> Error | ResetDatabasePasswordResponse200 | None:
     """ Reset database password
 
      Rotates the Volcano-managed PostgreSQL password used by clients when connecting
     through pgproxy. This does not rotate or expose the internal owner password.
     The returned password and connection string are the only client credentials that
     will authenticate through pgproxy after reset.
+
+    Existing connections are not interrupted; new ones must use the returned
+    string. Proxies pick the rotation up within a few seconds, so the previous
+    password can still open new connections until then.
 
     Args:
         id (UUID):
@@ -193,7 +238,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ResetDatabasePasswordResponse200
+        Error | ResetDatabasePasswordResponse200
      """
 
 

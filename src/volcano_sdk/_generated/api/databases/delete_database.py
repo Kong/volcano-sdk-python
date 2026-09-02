@@ -9,6 +9,7 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.delete_database_response_202 import DeleteDatabaseResponse202
+from ...models.error import Error
 from typing import cast
 from uuid import UUID
 
@@ -35,7 +36,7 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | DeleteDatabaseResponse202 | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | DeleteDatabaseResponse202 | Error | None:
     if response.status_code == 202:
         response_202 = DeleteDatabaseResponse202.from_dict(response.json())
 
@@ -47,13 +48,34 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         response_204 = cast(Any, None)
         return response_204
 
+    if response.status_code == 404:
+        response_404 = Error.from_dict(response.json())
+
+
+
+        return response_404
+
+    if response.status_code == 409:
+        response_409 = Error.from_dict(response.json())
+
+
+
+        return response_409
+
+    if response.status_code == 503:
+        response_503 = Error.from_dict(response.json())
+
+
+
+        return response_503
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | DeleteDatabaseResponse202]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | DeleteDatabaseResponse202 | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -68,7 +90,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[Any | DeleteDatabaseResponse202]:
+) -> Response[Any | DeleteDatabaseResponse202 | Error]:
     """ Delete a database
 
      Deletes a database and the instance backing it. When the instance is
@@ -89,7 +111,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | DeleteDatabaseResponse202]
+        Response[Any | DeleteDatabaseResponse202 | Error]
      """
 
 
@@ -111,7 +133,7 @@ def sync(
     *,
     client: AuthenticatedClient,
 
-) -> Any | DeleteDatabaseResponse202 | None:
+) -> Any | DeleteDatabaseResponse202 | Error | None:
     """ Delete a database
 
      Deletes a database and the instance backing it. When the instance is
@@ -132,7 +154,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | DeleteDatabaseResponse202
+        Any | DeleteDatabaseResponse202 | Error
      """
 
 
@@ -149,7 +171,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[Any | DeleteDatabaseResponse202]:
+) -> Response[Any | DeleteDatabaseResponse202 | Error]:
     """ Delete a database
 
      Deletes a database and the instance backing it. When the instance is
@@ -170,7 +192,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | DeleteDatabaseResponse202]
+        Response[Any | DeleteDatabaseResponse202 | Error]
      """
 
 
@@ -192,7 +214,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
 
-) -> Any | DeleteDatabaseResponse202 | None:
+) -> Any | DeleteDatabaseResponse202 | Error | None:
     """ Delete a database
 
      Deletes a database and the instance backing it. When the instance is
@@ -213,7 +235,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | DeleteDatabaseResponse202
+        Any | DeleteDatabaseResponse202 | Error
      """
 
 

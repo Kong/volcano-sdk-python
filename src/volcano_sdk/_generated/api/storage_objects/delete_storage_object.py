@@ -94,6 +94,7 @@ def sync_detailed(
 
     **Abort Session (with X-Upload-Session header):**
     Aborts a resumable upload session and cleans up any uploaded parts.
+    Anonymous sessions must reuse the exact anon key that created the session.
 
     Args:
         bucket_name (str):
@@ -139,6 +140,7 @@ def sync(
 
     **Abort Session (with X-Upload-Session header):**
     Aborts a resumable upload session and cleans up any uploaded parts.
+    Anonymous sessions must reuse the exact anon key that created the session.
 
     Args:
         bucket_name (str):
@@ -179,6 +181,7 @@ async def asyncio_detailed(
 
     **Abort Session (with X-Upload-Session header):**
     Aborts a resumable upload session and cleans up any uploaded parts.
+    Anonymous sessions must reuse the exact anon key that created the session.
 
     Args:
         bucket_name (str):
@@ -224,6 +227,7 @@ async def asyncio(
 
     **Abort Session (with X-Upload-Session header):**
     Aborts a resumable upload session and cleans up any uploaded parts.
+    Anonymous sessions must reuse the exact anon key that created the session.
 
     Args:
         bucket_name (str):

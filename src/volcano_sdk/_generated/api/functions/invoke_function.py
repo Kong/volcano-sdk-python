@@ -145,9 +145,16 @@ def sync_detailed(
     - Function receives payload only (no `__volcano_auth`)
 
     **Transport and CORS:**
-    - Direct invocation endpoint is intended for `http://api.<domain>/functions/{functionId}/invoke`
-    - DNS invocation endpoint is `https://{functionId}.functions.<domain>/`
-    - CORS preflight for invocation allows only `POST, OPTIONS`
+    - This operation is the authenticated direct RPC endpoint and always uses the
+      POST `{payload: ...}` contract, including for functions whose DNS ingress is
+      configured in HTTP mode.
+    - The geo-routed DNS ingress is `https://{functionId}.functions.<domain>/`.
+    - RPC-mode DNS ingress accepts POST at `/`. HTTP-mode DNS ingress accepts GET,
+      HEAD, POST, PUT, PATCH, and DELETE at `/` and nested paths.
+    - Direct and RPC-mode CORS preflight advertises `POST, OPTIONS`. HTTP-mode DNS
+      preflight advertises `GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS`.
+    - `http_auth_mode: none` applies only to public HTTP-mode DNS ingress; this
+      direct operation always requires a Volcano credential.
 
     Args:
         function_id (UUID):
@@ -209,9 +216,16 @@ def sync(
     - Function receives payload only (no `__volcano_auth`)
 
     **Transport and CORS:**
-    - Direct invocation endpoint is intended for `http://api.<domain>/functions/{functionId}/invoke`
-    - DNS invocation endpoint is `https://{functionId}.functions.<domain>/`
-    - CORS preflight for invocation allows only `POST, OPTIONS`
+    - This operation is the authenticated direct RPC endpoint and always uses the
+      POST `{payload: ...}` contract, including for functions whose DNS ingress is
+      configured in HTTP mode.
+    - The geo-routed DNS ingress is `https://{functionId}.functions.<domain>/`.
+    - RPC-mode DNS ingress accepts POST at `/`. HTTP-mode DNS ingress accepts GET,
+      HEAD, POST, PUT, PATCH, and DELETE at `/` and nested paths.
+    - Direct and RPC-mode CORS preflight advertises `POST, OPTIONS`. HTTP-mode DNS
+      preflight advertises `GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS`.
+    - `http_auth_mode: none` applies only to public HTTP-mode DNS ingress; this
+      direct operation always requires a Volcano credential.
 
     Args:
         function_id (UUID):
@@ -268,9 +282,16 @@ async def asyncio_detailed(
     - Function receives payload only (no `__volcano_auth`)
 
     **Transport and CORS:**
-    - Direct invocation endpoint is intended for `http://api.<domain>/functions/{functionId}/invoke`
-    - DNS invocation endpoint is `https://{functionId}.functions.<domain>/`
-    - CORS preflight for invocation allows only `POST, OPTIONS`
+    - This operation is the authenticated direct RPC endpoint and always uses the
+      POST `{payload: ...}` contract, including for functions whose DNS ingress is
+      configured in HTTP mode.
+    - The geo-routed DNS ingress is `https://{functionId}.functions.<domain>/`.
+    - RPC-mode DNS ingress accepts POST at `/`. HTTP-mode DNS ingress accepts GET,
+      HEAD, POST, PUT, PATCH, and DELETE at `/` and nested paths.
+    - Direct and RPC-mode CORS preflight advertises `POST, OPTIONS`. HTTP-mode DNS
+      preflight advertises `GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS`.
+    - `http_auth_mode: none` applies only to public HTTP-mode DNS ingress; this
+      direct operation always requires a Volcano credential.
 
     Args:
         function_id (UUID):
@@ -332,9 +353,16 @@ async def asyncio(
     - Function receives payload only (no `__volcano_auth`)
 
     **Transport and CORS:**
-    - Direct invocation endpoint is intended for `http://api.<domain>/functions/{functionId}/invoke`
-    - DNS invocation endpoint is `https://{functionId}.functions.<domain>/`
-    - CORS preflight for invocation allows only `POST, OPTIONS`
+    - This operation is the authenticated direct RPC endpoint and always uses the
+      POST `{payload: ...}` contract, including for functions whose DNS ingress is
+      configured in HTTP mode.
+    - The geo-routed DNS ingress is `https://{functionId}.functions.<domain>/`.
+    - RPC-mode DNS ingress accepts POST at `/`. HTTP-mode DNS ingress accepts GET,
+      HEAD, POST, PUT, PATCH, and DELETE at `/` and nested paths.
+    - Direct and RPC-mode CORS preflight advertises `POST, OPTIONS`. HTTP-mode DNS
+      preflight advertises `GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS`.
+    - `http_auth_mode: none` applies only to public HTTP-mode DNS ingress; this
+      direct operation always requires a Volcano credential.
 
     Args:
         function_id (UUID):

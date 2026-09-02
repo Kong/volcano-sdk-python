@@ -104,6 +104,7 @@ def sync_detailed(
     - Maximum part size is 25MB
     - Parts can be uploaded in any order
     - Re-uploading a part overwrites the previous upload
+    - Anonymous sessions must reuse the exact anon key that created the session
 
     Args:
         bucket_name (str):
@@ -156,6 +157,7 @@ def sync(
     - Maximum part size is 25MB
     - Parts can be uploaded in any order
     - Re-uploading a part overwrites the previous upload
+    - Anonymous sessions must reuse the exact anon key that created the session
 
     Args:
         bucket_name (str):
@@ -203,6 +205,7 @@ async def asyncio_detailed(
     - Maximum part size is 25MB
     - Parts can be uploaded in any order
     - Re-uploading a part overwrites the previous upload
+    - Anonymous sessions must reuse the exact anon key that created the session
 
     Args:
         bucket_name (str):
@@ -255,6 +258,7 @@ async def asyncio(
     - Maximum part size is 25MB
     - Parts can be uploaded in any order
     - Re-uploading a part overwrites the previous upload
+    - Anonymous sessions must reuse the exact anon key that created the session
 
     Args:
         bucket_name (str):
