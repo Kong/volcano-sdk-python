@@ -55,6 +55,7 @@ from ._generated.api.authentication.auth_signup_anonymous import (
 from ._generated.api.database_queries import (
     query_database_insert,
     query_database_select,
+    query_database_update,
 )
 from ._generated.api.locks import acquire_project_lock, release_project_lock
 from ._generated.api.o_auth_authentication import auth_o_auth_exchange
@@ -125,6 +126,7 @@ from ._generated.models.call_o_auth_provider_api_response_200 import (
 )
 from ._generated.models.database_insert_request import DatabaseInsertRequest
 from ._generated.models.database_select_request import DatabaseSelectRequest
+from ._generated.models.database_update_request import DatabaseUpdateRequest
 from ._generated.models.get_o_auth_provider_token_response_200 import (
     GetOAuthProviderTokenResponse200,
 )
@@ -471,6 +473,14 @@ class Transport(Protocol):
     ) -> TransportResponse: ...
 
     def query_database_insert(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> TransportResponse: ...
+
+    def query_database_update(
         self,
         *,
         authorization: str,
@@ -1167,6 +1177,21 @@ class GeneratedTransport:
                 database_name,
                 client=client,
                 body=DatabaseInsertRequest.from_dict(body),
+            )
+        return self._response(response)
+
+    def query_database_update(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = query_database_update.sync_detailed(
+                database_name,
+                client=client,
+                body=DatabaseUpdateRequest.from_dict(body),
             )
         return self._response(response)
 

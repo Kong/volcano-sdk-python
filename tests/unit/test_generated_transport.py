@@ -1012,6 +1012,45 @@ def test_generated_transport_inserts_a_database_row() -> None:
     }
 
 
+def test_generated_transport_updates_filtered_database_rows() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={"data": [{"id": "item-1", "status": "published"}], "count": 1},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.query_database_update(
+        authorization="access-token",
+        database_name="main",
+        body={
+            "table": "items",
+            "values": {"status": "published"},
+            "filters": [{"column": "id", "operator": "eq", "value": "item-1"}],
+        },
+    )
+
+    assert response.payload == {
+        "data": [{"id": "item-1", "status": "published"}],
+        "count": 1,
+    }
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/databases/main/query/update"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert json.loads(requests[0].content) == {
+        "table": "items",
+        "values": {"status": "published"},
+        "filters": [{"column": "id", "operator": "eq", "value": "item-1"}],
+    }
+
+
 def test_generated_transport_calls_the_seven_openapi_operations() -> None:
     requests: list[httpx.Request] = []
 

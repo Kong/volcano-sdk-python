@@ -256,6 +256,7 @@ class StateTransport:
         self.on_logout: Callable[[], None] | None = None
         self.query_calls: list[dict[str, Any]] = []
         self.insert_calls: list[dict[str, Any]] = []
+        self.update_calls: list[dict[str, Any]] = []
         self.authorizations: list[tuple[str, str]] = []
 
     def _configure_oauth(self) -> None:
@@ -502,6 +503,11 @@ class StateTransport:
         self.insert_calls.append(kwargs["body"])
         return Response(200, {"data": [kwargs["body"]["values"]], "count": 1})
 
+    def query_database_update(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("update", kwargs["authorization"]))
+        self.update_calls.append(kwargs["body"])
+        return Response(200, {"data": [kwargs["body"]["values"]], "count": 1})
+
     def upload_storage_object(self, **kwargs: Any) -> Response:
         self.authorizations.append(("upload", kwargs["authorization"]))
         return Response(201, {"name": kwargs["path"]})
@@ -674,6 +680,67 @@ def test_database_insert_copies_values_and_reads_current_credentials() -> None:
         },
     ]
     assert transport.authorizations[-1] == ("insert", "access-2")
+
+
+def test_database_update_copies_inputs_and_reads_current_credentials() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    labels = ["sdk"]
+    values: dict[str, Any] = {"metadata": MappingProxyType({"labels": labels})}
+    statuses = ["draft", "published"]
+
+    update = (
+        client.database("main").from_("items").update(values).in_("status", statuses)
+    )
+    labels.append("mutated")
+    statuses.append("archived")
+    transport.next_access_token = "access-2"
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    assert update.execute() == [{"metadata": {"labels": ["sdk"]}}]
+    assert transport.update_calls == [
+        {
+            "table": "items",
+            "values": {"metadata": {"labels": ["sdk"]}},
+            "filters": [
+                {
+                    "column": "status",
+                    "operator": "in",
+                    "value": ["draft", "published"],
+                },
+            ],
+        },
+    ]
+    assert transport.authorizations[-1] == ("update", "access-2")
+
+
+def test_database_update_reuses_the_select_filter_vocabulary() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    update = client.database("main").from_("items").update({"status": "review"})
+    update.eq("id", 1).neq("state", "deleted").gt("score", 1).gte("priority", 2).lt(
+        "attempts", 5
+    ).lte("rank", 10).like("name", "Vol%").ilike("owner", "ada%").is_(
+        "deleted_at", None
+    ).execute()
+
+    operators = [
+        condition["operator"] for condition in transport.update_calls[0]["filters"]
+    ]
+    assert operators == [
+        "eq",
+        "neq",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "like",
+        "ilike",
+        "is",
+    ]
 
 
 def test_query_builder_order_clauses_are_immutable() -> None:
