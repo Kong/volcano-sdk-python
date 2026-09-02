@@ -5,6 +5,7 @@ from base64 import urlsafe_b64encode
 from dataclasses import FrozenInstanceError, dataclass
 from datetime import datetime
 from threading import Event, Thread
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
@@ -254,6 +255,7 @@ class StateTransport:
         self.logout_response = Response(204)
         self.on_logout: Callable[[], None] | None = None
         self.query_calls: list[dict[str, Any]] = []
+        self.insert_calls: list[dict[str, Any]] = []
         self.authorizations: list[tuple[str, str]] = []
 
     def _configure_oauth(self) -> None:
@@ -495,6 +497,11 @@ class StateTransport:
         self.query_calls.append(kwargs["body"])
         return Response(200, {"data": [kwargs["body"]], "count": 1})
 
+    def query_database_insert(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("insert", kwargs["authorization"]))
+        self.insert_calls.append(kwargs["body"])
+        return Response(200, {"data": [kwargs["body"]["values"]], "count": 1})
+
     def upload_storage_object(self, **kwargs: Any) -> Response:
         self.authorizations.append(("upload", kwargs["authorization"]))
         return Response(201, {"name": kwargs["path"]})
@@ -639,6 +646,34 @@ def test_query_builder_membership_filter_copies_values() -> None:
         },
         {"table": "items"},
     ]
+
+
+def test_database_insert_copies_values_and_reads_current_credentials() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    labels = ["sdk"]
+    values: dict[str, Any] = {
+        "name": "Volcano",
+        "metadata": MappingProxyType({"labels": labels}),
+    }
+
+    insert = client.database("main").from_("items").insert(values)
+    values["name"] = "Lava"
+    labels.append("mutated")
+    transport.next_access_token = "access-2"
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    assert insert.execute() == [
+        {"name": "Volcano", "metadata": {"labels": ["sdk"]}},
+    ]
+    assert transport.insert_calls == [
+        {
+            "table": "items",
+            "values": {"name": "Volcano", "metadata": {"labels": ["sdk"]}},
+        },
+    ]
+    assert transport.authorizations[-1] == ("insert", "access-2")
 
 
 def test_query_builder_order_clauses_are_immutable() -> None:

@@ -73,6 +73,13 @@ matching_rows = (
     .in_("status", ["draft", "published"])
     .execute()
 )
+
+inserted_rows = (
+    client.database("main")
+    .from_("items")
+    .insert({"name": "Volcano", "status": "draft"})
+    .execute()
+)
 ```
 
 `sign_up()` returns an immutable acknowledgement and never creates or replaces a session. The
