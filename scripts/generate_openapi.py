@@ -23,6 +23,7 @@ REQUIRED_OPERATION_MODULES = {
     "move_storage_object.py",
     "query_database_select.py",
     "release_project_lock.py",
+    "update_storage_object_visibility.py",
     "upload_storage_object.py",
 }
 
