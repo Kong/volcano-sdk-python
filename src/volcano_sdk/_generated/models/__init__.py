@@ -49,6 +49,19 @@ from .auth_o_auth_authorize_provider import AuthOAuthAuthorizeProvider
 from .auth_o_auth_authorize_response_mode import AuthOAuthAuthorizeResponseMode
 from .auth_o_auth_callback_provider import AuthOAuthCallbackProvider
 from .auth_o_auth_exchange_body import AuthOAuthExchangeBody
+from .auth_page_appearance_defaults import AuthPageAppearanceDefaults
+from .auth_page_appearance_options import AuthPageAppearanceOptions
+from .auth_page_appearance_response import AuthPageAppearanceResponse
+from .auth_page_appearance_response_layouts import AuthPageAppearanceResponseLayouts
+from .auth_page_appearance_response_parked import AuthPageAppearanceResponseParked
+from .auth_page_density import AuthPageDensity
+from .auth_page_font import AuthPageFont
+from .auth_page_layout import AuthPageLayout
+from .auth_page_radius import AuthPageRadius
+from .auth_page_scale import AuthPageScale
+from .auth_page_theme import AuthPageTheme
+from .auth_page_theme_colors import AuthPageThemeColors
+from .auth_page_theme_version import AuthPageThemeVersion
 from .auth_password_policy import AuthPasswordPolicy
 from .auth_platform_exchange_body import AuthPlatformExchangeBody
 from .auth_refresh_body import AuthRefreshBody
@@ -284,6 +297,8 @@ from .paginated_service_keys import PaginatedServiceKeys
 from .paginated_storage_buckets import PaginatedStorageBuckets
 from .paginated_variables import PaginatedVariables
 from .platform_exchange_response import PlatformExchangeResponse
+from .preview_auth_page_request import PreviewAuthPageRequest
+from .preview_auth_page_response import PreviewAuthPageResponse
 from .project import Project
 from .project_config import ProjectConfig
 from .project_config_apply_result import ProjectConfigApplyResult
@@ -298,6 +313,8 @@ from .project_config_auth_email_password_provider import ProjectConfigAuthEmailP
 from .project_config_auth_email_smtp import ProjectConfigAuthEmailSMTP
 from .project_config_auth_email_verification import ProjectConfigAuthEmailVerification
 from .project_config_auth_managed_pages import ProjectConfigAuthManagedPages
+from .project_config_auth_page_appearance import ProjectConfigAuthPageAppearance
+from .project_config_auth_page_layouts import ProjectConfigAuthPageLayouts
 from .project_config_auth_password import ProjectConfigAuthPassword
 from .project_config_auth_password_reset import ProjectConfigAuthPasswordReset
 from .project_config_auth_providers import ProjectConfigAuthProviders
@@ -426,6 +443,8 @@ from .unban_user_response_status import UnbanUserResponseStatus
 from .update_auth_config_request import UpdateAuthConfigRequest
 from .update_auth_config_request_allowed_email_domains_mode import UpdateAuthConfigRequestAllowedEmailDomainsMode
 from .update_auth_hosted_page_request import UpdateAuthHostedPageRequest
+from .update_auth_page_layout_request import UpdateAuthPageLayoutRequest
+from .update_auth_page_theme_request import UpdateAuthPageThemeRequest
 from .update_database_branch_request import UpdateDatabaseBranchRequest
 from .update_database_type_request import UpdateDatabaseTypeRequest
 from .update_database_type_request_database_type import UpdateDatabaseTypeRequestDatabaseType
@@ -502,6 +521,19 @@ __all__ = (
     "AuthOAuthAuthorizeResponseMode",
     "AuthOAuthCallbackProvider",
     "AuthOAuthExchangeBody",
+    "AuthPageAppearanceDefaults",
+    "AuthPageAppearanceOptions",
+    "AuthPageAppearanceResponse",
+    "AuthPageAppearanceResponseLayouts",
+    "AuthPageAppearanceResponseParked",
+    "AuthPageDensity",
+    "AuthPageFont",
+    "AuthPageLayout",
+    "AuthPageRadius",
+    "AuthPageScale",
+    "AuthPageTheme",
+    "AuthPageThemeColors",
+    "AuthPageThemeVersion",
     "AuthPasswordPolicy",
     "AuthPlatformExchangeBody",
     "AuthRefreshBody",
@@ -737,6 +769,8 @@ __all__ = (
     "PaginatedStorageBuckets",
     "PaginatedVariables",
     "PlatformExchangeResponse",
+    "PreviewAuthPageRequest",
+    "PreviewAuthPageResponse",
     "Project",
     "ProjectConfig",
     "ProjectConfigApplyResult",
@@ -751,6 +785,8 @@ __all__ = (
     "ProjectConfigAuthEmailSMTP",
     "ProjectConfigAuthEmailVerification",
     "ProjectConfigAuthManagedPages",
+    "ProjectConfigAuthPageAppearance",
+    "ProjectConfigAuthPageLayouts",
     "ProjectConfigAuthPassword",
     "ProjectConfigAuthPasswordReset",
     "ProjectConfigAuthProviders",
@@ -879,6 +915,8 @@ __all__ = (
     "UpdateAuthConfigRequest",
     "UpdateAuthConfigRequestAllowedEmailDomainsMode",
     "UpdateAuthHostedPageRequest",
+    "UpdateAuthPageLayoutRequest",
+    "UpdateAuthPageThemeRequest",
     "UpdateDatabaseBranchRequest",
     "UpdateDatabaseTypeRequest",
     "UpdateDatabaseTypeRequestDatabaseType",
