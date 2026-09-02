@@ -94,6 +94,7 @@ ignore = [
 "src/volcano_sdk/auth.py" = ["SLF001"]
 "src/volcano_sdk/database.py" = ["SLF001"]
 "src/volcano_sdk/functions.py" = ["SLF001"]
+"src/volcano_sdk/logs.py" = ["SLF001"]
 "src/volcano_sdk/locks.py" = ["SLF001"]
 "src/volcano_sdk/realtime.py" = ["ANN401", "SLF001"]
 "src/volcano_sdk/storage.py" = ["SLF001"]

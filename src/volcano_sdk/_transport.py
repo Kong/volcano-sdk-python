@@ -69,6 +69,7 @@ from ._generated.api.locks import (
     release_project_lock,
     renew_project_lock,
 )
+from ._generated.api.logs import get_project_log_activity, search_project_logs
 from ._generated.api.o_auth_authentication import auth_o_auth_exchange
 from ._generated.api.o_auth_authentication.auth_link_o_auth_provider import (
     _get_kwargs as link_oauth_provider_kwargs,
@@ -153,6 +154,8 @@ from ._generated.models.function_invocation_request_payload import (
 from ._generated.models.get_o_auth_provider_token_response_200 import (
     GetOAuthProviderTokenResponse200,
 )
+from ._generated.models.log_activity_request import LogActivityRequest
+from ._generated.models.log_search_request import LogSearchRequest
 from ._generated.models.project_lock_lease_request import ProjectLockLeaseRequest
 from ._generated.models.refresh_o_auth_provider_token_response_200 import (
     RefreshOAuthProviderTokenResponse200,
@@ -1530,6 +1533,38 @@ class GeneratedTransport:
                 )
             )
         return self._raw_response(response)
+
+    def search_project_logs(
+        self,
+        *,
+        authorization: str,
+        project_id: str,
+        request: Mapping[str, JSONValue],
+    ) -> TransportResponse:
+        plain_request = cast("dict[str, Any]", _plain_json(request))
+        with self._client(authorization) as client:
+            response = search_project_logs.sync_detailed(
+                UUID(project_id),
+                client=client,
+                body=LogSearchRequest.from_dict(plain_request),
+            )
+        return self._response(response)
+
+    def get_project_log_activity(
+        self,
+        *,
+        authorization: str,
+        project_id: str,
+        request: Mapping[str, JSONValue],
+    ) -> TransportResponse:
+        plain_request = cast("dict[str, Any]", _plain_json(request))
+        with self._client(authorization) as client:
+            response = get_project_log_activity.sync_detailed(
+                UUID(project_id),
+                client=client,
+                body=LogActivityRequest.from_dict(plain_request),
+            )
+        return self._response(response)
 
     def acquire_project_lock(
         self,

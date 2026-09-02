@@ -212,6 +212,40 @@ class FunctionResponse:
 
 
 @dataclass(frozen=True, slots=True)
+class LogSearchResponse:
+    """Immutable page returned by a project log search."""
+
+    data: tuple[Mapping[str, JSONValue], ...] = field(hash=False)
+    limit: int
+    has_more: bool
+    next_cursor: str | None = None
+
+    def __post_init__(self) -> None:
+        """Defensively freeze log events owned by this value."""
+        object.__setattr__(
+            self,
+            "data",
+            tuple(_freeze_json(event) for event in self.data),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LogActivityResponse:
+    """Immutable bucketed project log activity."""
+
+    data: tuple[Mapping[str, JSONValue], ...] = field(hash=False)
+    total: int
+
+    def __post_init__(self) -> None:
+        """Defensively freeze activity buckets owned by this value."""
+        object.__setattr__(
+            self,
+            "data",
+            tuple(_freeze_json(bucket) for bucket in self.data),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class UploadSession:
     """Server-created state for a resumable storage upload."""
 

@@ -28,10 +28,12 @@ def test_generate_emits_required_contract_operations(tmp_path: Path) -> None:
         "update_storage_object_visibility.py",
         "acquire_project_lock.py",
         "force_release_project_lock.py",
+        "get_project_log_activity.py",
         "get_project_lock.py",
         "invoke_function.py",
         "release_project_lock.py",
         "resolve_function_for_invocation.py",
+        "search_project_logs.py",
         "renew_project_lock.py",
     }
 
@@ -41,6 +43,7 @@ def test_generate_emits_required_contract_operations(tmp_path: Path) -> None:
     [
         "force_release_project_lock.py",
         "invoke_function.py",
+        "search_project_logs.py",
         "update_storage_object_visibility.py",
     ],
 )

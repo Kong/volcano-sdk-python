@@ -11,6 +11,7 @@ from .auth import Auth
 from .database import Database
 from .functions import Functions
 from .locks import Locks
+from .logs import Logs
 from .models import (
     AuthChangeEvent,
     AuthStateCallback,
@@ -83,6 +84,7 @@ class VolcanoClient:
         )
         self.auth = Auth(self)
         self.functions = Functions(self)
+        self.logs = Logs(self)
         self.storage = Storage(self)
         self.locks = Locks(self)
         if _realtime_client_factory is None:

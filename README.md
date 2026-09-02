@@ -44,6 +44,19 @@ function = client.functions.invoke(
 )
 print(function.status, function.version, function.data)
 
+logs = client.logs.search(
+    "00000000-0000-4000-8000-000000000001",
+    {"resource": {"type": "function"}, "limit": 100},
+)
+for event in logs.data:
+    print(event["timestamp"], event["body"])
+
+activity = client.logs.activity(
+    "00000000-0000-4000-8000-000000000001",
+    {"resource": {"type": "function"}, "bucket_count": 24},
+)
+print(activity.total)
+
 rows = client.database("main").from_("items").select("*").eq("slug", "a").execute()
 
 bucket = client.storage.from_("assets")
@@ -140,6 +153,11 @@ It uses the active user session when present, then a configured service key,
 then the anonymous key. The immutable result includes the response body, status,
 headers, and `X-Volcano-Version`. A function's own non-2xx response is returned
 when the version header proves it ran; platform failures raise typed SDK errors.
+
+`logs.search()` returns an immutable page of retained runtime or deployment log
+events. Pass `next_cursor` back as `cursor` to continue a search. `logs.activity()`
+returns immutable time buckets using the same resource selector and query syntax.
+Both methods require an active user session.
 
 Database builders are immutable, so you can safely reuse a base query. Chain `neq()`, `gt()`,
 `gte()`, `lt()`, and `lte()` for comparison filters:
