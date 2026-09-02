@@ -313,14 +313,7 @@ class StateTransport:
         self.on_refresh_oauth_provider_token: Callable[[], None] | None = None
         self.call_oauth_api_response = Response(
             200,
-            CallOAuthProviderAPIResponse200.from_dict(
-                {
-                    "provider": "github",
-                    "endpoint": "/user/repos",
-                    "status_code": 200,
-                    "data": [{"name": "volcano"}],
-                }
-            ),
+            CallOAuthProviderAPIResponse200.from_dict({"name": "volcano"}),
         )
         self.call_oauth_api_calls: list[dict[str, Any]] = []
         self.on_call_oauth_api: Callable[[], None] | None = None
@@ -2145,7 +2138,7 @@ def test_call_oauth_api_returns_immutable_provider_data() -> None:
         body={"visibility": "private"},
     )
 
-    assert result == ({"name": "volcano"},)
+    assert result == {"name": "volcano"}
     assert client.auth.get_session() is established
     assert transport.call_oauth_api_calls == [
         {
@@ -2156,9 +2149,9 @@ def test_call_oauth_api_returns_immutable_provider_data() -> None:
             "body": {"visibility": "private"},
         }
     ]
-    repos = cast("tuple[dict[str, object], ...]", result)
+    provider_data = cast("dict[str, object]", result)
     with pytest.raises(TypeError):
-        repos[0]["name"] = "changed"
+        provider_data["name"] = "changed"
 
 
 def test_call_oauth_api_rejects_an_unknown_provider() -> None:
