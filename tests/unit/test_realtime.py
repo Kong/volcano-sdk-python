@@ -219,6 +219,12 @@ class FakeCentrifugeFactory:
         return self.client
 
 
+def test_realtime_channel_exposes_its_canonical_name() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
+
+    assert client.realtime.channel("contract").name == "broadcast:contract"
+
+
 def test_realtime_wraps_official_client_without_exposing_it() -> None:
     transport = AuthTransport()
     official = FakeCentrifugeClient()
