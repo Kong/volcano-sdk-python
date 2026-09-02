@@ -42,6 +42,10 @@ class FakeTransport:
         self.calls.append(("queryDatabaseUpdate", kwargs))
         return FakeResponse(200, {"data": [{"slug": "updated"}], "count": 1})
 
+    def query_database_delete(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("queryDatabaseDelete", kwargs))
+        return FakeResponse(200, {"data": [{"slug": "updated"}], "count": 1})
+
     def upload_storage_object(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("uploadStorageObject", kwargs))
         return FakeResponse(201, {"name": "a.txt", "size": 5})
@@ -62,7 +66,7 @@ class FakeTransport:
         return FakeResponse(204)
 
 
-def test_public_facade_delegates_to_the_eight_contract_operations() -> None:
+def test_public_facade_delegates_to_the_nine_contract_operations() -> None:
     transport = FakeTransport()
     client = VolcanoClient(
         api_url="https://api.test.volcano.dev",
@@ -81,6 +85,9 @@ def test_public_facade_delegates_to_the_eight_contract_operations() -> None:
         .eq("slug", "new")
         .execute()
     )
+    deleted = (
+        client.database("main").from_("items").delete().eq("slug", "updated").execute()
+    )
     uploaded = client.storage.from_("assets").upload("a.txt", b"hello")
     downloaded = client.storage.from_("assets").download("a.txt")
     lease = client.locks.acquire("build", ttl=30)
@@ -95,6 +102,7 @@ def test_public_facade_delegates_to_the_eight_contract_operations() -> None:
     assert rows == [{"slug": "a"}]
     assert inserted == [{"slug": "new"}]
     assert updated == [{"slug": "updated"}]
+    assert deleted == [{"slug": "updated"}]
     assert uploaded == {"name": "a.txt", "size": 5}
     assert downloaded == b"hello"
     assert lease == LockLease(
@@ -108,6 +116,7 @@ def test_public_facade_delegates_to_the_eight_contract_operations() -> None:
         "queryDatabaseSelect",
         "queryDatabaseInsert",
         "queryDatabaseUpdate",
+        "queryDatabaseDelete",
         "uploadStorageObject",
         "downloadStorageObject",
         "acquireProjectLock",
@@ -142,19 +151,27 @@ def test_public_facade_delegates_to_the_eight_contract_operations() -> None:
     }
     assert transport.calls[4][1] == {
         "authorization": "access-token",
-        "bucket_name": "assets",
-        "path": "a.txt",
-        "data": b"hello",
+        "database_name": "main",
+        "body": {
+            "table": "items",
+            "filters": [{"column": "slug", "operator": "eq", "value": "updated"}],
+        },
     }
     assert transport.calls[5][1] == {
         "authorization": "access-token",
         "bucket_name": "assets",
         "path": "a.txt",
+        "data": b"hello",
     }
-    assert transport.calls[6][1]["authorization"] == "service-key"
-    assert transport.calls[6][1]["key"] == "build"
-    assert transport.calls[6][1]["ttl"] == 30
-    assert transport.calls[6][1]["token"] == lease.token
+    assert transport.calls[6][1] == {
+        "authorization": "access-token",
+        "bucket_name": "assets",
+        "path": "a.txt",
+    }
     assert transport.calls[7][1]["authorization"] == "service-key"
     assert transport.calls[7][1]["key"] == "build"
+    assert transport.calls[7][1]["ttl"] == 30
     assert transport.calls[7][1]["token"] == lease.token
+    assert transport.calls[8][1]["authorization"] == "service-key"
+    assert transport.calls[8][1]["key"] == "build"
+    assert transport.calls[8][1]["token"] == lease.token
