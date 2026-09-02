@@ -88,9 +88,13 @@ updated_rows = (
     .eq("name", "Volcano")
     .execute()
 )
+
+deleted_rows = (
+    client.database("main").from_("items").delete().eq("name", "Volcano").execute()
+)
 ```
 
-Updates require at least one filter; Volcano rejects filterless updates.
+Updates and deletes require at least one filter; Volcano rejects filterless mutations.
 
 `sign_up()` returns an immutable acknowledgement and never creates or replaces a session. The
 response is identical for new and existing email addresses. Call `sign_in()` separately after the

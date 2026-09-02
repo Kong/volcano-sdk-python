@@ -257,6 +257,7 @@ class StateTransport:
         self.query_calls: list[dict[str, Any]] = []
         self.insert_calls: list[dict[str, Any]] = []
         self.update_calls: list[dict[str, Any]] = []
+        self.delete_calls: list[dict[str, Any]] = []
         self.authorizations: list[tuple[str, str]] = []
 
     def _configure_oauth(self) -> None:
@@ -508,6 +509,11 @@ class StateTransport:
         self.update_calls.append(kwargs["body"])
         return Response(200, {"data": [kwargs["body"]["values"]], "count": 1})
 
+    def query_database_delete(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("delete", kwargs["authorization"]))
+        self.delete_calls.append(kwargs["body"])
+        return Response(200, {"data": [{"id": "item-1"}], "count": 1})
+
     def upload_storage_object(self, **kwargs: Any) -> Response:
         self.authorizations.append(("upload", kwargs["authorization"]))
         return Response(201, {"name": kwargs["path"]})
@@ -756,6 +762,40 @@ def test_database_update_preserves_filters_applied_before_update() -> None:
         {"column": "tenant_id", "operator": "eq", "value": "tenant-1"},
         {"column": "id", "operator": "eq", "value": "item-1"},
     ]
+
+
+def test_database_delete_composes_captured_filters_and_current_credentials() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    statuses = ["draft", "archived"]
+
+    delete = (
+        client.database("main")
+        .from_("items")
+        .eq("tenant_id", "tenant-1")
+        .delete()
+        .in_("status", statuses)
+    )
+    statuses.append("published")
+    transport.next_access_token = "access-2"
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    assert delete.execute() == [{"id": "item-1"}]
+    assert transport.delete_calls == [
+        {
+            "table": "items",
+            "filters": [
+                {"column": "tenant_id", "operator": "eq", "value": "tenant-1"},
+                {
+                    "column": "status",
+                    "operator": "in",
+                    "value": ["draft", "archived"],
+                },
+            ],
+        },
+    ]
+    assert transport.authorizations[-1] == ("delete", "access-2")
 
 
 def test_query_builder_order_clauses_are_immutable() -> None:

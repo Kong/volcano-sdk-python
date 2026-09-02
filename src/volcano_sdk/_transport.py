@@ -53,6 +53,7 @@ from ._generated.api.authentication.auth_signup_anonymous import (
     _get_kwargs as signup_anonymous_kwargs,
 )
 from ._generated.api.database_queries import (
+    query_database_delete,
     query_database_insert,
     query_database_select,
     query_database_update,
@@ -124,6 +125,7 @@ from ._generated.models.call_o_auth_provider_api_body import CallOAuthProviderAP
 from ._generated.models.call_o_auth_provider_api_response_200 import (
     CallOAuthProviderAPIResponse200,
 )
+from ._generated.models.database_delete_request import DatabaseDeleteRequest
 from ._generated.models.database_insert_request import DatabaseInsertRequest
 from ._generated.models.database_select_request import DatabaseSelectRequest
 from ._generated.models.database_update_request import DatabaseUpdateRequest
@@ -481,6 +483,14 @@ class Transport(Protocol):
     ) -> TransportResponse: ...
 
     def query_database_update(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> TransportResponse: ...
+
+    def query_database_delete(
         self,
         *,
         authorization: str,
@@ -1192,6 +1202,21 @@ class GeneratedTransport:
                 database_name,
                 client=client,
                 body=DatabaseUpdateRequest.from_dict(body),
+            )
+        return self._response(response)
+
+    def query_database_delete(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = query_database_delete.sync_detailed(
+                database_name,
+                client=client,
+                body=DatabaseDeleteRequest.from_dict(body),
             )
         return self._response(response)
 

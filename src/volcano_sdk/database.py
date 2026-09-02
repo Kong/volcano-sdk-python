@@ -137,6 +137,15 @@ class QueryBuilder(FilterBuilder):
             self._filters,
         )
 
+    def delete(self) -> DeleteBuilder:
+        """Build a filtered delete for this table."""
+        return DeleteBuilder(
+            self._client,
+            self._database_name,
+            self._table,
+            self._filters,
+        )
+
     def order(self, column: str, *, ascending: bool = True) -> QueryBuilder:
         """Add an ordering clause."""
         clause = {"column": column, "ascending": ascending}
@@ -221,6 +230,30 @@ class UpdateBuilder(FilterBuilder):
                 "values": _snapshot_row(self._values),
                 "filters": list(self._filters),
             },
+        )
+        payload = response_payload(response, 200)
+        return list(payload["data"])
+
+
+@dataclass(frozen=True, slots=True)
+class DeleteBuilder(FilterBuilder):
+    """Build and execute an immutable filtered database delete."""
+
+    _client: DatabaseContext
+    _database_name: str
+    _table: str
+    _filters: tuple[dict[str, Any], ...] = ()
+
+    def _with_filters(self, filters: tuple[dict[str, Any], ...]) -> DeleteBuilder:
+        return replace(self, _filters=filters)
+
+    def execute(self) -> list[dict[str, Any]]:
+        """Delete matching rows and return them."""
+        response = invoke(
+            self._client._transport.query_database_delete,
+            authorization=self._client._session_token(),
+            database_name=self._database_name,
+            body={"table": self._table, "filters": list(self._filters)},
         )
         payload = response_payload(response, 200)
         return list(payload["data"])
