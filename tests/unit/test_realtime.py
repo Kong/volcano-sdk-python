@@ -237,6 +237,8 @@ class FakeCentrifugeClient:
         self.state = SimpleNamespace(value="disconnected")
         self.presence_clients: dict[str, Any] = {}
         self.presence_error: Exception | None = None
+        self.presence_entered: asyncio.Event | None = None
+        self.presence_release: asyncio.Event | None = None
         self.subscription: FakeSubscription | None = None
         self._subs: dict[str, FakeSubscription] = {}
 
@@ -279,6 +281,8 @@ class FakeCentrifugeClient:
         )
         self.subscription.presence_clients = self.presence_clients.copy()
         self.subscription.presence_error = self.presence_error
+        self.subscription.presence_entered = self.presence_entered
+        self.subscription.presence_release = self.presence_release
         self._subs[name] = self.subscription
         return self.subscription
 
@@ -399,6 +403,32 @@ def test_realtime_presence_sync_tracks_initial_join_and_leave_state() -> None:
     asyncio.run(scenario())
 
 
+def test_realtime_presence_subscribe_waits_for_initial_roster() -> None:
+    official = FakeCentrifugeClient()
+    presence_entered = asyncio.Event()
+    presence_release = asyncio.Event()
+    official.presence_entered = presence_entered
+    official.presence_release = presence_release
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("lobby", channel_type="presence")
+        subscribing = asyncio.create_task(channel.subscribe())
+        await presence_entered.wait()
+        assert not subscribing.done()
+
+        presence_release.set()
+        await subscribing
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_presence_resyncs_after_resubscription() -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(
@@ -424,6 +454,42 @@ def test_realtime_presence_resyncs_after_resubscription() -> None:
         await official.subscription.emit_subscribed()
         await official.subscription.presence_entered.wait()
         await asyncio.sleep(0)
+
+        assert set(channel.get_presence_state()) == {"carol-client"}
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_presence_replays_a_resync_requested_during_a_query() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("lobby", channel_type="presence")
+        await channel.subscribe()
+        assert official.subscription is not None
+        official.subscription.presence_entered = asyncio.Event()
+        official.subscription.presence_release = asyncio.Event()
+
+        await official.subscription.emit_subscribed()
+        await official.subscription.presence_entered.wait()
+        await official.subscription.emit_subscribed()
+        official.subscription.presence_clients = {
+            "carol-client": SimpleNamespace(
+                client="carol-client", user="carol", conn_info={}
+            )
+        }
+        official.subscription.presence_release.set()
+        for _ in range(100):
+            if official.subscription.calls.count(("presence", None)) == 3:
+                break
+            await asyncio.sleep(0)
 
         assert set(channel.get_presence_state()) == {"carol-client"}
         await client.realtime.disconnect()

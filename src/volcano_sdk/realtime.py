@@ -360,6 +360,7 @@ class Channel:
         self._subscribed = False
         self._presence_lock = asyncio.Lock()
         self._presence_sync_task: asyncio.Task[None] | None = None
+        self._presence_sync_pending = False
         self._callback_queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue(
             maxsize=CALLBACK_QUEUE_LIMIT
         )
@@ -562,19 +563,31 @@ class Channel:
     def _schedule_presence_sync(self) -> None:
         task = self._presence_sync_task
         if task is not None and not task.done():
+            self._presence_sync_pending = True
             return
+        self._presence_sync_pending = False
         self._presence_sync_task = asyncio.create_task(self._run_presence_sync())
 
     async def _run_presence_sync(self) -> None:
         try:
-            await self._realtime._sync_presence(self)
+            while self._subscribed:
+                await self._realtime._sync_presence(self)
+                if not self._presence_sync_pending:
+                    return
+                self._presence_sync_pending = False
         finally:
             if asyncio.current_task() is self._presence_sync_task:
                 self._presence_sync_task = None
 
+    async def _wait_presence_sync(self) -> None:
+        task = self._presence_sync_task
+        if task is not None:
+            await asyncio.shield(task)
+
     async def _cancel_presence_sync(self) -> None:
         task = self._presence_sync_task
         self._presence_sync_task = None
+        self._presence_sync_pending = False
         if task is None or task.done():
             return
         task.cancel()
@@ -818,6 +831,8 @@ class Realtime:
                     recoverable=channel._type == "presence",
                 )
             await channel._subscription.subscribe()
+            if channel._type == "presence":
+                await channel._wait_presence_sync()
 
     async def _sync_presence(self, channel: Channel) -> None:
         if channel._subscription is None:
