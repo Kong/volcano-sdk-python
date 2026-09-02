@@ -5,6 +5,7 @@ from base64 import urlsafe_b64encode
 from dataclasses import FrozenInstanceError, dataclass
 from datetime import datetime
 from threading import Event, Thread
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
@@ -651,14 +652,15 @@ def test_database_insert_copies_values_and_reads_current_credentials() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
     client.auth.sign_in(email="user@example.com", password="secret")
+    labels = ["sdk"]
     values: dict[str, Any] = {
         "name": "Volcano",
-        "metadata": {"labels": ["sdk"]},
+        "metadata": MappingProxyType({"labels": labels}),
     }
 
     insert = client.database("main").from_("items").insert(values)
     values["name"] = "Lava"
-    values["metadata"]["labels"].append("mutated")
+    labels.append("mutated")
     transport.next_access_token = "access-2"
     client.auth.sign_in(email="user@example.com", password="secret")
 

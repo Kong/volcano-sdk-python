@@ -2,16 +2,28 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Sequence
 
     from .models import JSONValue
 
 from ._transport import Transport, invoke, response_payload
+
+
+def _snapshot_json(value: JSONValue) -> JSONValue:
+    if isinstance(value, Mapping):
+        return {key: _snapshot_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_snapshot_json(item) for item in value]
+    return value
+
+
+def _snapshot_row(values: Mapping[str, JSONValue]) -> dict[str, JSONValue]:
+    return {key: _snapshot_json(value) for key, value in values.items()}
 
 
 class DatabaseContext(Protocol):
@@ -85,7 +97,7 @@ class QueryBuilder:
             self._client,
             self._database_name,
             self._table,
-            deepcopy(dict(values)),
+            _snapshot_row(values),
         )
 
     def order(self, column: str, *, ascending: bool = True) -> QueryBuilder:
@@ -143,7 +155,7 @@ class InsertBuilder:
             self._client._transport.query_database_insert,
             authorization=self._client._session_token(),
             database_name=self._database_name,
-            body={"table": self._table, "values": deepcopy(self._values)},
+            body={"table": self._table, "values": _snapshot_row(self._values)},
         )
         payload = response_payload(response, 200)
         return list(payload["data"])
