@@ -4,7 +4,8 @@ import base64
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from io import BytesIO
+from typing import Any, BinaryIO, cast
 
 import pytest
 
@@ -237,6 +238,38 @@ class FakeTransport:
     def release_project_lock(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("releaseProjectLock", kwargs))
         return FakeResponse(204)
+
+
+class BoundedBytesIO(BytesIO):
+    def __init__(self, value: bytes) -> None:
+        super().__init__(value)
+        self.read_sizes: list[int] = []
+
+    def read(self, size: int | None = -1) -> bytes:
+        if size is None or size < 0:
+            msg = "unbounded read"
+            raise RuntimeError(msg)
+        self.read_sizes.append(size)
+        return super().read(size)
+
+
+class BoundedNonSeekableReader:
+    def __init__(self, value: bytes) -> None:
+        self._value = value
+        self._offset = 0
+        self.read_sizes: list[int] = []
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            msg = "unbounded read"
+            raise RuntimeError(msg)
+        self.read_sizes.append(size)
+        chunk = self._value[self._offset : self._offset + size]
+        self._offset += len(chunk)
+        return chunk
+
+    def seekable(self) -> bool:
+        return False
 
 
 def anon_key_with_project_id(project_id: str | None) -> str:
@@ -644,6 +677,48 @@ def test_storage_aborts_after_part_failure_without_masking_the_error() -> None:
         "uploadPart",
         "uploadPart",
         "abortUploadSession",
+    ]
+
+
+def test_storage_streams_seekable_uploads_with_server_selected_reads() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 3
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    source = BoundedBytesIO(b"abcdefghij")
+
+    client.storage.from_("assets").upload_resumable("file.bin", source)
+
+    assert source.read_sizes == [4, 4, 4]
+    upload_calls = [call for call in transport.calls if call[0] == "uploadPart"]
+    assert [call[1]["request"].data for call in upload_calls] == [
+        b"abcd",
+        b"efgh",
+        b"ij",
+    ]
+
+
+def test_storage_spools_non_seekable_uploads_with_bounded_reads() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 3
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    source = BoundedNonSeekableReader(b"abcdefghij")
+
+    client.storage.from_("assets").upload_resumable(
+        "file.bin",
+        cast("BinaryIO", source),
+    )
+
+    assert source.read_sizes
+    assert max(source.read_sizes) <= 1_048_576
+    upload_calls = [call for call in transport.calls if call[0] == "uploadPart"]
+    assert [call[1]["request"].data for call in upload_calls] == [
+        b"abcd",
+        b"efgh",
+        b"ij",
     ]
 
 

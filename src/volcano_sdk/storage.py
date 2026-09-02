@@ -5,11 +5,13 @@ from __future__ import annotations
 import base64
 import binascii
 import json
-from collections.abc import Mapping, Sequence
-from contextlib import suppress
+from collections.abc import Generator, Mapping, Sequence
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol, cast
+from io import SEEK_END, BytesIO
+from tempfile import TemporaryFile
+from typing import Any, BinaryIO, Protocol, cast
 from urllib.parse import quote
 
 from ._transport import (
@@ -40,6 +42,7 @@ _INVALID_STORAGE_ANON_KEY = "Anon key must contain a project ID"
 _INVALID_PUBLIC_URL_PATH = "Public URL paths cannot contain dot segments"
 _JWT_PART_COUNT = 3
 _HTTP_PARTIAL_CONTENT = 206
+_UPLOAD_SPOOL_READ_SIZE = 1_048_576
 
 
 def _optional_datetime(value: object) -> datetime | None:
@@ -196,6 +199,44 @@ def _encoded_storage_path(path: str) -> str:
     if any(segment in {".", ".."} for segment in segments):
         raise ValueError(_INVALID_PUBLIC_URL_PATH)
     return "/".join(quote(segment, safe="") for segment in segments)
+
+
+def _remaining_upload_bytes(source: BinaryIO) -> int | None:
+    try:
+        if not source.seekable():
+            return None
+        position = source.tell()
+        try:
+            source.seek(0, SEEK_END)
+            return source.tell() - position
+        finally:
+            source.seek(position)
+    except (OSError, ValueError):
+        return None
+
+
+def _spool_upload_source(source: BinaryIO, target: BinaryIO) -> None:
+    while chunk := source.read(_UPLOAD_SPOOL_READ_SIZE):
+        target.write(chunk)
+
+
+@contextmanager
+def _resumable_upload_source(
+    data: bytes | BinaryIO,
+) -> Generator[tuple[BinaryIO, int], None, None]:
+    if isinstance(data, bytes):
+        with BytesIO(data) as source:
+            yield source, len(data)
+        return
+    remaining = _remaining_upload_bytes(data)
+    if remaining is not None:
+        yield data, remaining
+        return
+    with TemporaryFile(mode="w+b") as source:
+        _spool_upload_source(data, source)
+        total_size = source.tell()
+        source.seek(0)
+        yield source, total_size
 
 
 class StorageContext(Protocol):
@@ -498,38 +539,38 @@ class StorageBucket:
     def upload_resumable(
         self,
         path: str,
-        data: bytes,
+        data: bytes | BinaryIO,
         *,
         content_type: str = "application/octet-stream",
         part_size: int | None = None,
     ) -> StorageObject:
-        """Upload bytes through a server-managed resumable session."""
-        session = self.create_upload_session(
-            path,
-            total_size=len(data),
-            content_type=content_type,
-            part_size=part_size,
-        )
-        try:
-            self._upload_session_parts(path, data, session)
-        except VolcanoError:
-            self._abort_failed_upload(path, session.session_id)
-            raise
-        return self.complete_upload_session(path, session_id=session.session_id)
+        """Upload bytes or a binary stream through a resumable session."""
+        with _resumable_upload_source(data) as (source, total_size):
+            session = self.create_upload_session(
+                path,
+                total_size=total_size,
+                content_type=content_type,
+                part_size=part_size,
+            )
+            try:
+                self._upload_session_parts(path, source, session)
+            except (OSError, TypeError, ValueError, VolcanoError):
+                self._abort_failed_upload(path, session.session_id)
+                raise
+            return self.complete_upload_session(path, session_id=session.session_id)
 
     def _upload_session_parts(
         self,
         path: str,
-        data: bytes,
+        source: BinaryIO,
         session: UploadSession,
     ) -> None:
         for part_index in range(session.total_parts):
-            offset = part_index * session.part_size
             self.upload_part(
                 path,
                 session_id=session.session_id,
                 part_number=part_index + 1,
-                data=data[offset : offset + session.part_size],
+                data=source.read(session.part_size),
             )
 
     def _abort_failed_upload(self, path: str, session_id: str) -> None:
