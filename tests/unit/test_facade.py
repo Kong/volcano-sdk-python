@@ -40,6 +40,7 @@ class FakeTransport:
         self.upload_session_total_parts = 3
         self.fail_upload_part_number: int | None = None
         self.fail_abort_upload = False
+        self.raise_abort_error = False
 
     def auth_signin(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("authSignin", kwargs))
@@ -149,6 +150,9 @@ class FakeTransport:
 
     def abort_upload_session(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("abortUploadSession", kwargs))
+        if self.raise_abort_error:
+            msg = "abort transport failed"
+            raise RuntimeError(msg)
         if self.fail_abort_upload:
             return FakeResponse(500, {"error": "abort failed"})
         return FakeResponse(200, {"message": "upload session aborted"})
@@ -814,6 +818,21 @@ def test_storage_aborts_when_a_stream_reader_raises_an_unexpected_error() -> Non
         "uploadPart",
         "abortUploadSession",
     ]
+
+
+def test_storage_preserves_reader_error_when_abort_cleanup_raises() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 2
+    transport.raise_abort_error = True
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    with pytest.raises(RuntimeError, match="reader failed"):
+        client.storage.from_("assets").upload_resumable(
+            "file.bin",
+            FailingSeekableReader(b"abcdefgh"),
+        )
 
 
 def test_storage_rejects_temporarily_unavailable_nonblocking_sources() -> None:

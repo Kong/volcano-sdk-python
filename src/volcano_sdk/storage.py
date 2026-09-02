@@ -23,7 +23,6 @@ from ._transport import (
     invoke,
     response_payload,
 )
-from .errors import VolcanoError
 from .models import (
     JSONValue,
     StorageObject,
@@ -596,7 +595,7 @@ class StorageBucket:
             )
 
     def _abort_failed_upload(self, path: str, session_id: str) -> None:
-        with suppress(VolcanoError):
+        with suppress(Exception):
             self.abort_upload_session(path, session_id=session_id)
 
     def list(
