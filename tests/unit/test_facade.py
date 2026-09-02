@@ -464,7 +464,7 @@ def test_storage_get_public_url_rejects_an_empty_path() -> None:
         _transport=transport,
     )
 
-    with pytest.raises(ValueError, match="non-empty strings"):
+    with pytest.raises(ValueError, match="non-empty string"):
         client.storage.from_("assets").get_public_url("")
 
     assert transport.calls == []
@@ -480,5 +480,19 @@ def test_storage_get_public_url_rejects_dot_segments(path: str) -> None:
 
     with pytest.raises(ValueError, match="dot segments"):
         client.storage.from_("assets").get_public_url(path)
+
+    assert transport.calls == []
+
+
+def test_storage_get_public_url_rejects_multiple_paths() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(
+        anon_key=anon_key_with_project_id("project-123"),
+        _transport=transport,
+    )
+    paths: Any = ["first.txt", "second.txt"]
+
+    with pytest.raises(TypeError, match="non-empty string"):
+        client.storage.from_("assets").get_public_url(paths)
 
     assert transport.calls == []

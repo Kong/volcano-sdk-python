@@ -15,6 +15,7 @@ from ._transport import Transport, TransportResponse, invoke, response_payload
 from .models import JSONValue, StorageObject, StoragePage
 
 _INVALID_STORAGE_PAGE = "Expected a complete storage page"
+_INVALID_STORAGE_PATH = "Storage path must be a non-empty string"
 _INVALID_STORAGE_PATHS = "Storage paths must be non-empty strings"
 _INVALID_STORAGE_VISIBILITY = "is_public must be a boolean"
 _INVALID_STORAGE_ANON_KEY = "Anon key must contain a project ID"
@@ -90,6 +91,14 @@ def _storage_paths(paths: object) -> tuple[str, ...]:
     ):
         raise ValueError(_INVALID_STORAGE_PATHS)
     return cast("tuple[str, ...]", raw_paths)
+
+
+def _storage_path(path: object) -> str:
+    if not isinstance(path, str):
+        raise TypeError(_INVALID_STORAGE_PATH)
+    if not path:
+        raise ValueError(_INVALID_STORAGE_PATH)
+    return path
 
 
 def _storage_visibility(value: object) -> bool:
@@ -319,7 +328,7 @@ class StorageBucket:
 
     def get_public_url(self, path: str) -> str:
         """Construct this object's public URL without making a request."""
-        object_path = _storage_paths(path)[0]
+        object_path = _storage_path(path)
         project_id = _project_id_from_anon_key(self._client._anon_token())
         return (
             f"{self._client._api_base_url()}/public/"
