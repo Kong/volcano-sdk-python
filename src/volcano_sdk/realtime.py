@@ -8,11 +8,15 @@ import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
-from typing import Any, Literal, Protocol, TypeAlias, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
+from .database import Database
 from .errors import VolcanoError
-from .models import JSONValue, _freeze_json
+from .models import JSONValue, Session, _freeze_json
+
+if TYPE_CHECKING:
+    from ._transport import Transport
 
 MessageCallback = Callable[[Any], Any]
 RealtimeCallback = Callable[[Any], Any]
@@ -30,6 +34,7 @@ CENTRIFUGE_ERROR = cast(
     importlib.import_module("centrifuge").CentrifugeError,
 )
 CALLBACK_QUEUE_LIMIT = 128
+POSTGRES_QUEUE_LIMIT = 128
 NO_PENDING_CALLBACK = object()
 CALLBACK_QUEUE_FULL_MESSAGE = (
     "Volcano realtime callback queue is full; publication dropped"
@@ -141,6 +146,24 @@ class PostgresChange:
         object.__setattr__(self, "id", _freeze_json(self.id))
 
 
+@dataclass(frozen=True, slots=True)
+class _PostgresDelivery:
+    change: PostgresChange
+    database_name: str | None
+    access_token: str | None
+    session_generation: int
+    subscription_epoch: int
+
+
+@dataclass(slots=True)
+class _SessionBoundDatabaseContext:
+    _transport: Transport
+    access_token: str
+
+    def _session_token(self) -> str:
+        return self.access_token
+
+
 def _postgres_change(data: Any) -> PostgresChange | None:
     if not isinstance(data, Mapping):
         return None
@@ -194,41 +217,13 @@ def _postgres_change(data: Any) -> PostgresChange | None:
 class RealtimeContext(Protocol):
     """Client capabilities required by realtime connections."""
 
+    _transport: Transport
+
     def _anon_token(self) -> str: ...
 
     def _session_token(self) -> str: ...
 
-    def database(self, name: str) -> PostgresDatabase:
-        """Return a database facade by name."""
-        ...
-
-
-class PostgresQuery(Protocol):
-    """Database query operations needed to fetch a lightweight change."""
-
-    def select(self, *columns: str) -> PostgresQuery:
-        """Select columns from the current table."""
-        ...
-
-    def eq(self, column: str, value: object) -> PostgresQuery:
-        """Filter the current table by equality."""
-        ...
-
-    def limit(self, count: int) -> PostgresQuery:
-        """Limit the number of returned rows."""
-        ...
-
-    def execute(self) -> list[dict[str, Any]]:
-        """Execute the query and return its rows."""
-        ...
-
-
-class PostgresDatabase(Protocol):
-    """Database facade needed to fetch a lightweight change."""
-
-    def from_(self, table: str) -> PostgresQuery:
-        """Create a query for a table."""
-        ...
+    def _capture_session(self) -> tuple[int, Session | None]: ...
 
 
 class CentrifugeSubscription(Protocol):
@@ -403,17 +398,20 @@ class _ChannelEvents:
     async def on_subscribing(self, ctx: Any) -> None:
         del ctx
         self._channel._subscribed = False
+        await self._channel._end_postgres_epoch()
         await self._channel._presence_unsubscribed()
 
     async def on_subscribed(self, ctx: Any) -> None:
         del ctx
         self._channel._subscribed = True
+        self._channel._begin_postgres_epoch()
         if self._channel._type == "presence":
             self._channel._schedule_presence_sync()
 
     async def on_unsubscribed(self, ctx: Any) -> None:
         del ctx
         self._channel._subscribed = False
+        await self._channel._end_postgres_epoch()
         await self._channel._presence_unsubscribed()
 
     async def on_join(self, ctx: Any) -> None:
@@ -511,7 +509,17 @@ class Channel:
         self._active_callback_task: asyncio.Task[None] | None = None
         self._callback_stop: asyncio.Event | None = None
         self._pending_presence_sync: Any = NO_PENDING_CALLBACK
-        self._postgres_tasks: set[asyncio.Task[None]] = set()
+        self._postgres_filters: dict[
+            MessageCallback,
+            tuple[PostgresListenerEvent, str, str],
+        ] = {}
+        self._postgres_queue: asyncio.Queue[_PostgresDelivery | None] = asyncio.Queue(
+            maxsize=POSTGRES_QUEUE_LIMIT
+        )
+        self._postgres_task: asyncio.Task[None] | None = None
+        self._postgres_epoch = 0
+        self._postgres_session_generation = 0
+        self._postgres_access_token: str | None = None
 
     @property
     def name(self) -> str:
@@ -554,11 +562,13 @@ class Channel:
             return callback(change)
 
         self._callbacks.setdefault("*", []).append(filtered)
+        self._postgres_filters[filtered] = (event, schema, table)
 
         def unsubscribe() -> None:
             callbacks = self._callbacks.get("*", [])
             if filtered in callbacks:
                 callbacks.remove(filtered)
+            self._postgres_filters.pop(filtered, None)
 
         return unsubscribe
 
@@ -598,9 +608,63 @@ class Channel:
             raise ValueError(PRESENCE_ONLY)
 
     async def _receive_postgres_change(self, data: Any) -> None:
-        change = _postgres_change(data)
-        if change is None:
+        if not self._subscribed:
             return
+        change = _postgres_change(data)
+        if change is None or not self._has_postgres_listener(change):
+            return
+        database_name = self._realtime._database_name
+        fetch = (
+            change.mode == "lightweight"
+            and change.type != "DELETE"
+            and self._auto_fetch
+            and database_name is not None
+            and self._postgres_access_token is not None
+        )
+        self._start_postgres_worker()
+        await self._postgres_queue.put(
+            _PostgresDelivery(
+                change=change,
+                database_name=database_name if fetch else None,
+                access_token=self._postgres_access_token if fetch else None,
+                session_generation=self._postgres_session_generation,
+                subscription_epoch=self._postgres_epoch,
+            )
+        )
+
+    def _has_postgres_listener(self, change: PostgresChange) -> bool:
+        return any(
+            listener_schema == change.schema
+            and listener_table == change.table
+            and listener_event in ("*", change.type)
+            for listener_event, listener_schema, listener_table in (
+                self._postgres_filters.values()
+            )
+        )
+
+    def _start_postgres_worker(self) -> None:
+        task = self._postgres_task
+        if task is None or task.done():
+            self._postgres_task = asyncio.create_task(self._run_postgres_fetches())
+
+    async def _run_postgres_fetches(self) -> None:
+        try:
+            while True:
+                request = await self._postgres_queue.get()
+                try:
+                    if request is None:
+                        return
+                    await self._deliver_postgres_change(request)
+                finally:
+                    self._postgres_queue.task_done()
+        finally:
+            if asyncio.current_task() is self._postgres_task:
+                self._postgres_task = None
+
+    async def _deliver_postgres_change(self, request: _PostgresDelivery) -> None:
+        if not self._postgres_request_is_current(request):
+            return
+        change = request.change
         if change.mode != "lightweight":
             await self._emit("*", change)
             return
@@ -613,22 +677,24 @@ class Channel:
                 replace(change, old_record=old_record, id=None, mode=None),
             )
             return
-        if not self._auto_fetch or self._realtime._database_name is None:
+        if request.database_name is None or request.access_token is None:
             await self._emit("*", change)
             return
-        task = asyncio.create_task(self._autofetch_postgres_change(change))
-        self._postgres_tasks.add(task)
-        task.add_done_callback(self._postgres_tasks.discard)
-
-    async def _autofetch_postgres_change(self, change: PostgresChange) -> None:
         try:
-            row = await asyncio.to_thread(self._realtime._fetch_postgres_row, change)
+            row = await asyncio.to_thread(
+                self._realtime._fetch_postgres_row,
+                change,
+                request.database_name,
+                request.access_token,
+            )
             if row is None:
                 identity = f"{change.schema}.{change.table}:{change.id}"
                 message = f"Postgres row not found: {identity}"
                 raise LookupError(message)
-            delivered = replace(change, record=row, id=None, mode=None)
+            delivered = replace(request.change, record=row, id=None, mode=None)
         except AUTOFETCH_ERRORS as error:
+            if not self._postgres_request_is_current(request):
+                return
             asyncio.get_running_loop().call_exception_handler(
                 {
                     "message": "Volcano realtime Postgres auto-fetch failed",
@@ -636,17 +702,42 @@ class Channel:
                     "channel": self._name,
                 }
             )
-            delivered = change
-        if self._subscribed:
+            delivered = request.change
+        if self._postgres_request_is_current(request):
             await self._emit("*", delivered)
 
-    async def _cancel_postgres_tasks(self) -> None:
-        tasks = tuple(self._postgres_tasks)
-        self._postgres_tasks.clear()
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+    def _postgres_request_is_current(self, request: _PostgresDelivery) -> bool:
+        session_generation, _session = self._realtime._client_context._capture_session()
+        return (
+            self._subscribed
+            and request.subscription_epoch == self._postgres_epoch
+            and request.session_generation == session_generation
+        )
+
+    def _begin_postgres_epoch(self) -> None:
+        if self._type == "postgres":
+            self._postgres_epoch += 1
+            generation, session = self._realtime._client_context._capture_session()
+            self._postgres_session_generation = generation
+            self._postgres_access_token = session.access_token if session else None
+
+    async def _end_postgres_epoch(self) -> None:
+        if self._type != "postgres":
+            return
+        self._postgres_epoch += 1
+        self._postgres_access_token = None
+        while not self._postgres_queue.empty():
+            self._postgres_queue.get_nowait()
+            self._postgres_queue.task_done()
+        task = self._postgres_task
+        if task is None or task.done():
+            self._postgres_task = None
+            return
+        await self._postgres_queue.put(None)
+        await asyncio.shield(task)
+        while not self._postgres_queue.empty():
+            self._postgres_queue.get_nowait()
+            self._postgres_queue.task_done()
 
     async def subscribe(self) -> None:
         """Subscribe to this channel."""
@@ -868,7 +959,7 @@ class Channel:
     async def _reset(self) -> None:
         self._subscription = None
         await self._cancel_presence_sync()
-        await self._cancel_postgres_tasks()
+        await self._end_postgres_epoch()
         task = self._callback_task
         active_task = self._active_callback_task
         if self._callback_stop is not None:
@@ -1022,18 +1113,30 @@ class Realtime:
                 channel_type,
                 auto_fetch=auto_fetch,
             )
-        return self._channels[wire_name]
+        channel = self._channels[wire_name]
+        if channel._auto_fetch != auto_fetch:
+            message = f"conflicting auto_fetch option for {wire_name}"
+            raise ValueError(message)
+        return channel
 
     def _fetch_postgres_row(
         self,
         change: PostgresChange,
+        database_name: str,
+        access_token: str,
     ) -> dict[str, Any] | None:
-        database_name = self._database_name
-        if database_name is None:
-            return None
+        table = (
+            change.table
+            if change.schema == "public"
+            else f"{change.schema}.{change.table}"
+        )
+        context = _SessionBoundDatabaseContext(
+            self._client_context._transport,
+            access_token,
+        )
         rows = (
-            self._client_context.database(database_name)
-            .from_(change.table)
+            Database(context, database_name)
+            .from_(table)
             .select("*")
             .eq("id", change.id)
             .limit(1)

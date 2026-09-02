@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
@@ -20,6 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
 UNEXPECTED_TRANSPORT_CALL = "unexpected transport operation"
+BLOCKED_QUERY_TIMEOUT = "blocked database query was not released"
 
 
 def centrifuge_error(message: str) -> Exception:
@@ -154,6 +157,7 @@ class RealtimeDatabaseTransport(AuthTransport):
         self.rows = rows
         self.error = error
         self.queries: list[dict[str, Any]] = []
+        self.authorizations: list[str] = []
 
     def query_database_select(
         self,
@@ -162,11 +166,44 @@ class RealtimeDatabaseTransport(AuthTransport):
         database_name: str,
         body: dict[str, Any],
     ) -> Response:
-        del authorization
+        self.authorizations.append(authorization)
         self.queries.append({"database_name": database_name, "body": body})
         if self.error is not None:
             raise self.error
         return Response(200, {"data": self.rows})
+
+
+class BlockingRealtimeDatabaseTransport(RealtimeDatabaseTransport):
+    def __init__(self) -> None:
+        super().__init__([])
+        self.started = threading.Event()
+        self.release = threading.Event()
+        self._active = 0
+        self.max_active = 0
+        self._active_lock = threading.Lock()
+
+    def query_database_select(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> Response:
+        record_id = body["filters"][0]["value"]
+        with self._active_lock:
+            self._active += 1
+            self.max_active = max(self.max_active, self._active)
+        try:
+            if record_id == 1:
+                self.started.set()
+                if not self.release.wait(timeout=1):
+                    raise TimeoutError(BLOCKED_QUERY_TIMEOUT)
+            self.authorizations.append(authorization)
+            self.queries.append({"database_name": database_name, "body": body})
+            return Response(200, {"data": [{"id": record_id}]})
+        finally:
+            with self._active_lock:
+                self._active -= 1
 
 
 class FakeSubscription:
@@ -701,6 +738,466 @@ def test_realtime_reports_autofetch_failure_and_delivers_notification() -> None:
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
+
+
+def test_realtime_autofetch_preserves_publication_order() -> None:
+    official = FakeCentrifugeClient()
+    transport = BlockingRealtimeDatabaseTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        received = asyncio.Event()
+        client.realtime.set_database_name("app")
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+
+        def on_insert(change: Any) -> None:
+            changes.append(change)
+            if len(changes) == 2:
+                received.set()
+
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=on_insert,
+        )
+        await channel.subscribe()
+        first = {
+            "type": "INSERT",
+            "schema": "public",
+            "table": "messages",
+            "id": 1,
+            "mode": "lightweight",
+            "timestamp": "2026-09-02T12:00:00Z",
+        }
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            first,
+        )
+        assert await asyncio.to_thread(transport.started.wait, 0.2)
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {**first, "id": 2, "timestamp": "2026-09-02T12:00:01Z"},
+        )
+        await asyncio.sleep(0.01)
+        assert changes == []
+
+        transport.release.set()
+        await asyncio.wait_for(received.wait(), timeout=0.2)
+        assert [change.record["id"] for change in changes] == [1, 2]
+        assert transport.max_active == 1
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_autofetch_orders_full_payload_after_pending_fetch() -> None:
+    official = FakeCentrifugeClient()
+    transport = BlockingRealtimeDatabaseTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        received = asyncio.Event()
+        client.realtime.set_database_name("app")
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+
+        def on_change(change: Any) -> None:
+            changes.append(change)
+            if len(changes) == 2:
+                received.set()
+
+        channel.on_postgres_changes(
+            "*",
+            schema="public",
+            table="messages",
+            callback=on_change,
+        )
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "id": 1,
+                "mode": "lightweight",
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        assert await asyncio.to_thread(transport.started.wait, 0.2)
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "UPDATE",
+                "schema": "public",
+                "table": "messages",
+                "record": {"id": 2},
+                "timestamp": "2026-09-02T12:00:01Z",
+            },
+        )
+        await asyncio.sleep(0.01)
+        assert changes == []
+
+        transport.release.set()
+        await asyncio.wait_for(received.wait(), timeout=0.2)
+        assert [change.type for change in changes] == ["INSERT", "UPDATE"]
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_autofetch_invalidates_when_session_changes() -> None:
+    official = FakeCentrifugeClient()
+    transport = RealtimeDatabaseTransport([{"id": 42}])
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        loop = asyncio.get_running_loop()
+        release = threading.Event()
+        started = asyncio.Event()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            loop.set_default_executor(executor)
+
+            def occupy_executor() -> None:
+                loop.call_soon_threadsafe(started.set)
+                release.wait(timeout=1)
+
+            occupied = executor.submit(occupy_executor)
+            await asyncio.wait_for(started.wait(), timeout=0.2)
+
+            client.realtime.set_database_name("app")
+            channel = client.realtime.channel(
+                "public:messages",
+                channel_type="postgres",
+            )
+            channel.on_postgres_changes(
+                "INSERT",
+                schema="public",
+                table="messages",
+                callback=lambda _change: None,
+            )
+            await channel.subscribe()
+            await official.emit_wire_publication(
+                "project-id:postgres:public:messages:user-id",
+                {
+                    "type": "INSERT",
+                    "schema": "public",
+                    "table": "messages",
+                    "id": 42,
+                    "mode": "lightweight",
+                    "timestamp": "2026-09-02T12:00:00Z",
+                },
+            )
+            transport.access_token = "access-2"
+            client.auth.sign_in(email="other@example.com", password="secret")
+            await official.emit_wire_publication(
+                "project-id:postgres:public:messages:user-id",
+                {
+                    "type": "INSERT",
+                    "schema": "public",
+                    "table": "messages",
+                    "id": 43,
+                    "mode": "lightweight",
+                    "timestamp": "2026-09-02T12:00:01Z",
+                },
+            )
+            release.set()
+            await asyncio.wrap_future(occupied)
+            await asyncio.sleep(0.01)
+
+            assert transport.authorizations == []
+            assert transport.queries == []
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_autofetch_captures_database_selection() -> None:
+    official = FakeCentrifugeClient()
+    transport = RealtimeDatabaseTransport([{"id": 42}])
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        loop = asyncio.get_running_loop()
+        release = threading.Event()
+        started = asyncio.Event()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            loop.set_default_executor(executor)
+
+            def occupy_executor() -> None:
+                loop.call_soon_threadsafe(started.set)
+                release.wait(timeout=1)
+
+            occupied = executor.submit(occupy_executor)
+            await asyncio.wait_for(started.wait(), timeout=0.2)
+
+            client.realtime.set_database_name("app-one")
+            channel = client.realtime.channel(
+                "public:messages",
+                channel_type="postgres",
+            )
+            channel.on_postgres_changes(
+                "INSERT",
+                schema="public",
+                table="messages",
+                callback=lambda _change: None,
+            )
+            await channel.subscribe()
+            await official.emit_wire_publication(
+                "project-id:postgres:public:messages:user-id",
+                {
+                    "type": "INSERT",
+                    "schema": "public",
+                    "table": "messages",
+                    "id": 42,
+                    "mode": "lightweight",
+                    "timestamp": "2026-09-02T12:00:00Z",
+                },
+            )
+            client.realtime.set_database_name("app-two")
+            release.set()
+            await asyncio.wrap_future(occupied)
+            for _ in range(100):
+                if transport.queries:
+                    break
+                await asyncio.sleep(0.001)
+
+            assert transport.authorizations == ["access-1"]
+            assert transport.queries[0]["database_name"] == "app-one"
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_autofetch_uses_the_publication_schema() -> None:
+    official = FakeCentrifugeClient()
+    transport = RealtimeDatabaseTransport([{"id": 42}])
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        received = asyncio.Event()
+        client.realtime.set_database_name("app")
+        channel = client.realtime.channel(
+            "audit:messages",
+            channel_type="postgres",
+        )
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="audit",
+            table="messages",
+            callback=lambda _change: received.set(),
+        )
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "project-id:postgres:audit:messages:user-id",
+            {
+                "type": "INSERT",
+                "schema": "audit",
+                "table": "messages",
+                "id": 42,
+                "mode": "lightweight",
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.2)
+
+        assert transport.queries[0]["body"]["table"] == "audit.messages"
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_skips_autofetch_without_a_matching_listener() -> None:
+    official = FakeCentrifugeClient()
+    transport = RealtimeDatabaseTransport([{"id": 42}])
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        client.realtime.set_database_name("app")
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=lambda _change: None,
+        )
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "UPDATE",
+                "schema": "public",
+                "table": "messages",
+                "id": 42,
+                "mode": "lightweight",
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        await asyncio.sleep(0.01)
+
+        assert transport.queries == []
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_unsubscribe_waits_for_autofetch_and_ends_its_epoch() -> None:
+    official = FakeCentrifugeClient()
+    transport = BlockingRealtimeDatabaseTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        client.realtime.set_database_name("app")
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=changes.append,
+        )
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "id": 1,
+                "mode": "lightweight",
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        assert await asyncio.to_thread(transport.started.wait, 0.2)
+
+        unsubscribe = asyncio.create_task(channel.unsubscribe())
+        await asyncio.sleep(0)
+        assert not unsubscribe.done()
+        transport.release.set()
+        await asyncio.wait_for(unsubscribe, timeout=0.2)
+        await channel.subscribe()
+        await asyncio.sleep(0.01)
+
+        assert changes == []
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_disconnect_waits_for_running_autofetch() -> None:
+    official = FakeCentrifugeClient()
+    transport = BlockingRealtimeDatabaseTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        client.realtime.set_database_name("app")
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=lambda _change: None,
+        )
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "id": 1,
+                "mode": "lightweight",
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        assert await asyncio.to_thread(transport.started.wait, 0.2)
+
+        disconnect = asyncio.create_task(client.realtime.disconnect())
+        await asyncio.sleep(0.01)
+        assert not disconnect.done()
+        transport.release.set()
+        await asyncio.wait_for(disconnect, timeout=0.2)
+
+    asyncio.run(scenario())
+
+
+def test_realtime_rejects_conflicting_autofetch_options() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
+    channel = client.realtime.channel(
+        "public:messages",
+        channel_type="postgres",
+    )
+
+    with pytest.raises(ValueError, match="conflicting auto_fetch"):
+        client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+            auto_fetch=False,
+        )
+    assert (
+        client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        is channel
+    )
 
 
 def test_realtime_validates_postgres_change_operations() -> None:
