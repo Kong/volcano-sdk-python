@@ -533,6 +533,7 @@ subscription objects are not part of the public API.
 
 ```python
 channel = client.realtime.channel("updates")
+assert channel.name == "broadcast:updates"
 channel.on("message", print)
 
 await channel.subscribe()

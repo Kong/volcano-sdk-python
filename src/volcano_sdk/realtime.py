@@ -219,6 +219,11 @@ class Channel:
         self._active_callback_task: asyncio.Task[None] | None = None
         self._callback_stop: asyncio.Event | None = None
 
+    @property
+    def name(self) -> str:
+        """Return the canonical channel name sent to realtime."""
+        return self._name
+
     def on(self, event: str, callback: MessageCallback) -> Channel:
         """Register a callback for broadcast messages."""
         if event != "message":
