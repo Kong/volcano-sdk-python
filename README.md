@@ -45,9 +45,10 @@ bucket.upload("a.txt", b"hello")
 downloaded = bucket.download("a.txt")
 assert downloaded == b"hello"
 first_kibibyte = bucket.download("archive.bin", byte_range="bytes=0-1023")
+video = b"demo video"
 upload_session = bucket.create_upload_session(
     "videos/demo.mp4",
-    total_size=20_000_000,
+    total_size=len(video),
     content_type="video/mp4",
     part_size=8_388_608,
 )
@@ -56,7 +57,7 @@ part = bucket.upload_part(
     "videos/demo.mp4",
     session_id=upload_session.session_id,
     part_number=1,
-    data=b"x" * upload_session.part_size,
+    data=video,
 )
 print(part.etag)
 completed = bucket.complete_upload_session(
