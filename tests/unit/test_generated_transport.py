@@ -1424,6 +1424,52 @@ def test_generated_transport_completes_an_upload_session() -> None:
     assert requests[0].headers["x-upload-complete"] == "true"
 
 
+def test_generated_transport_gets_upload_session_status_as_json() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/json"},
+            json={
+                "session_id": "session-123",
+                "status": "uploading",
+                "path": "videos/demo clip.mp4",
+                "content_type": "video/mp4",
+                "total_size": 20_000_000,
+                "part_size": 8_388_608,
+                "total_parts": 3,
+                "parts_uploaded": 1,
+                "bytes_uploaded": 8_388_608,
+                "parts": [],
+                "expires_at": "2026-09-09T12:00:00Z",
+                "created_at": "2026-09-02T12:00:00Z",
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.get_upload_session(
+        authorization="access-token",
+        bucket_name="assets",
+        request=StorageUploadSessionReference(
+            path="videos/demo clip.mp4",
+            session_id="session-123",
+        ),
+    )
+
+    assert response.payload["session_id"] == "session-123"
+    assert len(requests) == 1
+    assert requests[0].method == "GET"
+    assert requests[0].url.path == "/storage/assets/videos/demo clip.mp4"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert requests[0].headers["x-upload-session"] == "session-123"
+
+
 def test_generated_transport_moves_a_storage_object() -> None:
     requests: list[httpx.Request] = []
 

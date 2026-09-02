@@ -229,6 +229,17 @@ class TransportResponse(Protocol):
     def headers(self) -> Mapping[str, str] | None: ...
 
 
+class _RawHTTPResponse(Protocol):
+    @property
+    def status_code(self) -> int: ...
+
+    @property
+    def content(self) -> bytes: ...
+
+    @property
+    def headers(self) -> Mapping[str, str]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class StorageUploadSessionRequest:
     """Values needed to create a resumable storage upload session."""
@@ -672,7 +683,7 @@ class GeneratedTransport:
         )
 
     @staticmethod
-    def _raw_response(response: httpx.Response) -> TransportResponse:
+    def _raw_response(response: _RawHTTPResponse) -> TransportResponse:
         try:
             payload = json.loads(response.content)
         except (json.JSONDecodeError, UnicodeDecodeError):
@@ -1340,6 +1351,22 @@ class GeneratedTransport:
                 x_upload_complete="true",
             )
         return self._response(response)
+
+    def get_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionReference,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = download_storage_object.sync_detailed(
+                bucket_name,
+                request.path,
+                client=client,
+                x_upload_session=request.session_id,
+            )
+        return self._raw_response(response)
 
     def download_storage_object(
         self,

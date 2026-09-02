@@ -29,6 +29,8 @@ from .models import (
     StoragePage,
     UploadPart,
     UploadSession,
+    UploadSessionState,
+    UploadSessionStatus,
     User,
 )
 
@@ -56,6 +58,8 @@ __all__ = [
     "TransportError",
     "UploadPart",
     "UploadSession",
+    "UploadSessionState",
+    "UploadSessionStatus",
     "User",
     "ValidationError",
     "VolcanoClient",

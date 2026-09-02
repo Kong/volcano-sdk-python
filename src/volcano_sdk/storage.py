@@ -20,7 +20,15 @@ from ._transport import (
     invoke,
     response_payload,
 )
-from .models import JSONValue, StorageObject, StoragePage, UploadPart, UploadSession
+from .models import (
+    JSONValue,
+    StorageObject,
+    StoragePage,
+    UploadPart,
+    UploadSession,
+    UploadSessionState,
+    UploadSessionStatus,
+)
 
 _INVALID_STORAGE_PAGE = "Expected a complete storage page"
 _INVALID_STORAGE_PATH = "Storage path must be a non-empty string"
@@ -110,6 +118,25 @@ def _upload_part(payload: object) -> UploadPart:
         part_number=cast("int", values["part_number"]),
         etag=cast("str", values["etag"]),
         size=cast("int", values["size"]),
+    )
+
+
+def _upload_session_status(payload: object) -> UploadSessionStatus:
+    values = cast("Mapping[str, object]", payload)
+    raw_parts = cast("list[object]", values["parts"])
+    return UploadSessionStatus(
+        session_id=cast("str", values["session_id"]),
+        status=cast("UploadSessionState", values["status"]),
+        path=cast("str", values["path"]),
+        content_type=cast("str", values["content_type"]),
+        total_size=cast("int", values["total_size"]),
+        part_size=cast("int", values["part_size"]),
+        total_parts=cast("int", values["total_parts"]),
+        parts_uploaded=cast("int", values["parts_uploaded"]),
+        bytes_uploaded=cast("int", values["bytes_uploaded"]),
+        parts=tuple(_upload_part(part) for part in raw_parts),
+        expires_at=cast("datetime", _optional_datetime(values["expires_at"])),
+        created_at=cast("datetime", _optional_datetime(values["created_at"])),
     )
 
 
@@ -298,6 +325,20 @@ class StorageCompleteUploadTransport(Protocol):
         ...
 
 
+class StorageUploadStatusTransport(Protocol):
+    """Transport capability required to inspect resumable storage uploads."""
+
+    def get_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionReference,
+    ) -> TransportResponse:
+        """Get one resumable storage upload session."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class StorageBucket:
     """Operations scoped to one storage bucket."""
@@ -399,6 +440,25 @@ class StorageBucket:
         )
         payload = cast("Mapping[str, object]", response_payload(response, 200))
         return _storage_object(payload["object"])
+
+    def get_upload_session(
+        self,
+        path: str,
+        *,
+        session_id: str,
+    ) -> UploadSessionStatus:
+        """Get resumable upload progress and uploaded part metadata."""
+        transport = cast("StorageUploadStatusTransport", self._client._transport)
+        response = invoke(
+            transport.get_upload_session,
+            authorization=self._client._session_token(),
+            bucket_name=self._name,
+            request=StorageUploadSessionReference(
+                path=_storage_path(path),
+                session_id=session_id,
+            ),
+        )
+        return _upload_session_status(response_payload(response, 200))
 
     def list(
         self,
