@@ -1565,6 +1565,32 @@ def test_generated_transport_renews_a_project_lock() -> None:
     assert requests[0].headers["x-volcano-request-id"]
 
 
+def test_generated_transport_force_releases_a_project_lock() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(204)
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.force_release_project_lock(
+        authorization="service-key",
+        key="build:queue",
+    )
+
+    assert response.status_code == 204
+    assert len(requests) == 1
+    assert requests[0].method == "DELETE"
+    assert requests[0].url.path == "/locks/build:queue"
+    assert requests[0].headers["authorization"] == "Bearer service-key"
+    assert requests[0].headers["x-volcano-request-id"]
+    assert "x-volcano-lock-token" not in requests[0].headers
+
+
 def test_generated_transport_moves_a_storage_object() -> None:
     requests: list[httpx.Request] = []
 

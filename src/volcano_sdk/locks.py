@@ -46,6 +46,19 @@ class LockRenewTransport(Protocol):
         ...
 
 
+class LockForceReleaseTransport(Protocol):
+    """Transport capability required to force release a lock."""
+
+    def force_release_project_lock(
+        self,
+        *,
+        authorization: str,
+        key: str,
+    ) -> object:
+        """Force release one project-scoped lock."""
+        ...
+
+
 def _parse_datetime(value: object) -> datetime | None:
     if value is None:
         return None
@@ -117,5 +130,15 @@ class Locks:
             authorization=self._client._service_token(),
             key=key,
             token=lease.token,
+        )
+        response_payload(response, 204)
+
+    def force_release(self, key: str) -> None:
+        """Release a lock regardless of which token owns it."""
+        transport = cast("LockForceReleaseTransport", self._client._transport)
+        response = invoke(
+            transport.force_release_project_lock,
+            authorization=self._client._service_token(),
+            key=key,
         )
         response_payload(response, 204)

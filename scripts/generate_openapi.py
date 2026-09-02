@@ -19,10 +19,13 @@ REQUIRED_OPERATION_MODULES = {
     "copy_storage_object.py",
     "delete_storage_object.py",
     "download_storage_object.py",
+    "force_release_project_lock.py",
+    "get_project_lock.py",
     "list_storage_objects.py",
     "move_storage_object.py",
     "query_database_select.py",
     "release_project_lock.py",
+    "renew_project_lock.py",
     "update_storage_object_visibility.py",
     "upload_storage_object.py",
 }
