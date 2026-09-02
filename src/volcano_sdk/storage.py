@@ -43,6 +43,7 @@ _INVALID_PUBLIC_URL_PATH = "Public URL paths cannot contain dot segments"
 _JWT_PART_COUNT = 3
 _HTTP_PARTIAL_CONTENT = 206
 _UPLOAD_SPOOL_READ_SIZE = 1_048_576
+_UPLOAD_SOURCE_UNAVAILABLE = "Upload source is temporarily unavailable"
 
 
 def _optional_datetime(value: object) -> datetime | None:
@@ -216,8 +217,25 @@ def _remaining_upload_bytes(source: BinaryIO) -> int | None:
 
 
 def _spool_upload_source(source: BinaryIO, target: BinaryIO) -> None:
-    while chunk := source.read(_UPLOAD_SPOOL_READ_SIZE):
+    while True:
+        chunk = cast("bytes | None", source.read(_UPLOAD_SPOOL_READ_SIZE))
+        if chunk is None:
+            raise BlockingIOError(_UPLOAD_SOURCE_UNAVAILABLE)
+        if chunk == b"":
+            return
         target.write(chunk)
+
+
+def _read_upload_part(source: BinaryIO, part_size: int) -> bytes:
+    part = bytearray()
+    while len(part) < part_size:
+        chunk = cast("bytes | None", source.read(part_size - len(part)))
+        if chunk is None:
+            raise BlockingIOError(_UPLOAD_SOURCE_UNAVAILABLE)
+        if chunk == b"":
+            break
+        part.extend(chunk)
+    return bytes(part)
 
 
 @contextmanager
@@ -545,6 +563,8 @@ class StorageBucket:
         part_size: int | None = None,
     ) -> StorageObject:
         """Upload bytes or a binary stream through a resumable session."""
+        path = _storage_path(path)
+        self._client._session_token()
         with _resumable_upload_source(data) as (source, total_size):
             session = self.create_upload_session(
                 path,
@@ -570,7 +590,7 @@ class StorageBucket:
                 path,
                 session_id=session.session_id,
                 part_number=part_index + 1,
-                data=source.read(session.part_size),
+                data=_read_upload_part(source, session.part_size),
             )
 
     def _abort_failed_upload(self, path: str, session_id: str) -> None:
