@@ -339,6 +339,20 @@ class StorageUploadStatusTransport(Protocol):
         ...
 
 
+class StorageAbortUploadTransport(Protocol):
+    """Transport capability required to abort resumable storage uploads."""
+
+    def abort_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionReference,
+    ) -> TransportResponse:
+        """Abort one resumable storage upload session."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class StorageBucket:
     """Operations scoped to one storage bucket."""
@@ -459,6 +473,25 @@ class StorageBucket:
             ),
         )
         return _upload_session_status(response_payload(response, 200))
+
+    def abort_upload_session(
+        self,
+        path: str,
+        *,
+        session_id: str,
+    ) -> None:
+        """Abort a resumable upload and discard its uploaded parts."""
+        transport = cast("StorageAbortUploadTransport", self._client._transport)
+        response = invoke(
+            transport.abort_upload_session,
+            authorization=self._client._session_token(),
+            bucket_name=self._name,
+            request=StorageUploadSessionReference(
+                path=_storage_path(path),
+                session_id=session_id,
+            ),
+        )
+        response_payload(response, 200)
 
     def list(
         self,
