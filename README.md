@@ -63,6 +63,16 @@ rows = (
     .offset(20)
     .execute()
 )
+
+matching_rows = (
+    client.database("main")
+    .from_("items")
+    .select("*")
+    .ilike("name", "%volcano%")
+    .is_("deleted_at", None)
+    .in_("status", ["draft", "published"])
+    .execute()
+)
 ```
 
 `sign_up()` returns an immutable acknowledgement and never creates or replaces a session. The

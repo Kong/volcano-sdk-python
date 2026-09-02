@@ -567,6 +567,80 @@ def test_query_builder_comparison_filters_are_immutable(
     ]
 
 
+@pytest.mark.parametrize(
+    ("method_name", "operator"),
+    [("like", "like"), ("ilike", "ilike")],
+)
+def test_query_builder_pattern_filters_are_immutable(
+    method_name: str,
+    operator: str,
+) -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    source = client.database("main").from_("items").select("*")
+
+    getattr(source, method_name)("name", "%volcano%").execute()
+    source.execute()
+
+    assert transport.query_calls == [
+        {
+            "table": "items",
+            "filters": [
+                {"column": "name", "operator": operator, "value": "%volcano%"},
+            ],
+        },
+        {"table": "items"},
+    ]
+
+
+def test_query_builder_null_filter_is_immutable() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    source = client.database("main").from_("items").select("*")
+
+    source.is_("deleted_at", None).execute()
+    source.execute()
+
+    assert transport.query_calls == [
+        {
+            "table": "items",
+            "filters": [
+                {"column": "deleted_at", "operator": "is", "value": None},
+            ],
+        },
+        {"table": "items"},
+    ]
+
+
+def test_query_builder_membership_filter_copies_values() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    source = client.database("main").from_("items").select("*")
+    statuses = ["draft", "published"]
+
+    query = source.in_("status", statuses)
+    statuses.append("archived")
+    query.execute()
+    source.execute()
+
+    assert transport.query_calls == [
+        {
+            "table": "items",
+            "filters": [
+                {
+                    "column": "status",
+                    "operator": "in",
+                    "value": ["draft", "published"],
+                },
+            ],
+        },
+        {"table": "items"},
+    ]
+
+
 def test_query_builder_order_clauses_are_immutable() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
