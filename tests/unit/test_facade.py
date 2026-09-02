@@ -294,6 +294,22 @@ class TemporarilyUnavailableReader:
         return False
 
 
+class ReadOnlyStream:
+    def __init__(self, value: bytes) -> None:
+        self._source = BytesIO(value)
+
+    def read(self, size: int = -1) -> bytes:
+        return self._source.read(size)
+
+
+class FailingSeekableReader(BoundedBytesIO):
+    def read(self, size: int | None = -1) -> bytes:
+        if self.tell() >= 4:
+            msg = "reader failed"
+            raise RuntimeError(msg)
+        return super().read(size)
+
+
 def anon_key_with_project_id(project_id: str | None) -> str:
     payload = {} if project_id is None else {"project_id": project_id}
     encoded = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b"=")
@@ -762,6 +778,41 @@ def test_storage_spools_non_seekable_uploads_with_bounded_reads() -> None:
         b"abcd",
         b"efgh",
         b"ij",
+    ]
+
+
+def test_storage_spools_read_only_streams_without_a_seekability_probe() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 2
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    client.storage.from_("assets").upload_resumable(
+        "file.bin",
+        cast("BinaryIO", ReadOnlyStream(b"abcdefgh")),
+    )
+
+    upload_calls = [call for call in transport.calls if call[0] == "uploadPart"]
+    assert [call[1]["request"].data for call in upload_calls] == [b"abcd", b"efgh"]
+
+
+def test_storage_aborts_when_a_stream_reader_raises_an_unexpected_error() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 2
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    with pytest.raises(RuntimeError, match="reader failed"):
+        client.storage.from_("assets").upload_resumable(
+            "file.bin",
+            FailingSeekableReader(b"abcdefgh"),
+        )
+
+    assert [operation for operation, _ in transport.calls[-2:]] == [
+        "uploadPart",
+        "abortUploadSession",
     ]
 
 

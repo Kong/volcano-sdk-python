@@ -212,7 +212,7 @@ def _remaining_upload_bytes(source: BinaryIO) -> int | None:
             return source.tell() - position
         finally:
             source.seek(position)
-    except (OSError, ValueError):
+    except (AttributeError, OSError, ValueError):
         return None
 
 
@@ -572,11 +572,13 @@ class StorageBucket:
                 content_type=content_type,
                 part_size=part_size,
             )
+            upload_succeeded = False
             try:
                 self._upload_session_parts(path, source, session)
-            except (OSError, TypeError, ValueError, VolcanoError):
-                self._abort_failed_upload(path, session.session_id)
-                raise
+                upload_succeeded = True
+            finally:
+                if not upload_succeeded:
+                    self._abort_failed_upload(path, session.session_id)
             return self.complete_upload_session(path, session_id=session.session_id)
 
     def _upload_session_parts(
