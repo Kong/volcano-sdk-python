@@ -21,6 +21,7 @@ _INVALID_STORAGE_VISIBILITY = "is_public must be a boolean"
 _INVALID_STORAGE_ANON_KEY = "Anon key must contain a project ID"
 _INVALID_PUBLIC_URL_PATH = "Public URL paths cannot contain dot segments"
 _JWT_PART_COUNT = 3
+_HTTP_PARTIAL_CONTENT = 206
 
 
 def _optional_datetime(value: object) -> datetime | None:
@@ -241,15 +242,21 @@ class StorageBucket:
         payload = response_payload(response, 201)
         return dict(payload)
 
-    def download(self, path: str) -> bytes:
+    def download(self, path: str, *, byte_range: str | None = None) -> bytes:
         """Download bytes from a path in this bucket."""
         response = invoke(
             self._client._transport.download_storage_object,
             authorization=self._client._session_token(),
             bucket_name=self._name,
             path=path,
+            byte_range=byte_range,
         )
-        response_payload(response, 200)
+        expected_status = (
+            _HTTP_PARTIAL_CONTENT
+            if byte_range is not None and response.status_code == _HTTP_PARTIAL_CONTENT
+            else 200
+        )
+        response_payload(response, expected_status)
         return bytes(response.content)
 
     def list(

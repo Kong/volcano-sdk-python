@@ -521,6 +521,7 @@ class Transport(Protocol):
         authorization: str,
         bucket_name: str,
         path: str,
+        byte_range: str | None = None,
     ) -> TransportResponse: ...
 
     def acquire_project_lock(
@@ -1259,12 +1260,14 @@ class GeneratedTransport:
         authorization: str,
         bucket_name: str,
         path: str,
+        byte_range: str | None = None,
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = download_storage_object.sync_detailed(
                 bucket_name,
                 path,
                 client=client,
+                range_=byte_range if byte_range is not None else UNSET,
             )
         return self._response(response)
 

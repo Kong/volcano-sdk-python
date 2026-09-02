@@ -1193,6 +1193,7 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
         authorization="access-token",
         bucket_name="assets",
         path="a.txt",
+        byte_range="bytes=0-4",
     )
     listed = transport.list_storage_objects(
         authorization="access-token",
@@ -1254,6 +1255,7 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
         "filters": [{"column": "slug", "operator": "eq", "value": "a"}],
     }
     assert b"hello" in requests[3].content
+    assert requests[4].headers["range"] == "bytes=0-4"
     assert json.loads(requests[6].content) == {"ttl_seconds": 30}
     assert requests[6].headers["x-volcano-lock-token"] == (
         "00000000-0000-4000-8000-000000000001"

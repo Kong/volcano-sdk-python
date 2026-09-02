@@ -44,6 +44,7 @@ bucket = client.storage.from_("assets")
 bucket.upload("a.txt", b"hello")
 downloaded = bucket.download("a.txt")
 assert downloaded == b"hello"
+first_kibibyte = bucket.download("archive.bin", byte_range="bytes=0-1023")
 
 page = bucket.list("avatars", limit=100)
 for object_ in page.objects:
@@ -68,6 +69,7 @@ Storage removals run in input order. A failed request raises after any earlier
 paths have already been deleted. Visibility updates return the server-confirmed
 object; `public_url` is set only when the object is public.
 `get_public_url()` constructs a URL locally and does not check object visibility.
+Pass an HTTP byte range to download only part of an object.
 
 Database builders are immutable, so you can safely reuse a base query. Chain `neq()`, `gt()`,
 `gte()`, `lt()`, and `lte()` for comparison filters:
