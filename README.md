@@ -103,6 +103,8 @@ part number to replace that part.
 resuming an interrupted upload.
 `complete_upload_session()` assembles the uploaded parts and returns the stored
 object.
+`abort_upload_session(path, session_id=...)` abandons a session and discards its
+uploaded parts.
 
 Database builders are immutable, so you can safely reuse a base query. Chain `neq()`, `gt()`,
 `gte()`, `lt()`, and `lte()` for comparison filters:

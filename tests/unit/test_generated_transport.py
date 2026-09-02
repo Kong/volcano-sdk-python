@@ -1470,6 +1470,35 @@ def test_generated_transport_gets_upload_session_status_as_json() -> None:
     assert requests[0].headers["x-upload-session"] == "session-123"
 
 
+def test_generated_transport_aborts_an_upload_session() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"message": "upload session aborted"})
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.abort_upload_session(
+        authorization="access-token",
+        bucket_name="assets",
+        request=StorageUploadSessionReference(
+            path="videos/demo clip.mp4",
+            session_id="session-123",
+        ),
+    )
+
+    assert response.status_code == 200
+    assert len(requests) == 1
+    assert requests[0].method == "DELETE"
+    assert requests[0].url.path == "/storage/assets/videos/demo clip.mp4"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert requests[0].headers["x-upload-session"] == "session-123"
+
+
 def test_generated_transport_moves_a_storage_object() -> None:
     requests: list[httpx.Request] = []
 

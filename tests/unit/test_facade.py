@@ -139,6 +139,10 @@ class FakeTransport:
             ]
         return FakeResponse(200, payload)
 
+    def abort_upload_session(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("abortUploadSession", kwargs))
+        return FakeResponse(200, {"message": "upload session aborted"})
+
     def list_storage_objects(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("listStorageObjects", kwargs))
         return FakeResponse(
@@ -558,6 +562,27 @@ def test_storage_defaults_omitted_upload_parts_to_an_empty_snapshot() -> None:
     )
 
     assert status.parts == ()
+
+
+def test_storage_aborts_an_upload_session() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    client.storage.from_("assets").abort_upload_session(
+        "videos/demo.mp4",
+        session_id="session-123",
+    )
+
+    operation, arguments = transport.calls[-1]
+    assert operation == "abortUploadSession"
+    assert arguments["authorization"] == "access-token"
+    assert arguments["bucket_name"] == "assets"
+    request = arguments["request"]
+    assert (request.path, request.session_id) == (
+        "videos/demo.mp4",
+        "session-123",
+    )
 
 
 @pytest.mark.parametrize("invalid_paths", [[], [""], b"abc"])

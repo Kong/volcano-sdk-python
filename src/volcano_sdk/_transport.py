@@ -1368,6 +1368,22 @@ class GeneratedTransport:
             )
         return self._raw_response(response)
 
+    def abort_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionReference,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = delete_storage_object.sync_detailed(
+                bucket_name,
+                request.path,
+                client=client,
+                x_upload_session=request.session_id,
+            )
+        return self._response(response)
+
     def download_storage_object(
         self,
         *,
