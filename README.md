@@ -49,6 +49,14 @@ lease = client.locks.acquire("build", ttl=30)
 client.locks.release("build", lease)
 ```
 
+Database builders are immutable, so you can safely reuse a base query. Chain `neq()`, `gt()`,
+`gte()`, `lt()`, and `lte()` for comparison filters:
+
+```python
+base_query = client.database("main").from_("items").select("id", "priority")
+rows = base_query.gte("priority", 3).lt("priority", 10).execute()
+```
+
 `sign_up()` returns an immutable acknowledgement and never creates or replaces a session. The
 response is identical for new and existing email addresses. Call `sign_in()` separately after the
 account is ready to establish a session.

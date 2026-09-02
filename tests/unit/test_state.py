@@ -536,6 +536,37 @@ def test_query_builder_chains_are_immutable() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("method_name", "operator"),
+    [
+        ("neq", "neq"),
+        ("gt", "gt"),
+        ("gte", "gte"),
+        ("lt", "lt"),
+        ("lte", "lte"),
+    ],
+)
+def test_query_builder_comparison_filters_are_immutable(
+    method_name: str,
+    operator: str,
+) -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    source = client.database("main").from_("items").select("*")
+
+    getattr(source, method_name)("priority", 7).execute()
+    source.execute()
+
+    assert transport.query_calls == [
+        {
+            "table": "items",
+            "filters": [{"column": "priority", "operator": operator, "value": 7}],
+        },
+        {"table": "items"},
+    ]
+
+
 def test_each_request_reads_the_current_credentials() -> None:
     transport = StateTransport()
     client = VolcanoClient(
