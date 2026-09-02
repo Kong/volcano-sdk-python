@@ -60,6 +60,7 @@ from ._generated.api.database_queries import (
 )
 from ._generated.api.locks import (
     acquire_project_lock,
+    force_release_project_lock,
     get_project_lock,
     release_project_lock,
     renew_project_lock,
@@ -1515,6 +1516,20 @@ class GeneratedTransport:
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = get_project_lock.sync_detailed(
+                key,
+                client=client,
+                x_volcano_request_id=cast("UUID", str(uuid4())),
+            )
+        return self._response(response)
+
+    def force_release_project_lock(
+        self,
+        *,
+        authorization: str,
+        key: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = force_release_project_lock.sync_detailed(
                 key,
                 client=client,
                 x_volcano_request_id=cast("UUID", str(uuid4())),

@@ -261,6 +261,10 @@ class FakeTransport:
             {"expires_at": "2026-08-26T12:01:00Z", "fencing_token": 7},
         )
 
+    def force_release_project_lock(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("forceReleaseProjectLock", kwargs))
+        return FakeResponse(204)
+
 
 class BoundedBytesIO(BytesIO):
     def __init__(self, value: bytes) -> None:
@@ -581,6 +585,24 @@ def test_locks_renews_a_lease_without_mutating_the_original() -> None:
                 "ttl": 60,
                 "token": lease.token,
             },
+        )
+    ]
+
+
+def test_locks_force_releases_without_an_ownership_token() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+
+    client.locks.force_release("build")
+
+    assert transport.calls == [
+        (
+            "forceReleaseProjectLock",
+            {"authorization": "service-key", "key": "build"},
         )
     ]
 
