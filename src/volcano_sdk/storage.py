@@ -18,6 +18,7 @@ _INVALID_STORAGE_PAGE = "Expected a complete storage page"
 _INVALID_STORAGE_PATHS = "Storage paths must be non-empty strings"
 _INVALID_STORAGE_VISIBILITY = "is_public must be a boolean"
 _INVALID_STORAGE_ANON_KEY = "Anon key must contain a project ID"
+_INVALID_PUBLIC_URL_PATH = "Public URL paths cannot contain dot segments"
 _JWT_PART_COUNT = 3
 
 
@@ -119,7 +120,10 @@ def _project_id_from_anon_key(anon_key: str) -> str:
 
 
 def _encoded_storage_path(path: str) -> str:
-    return "/".join(quote(segment, safe="") for segment in path.split("/"))
+    segments = path.split("/")
+    if any(segment in {".", ".."} for segment in segments):
+        raise ValueError(_INVALID_PUBLIC_URL_PATH)
+    return "/".join(quote(segment, safe="") for segment in segments)
 
 
 class StorageContext(Protocol):

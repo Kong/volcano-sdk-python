@@ -468,3 +468,17 @@ def test_storage_get_public_url_rejects_an_empty_path() -> None:
         client.storage.from_("assets").get_public_url("")
 
     assert transport.calls == []
+
+
+@pytest.mark.parametrize("path", [".", "avatars/../secret.txt"])
+def test_storage_get_public_url_rejects_dot_segments(path: str) -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(
+        anon_key=anon_key_with_project_id("project-123"),
+        _transport=transport,
+    )
+
+    with pytest.raises(ValueError, match="dot segments"):
+        client.storage.from_("assets").get_public_url(path)
+
+    assert transport.calls == []
