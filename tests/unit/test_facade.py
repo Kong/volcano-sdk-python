@@ -23,6 +23,7 @@ class FakeTransport:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.list_cursor = "cursor-2"
+        self.range_download_status = 206
 
     def auth_signin(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("authSignin", kwargs))
@@ -57,7 +58,7 @@ class FakeTransport:
 
     def download_storage_object(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("downloadStorageObject", kwargs))
-        status = 206 if kwargs.get("byte_range") else 200
+        status = self.range_download_status if kwargs.get("byte_range") else 200
         return FakeResponse(status, content=b"hello")
 
     def list_storage_objects(self, **kwargs: Any) -> FakeResponse:
@@ -331,6 +332,20 @@ def test_storage_remove_accepts_one_path() -> None:
     client.auth.sign_in(email="user@example.com", password="secret")
 
     assert client.storage.from_("assets").remove("archive/a.txt") == ("archive/a.txt",)
+
+
+def test_storage_download_accepts_a_full_response_when_range_is_ignored() -> None:
+    transport = FakeTransport()
+    transport.range_download_status = 200
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    downloaded = client.storage.from_("assets").download(
+        "a.txt",
+        byte_range="bytes=0-4",
+    )
+
+    assert downloaded == b"hello"
 
 
 @pytest.mark.parametrize("invalid_paths", [[], [""], b"abc"])

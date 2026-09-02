@@ -21,6 +21,7 @@ _INVALID_STORAGE_VISIBILITY = "is_public must be a boolean"
 _INVALID_STORAGE_ANON_KEY = "Anon key must contain a project ID"
 _INVALID_PUBLIC_URL_PATH = "Public URL paths cannot contain dot segments"
 _JWT_PART_COUNT = 3
+_HTTP_PARTIAL_CONTENT = 206
 
 
 def _optional_datetime(value: object) -> datetime | None:
@@ -250,7 +251,12 @@ class StorageBucket:
             path=path,
             byte_range=byte_range,
         )
-        response_payload(response, 206 if byte_range is not None else 200)
+        expected_status = (
+            _HTTP_PARTIAL_CONTENT
+            if byte_range is not None and response.status_code == _HTTP_PARTIAL_CONTENT
+            else 200
+        )
+        response_payload(response, expected_status)
         return bytes(response.content)
 
     def list(
