@@ -58,9 +58,9 @@ from ._generated.api.database_queries import (
     query_database_select,
     query_database_update,
 )
-from ._generated.api.functions import (
-    invoke_function,
-    resolve_function_for_invocation,
+from ._generated.api.functions import resolve_function_for_invocation
+from ._generated.api.functions.invoke_function import (
+    _get_kwargs as invoke_function_kwargs,
 )
 from ._generated.api.locks import (
     acquire_project_lock,
@@ -1518,16 +1518,18 @@ class GeneratedTransport:
         function_id: str,
         payload: Mapping[str, JSONValue],
     ) -> TransportResponse:
+        plain_payload = cast("dict[str, JSONValue]", _plain_json(payload))
         body = FunctionInvocationRequest(
-            payload=FunctionInvocationRequestPayload.from_dict(dict(payload))
+            payload=FunctionInvocationRequestPayload.from_dict(plain_payload)
         )
         with self._client(authorization) as client:
-            response = invoke_function.sync_detailed(
-                UUID(function_id),
-                client=client,
-                body=body,
+            response = client.get_httpx_client().request(
+                **invoke_function_kwargs(
+                    UUID(function_id),
+                    body=body,
+                )
             )
-        return self._response(response)
+        return self._raw_response(response)
 
     def acquire_project_lock(
         self,

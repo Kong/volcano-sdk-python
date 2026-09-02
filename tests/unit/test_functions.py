@@ -100,6 +100,12 @@ def test_functions_returns_a_function_owned_error_response() -> None:
     assert result.version == "v2"
 
 
+def test_function_response_has_a_stable_hash() -> None:
+    result = functions_client(FakeFunctionsTransport()).functions.invoke("send-welcome")
+
+    assert hash(result) == hash(result)
+
+
 def test_functions_raises_for_a_platform_failure() -> None:
     transport = FakeFunctionsTransport()
     transport.invoke_response = FakeResponse(

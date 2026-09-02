@@ -196,9 +196,9 @@ class LockState:
 class FunctionResponse:
     """Response returned by an invoked function."""
 
-    data: Mapping[str, JSONValue]
+    data: Mapping[str, JSONValue] = field(hash=False)
     status: int
-    headers: Mapping[str, str]
+    headers: Mapping[str, str] = field(hash=False)
     version: str | None
 
     def __post_init__(self) -> None:
