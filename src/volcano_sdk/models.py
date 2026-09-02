@@ -24,6 +24,13 @@ AuthChangeEvent: TypeAlias = Literal[
     "SIGNED_OUT",
     "TOKEN_REFRESHED",
 ]
+UploadSessionState: TypeAlias = Literal[
+    "pending",
+    "uploading",
+    "completing",
+    "completed",
+    "aborted",
+]
 
 
 def _freeze_json(value: JSONValue) -> JSONValue:
@@ -193,6 +200,28 @@ class UploadPart:
     part_number: int
     etag: str
     size: int
+
+
+@dataclass(frozen=True, slots=True)
+class UploadSessionStatus:
+    """Server-reported progress for one resumable storage upload."""
+
+    session_id: str
+    status: UploadSessionState
+    path: str
+    content_type: str
+    total_size: int
+    part_size: int
+    total_parts: int
+    parts_uploaded: int
+    bytes_uploaded: int
+    parts: tuple[UploadPart, ...]
+    expires_at: datetime
+    created_at: datetime
+
+    def __post_init__(self) -> None:
+        """Defensively snapshot uploaded part metadata."""
+        object.__setattr__(self, "parts", tuple(self.parts))
 
 
 @dataclass(frozen=True, slots=True)
