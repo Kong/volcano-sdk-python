@@ -137,6 +137,21 @@ class StorageMoveTransport(Protocol):
         ...
 
 
+class StorageCopyTransport(Protocol):
+    """Transport capability required to copy a storage object."""
+
+    def copy_storage_object(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        from_path: str,
+        to_path: str,
+    ) -> TransportResponse:
+        """Copy one object within a bucket."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class StorageBucket:
     """Operations scoped to one storage bucket."""
@@ -213,6 +228,19 @@ class StorageBucket:
             to_path=destination,
         )
         return _storage_object(response_payload(response, 200))
+
+    def copy(self, from_path: str, to_path: str) -> StorageObject:
+        """Copy an object to another path within this bucket."""
+        source, destination = _storage_paths((from_path, to_path))
+        transport = cast("StorageCopyTransport", self._client._transport)
+        response = invoke(
+            transport.copy_storage_object,
+            authorization=self._client._session_token(),
+            bucket_name=self._name,
+            from_path=source,
+            to_path=destination,
+        )
+        return _storage_object(response_payload(response, 201))
 
 
 class Storage:

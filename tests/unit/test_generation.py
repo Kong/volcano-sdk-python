@@ -15,6 +15,7 @@ def test_generate_emits_required_contract_operations(tmp_path: Path) -> None:
 
     assert {path.name for path in (output / "api").rglob("*.py")} >= {
         "auth_signin.py",
+        "copy_storage_object.py",
         "query_database_select.py",
         "upload_storage_object.py",
         "download_storage_object.py",
