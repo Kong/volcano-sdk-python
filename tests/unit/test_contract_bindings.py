@@ -16,6 +16,15 @@ if TYPE_CHECKING:
 ROOT = Path(__file__).parents[2]
 FEATURE_SHA256 = {
     "auth.feature": "c237deb0b3be98d64689699a0ffdcd272e7ef027a2b69439b1768195042ed493",
+    "database-delete.feature": (
+        "f1358e5c97fc8483b49a250ef63761ac937e22e0bc3f90c24c5db0462ba10a21"
+    ),
+    "database-insert.feature": (
+        "46150600af9f54b690bc5c9b8f230c5ba4e3be755e50ad0921051faa95e45316"
+    ),
+    "database-update.feature": (
+        "44d657acf525b86add59453b6ae5c9e03f423fd17b6dfbf28f7fff0aece2919d"
+    ),
     "database.feature": (
         "4685b29357a621068b25984ff0de29cd4c504eebe5cfb597f0b999e29878a668"
     ),
@@ -63,11 +72,16 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "a fresh client adopts the current session",
         "a fresh client tries to refresh the signed-out session",
         "an authenticated client",
+        "exactly the deleted contract row is returned",
         "exactly the fixture row is returned",
+        "exactly the inserted contract row is returned",
+        "exactly the updated contract row is returned",
         "one client subscribes and the other publishes the contract message",
         "the auth-state listener observes the signed-in contract user",
         "the SDK operation succeeds",
         "the client acquires and releases the contract lock",
+        "the client deletes its contract row",
+        "the client inserts its contract row",
         'the client selects the contract table where "slug" equals the fixture slug',
         "the client reads the current session",
         "the client refreshes the current session",
@@ -75,6 +89,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the client signs out",
         "the client signs in with the contract user's credentials",
         "the client uploads and downloads the contract object",
+        "the client updates its contract row",
         "the confirmed contract user",
         "the current session belongs to the contract user",
         "the current session exposes access and refresh tokens",

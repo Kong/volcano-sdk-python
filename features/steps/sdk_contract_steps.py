@@ -179,6 +179,93 @@ def fixture_row_returned(context: Any) -> None:
     assert world.last_outcome.value == [world.fixture["fixture_row"]]
 
 
+@when("the client inserts its contract row")
+def insert_contract_row(context: Any) -> None:
+    world = _world(context)
+    row = world.fixture["mutation_rows"]["python"]["insert"]
+    table = world.client.database(world.fixture["database_name"]).from_(
+        world.fixture["table_name"]
+    )
+
+    def operation() -> list[dict[str, Any]]:
+        def cleanup() -> None:
+            table.delete().eq("slug", row["slug"]).execute()
+
+        world.cleanup_callbacks.append(cleanup)
+        return table.insert(row).execute()
+
+    world.record(operation)
+
+
+@then("exactly the inserted contract row is returned")
+def inserted_contract_row_returned(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    expected = world.fixture["mutation_rows"]["python"]["insert"]
+    assert world.last_outcome.value == [expected]
+
+
+@when("the client updates its contract row")
+def update_contract_row(context: Any) -> None:
+    world = _world(context)
+    row = world.fixture["mutation_rows"]["python"]["update"]
+    table = world.client.database(world.fixture["database_name"]).from_(
+        world.fixture["table_name"]
+    )
+
+    def operation() -> list[dict[str, Any]]:
+        def cleanup() -> None:
+            (
+                table.update({"value": row["before"]["value"]})
+                .eq("slug", row["before"]["slug"])
+                .execute()
+            )
+
+        world.cleanup_callbacks.append(cleanup)
+        return (
+            table.update({"value": row["after"]["value"]})
+            .eq("slug", row["before"]["slug"])
+            .execute()
+        )
+
+    world.record(operation)
+
+
+@then("exactly the updated contract row is returned")
+def updated_contract_row_returned(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    expected = world.fixture["mutation_rows"]["python"]["update"]["after"]
+    assert world.last_outcome.value == [expected]
+
+
+@when("the client deletes its contract row")
+def delete_contract_row(context: Any) -> None:
+    world = _world(context)
+    row = world.fixture["mutation_rows"]["python"]["delete"]
+    table = world.client.database(world.fixture["database_name"]).from_(
+        world.fixture["table_name"]
+    )
+
+    def operation() -> list[dict[str, Any]]:
+        def cleanup() -> None:
+            table.delete().eq("slug", row["slug"]).execute()
+            table.insert(row).execute()
+
+        world.cleanup_callbacks.append(cleanup)
+        return table.delete().eq("slug", row["slug"]).execute()
+
+    world.record(operation)
+
+
+@then("exactly the deleted contract row is returned")
+def deleted_contract_row_returned(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    expected = world.fixture["mutation_rows"]["python"]["delete"]
+    assert world.last_outcome.value == [expected]
+
+
 @when("the client uploads and downloads the contract object")
 def upload_and_download(context: Any) -> None:
     world = _world(context)
