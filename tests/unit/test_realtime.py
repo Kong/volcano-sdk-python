@@ -12,6 +12,7 @@ from volcano_sdk import (
     RealtimeConnectContext,
     RealtimeDisconnectContext,
     RealtimeErrorContext,
+    RealtimePresenceInfo,
     VolcanoClient,
 )
 
@@ -143,10 +144,20 @@ class AuthTransport:
 
 
 class FakeSubscription:
-    def __init__(self, name: str, events: Any) -> None:
+    def __init__(
+        self,
+        name: str,
+        events: Any,
+        *,
+        join_leave: bool,
+        recoverable: bool,
+    ) -> None:
         self.name = name
         self.events = events
+        self.join_leave = join_leave
+        self.recoverable = recoverable
         self.calls: list[tuple[str, Any]] = []
+        self.presence_clients: dict[str, Any] = {}
         self.unsubscribe_error: Exception | None = None
         self.unsubscribe_entered: asyncio.Event | None = None
         self.unsubscribe_release: asyncio.Event | None = None
@@ -166,10 +177,20 @@ class FakeSubscription:
         if self.unsubscribe_error is not None:
             raise self.unsubscribe_error
 
+    async def presence(self) -> Any:
+        self.calls.append(("presence", None))
+        return SimpleNamespace(clients=self.presence_clients.copy())
+
     async def emit(self, data: Any) -> None:
         await self.events.on_publication(
             SimpleNamespace(pub=SimpleNamespace(data=data))
         )
+
+    async def emit_join(self, info: Any) -> None:
+        await self.events.on_join(SimpleNamespace(info=info))
+
+    async def emit_leave(self, info: Any) -> None:
+        await self.events.on_leave(SimpleNamespace(info=info))
 
 
 class FakeCentrifugeClient:
@@ -177,6 +198,7 @@ class FakeCentrifugeClient:
         self.calls: list[str] = []
         self.events = events
         self.state = SimpleNamespace(value="disconnected")
+        self.presence_clients: dict[str, Any] = {}
         self.subscription: FakeSubscription | None = None
         self._subs: dict[str, FakeSubscription] = {}
 
@@ -199,12 +221,25 @@ class FakeCentrifugeClient:
         if self.events is not None:
             await self.events.on_error(SimpleNamespace(code=code, error=error))
 
-    def new_subscription(self, name: str, *, events: Any) -> FakeSubscription:
+    def new_subscription(
+        self,
+        name: str,
+        *,
+        events: Any,
+        join_leave: bool = False,
+        recoverable: bool = False,
+    ) -> FakeSubscription:
         if name in self._subs:
             message = f"duplicate subscription: {name}"
             raise RuntimeError(message)
         self.calls.append(f"channel:{name}")
-        self.subscription = FakeSubscription(name, events)
+        self.subscription = FakeSubscription(
+            name,
+            events,
+            join_leave=join_leave,
+            recoverable=recoverable,
+        )
+        self.subscription.presence_clients = self.presence_clients.copy()
         self._subs[name] = self.subscription
         return self.subscription
 
@@ -241,6 +276,103 @@ def test_realtime_channel_exposes_its_canonical_name() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
 
     assert client.realtime.channel("contract").name == "broadcast:contract"
+    assert (
+        client.realtime.channel("contract", channel_type="presence").name
+        == "presence:contract"
+    )
+
+
+def test_realtime_presence_sync_tracks_initial_join_and_leave_state() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("lobby", channel_type="presence")
+        sync_states: list[Any] = []
+        joins: list[RealtimePresenceInfo] = []
+        leaves: list[RealtimePresenceInfo] = []
+        synced = asyncio.Event()
+
+        def on_sync(state: Any) -> None:
+            sync_states.append(state)
+            synced.set()
+
+        stop_sync = channel.on_presence_sync(on_sync)
+        channel.on("join", joins.append)
+        channel.on("leave", leaves.append)
+
+        official.presence_clients = {
+            "alice-client": SimpleNamespace(
+                client="alice-client",
+                user="alice",
+                conn_info={"display_name": "Alice"},
+            )
+        }
+        await channel.subscribe()
+        assert official.subscription is not None
+        await asyncio.wait_for(synced.wait(), timeout=0.1)
+        assert channel.get_presence_state() == {
+            "alice-client": RealtimePresenceInfo(
+                client="alice-client",
+                user="alice",
+                data={"display_name": "Alice"},
+            )
+        }
+        assert official.subscription.join_leave is True
+        assert official.subscription.recoverable is True
+
+        synced.clear()
+        bob = SimpleNamespace(
+            client="bob-client",
+            user="bob",
+            conn_info={"display_name": "Bob"},
+        )
+        await official.subscription.emit_join(bob)
+        await asyncio.wait_for(synced.wait(), timeout=0.1)
+        assert joins == [
+            RealtimePresenceInfo(
+                client="bob-client",
+                user="bob",
+                data={"display_name": "Bob"},
+            )
+        ]
+        assert set(channel.get_presence_state()) == {
+            "alice-client",
+            "bob-client",
+        }
+
+        synced.clear()
+        await official.subscription.emit_leave(bob)
+        await asyncio.wait_for(synced.wait(), timeout=0.1)
+        assert leaves == joins
+        assert set(channel.get_presence_state()) == {"alice-client"}
+
+        stop_sync()
+        stop_sync()
+        await channel.track({"status": "online"})
+        await client.realtime.remove_channel("lobby", channel_type="presence")
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_presence_operations_reject_broadcast_channels() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
+    channel = client.realtime.channel("contract")
+
+    with pytest.raises(ValueError, match="presence channels"):
+        channel.on_presence_sync(lambda _state: None)
+
+    async def scenario() -> None:
+        with pytest.raises(ValueError, match="presence channels"):
+            await channel.track()
+
+    asyncio.run(scenario())
 
 
 def test_realtime_wraps_official_client_without_exposing_it() -> None:
@@ -890,9 +1022,20 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
             await release.wait()
             await super().subscribe()
 
-    def new_subscription(name: str, *, events: Any) -> FakeSubscription:
+    def new_subscription(
+        name: str,
+        *,
+        events: Any,
+        join_leave: bool = False,
+        recoverable: bool = False,
+    ) -> FakeSubscription:
         official.calls.append(f"channel:{name}")
-        official.subscription = BlockingSubscription(name, events)
+        official.subscription = BlockingSubscription(
+            name,
+            events,
+            join_leave=join_leave,
+            recoverable=recoverable,
+        )
         official._subs[name] = official.subscription
         return official.subscription
 
