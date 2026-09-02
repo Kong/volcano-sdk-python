@@ -4,7 +4,7 @@ import base64
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from io import BytesIO
+from io import SEEK_END, BytesIO
 from typing import Any, BinaryIO, cast
 
 import pytest
@@ -312,6 +312,21 @@ class FailingSeekableReader(BoundedBytesIO):
             msg = "reader failed"
             raise RuntimeError(msg)
         return super().read(size)
+
+
+class RestoreFailingBytesIO(BytesIO):
+    def __init__(self, value: bytes) -> None:
+        super().__init__(value)
+        self._end_was_probed = False
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        if self._end_was_probed and whence == 0:
+            msg = "restore failed"
+            raise OSError(msg)
+        position = super().seek(offset, whence)
+        if whence == SEEK_END:
+            self._end_was_probed = True
+        return position
 
 
 def anon_key_with_project_id(project_id: str | None) -> str:
@@ -740,6 +755,36 @@ def test_storage_streams_seekable_uploads_with_server_selected_reads() -> None:
         b"efgh",
         b"ij",
     ]
+
+
+def test_storage_clamps_a_seekable_source_positioned_past_eof() -> None:
+    transport = FakeTransport()
+    transport.upload_session_total_parts = 0
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    source = BytesIO(b"a")
+    source.seek(2)
+
+    client.storage.from_("assets").upload_resumable("file.bin", source)
+
+    create_call = next(
+        call for call in transport.calls if call[0] == "createUploadSession"
+    )
+    assert create_call[1]["request"].total_size == 0
+
+
+def test_storage_surfaces_a_failed_seekable_position_restore() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    with pytest.raises(OSError, match="restore failed"):
+        client.storage.from_("assets").upload_resumable(
+            "file.bin",
+            RestoreFailingBytesIO(b"abcdefgh"),
+        )
+
+    assert all(operation != "createUploadSession" for operation, _ in transport.calls)
 
 
 def test_storage_fills_parts_when_a_seekable_source_returns_short_reads() -> None:

@@ -206,13 +206,17 @@ def _remaining_upload_bytes(source: BinaryIO) -> int | None:
         if not source.seekable():
             return None
         position = source.tell()
-        try:
-            source.seek(0, SEEK_END)
-            return source.tell() - position
-        finally:
-            source.seek(position)
     except (AttributeError, OSError, ValueError):
         return None
+    try:
+        try:
+            source.seek(0, SEEK_END)
+            remaining = max(0, source.tell() - position)
+        except (OSError, ValueError):
+            remaining = None
+    finally:
+        source.seek(position)
+    return remaining
 
 
 def _spool_upload_source(source: BinaryIO, target: BinaryIO) -> None:
