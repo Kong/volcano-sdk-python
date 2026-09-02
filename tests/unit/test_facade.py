@@ -38,6 +38,10 @@ class FakeTransport:
         self.calls.append(("queryDatabaseInsert", kwargs))
         return FakeResponse(200, {"data": [{"slug": "new"}], "count": 1})
 
+    def query_database_update(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("queryDatabaseUpdate", kwargs))
+        return FakeResponse(200, {"data": [{"slug": "updated"}], "count": 1})
+
     def upload_storage_object(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("uploadStorageObject", kwargs))
         return FakeResponse(201, {"name": "a.txt", "size": 5})
@@ -58,7 +62,7 @@ class FakeTransport:
         return FakeResponse(204)
 
 
-def test_public_facade_delegates_to_the_seven_contract_operations() -> None:
+def test_public_facade_delegates_to_the_eight_contract_operations() -> None:
     transport = FakeTransport()
     client = VolcanoClient(
         api_url="https://api.test.volcano.dev",
@@ -70,6 +74,13 @@ def test_public_facade_delegates_to_the_seven_contract_operations() -> None:
     session = client.auth.sign_in(email="user@example.com", password="secret")
     rows = client.database("main").from_("items").select("*").eq("slug", "a").execute()
     inserted = client.database("main").from_("items").insert({"slug": "new"}).execute()
+    updated = (
+        client.database("main")
+        .from_("items")
+        .update({"slug": "updated"})
+        .eq("slug", "new")
+        .execute()
+    )
     uploaded = client.storage.from_("assets").upload("a.txt", b"hello")
     downloaded = client.storage.from_("assets").download("a.txt")
     lease = client.locks.acquire("build", ttl=30)
@@ -83,6 +94,7 @@ def test_public_facade_delegates_to_the_seven_contract_operations() -> None:
     assert client.current_session is session
     assert rows == [{"slug": "a"}]
     assert inserted == [{"slug": "new"}]
+    assert updated == [{"slug": "updated"}]
     assert uploaded == {"name": "a.txt", "size": 5}
     assert downloaded == b"hello"
     assert lease == LockLease(
@@ -95,6 +107,7 @@ def test_public_facade_delegates_to_the_seven_contract_operations() -> None:
         "authSignin",
         "queryDatabaseSelect",
         "queryDatabaseInsert",
+        "queryDatabaseUpdate",
         "uploadStorageObject",
         "downloadStorageObject",
         "acquireProjectLock",
@@ -120,19 +133,28 @@ def test_public_facade_delegates_to_the_seven_contract_operations() -> None:
     }
     assert transport.calls[3][1] == {
         "authorization": "access-token",
-        "bucket_name": "assets",
-        "path": "a.txt",
-        "data": b"hello",
+        "database_name": "main",
+        "body": {
+            "table": "items",
+            "values": {"slug": "updated"},
+            "filters": [{"column": "slug", "operator": "eq", "value": "new"}],
+        },
     }
     assert transport.calls[4][1] == {
         "authorization": "access-token",
         "bucket_name": "assets",
         "path": "a.txt",
+        "data": b"hello",
     }
-    assert transport.calls[5][1]["authorization"] == "service-key"
-    assert transport.calls[5][1]["key"] == "build"
-    assert transport.calls[5][1]["ttl"] == 30
-    assert transport.calls[5][1]["token"] == lease.token
+    assert transport.calls[5][1] == {
+        "authorization": "access-token",
+        "bucket_name": "assets",
+        "path": "a.txt",
+    }
     assert transport.calls[6][1]["authorization"] == "service-key"
     assert transport.calls[6][1]["key"] == "build"
+    assert transport.calls[6][1]["ttl"] == 30
     assert transport.calls[6][1]["token"] == lease.token
+    assert transport.calls[7][1]["authorization"] == "service-key"
+    assert transport.calls[7][1]["key"] == "build"
+    assert transport.calls[7][1]["token"] == lease.token

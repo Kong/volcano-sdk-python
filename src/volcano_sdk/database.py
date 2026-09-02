@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, Self, cast
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -26,6 +26,16 @@ def _snapshot_row(values: Mapping[str, JSONValue]) -> dict[str, JSONValue]:
     return {key: _snapshot_json(value) for key, value in values.items()}
 
 
+def _snapshot_filter_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        mapping = cast("Mapping[object, object]", value)
+        return {key: _snapshot_filter_value(item) for key, item in mapping.items()}
+    if isinstance(value, (list, tuple)):
+        sequence = cast("list[object] | tuple[object, ...]", value)
+        return [_snapshot_filter_value(item) for item in sequence]
+    return value
+
+
 class DatabaseContext(Protocol):
     """Client capabilities required by database queries."""
 
@@ -34,8 +44,65 @@ class DatabaseContext(Protocol):
     def _session_token(self) -> str: ...
 
 
+class FilterBuilder:
+    """Shared immutable filters for database operations."""
+
+    _filters: tuple[dict[str, Any], ...]
+
+    def _with_filters(self, filters: tuple[dict[str, Any], ...]) -> Self:
+        raise NotImplementedError
+
+    def eq(self, column: str, value: object) -> Self:
+        """Add an equality filter."""
+        return self._filter(column, "eq", value)
+
+    def neq(self, column: str, value: object) -> Self:
+        """Add an inequality filter."""
+        return self._filter(column, "neq", value)
+
+    def gt(self, column: str, value: object) -> Self:
+        """Add a greater-than filter."""
+        return self._filter(column, "gt", value)
+
+    def gte(self, column: str, value: object) -> Self:
+        """Add a greater-than-or-equal filter."""
+        return self._filter(column, "gte", value)
+
+    def lt(self, column: str, value: object) -> Self:
+        """Add a less-than filter."""
+        return self._filter(column, "lt", value)
+
+    def lte(self, column: str, value: object) -> Self:
+        """Add a less-than-or-equal filter."""
+        return self._filter(column, "lte", value)
+
+    def like(self, column: str, pattern: str) -> Self:
+        """Add a case-sensitive pattern filter."""
+        return self._filter(column, "like", pattern)
+
+    def ilike(self, column: str, pattern: str) -> Self:
+        """Add a case-insensitive pattern filter."""
+        return self._filter(column, "ilike", pattern)
+
+    def is_(self, column: str, value: object) -> Self:
+        """Add a null or boolean identity filter."""
+        return self._filter(column, "is", value)
+
+    def in_(self, column: str, values: Sequence[object]) -> Self:
+        """Add a membership filter."""
+        return self._filter(column, "in", list(values))
+
+    def _filter(self, column: str, operator: str, value: object) -> Self:
+        condition = {
+            "column": column,
+            "operator": operator,
+            "value": _snapshot_filter_value(value),
+        }
+        return self._with_filters((*self._filters, condition))
+
+
 @dataclass(frozen=True, slots=True)
-class QueryBuilder:
+class QueryBuilder(FilterBuilder):
     """Build and execute an immutable database select query."""
 
     _client: DatabaseContext
@@ -51,46 +118,6 @@ class QueryBuilder:
         """Select the requested columns."""
         return replace(self, _columns=columns)
 
-    def eq(self, column: str, value: object) -> QueryBuilder:
-        """Add an equality filter."""
-        return self._filter(column, "eq", value)
-
-    def neq(self, column: str, value: object) -> QueryBuilder:
-        """Add an inequality filter."""
-        return self._filter(column, "neq", value)
-
-    def gt(self, column: str, value: object) -> QueryBuilder:
-        """Add a greater-than filter."""
-        return self._filter(column, "gt", value)
-
-    def gte(self, column: str, value: object) -> QueryBuilder:
-        """Add a greater-than-or-equal filter."""
-        return self._filter(column, "gte", value)
-
-    def lt(self, column: str, value: object) -> QueryBuilder:
-        """Add a less-than filter."""
-        return self._filter(column, "lt", value)
-
-    def lte(self, column: str, value: object) -> QueryBuilder:
-        """Add a less-than-or-equal filter."""
-        return self._filter(column, "lte", value)
-
-    def like(self, column: str, pattern: str) -> QueryBuilder:
-        """Add a case-sensitive pattern filter."""
-        return self._filter(column, "like", pattern)
-
-    def ilike(self, column: str, pattern: str) -> QueryBuilder:
-        """Add a case-insensitive pattern filter."""
-        return self._filter(column, "ilike", pattern)
-
-    def is_(self, column: str, value: object) -> QueryBuilder:
-        """Add a null or boolean identity filter."""
-        return self._filter(column, "is", value)
-
-    def in_(self, column: str, values: Sequence[object]) -> QueryBuilder:
-        """Add a membership filter."""
-        return self._filter(column, "in", list(values))
-
     def insert(self, values: Mapping[str, JSONValue]) -> InsertBuilder:
         """Build an insert for this table."""
         return InsertBuilder(
@@ -98,6 +125,16 @@ class QueryBuilder:
             self._database_name,
             self._table,
             _snapshot_row(values),
+        )
+
+    def update(self, values: Mapping[str, JSONValue]) -> UpdateBuilder:
+        """Build a filtered update for this table."""
+        return UpdateBuilder(
+            self._client,
+            self._database_name,
+            self._table,
+            _snapshot_row(values),
+            self._filters,
         )
 
     def order(self, column: str, *, ascending: bool = True) -> QueryBuilder:
@@ -113,9 +150,8 @@ class QueryBuilder:
         """Skip rows before returning results."""
         return replace(self, _offset=count)
 
-    def _filter(self, column: str, operator: str, value: object) -> QueryBuilder:
-        condition = {"column": column, "operator": operator, "value": value}
-        return replace(self, _filters=(*self._filters, condition))
+    def _with_filters(self, filters: tuple[dict[str, Any], ...]) -> QueryBuilder:
+        return replace(self, _filters=filters)
 
     def execute(self) -> list[dict[str, Any]]:
         """Execute the query and return its rows."""
@@ -156,6 +192,35 @@ class InsertBuilder:
             authorization=self._client._session_token(),
             database_name=self._database_name,
             body={"table": self._table, "values": _snapshot_row(self._values)},
+        )
+        payload = response_payload(response, 200)
+        return list(payload["data"])
+
+
+@dataclass(frozen=True, slots=True)
+class UpdateBuilder(FilterBuilder):
+    """Build and execute an immutable filtered database update."""
+
+    _client: DatabaseContext
+    _database_name: str
+    _table: str
+    _values: dict[str, JSONValue]
+    _filters: tuple[dict[str, Any], ...] = ()
+
+    def _with_filters(self, filters: tuple[dict[str, Any], ...]) -> UpdateBuilder:
+        return replace(self, _filters=filters)
+
+    def execute(self) -> list[dict[str, Any]]:
+        """Update matching rows and return them."""
+        response = invoke(
+            self._client._transport.query_database_update,
+            authorization=self._client._session_token(),
+            database_name=self._database_name,
+            body={
+                "table": self._table,
+                "values": _snapshot_row(self._values),
+                "filters": list(self._filters),
+            },
         )
         payload = response_payload(response, 200)
         return list(payload["data"])

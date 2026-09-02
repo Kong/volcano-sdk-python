@@ -80,7 +80,17 @@ inserted_rows = (
     .insert({"name": "Volcano", "status": "draft"})
     .execute()
 )
+
+updated_rows = (
+    client.database("main")
+    .from_("items")
+    .update({"status": "published"})
+    .eq("name", "Volcano")
+    .execute()
+)
 ```
+
+Updates require at least one filter; Volcano rejects filterless updates.
 
 `sign_up()` returns an immutable acknowledgement and never creates or replaces a session. The
 response is identical for new and existing email addresses. Call `sign_in()` separately after the
