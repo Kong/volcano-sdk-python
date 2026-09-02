@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
+
 from volcano_sdk import LockLease, Session, StorageObject, StoragePage, VolcanoClient
 
 
@@ -79,6 +81,10 @@ class FakeTransport:
             },
         )
 
+    def delete_storage_object(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("deleteStorageObject", kwargs))
+        return FakeResponse(200)
+
     def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("acquireProjectLock", kwargs))
         return FakeResponse(
@@ -91,7 +97,7 @@ class FakeTransport:
         return FakeResponse(204)
 
 
-def test_public_facade_delegates_to_the_nine_contract_operations() -> None:
+def test_public_facade_delegates_to_the_contract_operations() -> None:
     transport = FakeTransport()
     client = VolcanoClient(
         api_url="https://api.test.volcano.dev",
@@ -120,6 +126,7 @@ def test_public_facade_delegates_to_the_nine_contract_operations() -> None:
         limit=25,
         cursor="cursor-1",
     )
+    removed = client.storage.from_("assets").remove(["archive/a.txt", "archive/b.txt"])
     lease = client.locks.acquire("build", ttl=30)
     client.locks.release("build", lease)
 
@@ -154,6 +161,7 @@ def test_public_facade_delegates_to_the_nine_contract_operations() -> None:
         next_cursor="cursor-2",
     )
     assert page.objects[0].metadata == {"width": 32, "labels": ("profile",)}
+    assert removed == ("archive/a.txt", "archive/b.txt")
     assert lease == LockLease(
         key="build",
         token=lease.token,
@@ -169,6 +177,8 @@ def test_public_facade_delegates_to_the_nine_contract_operations() -> None:
         "uploadStorageObject",
         "downloadStorageObject",
         "listStorageObjects",
+        "deleteStorageObject",
+        "deleteStorageObject",
         "acquireProjectLock",
         "releaseProjectLock",
     ]
@@ -225,13 +235,25 @@ def test_public_facade_delegates_to_the_nine_contract_operations() -> None:
         "limit": 25,
         "cursor": "cursor-1",
     }
-    assert transport.calls[8][1]["authorization"] == "service-key"
-    assert transport.calls[8][1]["key"] == "build"
-    assert transport.calls[8][1]["ttl"] == 30
-    assert transport.calls[8][1]["token"] == lease.token
-    assert transport.calls[9][1]["authorization"] == "service-key"
-    assert transport.calls[9][1]["key"] == "build"
-    assert transport.calls[9][1]["token"] == lease.token
+    assert [call[1] for call in transport.calls[8:10]] == [
+        {
+            "authorization": "access-token",
+            "bucket_name": "assets",
+            "path": "archive/a.txt",
+        },
+        {
+            "authorization": "access-token",
+            "bucket_name": "assets",
+            "path": "archive/b.txt",
+        },
+    ]
+    assert transport.calls[10][1]["authorization"] == "service-key"
+    assert transport.calls[10][1]["key"] == "build"
+    assert transport.calls[10][1]["ttl"] == 30
+    assert transport.calls[10][1]["token"] == lease.token
+    assert transport.calls[11][1]["authorization"] == "service-key"
+    assert transport.calls[11][1]["key"] == "build"
+    assert transport.calls[11][1]["token"] == lease.token
 
 
 def test_storage_list_normalizes_an_empty_terminal_cursor() -> None:
@@ -241,3 +263,23 @@ def test_storage_list_normalizes_an_empty_terminal_cursor() -> None:
     client.auth.sign_in(email="user@example.com", password="secret")
 
     assert client.storage.from_("assets").list().next_cursor is None
+
+
+def test_storage_remove_accepts_one_path() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    assert client.storage.from_("assets").remove("archive/a.txt") == ("archive/a.txt",)
+
+
+def test_storage_remove_rejects_an_empty_path_before_transport() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    calls_after_sign_in = transport.calls.copy()
+
+    with pytest.raises(ValueError, match="non-empty strings"):
+        client.storage.from_("assets").remove([""])
+
+    assert transport.calls == calls_after_sign_in

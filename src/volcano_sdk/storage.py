@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol, cast
@@ -11,6 +11,7 @@ from ._transport import Transport, TransportResponse, invoke, response_payload
 from .models import JSONValue, StorageObject, StoragePage
 
 _INVALID_STORAGE_PAGE = "Expected a complete storage page"
+_INVALID_STORAGE_PATHS = "Storage paths must be non-empty strings"
 
 
 def _optional_datetime(value: object) -> datetime | None:
@@ -69,6 +70,13 @@ def _storage_page(payload: object) -> StoragePage:
     )
 
 
+def _storage_paths(paths: str | Sequence[str]) -> tuple[str, ...]:
+    raw_paths = (paths,) if isinstance(paths, str) else tuple(paths)
+    if any(not path for path in raw_paths):
+        raise ValueError(_INVALID_STORAGE_PATHS)
+    return raw_paths
+
+
 class StorageContext(Protocol):
     """Client capabilities required by object storage."""
 
@@ -90,6 +98,20 @@ class StorageListTransport(Protocol):
         cursor: str | None,
     ) -> TransportResponse:
         """Request one page of objects from a bucket."""
+        ...
+
+
+class StorageDeleteTransport(Protocol):
+    """Transport capability required to delete storage objects."""
+
+    def delete_storage_object(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        path: str,
+    ) -> TransportResponse:
+        """Delete one object from a bucket."""
         ...
 
 
@@ -141,6 +163,21 @@ class StorageBucket:
             cursor=cursor,
         )
         return _storage_page(response_payload(response, 200))
+
+    def remove(self, paths: str | Sequence[str]) -> tuple[str, ...]:
+        """Delete one or more object paths and return their immutable snapshot."""
+        path_list = _storage_paths(paths)
+        transport = cast("StorageDeleteTransport", self._client._transport)
+        authorization = self._client._session_token()
+        for path in path_list:
+            response = invoke(
+                transport.delete_storage_object,
+                authorization=authorization,
+                bucket_name=self._name,
+                path=path,
+            )
+            response_payload(response, 200)
+        return path_list
 
 
 class Storage:
