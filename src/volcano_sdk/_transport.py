@@ -69,7 +69,18 @@ from ._generated.api.locks import (
     release_project_lock,
     renew_project_lock,
 )
-from ._generated.api.logs import get_project_log_activity, search_project_logs
+from ._generated.api.logs.get_project_log_activity import (
+    _build_response as build_log_activity_response,
+)
+from ._generated.api.logs.get_project_log_activity import (
+    _get_kwargs as log_activity_kwargs,
+)
+from ._generated.api.logs.search_project_logs import (
+    _build_response as build_log_search_response,
+)
+from ._generated.api.logs.search_project_logs import (
+    _get_kwargs as log_search_kwargs,
+)
 from ._generated.api.o_auth_authentication import auth_o_auth_exchange
 from ._generated.api.o_auth_authentication.auth_link_o_auth_provider import (
     _get_kwargs as link_oauth_provider_kwargs,
@@ -1543,10 +1554,14 @@ class GeneratedTransport:
     ) -> TransportResponse:
         plain_request = cast("dict[str, Any]", _plain_json(request))
         with self._client(authorization) as client:
-            response = search_project_logs.sync_detailed(
-                UUID(project_id),
+            request_kwargs = log_search_kwargs(
+                UUID(project_id), body=LogSearchRequest.from_dict(plain_request)
+            )
+            request_kwargs["json"] = plain_request
+            raw_response = client.get_httpx_client().request(**request_kwargs)
+            response = build_log_search_response(
                 client=client,
-                body=LogSearchRequest.from_dict(plain_request),
+                response=raw_response,
             )
         return self._response(response)
 
@@ -1559,10 +1574,14 @@ class GeneratedTransport:
     ) -> TransportResponse:
         plain_request = cast("dict[str, Any]", _plain_json(request))
         with self._client(authorization) as client:
-            response = get_project_log_activity.sync_detailed(
-                UUID(project_id),
+            request_kwargs = log_activity_kwargs(
+                UUID(project_id), body=LogActivityRequest.from_dict(plain_request)
+            )
+            request_kwargs["json"] = plain_request
+            raw_response = client.get_httpx_client().request(**request_kwargs)
+            response = build_log_activity_response(
                 client=client,
-                body=LogActivityRequest.from_dict(plain_request),
+                response=raw_response,
             )
         return self._response(response)
 

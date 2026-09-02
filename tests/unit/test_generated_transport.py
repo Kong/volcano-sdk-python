@@ -156,12 +156,15 @@ def test_generated_transport_reads_project_logs() -> None:
     search = transport.search_project_logs(
         authorization="access-token",
         project_id=project_id,
-        request={**resource, "limit": 25},
+        request={**resource, "limit": 25, "query": "misspelled-filter"},
     )
     activity = transport.get_project_log_activity(
         authorization="access-token",
         project_id=project_id,
-        request={**resource, "bucket_count": 12},
+        request={
+            "resource": {"type": "function", "unknown_selector": True},
+            "bucket_count": 12,
+        },
     )
 
     assert search.payload["data"][0]["id"] == "event-1"
@@ -171,8 +174,11 @@ def test_generated_transport_reads_project_logs() -> None:
         f"/projects/{project_id}/logs/activity",
     ]
     assert [json.loads(request.content) for request in requests] == [
-        {**resource, "limit": 25},
-        {**resource, "bucket_count": 12},
+        {**resource, "limit": 25, "query": "misspelled-filter"},
+        {
+            "resource": {"type": "function", "unknown_selector": True},
+            "bucket_count": 12,
+        },
     ]
     assert all(
         request.headers["authorization"] == "Bearer access-token"
