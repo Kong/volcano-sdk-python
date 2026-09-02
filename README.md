@@ -92,6 +92,8 @@ print(public_object.public_url)
 public_url = bucket.get_public_url("avatars/a.png")
 print(public_url)
 
+state = client.locks.get("build")
+print(state.held)
 lease = client.locks.acquire("build", ttl=30)
 client.locks.release("build", lease)
 ```
@@ -108,6 +110,8 @@ server-selected part size, and completes the upload. If a part fails, it makes
 a best-effort abort and raises the original error.
 `upload_part()` returns immutable part metadata and can safely retry the same
 part number to replace that part.
+`locks.get()` returns immutable lock availability, expiry, and fencing-token
+state without acquiring the lock.
 `get_upload_session()` returns immutable progress and uploaded-part metadata for
 resuming an interrupted upload.
 `complete_upload_session()` assembles the uploaded parts and returns the stored

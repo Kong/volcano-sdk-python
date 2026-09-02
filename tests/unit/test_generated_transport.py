@@ -1499,6 +1499,38 @@ def test_generated_transport_aborts_an_upload_session() -> None:
     assert requests[0].headers["x-upload-session"] == "session-123"
 
 
+def test_generated_transport_gets_project_lock_state() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "held": True,
+                "expires_at": "2026-08-26T12:00:30Z",
+                "fencing_token": 7,
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.get_project_lock(
+        authorization="service-key",
+        key="build:queue",
+    )
+
+    assert response.payload["held"] is True
+    assert len(requests) == 1
+    assert requests[0].method == "GET"
+    assert requests[0].url.path == "/locks/build:queue"
+    assert requests[0].headers["authorization"] == "Bearer service-key"
+    assert requests[0].headers["x-volcano-request-id"]
+
+
 def test_generated_transport_moves_a_storage_object() -> None:
     requests: list[httpx.Request] = []
 

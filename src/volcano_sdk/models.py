@@ -184,6 +184,15 @@ class LockLease:
 
 
 @dataclass(frozen=True, slots=True)
+class LockState:
+    """Current state of a distributed lock."""
+
+    held: bool
+    expires_at: datetime | None
+    fencing_token: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class UploadSession:
     """Server-created state for a resumable storage upload."""
 
