@@ -4,7 +4,8 @@ import base64
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from io import SEEK_END, BytesIO
+from typing import Any, BinaryIO, cast
 
 import pytest
 
@@ -39,6 +40,7 @@ class FakeTransport:
         self.upload_session_total_parts = 3
         self.fail_upload_part_number: int | None = None
         self.fail_abort_upload = False
+        self.raise_abort_error = False
 
     def auth_signin(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("authSignin", kwargs))
@@ -148,6 +150,9 @@ class FakeTransport:
 
     def abort_upload_session(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("abortUploadSession", kwargs))
+        if self.raise_abort_error:
+            msg = "abort transport failed"
+            raise RuntimeError(msg)
         if self.fail_abort_upload:
             return FakeResponse(500, {"error": "abort failed"})
         return FakeResponse(200, {"message": "upload session aborted"})
@@ -255,6 +260,91 @@ class FakeTransport:
             200,
             {"expires_at": "2026-08-26T12:01:00Z", "fencing_token": 7},
         )
+
+
+class BoundedBytesIO(BytesIO):
+    def __init__(self, value: bytes) -> None:
+        super().__init__(value)
+        self.read_sizes: list[int] = []
+
+    def read(self, size: int | None = -1) -> bytes:
+        if size is None or size < 0:
+            msg = "unbounded read"
+            raise RuntimeError(msg)
+        self.read_sizes.append(size)
+        return super().read(size)
+
+
+class ShortReadBytesIO(BoundedBytesIO):
+    def read(self, size: int | None = -1) -> bytes:
+        if size is None or size < 0:
+            msg = "unbounded read"
+            raise RuntimeError(msg)
+        return super().read(min(size, 2))
+
+
+class BoundedNonSeekableReader:
+    def __init__(self, value: bytes) -> None:
+        self._value = value
+        self._offset = 0
+        self.read_sizes: list[int] = []
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            msg = "unbounded read"
+            raise RuntimeError(msg)
+        self.read_sizes.append(size)
+        chunk = self._value[self._offset : self._offset + size]
+        self._offset += len(chunk)
+        return chunk
+
+    def seekable(self) -> bool:
+        return False
+
+
+class TemporarilyUnavailableReader:
+    def __init__(self) -> None:
+        self.read_sizes: list[int] = []
+
+    def read(self, size: int = -1) -> bytes | None:
+        if not self.read_sizes:
+            self.read_sizes.append(size)
+            return None
+        return b""
+
+    def seekable(self) -> bool:
+        return False
+
+
+class ReadOnlyStream:
+    def __init__(self, value: bytes) -> None:
+        self._source = BytesIO(value)
+
+    def read(self, size: int = -1) -> bytes:
+        return self._source.read(size)
+
+
+class FailingSeekableReader(BoundedBytesIO):
+    def read(self, size: int | None = -1) -> bytes:
+        if self.tell() >= 4:
+            msg = "reader failed"
+            raise RuntimeError(msg)
+        return super().read(size)
+
+
+class RestoreFailingBytesIO(BytesIO):
+    def __init__(self, value: bytes) -> None:
+        super().__init__(value)
+        self._end_was_probed = False
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        if self._end_was_probed and whence == 0:
+            msg = "restore failed"
+            raise OSError(msg)
+        position = super().seek(offset, whence)
+        if whence == SEEK_END:
+            self._end_was_probed = True
+        return position
 
 
 def anon_key_with_project_id(project_id: str | None) -> str:
@@ -723,6 +813,193 @@ def test_storage_aborts_after_part_failure_without_masking_the_error() -> None:
         "uploadPart",
         "abortUploadSession",
     ]
+
+
+def test_storage_streams_seekable_uploads_with_server_selected_reads() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 3
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    source = BoundedBytesIO(b"abcdefghij")
+
+    client.storage.from_("assets").upload_resumable("file.bin", source)
+
+    assert source.read_sizes
+    assert max(source.read_sizes) <= 4
+    upload_calls = [call for call in transport.calls if call[0] == "uploadPart"]
+    assert [call[1]["request"].data for call in upload_calls] == [
+        b"abcd",
+        b"efgh",
+        b"ij",
+    ]
+
+
+def test_storage_clamps_a_seekable_source_positioned_past_eof() -> None:
+    transport = FakeTransport()
+    transport.upload_session_total_parts = 0
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    source = BytesIO(b"a")
+    source.seek(2)
+
+    client.storage.from_("assets").upload_resumable("file.bin", source)
+
+    create_call = next(
+        call for call in transport.calls if call[0] == "createUploadSession"
+    )
+    assert create_call[1]["request"].total_size == 0
+
+
+def test_storage_surfaces_a_failed_seekable_position_restore() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    with pytest.raises(OSError, match="restore failed"):
+        client.storage.from_("assets").upload_resumable(
+            "file.bin",
+            RestoreFailingBytesIO(b"abcdefgh"),
+        )
+
+    assert all(operation != "createUploadSession" for operation, _ in transport.calls)
+
+
+def test_storage_fills_parts_when_a_seekable_source_returns_short_reads() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 3
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    client.storage.from_("assets").upload_resumable(
+        "file.bin",
+        ShortReadBytesIO(b"abcdefghij"),
+    )
+
+    upload_calls = [call for call in transport.calls if call[0] == "uploadPart"]
+    assert [call[1]["request"].data for call in upload_calls] == [
+        b"abcd",
+        b"efgh",
+        b"ij",
+    ]
+
+
+def test_storage_spools_non_seekable_uploads_with_bounded_reads() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 3
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    source = BoundedNonSeekableReader(b"abcdefghij")
+
+    client.storage.from_("assets").upload_resumable(
+        "file.bin",
+        cast("BinaryIO", source),
+    )
+
+    assert source.read_sizes
+    assert max(source.read_sizes) <= 1_048_576
+    upload_calls = [call for call in transport.calls if call[0] == "uploadPart"]
+    assert [call[1]["request"].data for call in upload_calls] == [
+        b"abcd",
+        b"efgh",
+        b"ij",
+    ]
+
+
+def test_storage_spools_read_only_streams_without_a_seekability_probe() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 2
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    client.storage.from_("assets").upload_resumable(
+        "file.bin",
+        cast("BinaryIO", ReadOnlyStream(b"abcdefgh")),
+    )
+
+    upload_calls = [call for call in transport.calls if call[0] == "uploadPart"]
+    assert [call[1]["request"].data for call in upload_calls] == [b"abcd", b"efgh"]
+
+
+def test_storage_aborts_when_a_stream_reader_raises_an_unexpected_error() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 2
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    with pytest.raises(RuntimeError, match="reader failed"):
+        client.storage.from_("assets").upload_resumable(
+            "file.bin",
+            FailingSeekableReader(b"abcdefgh"),
+        )
+
+    assert [operation for operation, _ in transport.calls[-2:]] == [
+        "uploadPart",
+        "abortUploadSession",
+    ]
+
+
+def test_storage_preserves_reader_error_when_abort_cleanup_raises() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 2
+    transport.raise_abort_error = True
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    with pytest.raises(RuntimeError, match="reader failed"):
+        client.storage.from_("assets").upload_resumable(
+            "file.bin",
+            FailingSeekableReader(b"abcdefgh"),
+        )
+
+
+def test_storage_rejects_temporarily_unavailable_nonblocking_sources() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    source = TemporarilyUnavailableReader()
+
+    with pytest.raises(BlockingIOError, match="temporarily unavailable"):
+        client.storage.from_("assets").upload_resumable(
+            "file.bin",
+            cast("BinaryIO", source),
+        )
+
+    assert all(operation != "createUploadSession" for operation, _ in transport.calls)
+
+
+def test_storage_validates_authentication_before_spooling() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    source = BoundedNonSeekableReader(b"abcdefghij")
+
+    with pytest.raises(RuntimeError, match="active session"):
+        client.storage.from_("assets").upload_resumable(
+            "file.bin",
+            cast("BinaryIO", source),
+        )
+
+    assert source.read_sizes == []
+
+
+def test_storage_validates_path_before_spooling() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    source = BoundedNonSeekableReader(b"abcdefghij")
+
+    with pytest.raises(ValueError, match="non-empty string"):
+        client.storage.from_("assets").upload_resumable(
+            "",
+            cast("BinaryIO", source),
+        )
+
+    assert source.read_sizes == []
 
 
 @pytest.mark.parametrize("invalid_paths", [[], [""], b"abc"])
