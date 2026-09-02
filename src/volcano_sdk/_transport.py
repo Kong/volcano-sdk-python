@@ -250,6 +250,14 @@ class StorageUploadPartRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class StorageUploadSessionReference:
+    """Values identifying one resumable storage upload session."""
+
+    path: str
+    session_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class _GeneratedTransportResponse:
     status_code: int
     payload: Any
@@ -1313,6 +1321,23 @@ class GeneratedTransport:
                 body=File(payload=BytesIO(request.data)),
                 x_upload_session=request.session_id,
                 x_part_number=request.part_number,
+            )
+        return self._response(response)
+
+    def complete_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionReference,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = upload_storage_object.sync_detailed(
+                bucket_name,
+                request.path,
+                client=client,
+                x_upload_session=request.session_id,
+                x_upload_complete="true",
             )
         return self._response(response)
 

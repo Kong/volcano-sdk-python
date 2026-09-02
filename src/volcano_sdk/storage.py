@@ -13,6 +13,7 @@ from urllib.parse import quote
 
 from ._transport import (
     StorageUploadPartRequest,
+    StorageUploadSessionReference,
     StorageUploadSessionRequest,
     Transport,
     TransportResponse,
@@ -283,6 +284,20 @@ class StorageUploadPartTransport(Protocol):
         ...
 
 
+class StorageCompleteUploadTransport(Protocol):
+    """Transport capability required to complete resumable storage uploads."""
+
+    def complete_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionReference,
+    ) -> TransportResponse:
+        """Complete one resumable storage upload session."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class StorageBucket:
     """Operations scoped to one storage bucket."""
@@ -364,6 +379,26 @@ class StorageBucket:
             ),
         )
         return _upload_part(response_payload(response, 200))
+
+    def complete_upload_session(
+        self,
+        path: str,
+        *,
+        session_id: str,
+    ) -> StorageObject:
+        """Complete a resumable upload and return the stored object."""
+        transport = cast("StorageCompleteUploadTransport", self._client._transport)
+        response = invoke(
+            transport.complete_upload_session,
+            authorization=self._client._session_token(),
+            bucket_name=self._name,
+            request=StorageUploadSessionReference(
+                path=_storage_path(path),
+                session_id=session_id,
+            ),
+        )
+        payload = cast("Mapping[str, object]", response_payload(response, 200))
+        return _storage_object(payload["object"])
 
     def list(
         self,

@@ -59,6 +59,11 @@ part = bucket.upload_part(
     data=b"x" * upload_session.part_size,
 )
 print(part.etag)
+completed = bucket.complete_upload_session(
+    "videos/demo.mp4",
+    session_id=upload_session.session_id,
+)
+print(completed.name)
 
 page = bucket.list("avatars", limit=100)
 for object_ in page.objects:
@@ -88,6 +93,8 @@ Pass an HTTP byte range to download only part of an object.
 part count, and expiration time for a resumable upload.
 `upload_part()` returns immutable part metadata and can safely retry the same
 part number to replace that part.
+`complete_upload_session()` assembles the uploaded parts and returns the stored
+object.
 
 Database builders are immutable, so you can safely reuse a base query. Chain `neq()`, `gt()`,
 `gte()`, `lt()`, and `lte()` for comparison filters:
