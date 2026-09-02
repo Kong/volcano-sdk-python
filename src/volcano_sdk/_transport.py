@@ -83,6 +83,7 @@ from ._generated.api.o_auth_authentication.refresh_o_auth_provider_token import 
 )
 from ._generated.api.storage_objects import (
     download_storage_object,
+    list_storage_objects,
     upload_storage_object,
 )
 from ._generated.client import AuthenticatedClient
@@ -1257,6 +1258,25 @@ class GeneratedTransport:
                 bucket_name,
                 path,
                 client=client,
+            )
+        return self._response(response)
+
+    def list_storage_objects(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        prefix: str,
+        limit: int | None,
+        cursor: str | None,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = list_storage_objects.sync_detailed(
+                bucket_name,
+                client=client,
+                prefix=prefix or UNSET,
+                limit=limit if limit is not None else UNSET,
+                cursor=cursor if cursor is not None else UNSET,
             )
         return self._response(response)
 

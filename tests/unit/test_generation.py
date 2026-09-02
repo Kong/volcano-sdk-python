@@ -6,7 +6,7 @@ from runpy import run_path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_generate_emits_all_six_contract_operations(tmp_path: Path) -> None:
+def test_generate_emits_required_contract_operations(tmp_path: Path) -> None:
     script = run_path(str(ROOT / "scripts" / "generate_openapi.py"))
     generate = script["generate"]
     output = tmp_path / "_generated"
@@ -18,6 +18,7 @@ def test_generate_emits_all_six_contract_operations(tmp_path: Path) -> None:
         "query_database_select.py",
         "upload_storage_object.py",
         "download_storage_object.py",
+        "list_storage_objects.py",
         "acquire_project_lock.py",
         "release_project_lock.py",
     }
