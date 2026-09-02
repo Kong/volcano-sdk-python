@@ -594,6 +594,7 @@ changes = client.realtime.channel(
     "public:messages",
     channel_type="postgres",
 )
+client.realtime.set_database_name("app")
 stop_changes = changes.on_postgres_changes(
     "INSERT",
     schema="public",
@@ -605,7 +606,10 @@ stop_changes()
 ```
 
 When the server sends only a lightweight notification, `record` is `None` and
-the change retains its `id` and `mode` for fallback handling.
+the change retains its `id` and `mode` when no database is configured, fetching
+is disabled with `auto_fetch=False`, or the row cannot be fetched. Configure a
+database to fetch `INSERT` and `UPDATE` rows automatically. `DELETE` uses the
+provided `old_record` or an ID-only fallback without issuing a query.
 
 ## Compatibility
 

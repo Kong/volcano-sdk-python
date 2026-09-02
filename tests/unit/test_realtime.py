@@ -143,6 +143,32 @@ class AuthTransport:
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
 
+class RealtimeDatabaseTransport(AuthTransport):
+    def __init__(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        error: Exception | None = None,
+    ) -> None:
+        super().__init__()
+        self.rows = rows
+        self.error = error
+        self.queries: list[dict[str, Any]] = []
+
+    def query_database_select(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> Response:
+        del authorization
+        self.queries.append({"database_name": database_name, "body": body})
+        if self.error is not None:
+            raise self.error
+        return Response(200, {"data": self.rows})
+
+
 class FakeSubscription:
     def __init__(
         self,
@@ -456,6 +482,222 @@ def test_realtime_preserves_lightweight_postgres_metadata() -> None:
         assert changes[0].id == 42
         assert changes[0].mode == "lightweight"
         assert changes[0].record is None
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_autofetches_lightweight_postgres_rows() -> None:
+    official = FakeCentrifugeClient()
+    transport = RealtimeDatabaseTransport(
+        [{"id": 42, "body": "fetched"}],
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        received = asyncio.Event()
+        client.realtime.set_database_name("app")
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+
+        def on_insert(change: Any) -> None:
+            changes.append(change)
+            received.set()
+
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=on_insert,
+        )
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "id": 42,
+                "mode": "lightweight",
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.2)
+
+        assert changes[0].record == {"id": 42, "body": "fetched"}
+        assert changes[0].mode is None
+        assert changes[0].id is None
+        assert transport.queries == [
+            {
+                "database_name": "app",
+                "body": {
+                    "table": "messages",
+                    "filters": [{"column": "id", "operator": "eq", "value": 42}],
+                    "limit": 1,
+                },
+            }
+        ]
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_delivers_lightweight_delete_without_fetching() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        received = asyncio.Event()
+        client.realtime.set_database_name("app")
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+
+        def on_delete(change: Any) -> None:
+            changes.append(change)
+            received.set()
+
+        channel.on_postgres_changes(
+            "DELETE",
+            schema="public",
+            table="messages",
+            callback=on_delete,
+        )
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "DELETE",
+                "schema": "public",
+                "table": "messages",
+                "id": 42,
+                "mode": "lightweight",
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.1)
+
+        assert changes[0].old_record == {"id": 42}
+        assert changes[0].mode is None
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_can_disable_lightweight_postgres_autofetch() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        received = asyncio.Event()
+        client.realtime.set_database_name("app")
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+            auto_fetch=False,
+        )
+
+        def on_insert(change: Any) -> None:
+            changes.append(change)
+            received.set()
+
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=on_insert,
+        )
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "id": 42,
+                "mode": "lightweight",
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.1)
+
+        assert changes[0].record is None
+        assert changes[0].mode == "lightweight"
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_reports_autofetch_failure_and_delivers_notification() -> None:
+    official = FakeCentrifugeClient()
+    fetch_error = RuntimeError("database unavailable")
+    transport = RealtimeDatabaseTransport([], error=fetch_error)
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        errors: list[dict[str, Any]] = []
+        received = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        loop.set_exception_handler(lambda _loop, context: errors.append(context))
+        client.realtime.set_database_name("app")
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+
+        def on_insert(change: Any) -> None:
+            changes.append(change)
+            received.set()
+
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=on_insert,
+        )
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "id": 42,
+                "mode": "lightweight",
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.2)
+
+        assert changes[0].mode == "lightweight"
+        assert errors[0]["exception"] is fetch_error
         await client.realtime.disconnect()
 
     asyncio.run(scenario())

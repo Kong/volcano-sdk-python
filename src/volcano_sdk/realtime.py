@@ -6,11 +6,12 @@ import asyncio
 import importlib
 import inspect
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any, Literal, Protocol, TypeAlias, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
+from .errors import VolcanoError
 from .models import JSONValue, _freeze_json
 
 MessageCallback = Callable[[Any], Any]
@@ -42,6 +43,13 @@ POSTGRES_ONLY = "operation is only available for postgres channels"
 CALLBACK_NOT_CALLABLE = "callback must be callable"
 SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
     "centrifuge client subscription registry is unavailable"
+)
+AUTOFETCH_ERRORS = (
+    VolcanoError,
+    RuntimeError,
+    LookupError,
+    TypeError,
+    ValueError,
 )
 
 
@@ -189,6 +197,38 @@ class RealtimeContext(Protocol):
     def _anon_token(self) -> str: ...
 
     def _session_token(self) -> str: ...
+
+    def database(self, name: str) -> PostgresDatabase:
+        """Return a database facade by name."""
+        ...
+
+
+class PostgresQuery(Protocol):
+    """Database query operations needed to fetch a lightweight change."""
+
+    def select(self, *columns: str) -> PostgresQuery:
+        """Select columns from the current table."""
+        ...
+
+    def eq(self, column: str, value: object) -> PostgresQuery:
+        """Filter the current table by equality."""
+        ...
+
+    def limit(self, count: int) -> PostgresQuery:
+        """Limit the number of returned rows."""
+        ...
+
+    def execute(self) -> list[dict[str, Any]]:
+        """Execute the query and return its rows."""
+        ...
+
+
+class PostgresDatabase(Protocol):
+    """Database facade needed to fetch a lightweight change."""
+
+    def from_(self, table: str) -> PostgresQuery:
+        """Create a query for a table."""
+        ...
 
 
 class CentrifugeSubscription(Protocol):
@@ -356,9 +396,7 @@ class _ChannelEvents:
 
     async def on_publication(self, ctx: PublicationContext) -> None:
         if self._channel._type == "postgres":
-            change = _postgres_change(ctx.pub.data)
-            if change is not None:
-                await self._channel._emit("*", change)
+            await self._channel._receive_postgres_change(ctx.pub.data)
             return
         await self._channel._emit("message", ctx.pub.data)
 
@@ -448,11 +486,14 @@ class Channel:
         realtime: Realtime,
         name: str,
         channel_type: ChannelType,
+        *,
+        auto_fetch: bool,
     ) -> None:
         """Create a channel managed by a realtime facade."""
         self._realtime = realtime
         self._name = name
         self._type = channel_type
+        self._auto_fetch = auto_fetch
         self._callbacks: dict[str, list[MessageCallback]] = {}
         self._presence_state: dict[str, RealtimePresenceInfo] = {}
         self._presence_events: list[tuple[str, RealtimePresenceInfo]] = []
@@ -470,6 +511,7 @@ class Channel:
         self._active_callback_task: asyncio.Task[None] | None = None
         self._callback_stop: asyncio.Event | None = None
         self._pending_presence_sync: Any = NO_PENDING_CALLBACK
+        self._postgres_tasks: set[asyncio.Task[None]] = set()
 
     @property
     def name(self) -> str:
@@ -554,6 +596,57 @@ class Channel:
     def _ensure_presence(self) -> None:
         if self._type != "presence":
             raise ValueError(PRESENCE_ONLY)
+
+    async def _receive_postgres_change(self, data: Any) -> None:
+        change = _postgres_change(data)
+        if change is None:
+            return
+        if change.mode != "lightweight":
+            await self._emit("*", change)
+            return
+        if change.type == "DELETE":
+            old_record = change.old_record
+            if old_record is None and change.id is not None:
+                old_record = {"id": change.id}
+            await self._emit(
+                "*",
+                replace(change, old_record=old_record, id=None, mode=None),
+            )
+            return
+        if not self._auto_fetch or self._realtime._database_name is None:
+            await self._emit("*", change)
+            return
+        task = asyncio.create_task(self._autofetch_postgres_change(change))
+        self._postgres_tasks.add(task)
+        task.add_done_callback(self._postgres_tasks.discard)
+
+    async def _autofetch_postgres_change(self, change: PostgresChange) -> None:
+        try:
+            row = await asyncio.to_thread(self._realtime._fetch_postgres_row, change)
+            if row is None:
+                identity = f"{change.schema}.{change.table}:{change.id}"
+                message = f"Postgres row not found: {identity}"
+                raise LookupError(message)
+            delivered = replace(change, record=row, id=None, mode=None)
+        except AUTOFETCH_ERRORS as error:
+            asyncio.get_running_loop().call_exception_handler(
+                {
+                    "message": "Volcano realtime Postgres auto-fetch failed",
+                    "exception": error,
+                    "channel": self._name,
+                }
+            )
+            delivered = change
+        if self._subscribed:
+            await self._emit("*", delivered)
+
+    async def _cancel_postgres_tasks(self) -> None:
+        tasks = tuple(self._postgres_tasks)
+        self._postgres_tasks.clear()
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def subscribe(self) -> None:
         """Subscribe to this channel."""
@@ -775,6 +868,7 @@ class Channel:
     async def _reset(self) -> None:
         self._subscription = None
         await self._cancel_presence_sync()
+        await self._cancel_postgres_tasks()
         task = self._callback_task
         active_task = self._active_callback_task
         if self._callback_stop is not None:
@@ -823,6 +917,11 @@ class Realtime:
             tuple[str, Any, tuple[int, ...]]
         ] = asyncio.Queue(maxsize=CALLBACK_QUEUE_LIMIT)
         self._connection_callback_task: asyncio.Task[None] | None = None
+        self._database_name: str | None = None
+
+    def set_database_name(self, name: str | None) -> None:
+        """Configure the database used for lightweight Postgres auto-fetch."""
+        self._database_name = name
 
     def on_connect(self, callback: RealtimeCallback) -> UnsubscribeCallback:
         """Register a connection callback and return its unsubscribe function."""
@@ -909,6 +1008,7 @@ class Realtime:
         name: str,
         *,
         channel_type: ChannelType = "broadcast",
+        auto_fetch: bool = True,
     ) -> Channel:
         """Return a stable channel facade for a realtime name and type."""
         channel_type = _validate_channel_type(channel_type)
@@ -916,8 +1016,30 @@ class Realtime:
         if wire_name in self._removing_channels:
             raise RuntimeError(CHANNEL_REMOVAL_IN_PROGRESS)
         if wire_name not in self._channels:
-            self._channels[wire_name] = Channel(self, wire_name, channel_type)
+            self._channels[wire_name] = Channel(
+                self,
+                wire_name,
+                channel_type,
+                auto_fetch=auto_fetch,
+            )
         return self._channels[wire_name]
+
+    def _fetch_postgres_row(
+        self,
+        change: PostgresChange,
+    ) -> dict[str, Any] | None:
+        database_name = self._database_name
+        if database_name is None:
+            return None
+        rows = (
+            self._client_context.database(database_name)
+            .from_(change.table)
+            .select("*")
+            .eq("id", change.id)
+            .limit(1)
+            .execute()
+        )
+        return rows[0] if rows else None
 
     @property
     def is_connected(self) -> bool:
