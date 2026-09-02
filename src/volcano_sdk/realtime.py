@@ -10,11 +10,17 @@ from typing import Any, Protocol, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
 MessageCallback = Callable[[Any], Any]
+CENTRIFUGE_ERROR = cast(
+    "type[Exception]",
+    importlib.import_module("centrifuge").CentrifugeError,
+)
 CALLBACK_QUEUE_LIMIT = 128
 CALLBACK_QUEUE_FULL_MESSAGE = (
     "Volcano realtime callback queue is full; publication dropped"
 )
 CHANNEL_NOT_SUBSCRIBED = "Channel must be subscribed before sending"
+CHANNEL_REMOVAL_IN_PROGRESS = "realtime channel removal is in progress"
+CHANNEL_NOT_MANAGED = "realtime channel is no longer managed"
 SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
     "centrifuge client subscription registry is unavailable"
 )
@@ -328,10 +334,13 @@ class Realtime:
         self._connection: _VolcanoCentrifugeConnection | None = None
         self._connection_lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
+        self._removing_channels: set[str] = set()
 
     def channel(self, name: str) -> Channel:
         """Return a stable channel facade for a broadcast name."""
         wire_name = f"broadcast:{name}"
+        if wire_name in self._removing_channels:
+            raise RuntimeError(CHANNEL_REMOVAL_IN_PROGRESS)
         if wire_name not in self._channels:
             self._channels[wire_name] = Channel(self, wire_name)
         return self._channels[wire_name]
@@ -348,16 +357,30 @@ class Realtime:
             channel = self._channels.get(wire_name)
             if channel is None:
                 return
-            await self._remove_channel(channel)
-            self._channels.pop(wire_name, None)
+            self._removing_channels.add(wire_name)
+            try:
+                await self._remove_channel(channel)
+                self._channels.pop(wire_name, None)
+            finally:
+                self._removing_channels.remove(wire_name)
 
     async def remove_all_channels(self) -> None:
         """Unsubscribe and forget every managed channel."""
         async with self._connection_lock:
+            first_error: Exception | None = None
             for wire_name, channel in tuple(self._channels.items()):
-                await self._remove_channel(channel)
-                if self._channels.get(wire_name) is channel:
-                    del self._channels[wire_name]
+                self._removing_channels.add(wire_name)
+                try:
+                    await self._remove_channel(channel)
+                except CENTRIFUGE_ERROR as error:
+                    first_error = first_error or error
+                else:
+                    if self._channels.get(wire_name) is channel:
+                        del self._channels[wire_name]
+                finally:
+                    self._removing_channels.remove(wire_name)
+            if first_error is not None:
+                raise first_error
 
     async def _remove_channel(self, channel: Channel) -> None:
         subscription = channel._subscription
@@ -396,6 +419,8 @@ class Realtime:
 
     async def _subscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
+            if self._channels.get(channel._name) is not channel:
+                raise RuntimeError(CHANNEL_NOT_MANAGED)
             connection = await self._connect_locked()
             if channel._subscription is None:
                 channel._subscription = connection.new_subscription(

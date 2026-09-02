@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -13,6 +14,14 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
 UNEXPECTED_TRANSPORT_CALL = "unexpected transport operation"
+
+
+def centrifuge_error(message: str) -> Exception:
+    error_type = cast(
+        "type[Exception]",
+        importlib.import_module("centrifuge").CentrifugeError,
+    )
+    return error_type(message)
 
 
 @dataclass(frozen=True)
@@ -129,10 +138,13 @@ class AuthTransport:
 
 
 class FakeSubscription:
-    def __init__(self, events: Any) -> None:
+    def __init__(self, name: str, events: Any) -> None:
+        self.name = name
         self.events = events
         self.calls: list[tuple[str, Any]] = []
-        self.unsubscribe_error: RuntimeError | None = None
+        self.unsubscribe_error: Exception | None = None
+        self.unsubscribe_entered: asyncio.Event | None = None
+        self.unsubscribe_release: asyncio.Event | None = None
 
     async def subscribe(self) -> None:
         self.calls.append(("subscribe", None))
@@ -142,6 +154,10 @@ class FakeSubscription:
 
     async def unsubscribe(self) -> None:
         self.calls.append(("unsubscribe", None))
+        if self.unsubscribe_entered is not None:
+            self.unsubscribe_entered.set()
+        if self.unsubscribe_release is not None:
+            await self.unsubscribe_release.wait()
         if self.unsubscribe_error is not None:
             raise self.unsubscribe_error
 
@@ -172,7 +188,7 @@ class FakeCentrifugeClient:
             message = f"duplicate subscription: {name}"
             raise RuntimeError(message)
         self.calls.append(f"channel:{name}")
-        self.subscription = FakeSubscription(events)
+        self.subscription = FakeSubscription(name, events)
         self._subs[name] = self.subscription
         return self.subscription
 
@@ -333,16 +349,74 @@ def test_realtime_retains_channel_when_removal_fails() -> None:
         channel = client.realtime.channel("contract")
         await channel.subscribe()
         assert official.subscription is not None
-        error = RuntimeError("unsubscribe failed")
+        error = centrifuge_error("unsubscribe failed")
         official.subscription.unsubscribe_error = error
 
-        with pytest.raises(RuntimeError, match="unsubscribe failed"):
+        with pytest.raises(type(error), match="unsubscribe failed"):
             await client.realtime.remove_channel("contract")
 
         assert client.realtime.channel("contract") is channel
         official.subscription.unsubscribe_error = None
         await client.realtime.remove_channel("contract")
         assert client.realtime.channel("contract") is not channel
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_continues_removing_channels_after_one_failure() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        first = client.realtime.channel("first")
+        second = client.realtime.channel("second")
+        await first.subscribe()
+        await second.subscribe()
+        error = centrifuge_error("unsubscribe failed")
+        official._subs["broadcast:first"].unsubscribe_error = error
+
+        with pytest.raises(type(error), match="unsubscribe failed"):
+            await client.realtime.remove_all_channels()
+
+        assert client.realtime.channel("first") is first
+        assert client.realtime.channel("second") is not second
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_rejects_channel_lookup_during_removal() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("contract")
+        await channel.subscribe()
+        assert official.subscription is not None
+        official.subscription.unsubscribe_entered = asyncio.Event()
+        official.subscription.unsubscribe_release = asyncio.Event()
+        removing = asyncio.create_task(client.realtime.remove_channel("contract"))
+        await official.subscription.unsubscribe_entered.wait()
+
+        with pytest.raises(RuntimeError, match="removal is in progress"):
+            client.realtime.channel("contract")
+
+        official.subscription.unsubscribe_release.set()
+        await removing
+        assert client.realtime.channel("contract") is not channel
+        with pytest.raises(RuntimeError, match="no longer managed"):
+            await channel.subscribe()
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -707,7 +781,7 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
 
     def new_subscription(name: str, *, events: Any) -> FakeSubscription:
         official.calls.append(f"channel:{name}")
-        official.subscription = BlockingSubscription(events)
+        official.subscription = BlockingSubscription(name, events)
         official._subs[name] = official.subscription
         return official.subscription
 
