@@ -252,6 +252,66 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
     assert received == [{"event": "message", "value": "contract"}]
 
 
+def test_realtime_reports_connection_state_and_removes_one_channel() -> None:
+    transport = AuthTransport()
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("contract")
+        assert client.realtime.is_connected is False
+        await channel.subscribe()
+        assert client.realtime.is_connected is True
+
+        await client.realtime.remove_channel("contract")
+
+        assert official.subscription is not None
+        assert official.subscription.calls[-1] == ("unsubscribe", None)
+        assert client.realtime.channel("contract") is not channel
+        assert client.realtime.is_connected is True
+        await client.realtime.remove_channel("missing")
+        await client.realtime.disconnect()
+        assert client.realtime.is_connected is False
+
+    asyncio.run(scenario())
+
+
+def test_realtime_removes_all_channels_without_disconnecting() -> None:
+    transport = AuthTransport()
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        first = client.realtime.channel("first")
+        second = client.realtime.channel("second")
+        await first.subscribe()
+        await second.subscribe()
+        subscriptions = tuple(official._subs.values())
+
+        await client.realtime.remove_all_channels()
+
+        assert all(
+            subscription.calls[-1] == ("unsubscribe", None)
+            for subscription in subscriptions
+        )
+        assert client.realtime.channel("first") is not first
+        assert client.realtime.channel("second") is not second
+        assert client.realtime.is_connected is True
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_callbacks_run_outside_the_message_processor() -> None:
     transport = AuthTransport()
     official = FakeCentrifugeClient()

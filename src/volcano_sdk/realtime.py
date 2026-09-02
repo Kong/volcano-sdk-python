@@ -322,6 +322,40 @@ class Realtime:
             self._channels[wire_name] = Channel(self, wire_name)
         return self._channels[wire_name]
 
+    @property
+    def is_connected(self) -> bool:
+        """Return whether the realtime transport is connected."""
+        return self._connection is not None
+
+    async def remove_channel(self, name: str) -> None:
+        """Unsubscribe and forget one broadcast channel."""
+        wire_name = f"broadcast:{name}"
+        async with self._connection_lock:
+            channel = self._channels.pop(wire_name, None)
+            if channel is not None:
+                await self._remove_channel(channel)
+
+    async def remove_all_channels(self) -> None:
+        """Unsubscribe and forget every managed channel."""
+        async with self._connection_lock:
+            channels = tuple(self._channels.values())
+            self._channels.clear()
+            results = await asyncio.gather(
+                *(self._remove_channel(channel) for channel in channels),
+                return_exceptions=True,
+            )
+            for result in results:
+                if isinstance(result, BaseException):
+                    raise result
+
+    @staticmethod
+    async def _remove_channel(channel: Channel) -> None:
+        try:
+            if channel._subscription is not None:
+                await channel._subscription.unsubscribe()
+        finally:
+            await channel._reset()
+
     async def _token(self) -> str:
         return self._client_context._session_token()
 

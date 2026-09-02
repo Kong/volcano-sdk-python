@@ -536,10 +536,17 @@ channel = client.realtime.channel("updates")
 channel.on("message", print)
 
 await channel.subscribe()
+assert client.realtime.is_connected
 await channel.send({"event": "message", "value": "contract"})
-await channel.unsubscribe()
+await client.realtime.remove_channel("updates")
+assert client.realtime.is_connected
 await client.realtime.disconnect()
+assert not client.realtime.is_connected
 ```
+
+`remove_channel()` unsubscribes and forgets one channel. `remove_all_channels()`
+does the same for every managed channel without disconnecting the shared
+realtime transport, so later calls to `channel()` return fresh facades.
 
 ## Compatibility
 
