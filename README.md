@@ -50,6 +50,7 @@ uploaded = bucket.upload_resumable(
     "videos/automatic.mp4",
     video,
     content_type="video/mp4",
+    on_progress=lambda uploaded, total: print(f"{uploaded}/{total}"),
 )
 print(uploaded.name)
 upload_session = bucket.create_upload_session(
@@ -110,7 +111,9 @@ part count, and expiration time for a resumable upload.
 `upload_resumable()` accepts bytes or a binary file-like object, creates a
 session, and uploads server-sized chunks. It streams seekable files directly;
 non-seekable inputs are spooled to a temporary file with bounded reads. If a
-part fails, it makes a best-effort abort and raises the original error.
+part or progress callback fails, it makes a best-effort abort and raises the
+original error. `on_progress` runs after each successful part with cumulative
+uploaded bytes and the total size.
 `upload_part()` returns immutable part metadata and can safely retry the same
 part number to replace that part.
 `locks.get()` returns immutable lock availability, expiry, and fencing-token

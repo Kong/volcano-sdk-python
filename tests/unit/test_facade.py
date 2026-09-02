@@ -816,6 +816,47 @@ def test_storage_uploads_bytes_with_server_selected_chunks() -> None:
     assert object_.name == "videos/demo.mp4"
 
 
+def test_storage_reports_progress_after_each_uploaded_part() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 3
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    progress: list[tuple[int, int]] = []
+
+    client.storage.from_("assets").upload_resumable(
+        "file.bin",
+        b"abcdefghij",
+        on_progress=lambda uploaded, total: progress.append((uploaded, total)),
+    )
+
+    assert progress == [(4, 10), (8, 10), (10, 10)]
+
+
+def test_storage_aborts_when_a_progress_callback_fails() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 2
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    def fail_progress(_uploaded: int, _total: int) -> None:
+        message = "progress failed"
+        raise RuntimeError(message)
+
+    with pytest.raises(RuntimeError, match="progress failed"):
+        client.storage.from_("assets").upload_resumable(
+            "file.bin",
+            b"abcdefgh",
+            on_progress=fail_progress,
+        )
+
+    assert [operation for operation, _ in transport.calls[-2:]] == [
+        "uploadPart",
+        "abortUploadSession",
+    ]
+
+
 def test_storage_aborts_after_part_failure_without_masking_the_error() -> None:
     transport = FakeTransport()
     transport.upload_session_part_size = 4

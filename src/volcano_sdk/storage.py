@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
-from collections.abc import Generator, Mapping, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import datetime
@@ -564,6 +564,7 @@ class StorageBucket:
         *,
         content_type: str = "application/octet-stream",
         part_size: int | None = None,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> StorageObject:
         """Upload bytes or a binary stream through a resumable session."""
         path = _storage_path(path)
@@ -577,7 +578,13 @@ class StorageBucket:
             )
             upload_succeeded = False
             try:
-                self._upload_session_parts(path, source, session)
+                self._upload_session_parts(
+                    path,
+                    source,
+                    session,
+                    total_size,
+                    on_progress,
+                )
                 upload_succeeded = True
             finally:
                 if not upload_succeeded:
@@ -589,14 +596,21 @@ class StorageBucket:
         path: str,
         source: BinaryIO,
         session: UploadSession,
+        total_size: int,
+        on_progress: Callable[[int, int], None] | None,
     ) -> None:
+        uploaded = 0
         for part_index in range(session.total_parts):
+            part = _read_upload_part(source, session.part_size)
             self.upload_part(
                 path,
                 session_id=session.session_id,
                 part_number=part_index + 1,
-                data=_read_upload_part(source, session.part_size),
+                data=part,
             )
+            uploaded += len(part)
+            if on_progress is not None:
+                on_progress(uploaded, total_size)
 
     def _abort_failed_upload(self, path: str, session_id: str) -> None:
         with suppress(Exception):
