@@ -122,6 +122,21 @@ class StorageDeleteTransport(Protocol):
         ...
 
 
+class StorageMoveTransport(Protocol):
+    """Transport capability required to move a storage object."""
+
+    def move_storage_object(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        from_path: str,
+        to_path: str,
+    ) -> TransportResponse:
+        """Move one object within a bucket."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class StorageBucket:
     """Operations scoped to one storage bucket."""
@@ -185,6 +200,19 @@ class StorageBucket:
             )
             response_payload(response, 200)
         return path_list
+
+    def move(self, from_path: str, to_path: str) -> StorageObject:
+        """Move or rename an object within this bucket."""
+        source, destination = _storage_paths((from_path, to_path))
+        transport = cast("StorageMoveTransport", self._client._transport)
+        response = invoke(
+            transport.move_storage_object,
+            authorization=self._client._session_token(),
+            bucket_name=self._name,
+            from_path=source,
+            to_path=destination,
+        )
+        return _storage_object(response_payload(response, 200))
 
 
 class Storage:

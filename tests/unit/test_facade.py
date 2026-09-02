@@ -85,6 +85,20 @@ class FakeTransport:
         self.calls.append(("deleteStorageObject", kwargs))
         return FakeResponse(200)
 
+    def move_storage_object(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("moveStorageObject", kwargs))
+        return FakeResponse(
+            200,
+            {
+                "id": "00000000-0000-4000-8000-000000000020",
+                "bucket_id": "00000000-0000-4000-8000-000000000030",
+                "name": kwargs["to_path"],
+                "size": 5,
+                "mime_type": "text/plain",
+                "is_public": False,
+            },
+        )
+
     def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("acquireProjectLock", kwargs))
         return FakeResponse(
@@ -286,3 +300,25 @@ def test_storage_remove_rejects_invalid_paths_before_transport(
         client.storage.from_("assets").remove(invalid_paths)
 
     assert transport.calls == calls_after_sign_in
+
+
+def test_storage_move_returns_the_destination_object() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    moved = client.storage.from_("assets").move(
+        "drafts/a.txt",
+        "published/a.txt",
+    )
+
+    assert moved.name == "published/a.txt"
+    assert transport.calls[-1] == (
+        "moveStorageObject",
+        {
+            "authorization": "access-token",
+            "bucket_name": "assets",
+            "from_path": "drafts/a.txt",
+            "to_path": "published/a.txt",
+        },
+    )

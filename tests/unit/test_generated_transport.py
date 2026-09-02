@@ -1286,3 +1286,41 @@ def test_generated_transport_deletes_a_storage_object() -> None:
     assert requests[0].method == "DELETE"
     assert requests[0].url.path == "/storage/assets/archive/a.txt"
     assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
+def test_generated_transport_moves_a_storage_object() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "id": "00000000-0000-4000-8000-000000000020",
+                "bucket_id": "00000000-0000-4000-8000-000000000030",
+                "name": "published/a.txt",
+                "size": 5,
+                "mime_type": "text/plain",
+                "is_public": False,
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.move_storage_object(
+        authorization="access-token",
+        bucket_name="assets",
+        from_path="drafts/a.txt",
+        to_path="published/a.txt",
+    )
+
+    assert response.status_code == 200
+    assert len(requests) == 1
+    assert requests[0].url.path == "/storage/assets/move"
+    assert json.loads(requests[0].content) == {
+        "from": "drafts/a.txt",
+        "to": "published/a.txt",
+    }
