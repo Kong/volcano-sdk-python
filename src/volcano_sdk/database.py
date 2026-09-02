@@ -32,7 +32,30 @@ class QueryBuilder:
 
     def eq(self, column: str, value: object) -> QueryBuilder:
         """Add an equality filter."""
-        condition = {"column": column, "operator": "eq", "value": value}
+        return self._filter(column, "eq", value)
+
+    def neq(self, column: str, value: object) -> QueryBuilder:
+        """Add an inequality filter."""
+        return self._filter(column, "neq", value)
+
+    def gt(self, column: str, value: object) -> QueryBuilder:
+        """Add a greater-than filter."""
+        return self._filter(column, "gt", value)
+
+    def gte(self, column: str, value: object) -> QueryBuilder:
+        """Add a greater-than-or-equal filter."""
+        return self._filter(column, "gte", value)
+
+    def lt(self, column: str, value: object) -> QueryBuilder:
+        """Add a less-than filter."""
+        return self._filter(column, "lt", value)
+
+    def lte(self, column: str, value: object) -> QueryBuilder:
+        """Add a less-than-or-equal filter."""
+        return self._filter(column, "lte", value)
+
+    def _filter(self, column: str, operator: str, value: object) -> QueryBuilder:
+        condition = {"column": column, "operator": operator, "value": value}
         return replace(self, _filters=(*self._filters, condition))
 
     def execute(self) -> list[dict[str, Any]]:
