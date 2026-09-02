@@ -12,6 +12,7 @@ import pytest
 
 import volcano_sdk.locks as locks_module
 from volcano_sdk import (
+    ConflictError,
     LockLease,
     ServerError,
     Session,
@@ -702,7 +703,9 @@ def test_locks_with_lock_preserves_body_errors_and_releases() -> None:
     assert transport.calls[-1][0] == "releaseProjectLock"
 
 
-def test_locks_with_lock_marks_a_stalled_renewal_lost_at_expiry() -> None:
+def test_locks_with_lock_marks_a_stalled_renewal_lost_at_expiry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     renew_entered = Event()
     renew_release = Event()
 
@@ -720,6 +723,8 @@ def test_locks_with_lock_marks_a_stalled_renewal_lost_at_expiry() -> None:
             return FakeResponse(200, {"expires_at": expires_at.isoformat()})
 
     transport = StalledRenewTransport()
+    monkeypatch.setattr(locks_module, "RENEWAL_SAFETY_MARGIN_SECONDS", 0)
+    monkeypatch.setattr(locks_module, "RENEWAL_REQUEST_BUDGET_SECONDS", 0)
     client = VolcanoClient(
         anon_key="anon-key",
         service_key="service-key",
@@ -748,10 +753,88 @@ def test_lock_renewal_delay_reserves_server_safety_margin() -> None:
     assert locks_module._renewal_delay(30, lease) == 0
 
 
+def test_locks_with_lock_renews_an_expired_acquisition_before_body() -> None:
+    class ExpiredAcquireTransport(FakeTransport):
+        def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("acquireProjectLock", kwargs))
+            expires_at = datetime.now(UTC) - timedelta(seconds=1)
+            return FakeResponse(201, {"expires_at": expires_at.isoformat()})
+
+        def renew_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("renewProjectLock", kwargs))
+            return FakeResponse(409, {"message": "lock ownership lost"})
+
+    transport = ExpiredAcquireTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+    body_ran = False
+
+    with (
+        pytest.raises(ConflictError, match="ownership lost"),
+        client.locks.with_lock("build", ttl=30),
+    ):
+        body_ran = True
+
+    assert body_ran is False
+    assert [name for name, _arguments in transport.calls] == [
+        "acquireProjectLock",
+        "renewProjectLock",
+        "releaseProjectLock",
+    ]
+
+
+def test_locks_with_lock_bounds_stalled_renewal_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    renew_entered = Event()
+    renew_release = Event()
+
+    class StalledRenewTransport(FakeTransport):
+        def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("acquireProjectLock", kwargs))
+            expires_at = datetime.now(UTC) + timedelta(seconds=2.05)
+            return FakeResponse(201, {"expires_at": expires_at.isoformat()})
+
+        def renew_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("renewProjectLock", kwargs))
+            renew_entered.set()
+            renew_release.wait(timeout=1)
+            expires_at = datetime.now(UTC) + timedelta(seconds=30)
+            return FakeResponse(200, {"expires_at": expires_at.isoformat()})
+
+    monkeypatch.setattr(locks_module, "RENEWER_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
+    transport = StalledRenewTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+
+    try:
+        with (
+            pytest.raises(TimeoutError, match="did not stop"),
+            client.locks.with_lock("build", ttl=30),
+        ):
+            assert renew_entered.wait(timeout=1)
+    finally:
+        renew_release.set()
+
+    assert transport.calls[-1][0] == "releaseProjectLock"
+
+
 def test_locks_with_lock_releases_when_renewal_thread_cannot_start(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    transport = FakeTransport()
+    class CurrentAcquireTransport(FakeTransport):
+        def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("acquireProjectLock", kwargs))
+            expires_at = datetime.now(UTC) + timedelta(seconds=30)
+            return FakeResponse(201, {"expires_at": expires_at.isoformat()})
+
+    transport = CurrentAcquireTransport()
     client = VolcanoClient(
         anon_key="anon-key",
         service_key="service-key",

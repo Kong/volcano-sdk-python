@@ -22,6 +22,8 @@ MAX_LOCK_TTL_SECONDS = 7_776_000
 MAX_RENEWAL_DELAY_SECONDS = 60.0
 RENEWAL_SAFETY_MARGIN_SECONDS = 1.0
 RENEWAL_REQUEST_BUDGET_SECONDS = 1.0
+RENEWER_SHUTDOWN_TIMEOUT_SECONDS = 1.0
+RENEWER_SHUTDOWN_TIMEOUT_MESSAGE = "lock renewal did not stop before cleanup"
 
 
 class LocksContext(Protocol):
@@ -199,7 +201,9 @@ class _LockRenewer:
 
     def stop(self) -> None:
         self._stop.set()
-        self._thread.join()
+        self._thread.join(timeout=RENEWER_SHUTDOWN_TIMEOUT_SECONDS)
+        if self._thread.is_alive():
+            self._guard._mark_lost(TimeoutError(RENEWER_SHUTDOWN_TIMEOUT_MESSAGE))
 
     def _run(self) -> None:
         while not self._guard.lost:
@@ -307,6 +311,8 @@ class Locks:
         renewer_started = False
         body_failed = False
         try:
+            if _renewal_delay(ttl, guard.lease) == 0:
+                guard._replace_lease(self.renew(key, guard.lease, ttl=ttl))
             guard._start_expiry_watch()
             renewer.start()
             renewer_started = True
