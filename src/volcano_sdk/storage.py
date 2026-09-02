@@ -70,11 +70,18 @@ def _storage_page(payload: object) -> StoragePage:
     )
 
 
-def _storage_paths(paths: str | Sequence[str]) -> tuple[str, ...]:
-    raw_paths = (paths,) if isinstance(paths, str) else tuple(paths)
-    if any(not path for path in raw_paths):
+def _storage_paths(paths: object) -> tuple[str, ...]:
+    if isinstance(paths, str):
+        raw_paths: tuple[object, ...] = (paths,)
+    elif isinstance(paths, Sequence):
+        raw_paths = tuple(cast("Sequence[object]", paths))
+    else:
+        raise TypeError(_INVALID_STORAGE_PATHS)
+    if not raw_paths or any(
+        not isinstance(path, str) or not path for path in raw_paths
+    ):
         raise ValueError(_INVALID_STORAGE_PATHS)
-    return raw_paths
+    return cast("tuple[str, ...]", raw_paths)
 
 
 class StorageContext(Protocol):

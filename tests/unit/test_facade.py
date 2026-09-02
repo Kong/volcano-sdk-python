@@ -273,13 +273,16 @@ def test_storage_remove_accepts_one_path() -> None:
     assert client.storage.from_("assets").remove("archive/a.txt") == ("archive/a.txt",)
 
 
-def test_storage_remove_rejects_an_empty_path_before_transport() -> None:
+@pytest.mark.parametrize("invalid_paths", [[], [""], b"abc"])
+def test_storage_remove_rejects_invalid_paths_before_transport(
+    invalid_paths: Any,
+) -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
     client.auth.sign_in(email="user@example.com", password="secret")
     calls_after_sign_in = transport.calls.copy()
 
-    with pytest.raises(ValueError, match="non-empty strings"):
-        client.storage.from_("assets").remove([""])
+    with pytest.raises((TypeError, ValueError), match="non-empty strings"):
+        client.storage.from_("assets").remove(invalid_paths)
 
     assert transport.calls == calls_after_sign_in
