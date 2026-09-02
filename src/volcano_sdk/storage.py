@@ -6,6 +6,7 @@ import base64
 import binascii
 import json
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol, cast
@@ -20,6 +21,7 @@ from ._transport import (
     invoke,
     response_payload,
 )
+from .errors import VolcanoError
 from .models import (
     JSONValue,
     StorageObject,
@@ -492,6 +494,47 @@ class StorageBucket:
             ),
         )
         response_payload(response, 200)
+
+    def upload_resumable(
+        self,
+        path: str,
+        data: bytes,
+        *,
+        content_type: str = "application/octet-stream",
+        part_size: int | None = None,
+    ) -> StorageObject:
+        """Upload bytes through a server-managed resumable session."""
+        session = self.create_upload_session(
+            path,
+            total_size=len(data),
+            content_type=content_type,
+            part_size=part_size,
+        )
+        try:
+            self._upload_session_parts(path, data, session)
+        except VolcanoError:
+            self._abort_failed_upload(path, session.session_id)
+            raise
+        return self.complete_upload_session(path, session_id=session.session_id)
+
+    def _upload_session_parts(
+        self,
+        path: str,
+        data: bytes,
+        session: UploadSession,
+    ) -> None:
+        for part_index in range(session.total_parts):
+            offset = part_index * session.part_size
+            self.upload_part(
+                path,
+                session_id=session.session_id,
+                part_number=part_index + 1,
+                data=data[offset : offset + session.part_size],
+            )
+
+    def _abort_failed_upload(self, path: str, session_id: str) -> None:
+        with suppress(VolcanoError):
+            self.abort_upload_session(path, session_id=session_id)
 
     def list(
         self,

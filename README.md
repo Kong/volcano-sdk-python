@@ -46,6 +46,12 @@ downloaded = bucket.download("a.txt")
 assert downloaded == b"hello"
 first_kibibyte = bucket.download("archive.bin", byte_range="bytes=0-1023")
 video = b"demo video"
+uploaded = bucket.upload_resumable(
+    "videos/automatic.mp4",
+    video,
+    content_type="video/mp4",
+)
+print(uploaded.name)
 upload_session = bucket.create_upload_session(
     "videos/demo.mp4",
     total_size=len(video),
@@ -97,6 +103,9 @@ object; `public_url` is set only when the object is public.
 Pass an HTTP byte range to download only part of an object.
 `create_upload_session()` returns the immutable server-selected part size,
 part count, and expiration time for a resumable upload.
+`upload_resumable()` creates a session, chunks the bytes using the
+server-selected part size, and completes the upload. If a part fails, it makes
+a best-effort abort and raises the original error.
 `upload_part()` returns immutable part metadata and can safely retry the same
 part number to replace that part.
 `get_upload_session()` returns immutable progress and uploaded-part metadata for

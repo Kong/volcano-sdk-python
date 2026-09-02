@@ -10,6 +10,7 @@ import pytest
 
 from volcano_sdk import (
     LockLease,
+    ServerError,
     Session,
     StorageObject,
     StoragePage,
@@ -34,6 +35,10 @@ class FakeTransport:
         self.list_cursor = "cursor-2"
         self.range_download_status = 206
         self.include_upload_session_parts = True
+        self.upload_session_part_size = 8_388_608
+        self.upload_session_total_parts = 3
+        self.fail_upload_part_number: int | None = None
+        self.fail_abort_upload = False
 
     def auth_signin(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("authSignin", kwargs))
@@ -77,8 +82,8 @@ class FakeTransport:
             201,
             {
                 "session_id": "session-123",
-                "part_size": 8_388_608,
-                "total_parts": 3,
+                "part_size": self.upload_session_part_size,
+                "total_parts": self.upload_session_total_parts,
                 "expires_at": "2026-09-09T12:00:00Z",
             },
         )
@@ -86,6 +91,8 @@ class FakeTransport:
     def upload_part(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("uploadPart", kwargs))
         request = kwargs["request"]
+        if request.part_number == self.fail_upload_part_number:
+            return FakeResponse(500, {"error": "part upload failed"})
         return FakeResponse(
             200,
             {
@@ -141,6 +148,8 @@ class FakeTransport:
 
     def abort_upload_session(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("abortUploadSession", kwargs))
+        if self.fail_abort_upload:
+            return FakeResponse(500, {"error": "abort failed"})
         return FakeResponse(200, {"message": "upload session aborted"})
 
     def list_storage_objects(self, **kwargs: Any) -> FakeResponse:
@@ -583,6 +592,59 @@ def test_storage_aborts_an_upload_session() -> None:
         "videos/demo.mp4",
         "session-123",
     )
+
+
+def test_storage_uploads_bytes_with_server_selected_chunks() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 3
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    object_ = client.storage.from_("assets").upload_resumable(
+        "videos/demo.mp4",
+        b"abcdefghij",
+        content_type="video/mp4",
+        part_size=6,
+    )
+
+    storage_calls = transport.calls[1:]
+    assert [operation for operation, _ in storage_calls] == [
+        "createUploadSession",
+        "uploadPart",
+        "uploadPart",
+        "uploadPart",
+        "completeUploadSession",
+    ]
+    create_request = storage_calls[0][1]["request"]
+    assert (create_request.total_size, create_request.part_size) == (10, 6)
+    assert [call[1]["request"].data for call in storage_calls[1:4]] == [
+        b"abcd",
+        b"efgh",
+        b"ij",
+    ]
+    assert object_.name == "videos/demo.mp4"
+
+
+def test_storage_aborts_after_part_failure_without_masking_the_error() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 2
+    transport.fail_upload_part_number = 2
+    transport.fail_abort_upload = True
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    with pytest.raises(ServerError, match="part upload failed") as raised:
+        client.storage.from_("assets").upload_resumable("file.bin", b"abcdefgh")
+
+    assert getattr(raised.value, "status", None) == 500
+    assert [operation for operation, _ in transport.calls[1:]] == [
+        "createUploadSession",
+        "uploadPart",
+        "uploadPart",
+        "abortUploadSession",
+    ]
 
 
 @pytest.mark.parametrize("invalid_paths", [[], [""], b"abc"])
