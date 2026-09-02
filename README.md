@@ -95,6 +95,7 @@ print(public_url)
 state = client.locks.get("build")
 print(state.held)
 lease = client.locks.acquire("build", ttl=30)
+lease = client.locks.renew("build", lease, ttl=30)
 client.locks.release("build", lease)
 ```
 
@@ -112,6 +113,8 @@ a best-effort abort and raises the original error.
 part number to replace that part.
 `locks.get()` returns immutable lock availability, expiry, and fencing-token
 state without acquiring the lock.
+`locks.renew()` returns a new immutable lease and leaves the previous value
+unchanged.
 `get_upload_session()` returns immutable progress and uploaded-part metadata for
 resuming an interrupted upload.
 `complete_upload_session()` assembles the uploaded parts and returns the stored

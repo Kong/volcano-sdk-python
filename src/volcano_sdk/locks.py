@@ -31,6 +31,21 @@ class LockGetTransport(Protocol):
         ...
 
 
+class LockRenewTransport(Protocol):
+    """Transport capability required to renew a lock."""
+
+    def renew_project_lock(
+        self,
+        *,
+        authorization: str,
+        key: str,
+        ttl: int,
+        token: str,
+    ) -> object:
+        """Renew one project-scoped lock."""
+        ...
+
+
 def _parse_datetime(value: object) -> datetime | None:
     if value is None:
         return None
@@ -73,6 +88,24 @@ class Locks:
         return LockLease(
             key=key,
             token=token,
+            expires_at=_parse_datetime(payload.get("expires_at")),
+            fencing_token=payload.get("fencing_token"),
+        )
+
+    def renew(self, key: str, lease: LockLease, *, ttl: int) -> LockLease:
+        """Renew a lock lease and return its immutable replacement."""
+        transport = cast("LockRenewTransport", self._client._transport)
+        response = invoke(
+            transport.renew_project_lock,
+            authorization=self._client._service_token(),
+            key=key,
+            ttl=ttl,
+            token=lease.token,
+        )
+        payload = response_payload(response, 200)
+        return LockLease(
+            key=key,
+            token=lease.token,
             expires_at=_parse_datetime(payload.get("expires_at")),
             fencing_token=payload.get("fencing_token"),
         )
