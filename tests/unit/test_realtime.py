@@ -101,8 +101,9 @@ class AuthTransport:
         authorization: str,
         bucket_name: str,
         path: str,
+        byte_range: str | None = None,
     ) -> Response:
-        del authorization, bucket_name, path
+        del authorization, bucket_name, path, byte_range
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
     def acquire_project_lock(

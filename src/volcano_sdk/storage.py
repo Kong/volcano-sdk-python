@@ -241,15 +241,16 @@ class StorageBucket:
         payload = response_payload(response, 201)
         return dict(payload)
 
-    def download(self, path: str) -> bytes:
+    def download(self, path: str, *, byte_range: str | None = None) -> bytes:
         """Download bytes from a path in this bucket."""
         response = invoke(
             self._client._transport.download_storage_object,
             authorization=self._client._session_token(),
             bucket_name=self._name,
             path=path,
+            byte_range=byte_range,
         )
-        response_payload(response, 200)
+        response_payload(response, 206 if byte_range is not None else 200)
         return bytes(response.content)
 
     def list(

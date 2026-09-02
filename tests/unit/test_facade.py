@@ -57,7 +57,8 @@ class FakeTransport:
 
     def download_storage_object(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("downloadStorageObject", kwargs))
-        return FakeResponse(200, content=b"hello")
+        status = 206 if kwargs.get("byte_range") else 200
+        return FakeResponse(status, content=b"hello")
 
     def list_storage_objects(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("listStorageObjects", kwargs))
@@ -175,7 +176,10 @@ def test_public_facade_delegates_to_the_contract_operations() -> None:
         client.database("main").from_("items").delete().eq("slug", "updated").execute()
     )
     uploaded = client.storage.from_("assets").upload("a.txt", b"hello")
-    downloaded = client.storage.from_("assets").download("a.txt")
+    downloaded = client.storage.from_("assets").download(
+        "a.txt",
+        byte_range="bytes=0-4",
+    )
     page = client.storage.from_("assets").list(
         "avatars",
         limit=25,
@@ -282,6 +286,7 @@ def test_public_facade_delegates_to_the_contract_operations() -> None:
         "authorization": "access-token",
         "bucket_name": "assets",
         "path": "a.txt",
+        "byte_range": "bytes=0-4",
     }
     assert transport.calls[7][1] == {
         "authorization": "access-token",
