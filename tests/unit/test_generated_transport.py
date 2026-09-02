@@ -1538,7 +1538,7 @@ def test_generated_transport_renews_a_project_lock() -> None:
         requests.append(request)
         return httpx.Response(
             200,
-            json={"expires_at": "2026-08-26T12:01:00Z", "fencing_token": 8},
+            json={"expires_at": "2026-08-26T12:01:00Z", "fencing_token": 7},
         )
 
     transport = GeneratedTransport(
@@ -1553,7 +1553,7 @@ def test_generated_transport_renews_a_project_lock() -> None:
         token="00000000-0000-4000-8000-000000000001",
     )
 
-    assert response.payload["fencing_token"] == 8
+    assert response.payload["fencing_token"] == 7
     assert len(requests) == 1
     assert requests[0].method == "PATCH"
     assert requests[0].url.path == "/locks/build:queue/lease"

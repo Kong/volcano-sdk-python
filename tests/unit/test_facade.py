@@ -253,7 +253,7 @@ class FakeTransport:
         self.calls.append(("renewProjectLock", kwargs))
         return FakeResponse(
             200,
-            {"expires_at": "2026-08-26T12:01:00Z", "fencing_token": 8},
+            {"expires_at": "2026-08-26T12:01:00Z", "fencing_token": 7},
         )
 
 
@@ -479,7 +479,7 @@ def test_locks_renews_a_lease_without_mutating_the_original() -> None:
         key="build",
         token=lease.token,
         expires_at=datetime(2026, 8, 26, 12, 1, tzinfo=UTC),
-        fencing_token=8,
+        fencing_token=7,
     )
     assert lease.expires_at == datetime(2026, 8, 26, 12, 0, 30, tzinfo=UTC)
     assert transport.calls == [
