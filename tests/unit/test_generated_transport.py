@@ -1261,3 +1261,28 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
     assert requests[7].headers["x-volcano-lock-token"] == (
         "00000000-0000-4000-8000-000000000001"
     )
+
+
+def test_generated_transport_deletes_a_storage_object() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200)
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.delete_storage_object(
+        authorization="access-token",
+        bucket_name="assets",
+        path="archive/a.txt",
+    )
+
+    assert response.status_code == 200
+    assert len(requests) == 1
+    assert requests[0].method == "DELETE"
+    assert requests[0].url.path == "/storage/assets/archive/a.txt"
+    assert requests[0].headers["authorization"] == "Bearer access-token"

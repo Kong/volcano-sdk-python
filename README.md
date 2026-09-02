@@ -52,9 +52,14 @@ for object_ in page.objects:
 if page.next_cursor is not None:
     next_page = bucket.list("avatars", limit=100, cursor=page.next_cursor)
 
+removed_paths = bucket.remove(["archive/a.txt", "archive/b.txt"])
+
 lease = client.locks.acquire("build", ttl=30)
 client.locks.release("build", lease)
 ```
+
+Storage removals run in input order. A failed request raises after any earlier
+paths have already been deleted.
 
 Database builders are immutable, so you can safely reuse a base query. Chain `neq()`, `gt()`,
 `gte()`, `lt()`, and `lte()` for comparison filters:
