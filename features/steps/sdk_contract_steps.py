@@ -183,14 +183,20 @@ def fixture_row_returned(context: Any) -> None:
 def insert_contract_row(context: Any) -> None:
     world = _world(context)
     row = world.fixture["mutation_rows"]["python"]["insert"]
-    world.record(
-        lambda: (
-            world.client.database(world.fixture["database_name"])
-            .from_(world.fixture["table_name"])
-            .insert(row)
-            .execute()
-        )
+    table = world.client.database(world.fixture["database_name"]).from_(
+        world.fixture["table_name"]
     )
+
+    def operation() -> list[dict[str, Any]]:
+        result = table.insert(row).execute()
+
+        def cleanup() -> None:
+            table.delete().eq("slug", row["slug"]).execute()
+
+        world.cleanup_callbacks.append(cleanup)
+        return result
+
+    world.record(operation)
 
 
 @then("exactly the inserted contract row is returned")
@@ -205,15 +211,28 @@ def inserted_contract_row_returned(context: Any) -> None:
 def update_contract_row(context: Any) -> None:
     world = _world(context)
     row = world.fixture["mutation_rows"]["python"]["update"]
-    world.record(
-        lambda: (
-            world.client.database(world.fixture["database_name"])
-            .from_(world.fixture["table_name"])
-            .update({"value": row["after"]["value"]})
+    table = world.client.database(world.fixture["database_name"]).from_(
+        world.fixture["table_name"]
+    )
+
+    def operation() -> list[dict[str, Any]]:
+        result = (
+            table.update({"value": row["after"]["value"]})
             .eq("slug", row["before"]["slug"])
             .execute()
         )
-    )
+
+        def cleanup() -> None:
+            (
+                table.update({"value": row["before"]["value"]})
+                .eq("slug", row["before"]["slug"])
+                .execute()
+            )
+
+        world.cleanup_callbacks.append(cleanup)
+        return result
+
+    world.record(operation)
 
 
 @then("exactly the updated contract row is returned")
@@ -228,15 +247,20 @@ def updated_contract_row_returned(context: Any) -> None:
 def delete_contract_row(context: Any) -> None:
     world = _world(context)
     row = world.fixture["mutation_rows"]["python"]["delete"]
-    world.record(
-        lambda: (
-            world.client.database(world.fixture["database_name"])
-            .from_(world.fixture["table_name"])
-            .delete()
-            .eq("slug", row["slug"])
-            .execute()
-        )
+    table = world.client.database(world.fixture["database_name"]).from_(
+        world.fixture["table_name"]
     )
+
+    def operation() -> list[dict[str, Any]]:
+        result = table.delete().eq("slug", row["slug"]).execute()
+
+        def cleanup() -> None:
+            table.insert(row).execute()
+
+        world.cleanup_callbacks.append(cleanup)
+        return result
+
+    world.record(operation)
 
 
 @then("exactly the deleted contract row is returned")
