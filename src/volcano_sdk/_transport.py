@@ -130,6 +130,7 @@ from ._generated.models.call_o_auth_provider_api_body import CallOAuthProviderAP
 from ._generated.models.call_o_auth_provider_api_response_200 import (
     CallOAuthProviderAPIResponse200,
 )
+from ._generated.models.create_upload_session_request import CreateUploadSessionRequest
 from ._generated.models.database_delete_request import DatabaseDeleteRequest
 from ._generated.models.database_insert_request import DatabaseInsertRequest
 from ._generated.models.database_select_request import DatabaseSelectRequest
@@ -225,6 +226,16 @@ class TransportResponse(Protocol):
 
     @property
     def headers(self) -> Mapping[str, str] | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class StorageUploadSessionRequest:
+    """Values needed to create a resumable storage upload session."""
+
+    path: str
+    content_type: str
+    total_size: int
+    part_size: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1249,6 +1260,28 @@ class GeneratedTransport:
             response = upload_storage_object.sync_detailed(
                 bucket_name,
                 path,
+                client=client,
+                body=body,
+            )
+        return self._response(response)
+
+    def create_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionRequest,
+    ) -> TransportResponse:
+        body = CreateUploadSessionRequest(
+            object_path=request.path,
+            content_type=request.content_type,
+            total_size=request.total_size,
+            part_size=request.part_size if request.part_size is not None else UNSET,
+        )
+        with self._client(authorization) as client:
+            response = upload_storage_object.sync_detailed(
+                bucket_name,
+                request.path,
                 client=client,
                 body=body,
             )

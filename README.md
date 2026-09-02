@@ -45,6 +45,13 @@ bucket.upload("a.txt", b"hello")
 downloaded = bucket.download("a.txt")
 assert downloaded == b"hello"
 first_kibibyte = bucket.download("archive.bin", byte_range="bytes=0-1023")
+upload_session = bucket.create_upload_session(
+    "videos/demo.mp4",
+    total_size=20_000_000,
+    content_type="video/mp4",
+    part_size=8_388_608,
+)
+print(upload_session.session_id, upload_session.total_parts)
 
 page = bucket.list("avatars", limit=100)
 for object_ in page.objects:
@@ -70,6 +77,8 @@ paths have already been deleted. Visibility updates return the server-confirmed
 object; `public_url` is set only when the object is public.
 `get_public_url()` constructs a URL locally and does not check object visibility.
 Pass an HTTP byte range to download only part of an object.
+`create_upload_session()` returns the immutable server-selected part size,
+part count, and expiration time for a resumable upload.
 
 Database builders are immutable, so you can safely reuse a base query. Chain `neq()`, `gt()`,
 `gte()`, `lt()`, and `lte()` for comparison filters:
