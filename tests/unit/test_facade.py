@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from io import SEEK_END, BytesIO
@@ -684,7 +685,13 @@ def test_locks_with_lock_reports_lease_loss_after_releasing() -> None:
 
 
 def test_locks_with_lock_preserves_body_errors_and_releases() -> None:
-    transport = FakeTransport()
+    class CurrentAcquireTransport(FakeTransport):
+        def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("acquireProjectLock", kwargs))
+            expires_at = datetime.now(UTC) + timedelta(seconds=30)
+            return FakeResponse(201, {"expires_at": expires_at.isoformat()})
+
+    transport = CurrentAcquireTransport()
     client = VolcanoClient(
         anon_key="anon-key",
         service_key="service-key",
@@ -712,7 +719,7 @@ def test_locks_with_lock_marks_a_stalled_renewal_lost_at_expiry(
     class StalledRenewTransport(FakeTransport):
         def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
             self.calls.append(("acquireProjectLock", kwargs))
-            expires_at = datetime.now(UTC) + timedelta(milliseconds=50)
+            expires_at = datetime.now(UTC) + timedelta(milliseconds=200)
             return FakeResponse(201, {"expires_at": expires_at.isoformat()})
 
         def renew_project_lock(self, **kwargs: Any) -> FakeResponse:
@@ -723,6 +730,7 @@ def test_locks_with_lock_marks_a_stalled_renewal_lost_at_expiry(
             return FakeResponse(200, {"expires_at": expires_at.isoformat()})
 
     transport = StalledRenewTransport()
+    monkeypatch.setattr(locks_module, "MAX_RENEWAL_DELAY_SECONDS", 0.01)
     monkeypatch.setattr(locks_module, "RENEWAL_SAFETY_MARGIN_SECONDS", 0)
     monkeypatch.setattr(locks_module, "RENEWAL_REQUEST_BUDGET_SECONDS", 0)
     client = VolcanoClient(
@@ -784,6 +792,69 @@ def test_locks_with_lock_renews_an_expired_acquisition_before_body() -> None:
         "renewProjectLock",
         "releaseProjectLock",
     ]
+
+
+def test_locks_with_lock_rejects_an_expired_renewal_before_body() -> None:
+    class ExpiredRenewTransport(FakeTransport):
+        def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("acquireProjectLock", kwargs))
+            expires_at = datetime.now(UTC) - timedelta(seconds=1)
+            return FakeResponse(201, {"expires_at": expires_at.isoformat()})
+
+        def renew_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("renewProjectLock", kwargs))
+            expires_at = datetime.now(UTC) - timedelta(seconds=1)
+            return FakeResponse(200, {"expires_at": expires_at.isoformat()})
+
+    transport = ExpiredRenewTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+
+    with (
+        pytest.raises(TimeoutError, match="no safe lease window"),
+        client.locks.with_lock("build", ttl=30),
+    ):
+        pytest.fail("context body must not run")
+    assert transport.calls[-1][0] == "releaseProjectLock"
+
+
+def test_lock_guard_caps_expiry_by_monotonic_ttl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ttl = 5
+    lease = LockLease(
+        key="build",
+        token="token",
+        expires_at=datetime.now(UTC) + timedelta(seconds=ttl),
+        fencing_token=7,
+    )
+    started_at = time.monotonic()
+    real_time = time.time()
+    monkeypatch.setattr("volcano_sdk.locks.time.time", lambda: real_time - 10)
+
+    guard = locks_module.LockGuard(lease, ttl=ttl, started_at=started_at)
+
+    assert 0 < guard._expiry_delay() <= ttl
+
+
+@pytest.mark.parametrize("ttl", [5.5, "5", True])
+def test_locks_with_lock_rejects_non_integer_ttl(ttl: Any) -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+
+    with (
+        pytest.raises(ValueError, match="integer"),
+        client.locks.with_lock("build", ttl=ttl),
+    ):
+        pytest.fail("context body must not run")
+    assert transport.calls == []
 
 
 def test_locks_with_lock_bounds_stalled_renewal_shutdown(
