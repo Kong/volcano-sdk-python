@@ -179,7 +179,12 @@ class LockGuard:
                 self._lost.set()
                 return False
             if self._expiry_active:
-                self._schedule_expiry_locked()
+                try:
+                    self._schedule_expiry_locked()
+                except RuntimeError as error:
+                    self._failure = error
+                    self._lost.set()
+                    return False
             return True
 
     def _mark_lost(self, failure: Exception) -> None:

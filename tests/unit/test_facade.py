@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import threading
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -893,6 +894,53 @@ def test_locks_with_lock_bounds_stalled_renewal_shutdown(
     finally:
         renew_release.set()
 
+    assert transport.calls[-1][0] == "releaseProjectLock"
+
+
+def test_locks_with_lock_marks_timer_restart_failure_lost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    renew_entered = Event()
+
+    class RenewingTransport(FakeTransport):
+        def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("acquireProjectLock", kwargs))
+            expires_at = datetime.now(UTC) + timedelta(seconds=3)
+            return FakeResponse(201, {"expires_at": expires_at.isoformat()})
+
+        def renew_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("renewProjectLock", kwargs))
+            renew_entered.set()
+            expires_at = datetime.now(UTC) + timedelta(seconds=30)
+            return FakeResponse(200, {"expires_at": expires_at.isoformat()})
+
+    starts = 0
+    original_start = threading.Timer.start
+
+    def fail_second_start(timer: Any) -> None:
+        nonlocal starts
+        starts += 1
+        if starts == 2:
+            message = "timer thread unavailable"
+            raise RuntimeError(message)
+        original_start(timer)
+
+    monkeypatch.setattr(locks_module, "MAX_RENEWAL_DELAY_SECONDS", 0.01)
+    monkeypatch.setattr(threading.Timer, "start", fail_second_start)
+    transport = RenewingTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+
+    def hold_until_lost() -> None:
+        with client.locks.with_lock("build", ttl=30) as guard:
+            assert renew_entered.wait(timeout=1)
+            assert guard.wait_lost(timeout=1)
+
+    with pytest.raises(RuntimeError, match="timer thread unavailable"):
+        hold_until_lost()
     assert transport.calls[-1][0] == "releaseProjectLock"
 
 
