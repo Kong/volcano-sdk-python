@@ -87,6 +87,7 @@ from ._generated.api.storage_objects import (
     download_storage_object,
     list_storage_objects,
     move_storage_object,
+    update_storage_object_visibility,
     upload_storage_object,
 )
 from ._generated.client import AuthenticatedClient
@@ -142,6 +143,7 @@ from ._generated.models.refresh_o_auth_provider_token_response_200 import (
 )
 from ._generated.models.storage_copy_request import StorageCopyRequest
 from ._generated.models.storage_move_request import StorageMoveRequest
+from ._generated.models.storage_visibility_request import StorageVisibilityRequest
 from ._generated.models.upload_storage_object_files_body import (
     UploadStorageObjectFilesBody,
 )
@@ -1329,6 +1331,23 @@ class GeneratedTransport:
                 bucket_name,
                 client=client,
                 body=StorageCopyRequest(from_=from_path, to=to_path),
+            )
+        return self._response(response)
+
+    def update_storage_object_visibility(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        path: str,
+        is_public: bool,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = update_storage_object_visibility.sync_detailed(
+                bucket_name,
+                path,
+                client=client,
+                body=StorageVisibilityRequest(is_public=is_public),
             )
         return self._response(response)
 

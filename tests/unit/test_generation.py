@@ -1,7 +1,10 @@
 import os
+import subprocess
 import sys
 from pathlib import Path
 from runpy import run_path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -22,9 +25,31 @@ def test_generate_emits_required_contract_operations(tmp_path: Path) -> None:
         "delete_storage_object.py",
         "list_storage_objects.py",
         "move_storage_object.py",
+        "update_storage_object_visibility.py",
         "acquire_project_lock.py",
         "release_project_lock.py",
     }
+
+
+def test_generate_rejects_a_missing_visibility_operation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = run_path(str(ROOT / "scripts" / "generate_openapi.py"))
+    generate = script["generate"]
+    output = tmp_path / "_generated"
+
+    def generate_without_visibility(*_args: object, **_kwargs: object) -> None:
+        operations = output / "api" / "storage_objects"
+        operations.mkdir(parents=True)
+        for name in script["REQUIRED_OPERATION_MODULES"]:
+            if name != "update_storage_object_visibility.py":
+                (operations / name).touch()
+
+    monkeypatch.setattr(subprocess, "run", generate_without_visibility)
+
+    with pytest.raises(RuntimeError, match=r"update_storage_object_visibility\.py"):
+        generate(output)
 
 
 def test_generated_comparison_reads_file_bytes(
