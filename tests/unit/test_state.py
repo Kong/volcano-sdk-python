@@ -567,6 +567,42 @@ def test_query_builder_comparison_filters_are_immutable(
     ]
 
 
+def test_query_builder_order_clauses_are_immutable() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    source = client.database("main").from_("items").select("*")
+
+    source.order("priority", ascending=False).order("id").execute()
+    source.execute()
+
+    assert transport.query_calls == [
+        {
+            "table": "items",
+            "order": [
+                {"column": "priority", "ascending": False},
+                {"column": "id", "ascending": True},
+            ],
+        },
+        {"table": "items"},
+    ]
+
+
+def test_query_builder_pagination_is_immutable() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    source = client.database("main").from_("items").select("*")
+
+    source.limit(10).offset(20).execute()
+    source.execute()
+
+    assert transport.query_calls == [
+        {"table": "items", "limit": 10, "offset": 20},
+        {"table": "items"},
+    ]
+
+
 def test_each_request_reads_the_current_credentials() -> None:
     transport = StateTransport()
     client = VolcanoClient(

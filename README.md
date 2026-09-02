@@ -54,7 +54,15 @@ Database builders are immutable, so you can safely reuse a base query. Chain `ne
 
 ```python
 base_query = client.database("main").from_("items").select("id", "priority")
-rows = base_query.gte("priority", 3).lt("priority", 10).execute()
+rows = (
+    base_query.gte("priority", 3)
+    .lt("priority", 10)
+    .order("priority", ascending=False)
+    .order("id")
+    .limit(10)
+    .offset(20)
+    .execute()
+)
 ```
 
 `sign_up()` returns an immutable acknowledgement and never creates or replaces a session. The
