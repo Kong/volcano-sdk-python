@@ -435,6 +435,8 @@ class Channel:
     async def _emit(self, event: str, data: Any) -> None:
         if not self._callbacks.get(event):
             return
+        if event == "presence_sync":
+            self._pending_presence_sync = NO_PENDING_CALLBACK
         task = self._callback_task
         if task is None or task.done():
             self._start_callback_dispatcher()

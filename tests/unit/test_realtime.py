@@ -569,6 +569,39 @@ def test_realtime_presence_sync_coalesces_latest_backpressured_state() -> None:
     asyncio.run(scenario())
 
 
+def test_realtime_newer_queued_snapshot_discards_older_pending_snapshot() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("lobby", channel_type="presence")
+        channel.on_presence_sync(lambda _state: None)
+
+        async def wait_forever() -> None:
+            await asyncio.Event().wait()
+
+        blocker = asyncio.create_task(wait_forever())
+        channel._callback_task = blocker
+        for _ in range(channel._callback_queue.maxsize):
+            channel._callback_queue.put_nowait(("presence_sync", {"version": 0}))
+
+        await channel._emit("presence_sync", {"version": 1})
+        channel._callback_queue.get_nowait()
+        channel._callback_queue.task_done()
+        await channel._emit("presence_sync", {"version": 2})
+        queued: list[Any] = []
+        while not channel._callback_queue.empty():
+            queued.append(channel._callback_queue.get_nowait()[1])
+            channel._callback_queue.task_done()
+        channel._enqueue_pending_presence_sync()
+        blocker.cancel()
+        await asyncio.gather(blocker, return_exceptions=True)
+
+        assert queued[-1] == {"version": 2}
+        assert channel._callback_queue.empty()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_presence_operations_reject_broadcast_channels() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
     channel = client.realtime.channel("contract")
