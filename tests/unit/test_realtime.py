@@ -216,6 +216,9 @@ class FakeSubscription:
         finally:
             self.inside_subscribed_handler = False
 
+    async def emit_subscribing(self) -> None:
+        await self.events.on_subscribing(SimpleNamespace(code=0, reason="reconnecting"))
+
     async def emit(self, data: Any) -> None:
         await self.events.on_publication(
             SimpleNamespace(pub=SimpleNamespace(data=data))
@@ -456,6 +459,36 @@ def test_realtime_presence_resyncs_after_resubscription() -> None:
         await asyncio.sleep(0)
 
         assert set(channel.get_presence_state()) == {"carol-client"}
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_presence_clears_while_resubscribing() -> None:
+    official = FakeCentrifugeClient()
+    official.presence_clients = {
+        "alice-client": SimpleNamespace(
+            client="alice-client", user="alice", conn_info={}
+        )
+    }
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("lobby", channel_type="presence")
+        await channel.subscribe()
+        assert channel.get_presence_state()
+        assert official.subscription is not None
+
+        await official.subscription.emit_subscribing()
+
+        assert channel.get_presence_state() == {}
+        with pytest.raises(RuntimeError, match="subscribed"):
+            await channel.track({"status": "away"})
         await client.realtime.disconnect()
 
     asyncio.run(scenario())

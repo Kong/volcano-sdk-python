@@ -266,6 +266,8 @@ class _ChannelEvents:
 
     async def on_subscribing(self, ctx: Any) -> None:
         del ctx
+        self._channel._subscribed = False
+        await self._channel._presence_unsubscribed()
 
     async def on_subscribed(self, ctx: Any) -> None:
         del ctx
