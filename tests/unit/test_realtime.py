@@ -501,6 +501,7 @@ def test_realtime_unsubscribe_clears_presence_state() -> None:
 
         channel.on_presence_sync(on_sync)
         await channel.subscribe()
+        assert official.subscription is not None
         await channel.track({"status": "online"})
 
         await channel.unsubscribe()
@@ -511,6 +512,58 @@ def test_realtime_unsubscribe_clears_presence_state() -> None:
         assert states[-1] == {}
         with pytest.raises(RuntimeError, match="must be subscribed"):
             await channel.track({"status": "online"})
+        await official.subscription.emit_join(
+            SimpleNamespace(client="late-client", user="late", conn_info={})
+        )
+        assert channel.get_presence_state() == {}
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_presence_sync_coalesces_latest_backpressured_state() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("lobby", channel_type="presence")
+        blocked = asyncio.Event()
+        release = asyncio.Event()
+        observed_sizes: list[int] = []
+
+        async def on_sync(state: Any) -> None:
+            observed_sizes.append(len(state))
+            if len(state) == 1:
+                blocked.set()
+                await release.wait()
+
+        channel.on_presence_sync(on_sync)
+        await channel.subscribe()
+        assert official.subscription is not None
+        await official.subscription.emit_join(
+            SimpleNamespace(client="client-0", user="user-0", conn_info={})
+        )
+        await blocked.wait()
+        for index in range(1, 140):
+            await official.subscription.emit_join(
+                SimpleNamespace(
+                    client=f"client-{index}",
+                    user=f"user-{index}",
+                    conn_info={},
+                )
+            )
+        release.set()
+        for _ in range(500):
+            if observed_sizes[-1] == 140:
+                break
+            await asyncio.sleep(0)
+
+        assert observed_sizes[-1] == 140
         await client.realtime.disconnect()
 
     asyncio.run(scenario())

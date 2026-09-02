@@ -23,6 +23,7 @@ CENTRIFUGE_ERROR = cast(
     importlib.import_module("centrifuge").CentrifugeError,
 )
 CALLBACK_QUEUE_LIMIT = 128
+NO_PENDING_CALLBACK = object()
 CALLBACK_QUEUE_FULL_MESSAGE = (
     "Volcano realtime callback queue is full; publication dropped"
 )
@@ -364,6 +365,7 @@ class Channel:
         self._callback_task: asyncio.Task[None] | None = None
         self._active_callback_task: asyncio.Task[None] | None = None
         self._callback_stop: asyncio.Event | None = None
+        self._pending_presence_sync: Any = NO_PENDING_CALLBACK
 
     @property
     def name(self) -> str:
@@ -431,6 +433,8 @@ class Channel:
         await self._realtime._unsubscribe(self)
 
     async def _emit(self, event: str, data: Any) -> None:
+        if not self._callbacks.get(event):
+            return
         task = self._callback_task
         if task is None or task.done():
             self._start_callback_dispatcher()
@@ -442,6 +446,9 @@ class Channel:
         try:
             self._callback_queue.put_nowait((event, data))
         except asyncio.QueueFull:
+            if event == "presence_sync":
+                self._pending_presence_sync = data
+                return
             asyncio.get_running_loop().call_exception_handler(
                 {
                     "message": CALLBACK_QUEUE_FULL_MESSAGE,
@@ -485,6 +492,14 @@ class Channel:
                         )
             finally:
                 self._callback_queue.task_done()
+                self._enqueue_pending_presence_sync()
+
+    def _enqueue_pending_presence_sync(self) -> None:
+        pending = self._pending_presence_sync
+        if pending is NO_PENDING_CALLBACK or self._callback_queue.full():
+            return
+        self._pending_presence_sync = NO_PENDING_CALLBACK
+        self._callback_queue.put_nowait(("presence_sync", pending))
 
     async def _run_callback(self, callback: MessageCallback, data: Any) -> None:
         result = callback(data)
@@ -501,6 +516,8 @@ class Channel:
         if self._type != "presence" or info is None:
             return
         async with self._presence_lock:
+            if not self._subscribed:
+                return
             presence = self._presence_info(info)
             self._presence_state[presence.client] = presence
             await self._emit("join", presence)
@@ -510,6 +527,8 @@ class Channel:
         if self._type != "presence" or info is None:
             return
         async with self._presence_lock:
+            if not self._subscribed:
+                return
             presence = self._presence_info(info)
             self._presence_state.pop(presence.client, None)
             await self._emit("leave", presence)
@@ -551,6 +570,7 @@ class Channel:
         while not self._callback_queue.empty():
             self._callback_queue.get_nowait()
             self._callback_queue.task_done()
+        self._pending_presence_sync = NO_PENDING_CALLBACK
         self._presence_state.clear()
         self._tracked_state = MappingProxyType({})
         self._subscribed = False
