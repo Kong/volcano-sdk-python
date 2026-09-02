@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from volcano_sdk import LockLease, Session, VolcanoClient
+from volcano_sdk import LockLease, Session, StorageObject, StoragePage, VolcanoClient
 
 
 @dataclass(frozen=True)
@@ -54,6 +54,30 @@ class FakeTransport:
         self.calls.append(("downloadStorageObject", kwargs))
         return FakeResponse(200, content=b"hello")
 
+    def list_storage_objects(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("listStorageObjects", kwargs))
+        return FakeResponse(
+            200,
+            {
+                "objects": [
+                    {
+                        "id": "00000000-0000-4000-8000-000000000020",
+                        "bucket_id": "00000000-0000-4000-8000-000000000030",
+                        "name": "avatars/a.png",
+                        "size": 5,
+                        "mime_type": "image/png",
+                        "is_public": False,
+                        "owner_id": "00000000-0000-4000-8000-000000000010",
+                        "etag": "etag-1",
+                        "metadata": {"width": 32, "labels": ["profile"]},
+                        "created_at": "2026-08-26T12:00:00Z",
+                        "updated_at": "2026-08-26T12:01:00Z",
+                    }
+                ],
+                "next_cursor": "cursor-2",
+            },
+        )
+
     def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("acquireProjectLock", kwargs))
         return FakeResponse(
@@ -90,6 +114,11 @@ def test_public_facade_delegates_to_the_nine_contract_operations() -> None:
     )
     uploaded = client.storage.from_("assets").upload("a.txt", b"hello")
     downloaded = client.storage.from_("assets").download("a.txt")
+    page = client.storage.from_("assets").list(
+        "avatars",
+        limit=25,
+        cursor="cursor-1",
+    )
     lease = client.locks.acquire("build", ttl=30)
     client.locks.release("build", lease)
 
@@ -105,6 +134,25 @@ def test_public_facade_delegates_to_the_nine_contract_operations() -> None:
     assert deleted == [{"slug": "updated"}]
     assert uploaded == {"name": "a.txt", "size": 5}
     assert downloaded == b"hello"
+    assert page == StoragePage(
+        objects=(
+            StorageObject(
+                id="00000000-0000-4000-8000-000000000020",
+                bucket_id="00000000-0000-4000-8000-000000000030",
+                name="avatars/a.png",
+                size=5,
+                mime_type="image/png",
+                is_public=False,
+                owner_id="00000000-0000-4000-8000-000000000010",
+                etag="etag-1",
+                metadata={"width": 32, "labels": ["profile"]},
+                created_at=datetime(2026, 8, 26, 12, 0, tzinfo=UTC),
+                updated_at=datetime(2026, 8, 26, 12, 1, tzinfo=UTC),
+            ),
+        ),
+        next_cursor="cursor-2",
+    )
+    assert page.objects[0].metadata == {"width": 32, "labels": ("profile",)}
     assert lease == LockLease(
         key="build",
         token=lease.token,
@@ -119,6 +167,7 @@ def test_public_facade_delegates_to_the_nine_contract_operations() -> None:
         "queryDatabaseDelete",
         "uploadStorageObject",
         "downloadStorageObject",
+        "listStorageObjects",
         "acquireProjectLock",
         "releaseProjectLock",
     ]
@@ -168,10 +217,17 @@ def test_public_facade_delegates_to_the_nine_contract_operations() -> None:
         "bucket_name": "assets",
         "path": "a.txt",
     }
-    assert transport.calls[7][1]["authorization"] == "service-key"
-    assert transport.calls[7][1]["key"] == "build"
-    assert transport.calls[7][1]["ttl"] == 30
-    assert transport.calls[7][1]["token"] == lease.token
+    assert transport.calls[7][1] == {
+        "authorization": "access-token",
+        "bucket_name": "assets",
+        "prefix": "avatars",
+        "limit": 25,
+        "cursor": "cursor-1",
+    }
     assert transport.calls[8][1]["authorization"] == "service-key"
     assert transport.calls[8][1]["key"] == "build"
+    assert transport.calls[8][1]["ttl"] == 30
     assert transport.calls[8][1]["token"] == lease.token
+    assert transport.calls[9][1]["authorization"] == "service-key"
+    assert transport.calls[9][1]["key"] == "build"
+    assert transport.calls[9][1]["token"] == lease.token

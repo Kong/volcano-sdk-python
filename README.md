@@ -45,6 +45,13 @@ bucket.upload("a.txt", b"hello")
 downloaded = bucket.download("a.txt")
 assert downloaded == b"hello"
 
+page = bucket.list("avatars", limit=100)
+for object_ in page.objects:
+    print(object_.name)
+
+if page.next_cursor is not None:
+    next_page = bucket.list("avatars", limit=100, cursor=page.next_cursor)
+
 lease = client.locks.acquire("build", ttl=30)
 client.locks.release("build", lease)
 ```

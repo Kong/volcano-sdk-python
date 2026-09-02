@@ -174,3 +174,41 @@ class LockLease:
     token: str
     expires_at: datetime | None
     fencing_token: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class StorageObject:
+    """Object metadata returned by a storage bucket."""
+
+    id: str
+    bucket_id: str
+    name: str
+    size: int
+    mime_type: str
+    is_public: bool
+    owner_id: str | None = None
+    etag: str | None = None
+    metadata: Mapping[str, JSONValue] | None = field(
+        default=None,
+        repr=False,
+        hash=False,
+    )
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    public_url: str | None = None
+
+    def __post_init__(self) -> None:
+        """Defensively freeze nested metadata owned by this value."""
+        object.__setattr__(self, "metadata", _freeze_metadata(self.metadata))
+
+
+@dataclass(frozen=True, slots=True)
+class StoragePage:
+    """Cursor-paginated objects from a storage bucket."""
+
+    objects: tuple[StorageObject, ...]
+    next_cursor: str | None = None
+
+    def __post_init__(self) -> None:
+        """Defensively snapshot the objects in this page."""
+        object.__setattr__(self, "objects", tuple(self.objects))

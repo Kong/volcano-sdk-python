@@ -25,6 +25,8 @@ from .models import (
     Session,
     SessionPage,
     SignUpResult,
+    StorageObject,
+    StoragePage,
     User,
 )
 
@@ -47,6 +49,8 @@ __all__ = [
     "SessionChangedError",
     "SessionPage",
     "SignUpResult",
+    "StorageObject",
+    "StoragePage",
     "TransportError",
     "User",
     "ValidationError",

@@ -1129,8 +1129,23 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
                     "updated_at": "2026-08-26T12:00:00Z",
                 },
             )
-        if request.method == "GET" and path == "/storage/assets/a.txt":
-            return httpx.Response(200, content=b"hello")
+        if request.method == "GET" and path in {
+            "/storage/assets/a.txt",
+            "/storage/assets",
+        }:
+            if path == "/storage/assets/a.txt":
+                response = httpx.Response(200, content=b"hello")
+            else:
+                assert dict(request.url.params) == {
+                    "prefix": "avatars",
+                    "limit": "25",
+                    "cursor": "cursor-1",
+                }
+                response = httpx.Response(
+                    200,
+                    json={"objects": [], "next_cursor": "cursor-2"},
+                )
+            return response
         if request.method == "POST" and path == "/locks/build/lease":
             return httpx.Response(
                 201,
@@ -1179,6 +1194,13 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
         bucket_name="assets",
         path="a.txt",
     )
+    listed = transport.list_storage_objects(
+        authorization="access-token",
+        bucket_name="assets",
+        prefix="avatars",
+        limit=25,
+        cursor="cursor-1",
+    )
     acquire = transport.acquire_project_lock(
         authorization="service-key",
         key="build",
@@ -1196,6 +1218,7 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
     assert query.payload == {"data": [{"slug": "a"}], "count": 1}
     assert upload.payload["name"] == "a.txt"
     assert download.content == b"hello"
+    assert listed.payload == {"objects": [], "next_cursor": "cursor-2"}
     assert acquire.payload["fencing_token"] == 7
     assert release.status_code == 204
     assert [request.method for request in requests] == [
@@ -1204,12 +1227,14 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
         "POST",
         "POST",
         "GET",
+        "GET",
         "POST",
         "DELETE",
     ]
     assert [request.headers["authorization"] for request in requests] == [
         "Bearer anon-key",
         "Bearer anon-key",
+        "Bearer access-token",
         "Bearer access-token",
         "Bearer access-token",
         "Bearer access-token",
@@ -1229,8 +1254,8 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
         "filters": [{"column": "slug", "operator": "eq", "value": "a"}],
     }
     assert b"hello" in requests[3].content
-    assert json.loads(requests[5].content) == {"ttl_seconds": 30}
-    assert requests[5].headers["x-volcano-lock-token"] == (
+    assert json.loads(requests[6].content) == {"ttl_seconds": 30}
+    assert requests[6].headers["x-volcano-lock-token"] == (
         "00000000-0000-4000-8000-000000000001"
     )
     assert requests[6].headers["x-volcano-lock-token"] == (

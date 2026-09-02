@@ -17,6 +17,7 @@ REQUIRED_OPERATION_MODULES = {
     "acquire_project_lock.py",
     "auth_signin.py",
     "download_storage_object.py",
+    "list_storage_objects.py",
     "query_database_select.py",
     "release_project_lock.py",
     "upload_storage_object.py",

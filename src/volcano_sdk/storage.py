@@ -2,10 +2,69 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Protocol
+from datetime import datetime
+from typing import Any, Protocol, cast
 
-from ._transport import Transport, invoke, response_payload
+from ._transport import Transport, TransportResponse, invoke, response_payload
+from .models import JSONValue, StorageObject, StoragePage
+
+_INVALID_STORAGE_PAGE = "Expected a complete storage page"
+
+
+def _optional_datetime(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    raise TypeError(_INVALID_STORAGE_PAGE)
+
+
+def _storage_object(payload: object) -> StorageObject:
+    if not isinstance(payload, Mapping):
+        raise TypeError(_INVALID_STORAGE_PAGE)
+    values = cast("Mapping[str, object]", payload)
+    raw_metadata = values.get("metadata")
+    if raw_metadata is not None and not isinstance(raw_metadata, Mapping):
+        raise TypeError(_INVALID_STORAGE_PAGE)
+    size = values["size"]
+    is_public = values["is_public"]
+    if type(size) is not int or not isinstance(is_public, bool):
+        raise TypeError(_INVALID_STORAGE_PAGE)
+    return StorageObject(
+        id=str(values["id"]),
+        bucket_id=str(values["bucket_id"]),
+        name=str(values["name"]),
+        size=size,
+        mime_type=str(values["mime_type"]),
+        is_public=is_public,
+        owner_id=None if values.get("owner_id") is None else str(values["owner_id"]),
+        etag=None if values.get("etag") is None else str(values["etag"]),
+        metadata=cast("Mapping[str, JSONValue] | None", raw_metadata),
+        created_at=_optional_datetime(values.get("created_at")),
+        updated_at=_optional_datetime(values.get("updated_at")),
+        public_url=(
+            None if values.get("public_url") is None else str(values["public_url"])
+        ),
+    )
+
+
+def _storage_page(payload: object) -> StoragePage:
+    if not isinstance(payload, Mapping):
+        raise TypeError(_INVALID_STORAGE_PAGE)
+    values = cast("Mapping[str, object]", payload)
+    raw_objects = values.get("objects", [])
+    if not isinstance(raw_objects, list):
+        raise TypeError(_INVALID_STORAGE_PAGE)
+    objects = cast("list[object]", raw_objects)
+    next_cursor = values.get("next_cursor")
+    return StoragePage(
+        objects=tuple(_storage_object(item) for item in objects),
+        next_cursor=None if next_cursor is None else str(next_cursor),
+    )
 
 
 class StorageContext(Protocol):
@@ -14,6 +73,22 @@ class StorageContext(Protocol):
     _transport: Transport
 
     def _session_token(self) -> str: ...
+
+
+class StorageListTransport(Protocol):
+    """Transport capability required to list storage objects."""
+
+    def list_storage_objects(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        prefix: str,
+        limit: int | None,
+        cursor: str | None,
+    ) -> TransportResponse:
+        """Request one page of objects from a bucket."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +120,25 @@ class StorageBucket:
         )
         response_payload(response, 200)
         return bytes(response.content)
+
+    def list(
+        self,
+        prefix: str = "",
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> StoragePage:
+        """List objects under a prefix and return the next-page cursor."""
+        transport = cast("StorageListTransport", self._client._transport)
+        response = invoke(
+            transport.list_storage_objects,
+            authorization=self._client._session_token(),
+            bucket_name=self._name,
+            prefix=prefix,
+            limit=limit,
+            cursor=cursor,
+        )
+        return _storage_page(response_payload(response, 200))
 
 
 class Storage:
