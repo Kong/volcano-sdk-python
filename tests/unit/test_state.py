@@ -743,6 +743,21 @@ def test_database_update_reuses_the_select_filter_vocabulary() -> None:
     ]
 
 
+def test_database_update_preserves_filters_applied_before_update() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    client.database("main").from_("items").eq("tenant_id", "tenant-1").update(
+        {"status": "published"}
+    ).eq("id", "item-1").execute()
+
+    assert transport.update_calls[0]["filters"] == [
+        {"column": "tenant_id", "operator": "eq", "value": "tenant-1"},
+        {"column": "id", "operator": "eq", "value": "item-1"},
+    ]
+
+
 def test_query_builder_order_clauses_are_immutable() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)

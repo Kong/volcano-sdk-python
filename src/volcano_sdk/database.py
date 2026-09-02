@@ -134,6 +134,7 @@ class QueryBuilder(FilterBuilder):
             self._database_name,
             self._table,
             _snapshot_row(values),
+            self._filters,
         )
 
     def order(self, column: str, *, ascending: bool = True) -> QueryBuilder:
