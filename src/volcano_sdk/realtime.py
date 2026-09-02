@@ -10,11 +10,17 @@ from typing import Any, Protocol, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
 MessageCallback = Callable[[Any], Any]
+CENTRIFUGE_ERROR = cast(
+    "type[Exception]",
+    importlib.import_module("centrifuge").CentrifugeError,
+)
 CALLBACK_QUEUE_LIMIT = 128
 CALLBACK_QUEUE_FULL_MESSAGE = (
     "Volcano realtime callback queue is full; publication dropped"
 )
 CHANNEL_NOT_SUBSCRIBED = "Channel must be subscribed before sending"
+CHANNEL_REMOVAL_IN_PROGRESS = "realtime channel removal is in progress"
+CHANNEL_NOT_MANAGED = "realtime channel is no longer managed"
 SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
     "centrifuge client subscription registry is unavailable"
 )
@@ -47,6 +53,8 @@ class CentrifugeSubscription(Protocol):
 class CentrifugeConnection(Protocol):
     """Centrifuge connection operations used by the SDK."""
 
+    state: Any
+
     async def connect(self) -> None:
         """Open the remote connection."""
         ...
@@ -62,6 +70,10 @@ class CentrifugeConnection(Protocol):
         events: Any,
     ) -> CentrifugeSubscription:
         """Create a subscription for a remote channel."""
+        ...
+
+    def remove_subscription(self, subscription: Any) -> None:
+        """Remove an unsubscribed channel from the connection registry."""
         ...
 
 
@@ -148,6 +160,11 @@ class _VolcanoCentrifugeConnection:
     async def disconnect(self) -> None:
         await self._connection.disconnect()
 
+    @property
+    def is_connected(self) -> bool:
+        state = self._connection.state
+        return getattr(state, "value", None) == "connected"
+
     def new_subscription(
         self,
         name: str,
@@ -155,6 +172,9 @@ class _VolcanoCentrifugeConnection:
         events: Any,
     ) -> CentrifugeSubscription:
         return self._connection.new_subscription(name, events=events)
+
+    def remove_subscription(self, subscription: CentrifugeSubscription) -> None:
+        self._connection.remove_subscription(subscription)
 
 
 class _ChannelEvents:
@@ -311,16 +331,64 @@ class Realtime:
         self._client_context = client
         self._api_url = api_url
         self._client_factory = client_factory
-        self._connection: CentrifugeConnection | None = None
+        self._connection: _VolcanoCentrifugeConnection | None = None
         self._connection_lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
+        self._removing_channels: set[str] = set()
 
     def channel(self, name: str) -> Channel:
         """Return a stable channel facade for a broadcast name."""
         wire_name = f"broadcast:{name}"
+        if wire_name in self._removing_channels:
+            raise RuntimeError(CHANNEL_REMOVAL_IN_PROGRESS)
         if wire_name not in self._channels:
             self._channels[wire_name] = Channel(self, wire_name)
         return self._channels[wire_name]
+
+    @property
+    def is_connected(self) -> bool:
+        """Return whether the realtime transport is connected."""
+        return self._connection is not None and self._connection.is_connected
+
+    async def remove_channel(self, name: str) -> None:
+        """Unsubscribe and forget one broadcast channel."""
+        wire_name = f"broadcast:{name}"
+        async with self._connection_lock:
+            channel = self._channels.get(wire_name)
+            if channel is None:
+                return
+            self._removing_channels.add(wire_name)
+            try:
+                await self._remove_channel(channel)
+                self._channels.pop(wire_name, None)
+            finally:
+                self._removing_channels.remove(wire_name)
+
+    async def remove_all_channels(self) -> None:
+        """Unsubscribe and forget every managed channel."""
+        async with self._connection_lock:
+            first_error: Exception | None = None
+            for wire_name, channel in tuple(self._channels.items()):
+                self._removing_channels.add(wire_name)
+                try:
+                    await self._remove_channel(channel)
+                except CENTRIFUGE_ERROR as error:
+                    first_error = first_error or error
+                else:
+                    if self._channels.get(wire_name) is channel:
+                        del self._channels[wire_name]
+                finally:
+                    self._removing_channels.remove(wire_name)
+            if first_error is not None:
+                raise first_error
+
+    async def _remove_channel(self, channel: Channel) -> None:
+        subscription = channel._subscription
+        if subscription is not None:
+            await subscription.unsubscribe()
+            if self._connection is not None:
+                self._connection.remove_subscription(subscription)
+        await channel._reset()
 
     async def _token(self) -> str:
         return self._client_context._session_token()
@@ -331,11 +399,11 @@ class Realtime:
         query = f"apikey={quote(self._client_context._anon_token(), safe='')}"
         return urlunsplit((scheme, parsed.netloc, "/realtime/v1/websocket", query, ""))
 
-    async def _connect(self) -> CentrifugeConnection:
+    async def _connect(self) -> _VolcanoCentrifugeConnection:
         async with self._connection_lock:
             return await self._connect_locked()
 
-    async def _connect_locked(self) -> CentrifugeConnection:
+    async def _connect_locked(self) -> _VolcanoCentrifugeConnection:
         if self._connection is not None:
             return self._connection
         connection = _VolcanoCentrifugeConnection(
@@ -351,6 +419,8 @@ class Realtime:
 
     async def _subscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
+            if self._channels.get(channel._name) is not channel:
+                raise RuntimeError(CHANNEL_NOT_MANAGED)
             connection = await self._connect_locked()
             if channel._subscription is None:
                 channel._subscription = connection.new_subscription(
