@@ -118,6 +118,11 @@ lease = client.locks.acquire("build", ttl=30)
 lease = client.locks.renew("build", lease, ttl=30)
 client.locks.release("build", lease)
 client.locks.force_release("stale-build")
+
+with client.locks.with_lock("daily-rollup", ttl=30) as guard:
+    run_daily_rollup(fencing_token=guard.lease.fencing_token)
+    if guard.lost:
+        stop_writing()
 ```
 
 Storage removals run in input order. A failed request raises after any earlier
@@ -141,6 +146,10 @@ state without acquiring the lock.
 unchanged.
 `locks.force_release()` drops any current lease without an ownership token.
 Use it only for administrative recovery behind fencing-token enforcement.
+`locks.with_lock()` renews in the background, releases the latest lease on
+exit, and raises a renewal failure after the context body returns. Long-running
+work can inspect `guard.lost` or call `guard.wait_lost()` to stop using a lost
+lease promptly. Continue enforcing `guard.lease.fencing_token` at every write.
 `get_upload_session()` returns immutable progress and uploaded-part metadata for
 resuming an interrupted upload.
 `complete_upload_session()` assembles the uploaded parts and returns the stored

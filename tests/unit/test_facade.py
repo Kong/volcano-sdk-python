@@ -3,8 +3,9 @@ from __future__ import annotations
 import base64
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from io import SEEK_END, BytesIO
+from threading import Event
 from typing import Any, BinaryIO, cast
 
 import pytest
@@ -605,6 +606,99 @@ def test_locks_force_releases_without_an_ownership_token() -> None:
             {"authorization": "service-key", "key": "build"},
         )
     ]
+
+
+def test_locks_with_lock_renews_and_releases_the_latest_lease() -> None:
+    renewed = Event()
+
+    class AutoRenewTransport(FakeTransport):
+        def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("acquireProjectLock", kwargs))
+            expires_at = datetime.now(UTC) + timedelta(milliseconds=30)
+            return FakeResponse(
+                201,
+                {"expires_at": expires_at.isoformat(), "fencing_token": 7},
+            )
+
+        def renew_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("renewProjectLock", kwargs))
+            renewed.set()
+            expires_at = datetime.now(UTC) + timedelta(seconds=30)
+            return FakeResponse(
+                200,
+                {"expires_at": expires_at.isoformat(), "fencing_token": 8},
+            )
+
+    transport = AutoRenewTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+
+    with client.locks.with_lock("build", ttl=30) as guard:
+        assert renewed.wait(timeout=1)
+        assert guard.lease.fencing_token == 8
+        token = guard.lease.token
+
+    assert [name for name, _arguments in transport.calls] == [
+        "acquireProjectLock",
+        "renewProjectLock",
+        "releaseProjectLock",
+    ]
+    assert transport.calls[-1][1]["token"] == token
+
+
+def test_locks_with_lock_reports_lease_loss_after_releasing() -> None:
+    class FailingRenewTransport(FakeTransport):
+        def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("acquireProjectLock", kwargs))
+            expires_at = datetime.now(UTC) + timedelta(milliseconds=30)
+            return FakeResponse(
+                201,
+                {"expires_at": expires_at.isoformat(), "fencing_token": 7},
+            )
+
+        def renew_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("renewProjectLock", kwargs))
+            return FakeResponse(500, {"message": "renewal failed"})
+
+    transport = FailingRenewTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+
+    def hold_until_lost() -> None:
+        with client.locks.with_lock("build", ttl=30) as guard:
+            assert guard.wait_lost(timeout=1)
+            assert guard.lost
+
+    with pytest.raises(ServerError, match="renewal failed"):
+        hold_until_lost()
+
+    assert transport.calls[-1][0] == "releaseProjectLock"
+
+
+def test_locks_with_lock_preserves_body_errors_and_releases() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+
+    failure_message = "body failed"
+
+    def fail_body() -> None:
+        with client.locks.with_lock("build", ttl=30):
+            raise RuntimeError(failure_message)
+
+    with pytest.raises(RuntimeError, match=failure_message):
+        fail_body()
+
+    assert transport.calls[-1][0] == "releaseProjectLock"
 
 
 def test_storage_remove_accepts_one_path() -> None:

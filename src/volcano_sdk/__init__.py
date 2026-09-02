@@ -12,6 +12,7 @@ from .errors import (
     ValidationError,
     VolcanoError,
 )
+from .locks import LockGuard
 from .models import (
     AuthChangeEvent,
     AuthSession,
@@ -53,6 +54,7 @@ __all__ = [
     "EmailChangeResult",
     "FunctionResponse",
     "LinkedOAuthProvider",
+    "LockGuard",
     "LockLease",
     "LockState",
     "LogActivityResponse",
