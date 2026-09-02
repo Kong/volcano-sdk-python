@@ -103,6 +103,89 @@ def test_generated_transport_resolves_and_invokes_a_function() -> None:
     }
 
 
+def test_generated_transport_reads_project_logs() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/search"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "event-1",
+                            "timestamp": "2026-09-02T12:00:00Z",
+                            "body": "ready",
+                            "resource": {
+                                "type": "function",
+                                "id": "00000000-0000-4000-8000-000000000040",
+                            },
+                        }
+                    ],
+                    "limit": 25,
+                    "has_more": False,
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "start_time": "2026-09-02T12:00:00Z",
+                        "end_time": "2026-09-02T12:05:00Z",
+                        "counts": {
+                            "levels": {"info": 2},
+                            "regions": {"us-east-1": 2},
+                            "resource_ids": {"00000000-0000-4000-8000-000000000040": 2},
+                        },
+                        "total": 2,
+                    }
+                ],
+                "total": 2,
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+    project_id = "00000000-0000-4000-8000-000000000001"
+    resource = {"resource": {"type": "function"}}
+
+    search = transport.search_project_logs(
+        authorization="access-token",
+        project_id=project_id,
+        request={**resource, "limit": 25, "query": "misspelled-filter"},
+    )
+    activity = transport.get_project_log_activity(
+        authorization="access-token",
+        project_id=project_id,
+        request={
+            "resource": {"type": "function", "unknown_selector": True},
+            "bucket_count": 12,
+        },
+    )
+
+    assert search.payload["data"][0]["id"] == "event-1"
+    assert activity.payload["total"] == 2
+    assert [request.url.path for request in requests] == [
+        f"/projects/{project_id}/logs/search",
+        f"/projects/{project_id}/logs/activity",
+    ]
+    assert [json.loads(request.content) for request in requests] == [
+        {**resource, "limit": 25, "query": "misspelled-filter"},
+        {
+            "resource": {"type": "function", "unknown_selector": True},
+            "bucket_count": 12,
+        },
+    ]
+    assert all(
+        request.headers["authorization"] == "Bearer access-token"
+        for request in requests
+    )
+
+
 def test_generated_transport_exchanges_an_oauth_code() -> None:
     requests: list[httpx.Request] = []
 

@@ -20,6 +20,7 @@ REQUIRED_OPERATION_MODULES = {
     "delete_storage_object.py",
     "download_storage_object.py",
     "force_release_project_lock.py",
+    "get_project_log_activity.py",
     "get_project_lock.py",
     "invoke_function.py",
     "list_storage_objects.py",
@@ -28,6 +29,7 @@ REQUIRED_OPERATION_MODULES = {
     "release_project_lock.py",
     "renew_project_lock.py",
     "resolve_function_for_invocation.py",
+    "search_project_logs.py",
     "update_storage_object_visibility.py",
     "upload_storage_object.py",
 }
