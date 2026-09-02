@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from volcano_sdk import VolcanoClient
+from volcano_sdk import (
+    RealtimeConnectContext,
+    RealtimeDisconnectContext,
+    RealtimeErrorContext,
+    VolcanoClient,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -168,8 +173,9 @@ class FakeSubscription:
 
 
 class FakeCentrifugeClient:
-    def __init__(self) -> None:
+    def __init__(self, events: Any = None) -> None:
         self.calls: list[str] = []
+        self.events = events
         self.state = SimpleNamespace(value="disconnected")
         self.subscription: FakeSubscription | None = None
         self._subs: dict[str, FakeSubscription] = {}
@@ -177,11 +183,21 @@ class FakeCentrifugeClient:
     async def connect(self) -> None:
         self.calls.append("connect")
         self.state = SimpleNamespace(value="connected")
+        if self.events is not None:
+            await self.events.on_connected(SimpleNamespace(client="client-123"))
 
     async def disconnect(self) -> None:
         self.calls.append("disconnect")
         self.state = SimpleNamespace(value="disconnected")
         self._subs.clear()
+        if self.events is not None:
+            await self.events.on_disconnected(
+                SimpleNamespace(code=0, reason="disconnect called")
+            )
+
+    async def emit_error(self, code: int, error: Exception) -> None:
+        if self.events is not None:
+            await self.events.on_error(SimpleNamespace(code=code, error=error))
 
     def new_subscription(self, name: str, *, events: Any) -> FakeSubscription:
         if name in self._subs:
@@ -212,10 +228,12 @@ class FakeCentrifugeFactory:
         self,
         address: str,
         *,
+        events: Any,
         token: str,
         get_token: Callable[[], Awaitable[str]],
     ) -> FakeCentrifugeClient:
         del address, token, get_token
+        self.client.events = events
         return self.client
 
 
@@ -233,11 +251,13 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
     def factory(
         address: str,
         *,
+        events: Any,
         token: str,
         get_token: Callable[[], Awaitable[str]],
     ) -> FakeCentrifugeClient:
         factory_arguments.update(
             address=address,
+            events=events,
             token=token,
             get_token=get_token,
         )
@@ -288,6 +308,91 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
         ("unsubscribe", None),
     ]
     assert received == [{"event": "message", "value": "contract"}]
+
+
+def test_realtime_connection_callbacks_receive_immutable_contexts() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        connected: list[RealtimeConnectContext] = []
+        disconnected: list[RealtimeDisconnectContext] = []
+        errors: list[RealtimeErrorContext] = []
+        connected_event = asyncio.Event()
+        disconnected_event = asyncio.Event()
+        error_event = asyncio.Event()
+
+        def on_connected(context: RealtimeConnectContext) -> None:
+            connected.append(context)
+            connected_event.set()
+
+        async def on_disconnected(context: RealtimeDisconnectContext) -> None:
+            disconnected.append(context)
+            disconnected_event.set()
+
+        def on_error(context: RealtimeErrorContext) -> None:
+            errors.append(context)
+            error_event.set()
+
+        stop_connect = client.realtime.on_connect(on_connected)
+        client.realtime.on_disconnect(on_disconnected)
+        stop_error = client.realtime.on_error(on_error)
+
+        await client.realtime.channel("contract").subscribe()
+        await asyncio.wait_for(connected_event.wait(), timeout=0.1)
+        assert connected == [RealtimeConnectContext(client="client-123")]
+
+        error = RuntimeError("socket failed")
+        await official.emit_error(7, error)
+        await asyncio.wait_for(error_event.wait(), timeout=0.1)
+        assert errors == [
+            RealtimeErrorContext(code=7, message="socket failed", error=error)
+        ]
+
+        stop_connect()
+        stop_connect()
+        stop_error()
+        await client.realtime.disconnect()
+        await asyncio.wait_for(disconnected_event.wait(), timeout=0.1)
+        assert disconnected == [
+            RealtimeDisconnectContext(code=0, reason="disconnect called")
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_realtime_connection_callbacks_do_not_block_transport_events() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        callback_started = asyncio.Event()
+        callback_release = asyncio.Event()
+
+        async def on_connect(_context: RealtimeConnectContext) -> None:
+            callback_started.set()
+            await callback_release.wait()
+
+        client.realtime.on_connect(on_connect)
+        await asyncio.wait_for(
+            client.realtime.channel("contract").subscribe(),
+            timeout=0.1,
+        )
+        await asyncio.wait_for(callback_started.wait(), timeout=0.1)
+        callback_release.set()
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
 
 
 def test_realtime_reports_connection_state_and_removes_one_channel() -> None:

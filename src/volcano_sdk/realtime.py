@@ -6,10 +6,13 @@ import asyncio
 import importlib
 import inspect
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any, Protocol, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
 MessageCallback = Callable[[Any], Any]
+RealtimeCallback = Callable[[Any], Any]
+UnsubscribeCallback = Callable[[], None]
 CENTRIFUGE_ERROR = cast(
     "type[Exception]",
     importlib.import_module("centrifuge").CentrifugeError,
@@ -21,9 +24,34 @@ CALLBACK_QUEUE_FULL_MESSAGE = (
 CHANNEL_NOT_SUBSCRIBED = "Channel must be subscribed before sending"
 CHANNEL_REMOVAL_IN_PROGRESS = "realtime channel removal is in progress"
 CHANNEL_NOT_MANAGED = "realtime channel is no longer managed"
+CALLBACK_NOT_CALLABLE = "callback must be callable"
 SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
     "centrifuge client subscription registry is unavailable"
 )
+
+
+@dataclass(frozen=True, slots=True)
+class RealtimeConnectContext:
+    """Details reported after a realtime transport connects."""
+
+    client: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RealtimeDisconnectContext:
+    """Details reported after a realtime transport disconnects."""
+
+    code: int | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RealtimeErrorContext:
+    """Details reported when the realtime transport emits an error."""
+
+    code: int | None = None
+    message: str | None = None
+    error: Exception | None = None
 
 
 class RealtimeContext(Protocol):
@@ -84,6 +112,7 @@ class CentrifugeFactory(Protocol):
         self,
         address: str,
         *,
+        events: Any,
         token: str,
         get_token: Callable[[], Awaitable[str]],
     ) -> CentrifugeConnection:
@@ -98,6 +127,7 @@ class CentrifugeConstructor(Protocol):
         self,
         address: str,
         *,
+        events: Any,
         token: str,
         get_token: Callable[[], Awaitable[str]],
     ) -> object:
@@ -120,6 +150,7 @@ class PublicationContext(Protocol):
 def _centrifuge_client(
     address: str,
     *,
+    events: Any,
     token: str,
     get_token: Callable[[], Awaitable[str]],
 ) -> CentrifugeConnection:
@@ -127,7 +158,7 @@ def _centrifuge_client(
     constructor = cast("CentrifugeConstructor", module.Client)
     return cast(
         "CentrifugeConnection",
-        constructor(address, token=token, get_token=get_token),
+        constructor(address, events=events, token=token, get_token=get_token),
     )
 
 
@@ -200,6 +231,58 @@ class _ChannelEvents:
         del ctx
 
     async def on_error(self, ctx: Any) -> None:
+        del ctx
+
+
+class _ClientEvents:
+    def __init__(self, realtime: Realtime) -> None:
+        self._realtime = realtime
+
+    async def on_connecting(self, ctx: Any) -> None:
+        del ctx
+
+    async def on_connected(self, ctx: Any) -> None:
+        self._realtime._enqueue_connection_callbacks(
+            "connect",
+            RealtimeConnectContext(client=getattr(ctx, "client", None)),
+        )
+
+    async def on_disconnected(self, ctx: Any) -> None:
+        self._realtime._enqueue_connection_callbacks(
+            "disconnect",
+            RealtimeDisconnectContext(
+                code=getattr(ctx, "code", None),
+                reason=getattr(ctx, "reason", None),
+            ),
+        )
+
+    async def on_error(self, ctx: Any) -> None:
+        error = getattr(ctx, "error", None)
+        self._realtime._enqueue_connection_callbacks(
+            "error",
+            RealtimeErrorContext(
+                code=getattr(ctx, "code", None),
+                message=str(error) if error is not None else None,
+                error=error if isinstance(error, Exception) else None,
+            ),
+        )
+
+    async def on_subscribed(self, ctx: Any) -> None:
+        del ctx
+
+    async def on_subscribing(self, ctx: Any) -> None:
+        del ctx
+
+    async def on_unsubscribed(self, ctx: Any) -> None:
+        del ctx
+
+    async def on_publication(self, ctx: Any) -> None:
+        del ctx
+
+    async def on_join(self, ctx: Any) -> None:
+        del ctx
+
+    async def on_leave(self, ctx: Any) -> None:
         del ctx
 
 
@@ -340,6 +423,96 @@ class Realtime:
         self._connection_lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
         self._removing_channels: set[str] = set()
+        self._connection_callbacks: dict[str, dict[int, RealtimeCallback]] = {
+            "connect": {},
+            "disconnect": {},
+            "error": {},
+        }
+        self._next_callback_id = 0
+        self._connection_callback_queue: asyncio.Queue[
+            tuple[str, Any, tuple[int, ...]]
+        ] = asyncio.Queue(maxsize=CALLBACK_QUEUE_LIMIT)
+        self._connection_callback_task: asyncio.Task[None] | None = None
+
+    def on_connect(self, callback: RealtimeCallback) -> UnsubscribeCallback:
+        """Register a connection callback and return its unsubscribe function."""
+        return self._register_connection_callback("connect", callback)
+
+    def on_disconnect(self, callback: RealtimeCallback) -> UnsubscribeCallback:
+        """Register a disconnection callback and return its unsubscribe function."""
+        return self._register_connection_callback("disconnect", callback)
+
+    def on_error(self, callback: RealtimeCallback) -> UnsubscribeCallback:
+        """Register a transport-error callback and return its unsubscribe function."""
+        return self._register_connection_callback("error", callback)
+
+    def _register_connection_callback(
+        self,
+        event: str,
+        callback: RealtimeCallback,
+    ) -> UnsubscribeCallback:
+        if not callable(callback):
+            raise TypeError(CALLBACK_NOT_CALLABLE)
+        self._next_callback_id += 1
+        callback_id = self._next_callback_id
+        self._connection_callbacks[event][callback_id] = callback
+
+        def unsubscribe() -> None:
+            self._connection_callbacks[event].pop(callback_id, None)
+
+        return unsubscribe
+
+    def _enqueue_connection_callbacks(self, event: str, context: Any) -> None:
+        callback_ids = tuple(self._connection_callbacks[event])
+        if not callback_ids:
+            return
+        try:
+            self._connection_callback_queue.put_nowait((event, context, callback_ids))
+        except asyncio.QueueFull:
+            asyncio.get_running_loop().call_exception_handler(
+                {"message": "Volcano realtime connection callback queue is full"}
+            )
+            return
+        task = self._connection_callback_task
+        if task is None or task.done():
+            self._connection_callback_task = asyncio.create_task(
+                self._drain_connection_callbacks()
+            )
+
+    async def _drain_connection_callbacks(self) -> None:
+        while not self._connection_callback_queue.empty():
+            event, context, callback_ids = self._connection_callback_queue.get_nowait()
+            try:
+                callbacks = self._connection_callbacks[event]
+                for callback_id in callback_ids:
+                    callback = callbacks.get(callback_id)
+                    if callback is None:
+                        continue
+                    (error,) = await asyncio.gather(
+                        self._run_connection_callback(callback, context),
+                        return_exceptions=True,
+                    )
+                    if isinstance(error, BaseException):
+                        asyncio.get_running_loop().call_exception_handler(
+                            {
+                                "message": (
+                                    "Volcano realtime connection callback failed"
+                                ),
+                                "exception": error,
+                                "event": event,
+                            }
+                        )
+            finally:
+                self._connection_callback_queue.task_done()
+
+    async def _run_connection_callback(
+        self,
+        callback: RealtimeCallback,
+        context: Any,
+    ) -> None:
+        result = callback(context)
+        if inspect.isawaitable(result):
+            await result
 
     def channel(self, name: str) -> Channel:
         """Return a stable channel facade for a broadcast name."""
@@ -414,6 +587,7 @@ class Realtime:
         connection = _VolcanoCentrifugeConnection(
             self._client_factory(
                 self._address(),
+                events=_ClientEvents(self),
                 token=self._client_context._session_token(),
                 get_token=self._token,
             )

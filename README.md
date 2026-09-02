@@ -532,6 +532,16 @@ Realtime is async. Channels wrap `centrifuge-python`; the underlying client and
 subscription objects are not part of the public API.
 
 ```python
+stop_connect = client.realtime.on_connect(
+    lambda context: print("connected", context.client)
+)
+client.realtime.on_disconnect(
+    lambda context: print("disconnected", context.code, context.reason)
+)
+client.realtime.on_error(
+    lambda context: print("realtime error", context.code, context.message)
+)
+
 channel = client.realtime.channel("updates")
 assert channel.name == "broadcast:updates"
 channel.on("message", print)
@@ -543,11 +553,15 @@ await client.realtime.remove_channel("updates")
 assert client.realtime.is_connected
 await client.realtime.disconnect()
 assert not client.realtime.is_connected
+stop_connect()
 ```
 
 `remove_channel()` unsubscribes and forgets one channel. `remove_all_channels()`
 does the same for every managed channel without disconnecting the shared
 realtime transport, so later calls to `channel()` return fresh facades.
+Connection callbacks receive immutable contexts, may be synchronous or async,
+and run outside the transport event processor. Each registration returns an
+idempotent function that stops future delivery.
 
 ## Compatibility
 

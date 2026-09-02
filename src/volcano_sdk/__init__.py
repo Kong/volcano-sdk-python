@@ -37,6 +37,11 @@ from .models import (
     UploadSessionStatus,
     User,
 )
+from .realtime import (
+    RealtimeConnectContext,
+    RealtimeDisconnectContext,
+    RealtimeErrorContext,
+)
 
 __all__ = [
     "AuthChangeEvent",
@@ -56,6 +61,9 @@ __all__ = [
     "OAuthProviderName",
     "OAuthProviderTokenStatus",
     "RateLimitedError",
+    "RealtimeConnectContext",
+    "RealtimeDisconnectContext",
+    "RealtimeErrorContext",
     "ServerError",
     "Session",
     "SessionChangedError",
