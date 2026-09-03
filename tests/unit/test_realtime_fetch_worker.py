@@ -23,9 +23,10 @@ class BlockingRowFetch:
 
     async def __call__(
         self,
-        request: realtime_module._PostgresFetchRequest,
-    ) -> dict[str, Any]:
-        row_id = request.row_id
+        requests: tuple[realtime_module._PostgresFetchRequest, ...],
+    ) -> tuple[dict[str, Any], ...]:
+        assert len(requests) == 1
+        row_id = requests[0].row_id
         assert isinstance(row_id, int)
         self.row_ids.append(row_id)
         if row_id == 1:
@@ -35,7 +36,7 @@ class BlockingRowFetch:
             except asyncio.CancelledError:
                 self.cancelled.set()
                 raise
-        return {"id": row_id}
+        return ({"id": row_id},)
 
 
 class FailingThenSuccessfulFetch:
@@ -44,21 +45,40 @@ class FailingThenSuccessfulFetch:
 
     async def __call__(
         self,
-        request: realtime_module._PostgresFetchRequest,
-    ) -> dict[str, Any]:
-        row_id = request.row_id
+        requests: tuple[realtime_module._PostgresFetchRequest, ...],
+    ) -> tuple[dict[str, Any], ...]:
+        assert len(requests) == 1
+        row_id = requests[0].row_id
         assert isinstance(row_id, int)
         if row_id == 1:
             raise self.failure
-        return {"id": row_id}
+        return ({"id": row_id},)
 
 
-def fetch_job(row_id: int) -> PostgresFetchJob[str]:
+class RecordingBatchFetch:
+    def __init__(self) -> None:
+        self.calls: list[tuple[int, ...]] = []
+
+    async def __call__(
+        self,
+        requests: tuple[realtime_module._PostgresFetchRequest, ...],
+    ) -> tuple[dict[str, Any], ...]:
+        row_ids: list[int] = []
+        for request in requests:
+            row_id = request.row_id
+            assert isinstance(row_id, int)
+            row_ids.append(row_id)
+        typed_row_ids = tuple(row_ids)
+        self.calls.append(typed_row_ids)
+        return tuple({"id": row_id} for row_id in typed_row_ids)
+
+
+def fetch_job(row_id: int, *, table: str = "messages") -> PostgresFetchJob[str]:
     return PostgresFetchJob(
         request=realtime_module._PostgresFetchRequest(
             database_name="app",
             access_token="captured-token",
-            table="messages",
+            table=table,
             row_id=row_id,
         ),
         fallback=f"lightweight-{row_id}",
@@ -101,6 +121,94 @@ def test_postgres_fetch_worker_bounds_and_orders_fetches() -> None:
             "lightweight-2",
             "lightweight-3",
         ]
+
+    asyncio.run(scenario())
+
+
+def test_postgres_fetch_worker_batches_compatible_rows_in_order() -> None:
+    async def scenario() -> None:
+        fetch = RecordingBatchFetch()
+        outcomes: list[PostgresFetchOutcome[str]] = []
+
+        async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
+            outcomes.append(outcome)
+
+        worker = PostgresFetchWorker(
+            fetch,
+            deliver,
+            queue_limit=3,
+            batch_window_seconds=0.05,
+            max_batch_size=3,
+        )
+        await worker.enqueue(fetch_job(1))
+        await worker.enqueue(fetch_job(2))
+        await worker.enqueue(fetch_job(3))
+        await asyncio.wait_for(worker.close(), timeout=0.2)
+
+        assert fetch.calls == [(1, 2, 3)]
+        assert [outcome.record for outcome in outcomes] == [
+            {"id": 1},
+            {"id": 2},
+            {"id": 3},
+        ]
+        assert [outcome.job.fallback for outcome in outcomes] == [
+            "lightweight-1",
+            "lightweight-2",
+            "lightweight-3",
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_postgres_fetch_worker_does_not_batch_different_tables() -> None:
+    async def scenario() -> None:
+        fetch = RecordingBatchFetch()
+        outcomes: list[PostgresFetchOutcome[str]] = []
+
+        async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
+            outcomes.append(outcome)
+
+        worker = PostgresFetchWorker(
+            fetch,
+            deliver,
+            queue_limit=2,
+            batch_window_seconds=0.01,
+            max_batch_size=2,
+        )
+        await worker.enqueue(fetch_job(1))
+        await worker.enqueue(fetch_job(2, table="archive"))
+        await asyncio.wait_for(worker.close(), timeout=0.2)
+
+        assert fetch.calls == [(1,), (2,)]
+        assert [outcome.job.fallback for outcome in outcomes] == [
+            "lightweight-1",
+            "lightweight-2",
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_postgres_fetch_worker_does_not_coalesce_repeated_row_ids() -> None:
+    async def scenario() -> None:
+        fetch = RecordingBatchFetch()
+        outcomes: list[PostgresFetchOutcome[str]] = []
+
+        async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
+            outcomes.append(outcome)
+
+        worker = PostgresFetchWorker(
+            fetch,
+            deliver,
+            queue_limit=2,
+            batch_window_seconds=0.01,
+            max_batch_size=2,
+        )
+        await worker.enqueue(fetch_job(1))
+        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(worker.close(), timeout=0.2)
+
+        assert fetch.calls == [(1,), (1,)]
+        assert len(outcomes) == 2
 
     asyncio.run(scenario())
 

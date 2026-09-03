@@ -44,6 +44,8 @@ CENTRIFUGE_ERROR = cast(
 )
 CALLBACK_QUEUE_LIMIT = 128
 POSTGRES_QUEUE_LIMIT = 128
+POSTGRES_BATCH_WINDOW_SECONDS = 0.02
+POSTGRES_MAX_BATCH_SIZE = 50
 NO_PENDING_CALLBACK = object()
 CALLBACK_QUEUE_FULL_MESSAGE = (
     "Volcano realtime callback queue is full; publication dropped"
@@ -712,9 +714,11 @@ class Channel:
             worker = self._postgres_worker
             if worker is None:
                 worker = PostgresFetchWorker(
-                    self._realtime._fetch_postgres_row,
+                    self._realtime._fetch_postgres_rows,
                     self._deliver_postgres,
                     queue_limit=POSTGRES_QUEUE_LIMIT,
+                    batch_window_seconds=POSTGRES_BATCH_WINDOW_SECONDS,
+                    max_batch_size=POSTGRES_MAX_BATCH_SIZE,
                 )
                 self._postgres_worker = worker
         try:
@@ -1063,29 +1067,35 @@ class Realtime:
         """Bind lightweight Postgres changes to a project database."""
         self._database_name = name
 
-    async def _fetch_postgres_row(
+    async def _fetch_postgres_rows(
         self,
-        request: _PostgresFetchRequest,
-    ) -> dict[str, Any] | None:
+        requests: tuple[_PostgresFetchRequest, ...],
+    ) -> tuple[dict[str, Any] | None, ...]:
+        first = requests[0]
+        row_ids = [request.row_id for request in requests]
         transport = cast(
             "AsyncDatabaseSelectTransport",
             self._client_context._transport,
         )
         response = await invoke_async(
             transport.query_database_select_async,
-            authorization=request.access_token,
-            database_name=request.database_name,
+            authorization=first.access_token,
+            database_name=first.database_name,
             body={
-                "table": request.table,
-                "filters": [
-                    {"column": "id", "operator": "eq", "value": request.row_id}
-                ],
-                "limit": 1,
+                "table": first.table,
+                "filters": [{"column": "id", "operator": "in", "value": row_ids}],
+                "limit": len(row_ids),
             },
         )
         payload = response_payload(response, 200)
         rows = list(payload["data"])
-        return rows[0] if rows else None
+        return tuple(
+            next(
+                (row for row in rows if row.get("id") == request.row_id),
+                None,
+            )
+            for request in requests
+        )
 
     def on_connect(self, callback: RealtimeCallback) -> UnsubscribeCallback:
         """Register a connection callback and return its unsubscribe function."""

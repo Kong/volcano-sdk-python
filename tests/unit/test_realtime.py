@@ -43,7 +43,7 @@ def test_realtime_database_binding_can_be_replaced_and_cleared() -> None:
     assert client.realtime.database_name is None
 
 
-def test_realtime_fetches_a_session_bound_postgres_row() -> None:
+def test_realtime_fetches_session_bound_postgres_rows() -> None:
     transport = RealtimeDatabaseTransport([{"id": 42, "body": "fetched"}])
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
     request = realtime_module._PostgresFetchRequest(
@@ -53,17 +53,16 @@ def test_realtime_fetches_a_session_bound_postgres_row() -> None:
         row_id=42,
     )
 
-    assert asyncio.run(client.realtime._fetch_postgres_row(request)) == {
-        "id": 42,
-        "body": "fetched",
-    }
+    assert asyncio.run(client.realtime._fetch_postgres_rows((request,))) == (
+        {"id": 42, "body": "fetched"},
+    )
     assert transport.queries == [
         {
             "authorization": "captured-token",
             "database_name": "app",
             "body": {
                 "table": "messages",
-                "filters": [{"column": "id", "operator": "eq", "value": 42}],
+                "filters": [{"column": "id", "operator": "in", "value": [42]}],
                 "limit": 1,
             },
         }
@@ -80,7 +79,7 @@ def test_realtime_row_fetch_returns_none_when_the_row_is_absent() -> None:
         row_id=42,
     )
 
-    assert asyncio.run(client.realtime._fetch_postgres_row(request)) is None
+    assert asyncio.run(client.realtime._fetch_postgres_rows((request,))) == (None,)
     assert transport.queries[0]["body"]["table"] == "messages"
 
 
@@ -856,8 +855,86 @@ def test_realtime_fetches_lightweight_postgres_rows() -> None:
                 "database_name": "app",
                 "body": {
                     "table": "messages",
-                    "filters": [{"column": "id", "operator": "eq", "value": 42}],
+                    "filters": [{"column": "id", "operator": "in", "value": [42]}],
                     "limit": 1,
+                },
+            }
+        ]
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_batches_compatible_lightweight_postgres_rows() -> None:
+    official = FakeCentrifugeClient()
+    transport = RealtimeDatabaseTransport(
+        [
+            {"id": 42, "body": "first"},
+            {"id": 43, "body": "second"},
+        ]
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    client.realtime.set_database_name("app")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        received = asyncio.Event()
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+
+        def on_insert(change: Any) -> None:
+            changes.append(change)
+            if len(changes) == 2:
+                received.set()
+
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=on_insert,
+        )
+        await channel.subscribe()
+        subscription = official.subscription
+        assert subscription is not None
+
+        for row_id in (42, 43):
+            await subscription.emit(
+                {
+                    "type": "INSERT",
+                    "schema": "public",
+                    "table": "messages",
+                    "id": row_id,
+                    "mode": "lightweight",
+                    "timestamp": "2026-09-03T12:00:00Z",
+                }
+            )
+        await asyncio.wait_for(received.wait(), timeout=0.2)
+
+        assert [change.record for change in changes] == [
+            {"id": 42, "body": "first"},
+            {"id": 43, "body": "second"},
+        ]
+        assert transport.queries == [
+            {
+                "authorization": "access-1",
+                "database_name": "app",
+                "body": {
+                    "table": "messages",
+                    "filters": [
+                        {
+                            "column": "id",
+                            "operator": "in",
+                            "value": [42, 43],
+                        }
+                    ],
+                    "limit": 2,
                 },
             }
         ]

@@ -639,7 +639,8 @@ stop_changes()
 
 Binding a database automatically fetches the matching row for lightweight
 `INSERT` and `UPDATE` notifications in the `public` schema. The fetch uses the
-realtime connection's RLS-scoped access token and preserves publication order.
+realtime connection's RLS-scoped access token. Compatible row lookups are
+batched while callback delivery preserves publication order.
 If the row is absent or the query fails, the callback receives the lightweight
 notification with its `id` and `mode` intact. Non-public schemas also retain
 that lightweight form. Lightweight deletes never query the database; they
