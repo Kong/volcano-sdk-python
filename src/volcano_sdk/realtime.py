@@ -152,7 +152,7 @@ class _PostgresDelivery:
     database_name: str | None
     access_token: str | None
     session_generation: int
-    user_id: str | None
+    session_lineage: int
     subscription_epoch: int
 
 
@@ -232,6 +232,8 @@ class RealtimeContext(Protocol):
     def _session_token(self) -> str: ...
 
     def _capture_session(self) -> tuple[int, Session | None]: ...
+
+    def _capture_session_binding(self) -> tuple[int, int, Session | None]: ...
 
 
 class CentrifugeSubscription(Protocol):
@@ -527,6 +529,7 @@ class Channel:
         self._postgres_task: asyncio.Task[None] | None = None
         self._postgres_epoch = 0
         self._postgres_session_generation = 0
+        self._postgres_session_lineage = 0
         self._postgres_access_token: str | None = None
         self._postgres_user_id: str | None = None
 
@@ -638,7 +641,7 @@ class Channel:
                 database_name=database_name if fetch else None,
                 access_token=self._postgres_access_token if fetch else None,
                 session_generation=self._postgres_session_generation,
-                user_id=self._postgres_user_id,
+                session_lineage=self._postgres_session_lineage,
                 subscription_epoch=self._postgres_epoch,
             )
         )
@@ -738,20 +741,19 @@ class Channel:
         )
 
     def _postgres_auth_is_current(self, request: _PostgresDelivery) -> bool:
-        session_generation, session = self._realtime._client_context._capture_session()
-        if request.session_generation == session_generation:
-            return True
-        return (
-            request.user_id is not None
-            and session is not None
-            and request.user_id == session.user_id
+        _generation, lineage, _session = (
+            self._realtime._client_context._capture_session_binding()
         )
+        return request.session_lineage == lineage
 
     def _begin_postgres_epoch(self) -> None:
         if self._type == "postgres":
             self._postgres_epoch += 1
-            generation, session = self._realtime._client_context._capture_session()
+            generation, lineage, session = (
+                self._realtime._client_context._capture_session_binding()
+            )
             self._postgres_session_generation = generation
+            self._postgres_session_lineage = lineage
             self._postgres_access_token = session.access_token if session else None
             self._postgres_user_id = session.user_id if session else None
 

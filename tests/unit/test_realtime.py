@@ -79,6 +79,15 @@ class AuthTransport:
             },
         )
 
+    def auth_logout(
+        self,
+        *,
+        authorization: str,
+        refresh_token: str,
+    ) -> Response:
+        del authorization, refresh_token
+        return Response(204, None)
+
     def query_database_select(
         self,
         *,
@@ -1213,6 +1222,67 @@ def test_realtime_revalidates_inside_scheduled_callback(
         await asyncio.sleep(0.01)
 
         assert received == []
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_discards_queued_change_after_same_user_sign_in() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+        received: list[int] = []
+
+        async def on_change(change: Any) -> None:
+            record_id = change.record["id"]
+            if record_id == 1:
+                first_started.set()
+                await release_first.wait()
+            received.append(record_id)
+
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=on_change,
+        )
+        await channel.subscribe()
+        for record_id in (1, 2):
+            await official.emit_wire_publication(
+                "project-id:postgres:public:messages:user-id",
+                {
+                    "type": "INSERT",
+                    "schema": "public",
+                    "table": "messages",
+                    "record": {"id": record_id},
+                    "timestamp": "2026-09-02T12:00:00Z",
+                },
+            )
+        await asyncio.wait_for(first_started.wait(), timeout=0.2)
+        for _ in range(100):
+            if not channel._callback_queue.empty():
+                break
+            await asyncio.sleep(0.001)
+        assert not channel._callback_queue.empty()
+
+        client.auth.sign_out()
+        client.auth.sign_in(email="user@example.com", password="secret")
+        release_first.set()
+        await asyncio.sleep(0.01)
+
+        assert received == [1]
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
