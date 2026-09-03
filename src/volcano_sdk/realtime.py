@@ -529,7 +529,7 @@ class Channel:
         self._postgres_lock = asyncio.Lock()
         self._postgres_worker: PostgresFetchWorker[_PostgresDelivery] | None = None
         self._postgres_filters: dict[
-            MessageCallback,
+            int,
             tuple[PostgresListenerEvent, str, str],
         ] = {}
 
@@ -574,13 +574,13 @@ class Channel:
             return callback(change)
 
         self._callbacks.setdefault("*", []).append(filtered)
-        self._postgres_filters[filtered] = (event, schema, table)
+        self._postgres_filters[id(filtered)] = (event, schema, table)
 
         def unsubscribe() -> None:
             callbacks = self._callbacks.get("*", [])
             if filtered in callbacks:
                 callbacks.remove(filtered)
-            self._postgres_filters.pop(filtered, None)
+            self._postgres_filters.pop(id(filtered), None)
 
         return unsubscribe
 
@@ -660,7 +660,7 @@ class Channel:
 
     def _has_postgres_listener(self, change: PostgresChange) -> bool:
         for callback in self._callbacks.get("*", []):
-            listener_filter = self._postgres_filters.get(callback)
+            listener_filter = self._postgres_filters.get(id(callback))
             if listener_filter is None:
                 return True
             event, schema, table = listener_filter

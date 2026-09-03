@@ -580,6 +580,15 @@ def test_realtime_only_queues_changes_with_an_interested_listener() -> None:
     client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
+        @dataclass
+        class UnhashableListener:
+            changes: list[Any]
+            received: asyncio.Event
+
+            def __call__(self, change: Any) -> None:
+                self.changes.append(change)
+                self.received.set()
+
         def publication(event: str, table: str) -> dict[str, Any]:
             return {
                 "type": event,
@@ -616,11 +625,7 @@ def test_realtime_only_queues_changes_with_an_interested_listener() -> None:
 
         assert channel._postgres_worker is None
 
-        def receive_unfiltered(change: Any) -> None:
-            unfiltered.append(change)
-            unfiltered_received.set()
-
-        channel.on("*", receive_unfiltered)
+        channel.on("*", UnhashableListener(unfiltered, unfiltered_received))
         await subscription.emit(publication("UPDATE", "other"))
         await asyncio.wait_for(unfiltered_received.wait(), timeout=0.2)
 
