@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -18,6 +19,15 @@ def lease(*, expires_at: datetime | None = None) -> LockLease:
         expires_at=expires_at,
         fencing_token=7,
     )
+
+
+def test_lease_clock_falls_back_to_portable_monotonic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delattr(time, "clock_gettime", raising=False)
+    monkeypatch.setattr(time, "monotonic", lambda: 123.0)
+
+    assert guard_module._lease_now() == 123.0
 
 
 def test_lock_guard_exposes_the_latest_immutable_lease(

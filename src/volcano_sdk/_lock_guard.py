@@ -11,12 +11,15 @@ if TYPE_CHECKING:
 
 MAX_LOCK_LIFETIME_SECONDS = 7_776_000
 LOSS_POLL_INTERVAL_SECONDS = 1.0
-SUSPEND_AWARE_CLOCK_ID = getattr(time, "CLOCK_BOOTTIME", time.CLOCK_MONOTONIC)
+SUSPEND_AWARE_CLOCK_ID = getattr(time, "CLOCK_BOOTTIME", None)
 _LEASE_EXPIRED = "lock lease expired before renewal completed"
 
 
 def _lease_now() -> float:
-    return time.clock_gettime(SUSPEND_AWARE_CLOCK_ID)
+    clock_gettime = getattr(time, "clock_gettime", None)
+    if clock_gettime is None or SUSPEND_AWARE_CLOCK_ID is None:
+        return time.monotonic()
+    return float(clock_gettime(SUSPEND_AWARE_CLOCK_ID))
 
 
 class LockGuard:
