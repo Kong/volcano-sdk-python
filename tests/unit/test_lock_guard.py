@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from volcano_sdk import LockLease
 from volcano_sdk import _lock_guard as guard_module
+from volcano_sdk import _lock_renewer as renewer_module
 from volcano_sdk._lock_guard import LockGuard
 
 if TYPE_CHECKING:
@@ -69,6 +70,16 @@ def test_lock_guard_exposes_the_latest_immutable_lease(
     assert guard.lease is renewed
     assert not guard.lost
     assert guard._remaining_seconds() == 5.0
+
+
+def test_lock_guard_calculates_renewal_delay_from_remaining_lease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    monkeypatch.setattr(renewer_module, "_renewal_jitter", lambda: 0.0)
+    guard = LockGuard(lease(), ttl=30, started_at=100.0)
+
+    assert guard._renewal_delay() == 10.0
 
 
 def test_lock_guard_rejects_a_renewal_completed_after_lease_expiry(

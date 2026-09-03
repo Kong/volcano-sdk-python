@@ -6,6 +6,8 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
+from ._lock_renewer import renewal_delay as _calculate_renewal_delay
+
 if TYPE_CHECKING:
     from .models import LockLease
 
@@ -118,6 +120,17 @@ class LockGuard:
             now = _lease_now()
             self._expire_if_needed_locked(now)
             return self._remaining_seconds_locked(now)
+
+    def _renewal_delay(self) -> float:
+        with self._state_lock:
+            now = _lease_now()
+            self._expire_if_needed_locked(now)
+            if self._lost.is_set():
+                return 0.0
+            return _calculate_renewal_delay(
+                self._ttl,
+                remaining=self._remaining_seconds_locked(now),
+            )
 
     def _renewal_failure(self) -> Exception | None:
         with self._state_lock:
