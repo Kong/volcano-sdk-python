@@ -152,6 +152,7 @@ class _PostgresDelivery:
     database_name: str | None
     access_token: str | None
     session_generation: int
+    user_id: str | None
     subscription_epoch: int
 
 
@@ -637,6 +638,7 @@ class Channel:
                 database_name=database_name if fetch else None,
                 access_token=self._postgres_access_token if fetch else None,
                 session_generation=self._postgres_session_generation,
+                user_id=self._postgres_user_id,
                 subscription_epoch=self._postgres_epoch,
             )
         )
@@ -729,11 +731,20 @@ class Channel:
             await self._emit("*", delivered, postgres_request=request)
 
     def _postgres_request_is_current(self, request: _PostgresDelivery) -> bool:
-        session_generation, _session = self._realtime._client_context._capture_session()
         return (
             self._subscribed
             and request.subscription_epoch == self._postgres_epoch
-            and request.session_generation == session_generation
+            and self._postgres_auth_is_current(request)
+        )
+
+    def _postgres_auth_is_current(self, request: _PostgresDelivery) -> bool:
+        session_generation, session = self._realtime._client_context._capture_session()
+        if request.session_generation == session_generation:
+            return True
+        return (
+            request.user_id is not None
+            and session is not None
+            and request.user_id == session.user_id
         )
 
     def _begin_postgres_epoch(self) -> None:
@@ -830,7 +841,7 @@ class Channel:
                     if not self._callback_delivery_is_current(delivery):
                         break
                     active_task = asyncio.create_task(
-                        self._run_callback(callback, delivery.data)
+                        self._run_callback(callback, delivery)
                     )
                     self._active_callback_task = active_task
                     try:
@@ -862,8 +873,14 @@ class Channel:
         self._pending_presence_sync = NO_PENDING_CALLBACK
         self._callback_queue.put_nowait(_CallbackDelivery("presence_sync", pending))
 
-    async def _run_callback(self, callback: MessageCallback, data: Any) -> None:
-        result = callback(data)
+    async def _run_callback(
+        self,
+        callback: MessageCallback,
+        delivery: _CallbackDelivery,
+    ) -> None:
+        if not self._callback_delivery_is_current(delivery):
+            return
+        result = callback(delivery.data)
         if inspect.isawaitable(result):
             await result
 

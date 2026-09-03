@@ -997,6 +997,65 @@ def test_realtime_autofetch_rebinds_after_same_user_token_refresh() -> None:
     asyncio.run(scenario())
 
 
+def test_realtime_preserves_fetch_queued_before_same_user_token_refresh() -> None:
+    official = FakeCentrifugeClient()
+    transport = RealtimeDatabaseTransport([{"id": 42}])
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        loop = asyncio.get_running_loop()
+        release = threading.Event()
+        started = asyncio.Event()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            loop.set_default_executor(executor)
+
+            def occupy_executor() -> None:
+                loop.call_soon_threadsafe(started.set)
+                release.wait(timeout=1)
+
+            occupied = executor.submit(occupy_executor)
+            await asyncio.wait_for(started.wait(), timeout=0.2)
+            received = asyncio.Event()
+            client.realtime.set_database_name("app")
+            channel = client.realtime.channel(
+                "public:messages",
+                channel_type="postgres",
+            )
+            channel.on_postgres_changes(
+                "INSERT",
+                schema="public",
+                table="messages",
+                callback=lambda _change: received.set(),
+            )
+            await channel.subscribe()
+            await official.emit_wire_publication(
+                "project-id:postgres:public:messages:user-id",
+                {
+                    "type": "INSERT",
+                    "schema": "public",
+                    "table": "messages",
+                    "id": 42,
+                    "mode": "lightweight",
+                    "timestamp": "2026-09-02T12:00:00Z",
+                },
+            )
+            transport.access_token = "access-2"
+            client.auth.refresh_session()
+            release.set()
+            await asyncio.wrap_future(occupied)
+            await asyncio.wait_for(received.wait(), timeout=0.2)
+
+            assert transport.authorizations == ["access-1"]
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_delivers_postgres_changes_to_unfiltered_on_callback() -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(
@@ -1098,6 +1157,62 @@ def test_realtime_discards_callback_queued_before_resubscribe() -> None:
         await asyncio.sleep(0.01)
 
         assert received == [1]
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_revalidates_inside_scheduled_callback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        scheduled = asyncio.Event()
+        release = asyncio.Event()
+        received: list[Any] = []
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=received.append,
+        )
+        original_run_callback = channel._run_callback
+
+        async def delayed_callback(callback: Any, delivery: Any) -> None:
+            scheduled.set()
+            await release.wait()
+            await original_run_callback(callback, delivery)
+
+        monkeypatch.setattr(channel, "_run_callback", delayed_callback)
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "record": {"id": 1},
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        await asyncio.wait_for(scheduled.wait(), timeout=0.2)
+        await channel.unsubscribe()
+        await channel.subscribe()
+        release.set()
+        await asyncio.sleep(0.01)
+
+        assert received == []
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
