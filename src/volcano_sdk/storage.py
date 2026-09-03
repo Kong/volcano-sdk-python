@@ -43,6 +43,7 @@ _JWT_PART_COUNT = 3
 _HTTP_PARTIAL_CONTENT = 206
 _UPLOAD_SPOOL_READ_SIZE = 1_048_576
 _UPLOAD_SOURCE_UNAVAILABLE = "Upload source is temporarily unavailable"
+_INVALID_SIMPLE_UPLOAD = "Upload data must be bytes or a readable binary stream"
 
 
 def _optional_datetime(value: object) -> datetime | None:
@@ -241,6 +242,20 @@ def _read_upload_part(source: BinaryIO, part_size: int) -> bytes:
     return bytes(part)
 
 
+def _simple_upload_bytes(data: object) -> bytes:
+    if isinstance(data, bytes):
+        return data
+    read = getattr(data, "read", None)
+    if not callable(read):
+        raise TypeError(_INVALID_SIMPLE_UPLOAD)
+    value = read()
+    if value is None:
+        raise BlockingIOError(_UPLOAD_SOURCE_UNAVAILABLE)
+    if not isinstance(value, bytes):
+        raise TypeError(_INVALID_SIMPLE_UPLOAD)
+    return value
+
+
 @contextmanager
 def _resumable_upload_source(
     data: bytes | BinaryIO,
@@ -424,14 +439,14 @@ class StorageBucket:
     _client: StorageContext
     _name: str
 
-    def upload(self, path: str, data: bytes) -> dict[str, Any]:
-        """Upload bytes to a path in this bucket."""
+    def upload(self, path: str, data: bytes | BinaryIO) -> dict[str, Any]:
+        """Upload bytes or the remaining contents of a binary stream."""
         response = invoke(
             self._client._transport.upload_storage_object,
             authorization=self._client._session_token(),
             bucket_name=self._name,
             path=path,
-            data=data,
+            data=_simple_upload_bytes(data),
         )
         payload = response_payload(response, 201)
         return dict(payload)
