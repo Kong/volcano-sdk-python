@@ -528,6 +528,10 @@ class Channel:
         self._postgres_session_lineage = 0
         self._postgres_lock = asyncio.Lock()
         self._postgres_worker: PostgresFetchWorker[_PostgresDelivery] | None = None
+        self._postgres_filters: dict[
+            MessageCallback,
+            tuple[PostgresListenerEvent, str, str],
+        ] = {}
 
     @property
     def name(self) -> str:
@@ -570,11 +574,13 @@ class Channel:
             return callback(change)
 
         self._callbacks.setdefault("*", []).append(filtered)
+        self._postgres_filters[filtered] = (event, schema, table)
 
         def unsubscribe() -> None:
             callbacks = self._callbacks.get("*", [])
             if filtered in callbacks:
                 callbacks.remove(filtered)
+            self._postgres_filters.pop(filtered, None)
 
         return unsubscribe
 
@@ -652,9 +658,23 @@ class Channel:
             and identity.session_lineage == lineage
         )
 
+    def _has_postgres_listener(self, change: PostgresChange) -> bool:
+        for callback in self._callbacks.get("*", []):
+            listener_filter = self._postgres_filters.get(callback)
+            if listener_filter is None:
+                return True
+            event, schema, table = listener_filter
+            if (
+                event in ("*", change.type)
+                and schema == change.schema
+                and table == change.table
+            ):
+                return True
+        return False
+
     async def _receive_postgres_change(self, data: Any) -> None:
         change = _postgres_change(data)
-        if change is None or not self._callbacks.get("*"):
+        if change is None or not self._has_postgres_listener(change):
             return
         if change.mode == "lightweight" and change.type == "DELETE":
             old_record = change.old_record
