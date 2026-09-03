@@ -1,7 +1,7 @@
 """Postgres connection helpers for Volcano functions."""
 
 import re
-from urllib.parse import SplitResult, quote, unquote, urlsplit, urlunsplit
+from urllib.parse import SplitResult, quote, unquote, urlsplit
 
 _FULL_ACCESS_APP_NAME = "volcano_full_access"
 _USER_ACCESS_APP_NAME = "volcano_user_access"
@@ -28,7 +28,8 @@ def database_connection_string(
     application_name = quote(_database_application_name(user_id), safe="")
     parameters.append(f"application_name={application_name}")
     query = "&".join(parameters)
-    return urlunsplit(connection._replace(query=query))
+    target = base_connection_string.partition("?")[0]
+    return f"{target}?{query}"
 
 
 def _connection_url(value: str) -> SplitResult:

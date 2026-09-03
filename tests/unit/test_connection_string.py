@@ -46,6 +46,12 @@ def test_database_connection_string_treats_empty_user_id_as_full_access() -> Non
     assert result.endswith("application_name=volcano_full_access")
 
 
+def test_database_connection_string_preserves_hostless_uri_authority() -> None:
+    assert database_connection_string("postgresql:///app") == (
+        "postgresql:///app?application_name=volcano_full_access"
+    )
+
+
 @pytest.mark.parametrize(
     "value",
     [
