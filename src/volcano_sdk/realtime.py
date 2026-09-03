@@ -498,11 +498,14 @@ class Channel:
         realtime: Realtime,
         name: str,
         channel_type: ChannelType,
+        *,
+        auto_fetch: bool,
     ) -> None:
         """Create a channel managed by a realtime facade."""
         self._realtime = realtime
         self._name = name
         self._type = channel_type
+        self._auto_fetch = auto_fetch
         self._callbacks: dict[str, list[MessageCallback]] = {}
         self._presence_state: dict[str, RealtimePresenceInfo] = {}
         self._presence_events: list[tuple[str, RealtimePresenceInfo]] = []
@@ -674,7 +677,8 @@ class Channel:
     ) -> _PostgresFetchRequest | None:
         database_name = self._realtime.database_name
         if (
-            change.mode != "lightweight"
+            not self._auto_fetch
+            or change.mode != "lightweight"
             or change.type == "DELETE"
             or change.schema != "public"
             or change.id is None
@@ -1168,15 +1172,28 @@ class Realtime:
         name: str,
         *,
         channel_type: ChannelType = "broadcast",
+        auto_fetch: bool = True,
     ) -> Channel:
-        """Return a stable channel facade for a realtime name and type."""
+        """Return a stable channel facade for a realtime name and configuration."""
         channel_type = _validate_channel_type(channel_type)
         wire_name = f"{channel_type}:{name}"
         if wire_name in self._removing_channels:
             raise RuntimeError(CHANNEL_REMOVAL_IN_PROGRESS)
-        if wire_name not in self._channels:
-            self._channels[wire_name] = Channel(self, wire_name, channel_type)
-        return self._channels[wire_name]
+        channel = self._channels.get(wire_name)
+        if channel is None:
+            channel = Channel(
+                self,
+                wire_name,
+                channel_type,
+                auto_fetch=auto_fetch,
+            )
+            self._channels[wire_name] = channel
+        elif channel._auto_fetch != auto_fetch:
+            message = (
+                f"channel {wire_name!r} already uses a different auto_fetch setting"
+            )
+            raise ValueError(message)
+        return channel
 
     @property
     def is_connected(self) -> bool:
