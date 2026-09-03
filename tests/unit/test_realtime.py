@@ -503,6 +503,73 @@ def test_realtime_postgres_delivery_identity_uses_connection_session() -> None:
     asyncio.run(scenario())
 
 
+def test_realtime_drops_queued_postgres_callbacks_from_an_old_epoch() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        def insert(record_id: int) -> dict[str, Any]:
+            return {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "record": {"id": record_id},
+                "timestamp": "2026-09-03T12:00:00Z",
+            }
+
+        received: list[int] = []
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+        third_received = asyncio.Event()
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+
+        async def on_insert(change: Any) -> None:
+            record_id = change.record["id"]
+            if record_id == 1:
+                first_started.set()
+                await release_first.wait()
+            received.append(record_id)
+            if record_id == 3:
+                third_received.set()
+
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=on_insert,
+        )
+        await channel.subscribe()
+        subscription = official.subscription
+        assert subscription is not None
+
+        await subscription.emit(insert(1))
+        await first_started.wait()
+        first_worker = channel._postgres_worker
+        assert first_worker is not None
+        await subscription.emit(insert(2))
+
+        await subscription.emit_subscribing()
+        assert channel._postgres_worker is None
+        release_first.set()
+        await subscription.emit_subscribed()
+        await subscription.emit(insert(3))
+        await asyncio.wait_for(third_received.wait(), timeout=0.2)
+
+        assert received == [1, 3]
+        assert channel._postgres_worker is not first_worker
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_routes_immutable_rls_scoped_postgres_changes() -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(
@@ -1082,7 +1149,12 @@ def test_realtime_newer_queued_snapshot_discards_older_pending_snapshot() -> Non
         blocker = asyncio.create_task(wait_forever())
         channel._callback_task = blocker
         for _ in range(channel._callback_queue.maxsize):
-            channel._callback_queue.put_nowait(("presence_sync", {"version": 0}))
+            channel._callback_queue.put_nowait(
+                realtime_module._CallbackDelivery(
+                    "presence_sync",
+                    {"version": 0},
+                )
+            )
 
         await channel._emit("presence_sync", {"version": 1})
         channel._callback_queue.get_nowait()
@@ -1090,7 +1162,7 @@ def test_realtime_newer_queued_snapshot_discards_older_pending_snapshot() -> Non
         await channel._emit("presence_sync", {"version": 2})
         queued: list[Any] = []
         while not channel._callback_queue.empty():
-            queued.append(channel._callback_queue.get_nowait()[1])
+            queued.append(channel._callback_queue.get_nowait().data)
             channel._callback_queue.task_done()
         channel._enqueue_pending_presence_sync()
         blocker.cancel()
