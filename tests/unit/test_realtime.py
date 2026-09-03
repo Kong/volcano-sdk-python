@@ -52,7 +52,24 @@ class AuthTransport:
         email: str,
         password: str,
     ) -> Response:
-        del authorization, email, password
+        del authorization, password
+        user_id = "other-user" if email == "other@example.com" else "user-123"
+        return Response(
+            200,
+            {
+                "access_token": self.access_token,
+                "refresh_token": "refresh-token",
+                "user": {"id": user_id},
+            },
+        )
+
+    def auth_refresh(
+        self,
+        *,
+        authorization: str,
+        refresh_token: str,
+    ) -> Response:
+        del authorization, refresh_token
         return Response(
             200,
             {
@@ -931,6 +948,84 @@ def test_realtime_autofetch_invalidates_when_session_changes() -> None:
             assert transport.authorizations == []
             assert transport.queries == []
             await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_autofetch_rebinds_after_same_user_token_refresh() -> None:
+    official = FakeCentrifugeClient()
+    transport = RealtimeDatabaseTransport([{"id": 42}])
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        received = asyncio.Event()
+        client.realtime.set_database_name("app")
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=lambda _change: received.set(),
+        )
+        await channel.subscribe()
+        transport.access_token = "access-2"
+        client.auth.refresh_session()
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "id": 42,
+                "mode": "lightweight",
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.2)
+
+        assert transport.authorizations == ["access-2"]
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_delivers_postgres_changes_to_unfiltered_on_callback() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        received = asyncio.Event()
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        channel.on("*", lambda _change: received.set())
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "record": {"id": 42},
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.2)
+        await client.realtime.disconnect()
 
     asyncio.run(scenario())
 

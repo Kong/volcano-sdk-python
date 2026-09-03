@@ -520,6 +520,7 @@ class Channel:
         self._postgres_epoch = 0
         self._postgres_session_generation = 0
         self._postgres_access_token: str | None = None
+        self._postgres_user_id: str | None = None
 
     @property
     def name(self) -> str:
@@ -613,6 +614,7 @@ class Channel:
         change = _postgres_change(data)
         if change is None or not self._has_postgres_listener(change):
             return
+        self._refresh_postgres_session_binding()
         database_name = self._realtime._database_name
         fetch = (
             change.mode == "lightweight"
@@ -633,6 +635,9 @@ class Channel:
         )
 
     def _has_postgres_listener(self, change: PostgresChange) -> bool:
+        callbacks = self._callbacks.get("*", ())
+        if any(callback not in self._postgres_filters for callback in callbacks):
+            return True
         return any(
             listener_schema == change.schema
             and listener_table == change.table
@@ -641,6 +646,15 @@ class Channel:
                 self._postgres_filters.values()
             )
         )
+
+    def _refresh_postgres_session_binding(self) -> None:
+        generation, session = self._realtime._client_context._capture_session()
+        if generation == self._postgres_session_generation:
+            return
+        if session is None or session.user_id != self._postgres_user_id:
+            return
+        self._postgres_session_generation = generation
+        self._postgres_access_token = session.access_token
 
     def _start_postgres_worker(self) -> None:
         task = self._postgres_task
@@ -720,12 +734,14 @@ class Channel:
             generation, session = self._realtime._client_context._capture_session()
             self._postgres_session_generation = generation
             self._postgres_access_token = session.access_token if session else None
+            self._postgres_user_id = session.user_id if session else None
 
     async def _end_postgres_epoch(self) -> None:
         if self._type != "postgres":
             return
         self._postgres_epoch += 1
         self._postgres_access_token = None
+        self._postgres_user_id = None
         while not self._postgres_queue.empty():
             self._postgres_queue.get_nowait()
             self._postgres_queue.task_done()
