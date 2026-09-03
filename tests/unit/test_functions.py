@@ -49,10 +49,11 @@ class FakeFunctionsTransport:
 def functions_client(
     transport: FakeFunctionsTransport,
     *,
+    anon_key: str = "anon-key",
     service_key: str | None = "service-key",
 ) -> VolcanoClient:
     return VolcanoClient(
-        anon_key="anon-key",
+        anon_key=anon_key,
         service_key=service_key,
         _transport=cast("Transport", transport),
     )
@@ -131,10 +132,15 @@ def test_functions_rejects_invalid_names_before_transport(name: str) -> None:
     assert transport.calls == []
 
 
-def test_functions_uses_the_anon_key_without_a_session_or_service_key() -> None:
+def test_functions_uses_the_local_anon_key_without_a_session_or_service_key() -> None:
     transport = FakeFunctionsTransport()
+    anon_key = "ak-0000000000000000000000000000000000000000"
 
-    functions_client(transport, service_key=None).functions.invoke("public-health")
+    functions_client(
+        transport,
+        anon_key=anon_key,
+        service_key=None,
+    ).functions.invoke("public-health")
 
-    assert transport.calls[0][1]["authorization"] == "anon-key"
-    assert transport.calls[1][1]["authorization"] == "anon-key"
+    assert transport.calls[0][1]["authorization"] == anon_key
+    assert transport.calls[1][1]["authorization"] == anon_key
