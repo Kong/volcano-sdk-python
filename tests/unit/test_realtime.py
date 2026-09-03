@@ -712,6 +712,128 @@ def test_realtime_captures_supported_postgres_fetch_request() -> None:
     asyncio.run(scenario())
 
 
+def test_realtime_fetches_lightweight_postgres_rows() -> None:
+    official = FakeCentrifugeClient()
+    transport = RealtimeDatabaseTransport([{"id": 42, "body": "fetched"}])
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    client.realtime.set_database_name("app")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        received = asyncio.Event()
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+
+        def on_insert(change: Any) -> None:
+            changes.append(change)
+            received.set()
+
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=on_insert,
+        )
+        await channel.subscribe()
+        subscription = official.subscription
+        assert subscription is not None
+
+        await subscription.emit(
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "id": 42,
+                "mode": "lightweight",
+                "timestamp": "2026-09-03T12:00:00Z",
+            }
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.2)
+
+        assert changes[0].record == {"id": 42, "body": "fetched"}
+        assert changes[0].id is None
+        assert changes[0].mode is None
+        assert transport.queries == [
+            {
+                "authorization": "access-1",
+                "database_name": "app",
+                "body": {
+                    "table": "messages",
+                    "filters": [{"column": "id", "operator": "eq", "value": 42}],
+                    "limit": 1,
+                },
+            }
+        ]
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_delivers_lightweight_fallback_when_row_is_absent() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=RealtimeDatabaseTransport([]),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    client.realtime.set_database_name("app")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        errors: list[dict[str, Any]] = []
+        received = asyncio.Event()
+        asyncio.get_running_loop().set_exception_handler(
+            lambda _loop, context: errors.append(context)
+        )
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+
+        def on_update(change: Any) -> None:
+            changes.append(change)
+            received.set()
+
+        channel.on_postgres_changes(
+            "UPDATE",
+            schema="public",
+            table="messages",
+            callback=on_update,
+        )
+        await channel.subscribe()
+        subscription = official.subscription
+        assert subscription is not None
+
+        await subscription.emit(
+            {
+                "type": "UPDATE",
+                "schema": "public",
+                "table": "messages",
+                "id": 404,
+                "mode": "lightweight",
+                "timestamp": "2026-09-03T12:00:00Z",
+            }
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.2)
+
+        assert changes[0].record is None
+        assert changes[0].id == 404
+        assert changes[0].mode == "lightweight"
+        assert errors[0]["message"] == "Volcano realtime Postgres row fetch failed"
+        assert isinstance(errors[0]["exception"], LookupError)
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_routes_immutable_rls_scoped_postgres_changes() -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(

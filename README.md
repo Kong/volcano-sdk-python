@@ -636,11 +636,14 @@ await changes.subscribe()
 stop_changes()
 ```
 
-Pass `None` to `set_database_name()` to clear the database binding.
-When the server sends only a lightweight notification, `record` is `None` and
-the change retains its `id` and `mode` for fallback handling. Lightweight
-deletes preserve `old_record`, or provide `{"id": change.id}` when no old row
-was included.
+Binding a database automatically fetches the matching row for lightweight
+`INSERT` and `UPDATE` notifications in the `public` schema. The fetch uses the
+realtime connection's RLS-scoped access token and preserves publication order.
+If the row is absent or the query fails, the callback receives the lightweight
+notification with its `id` and `mode` intact. Non-public schemas also retain
+that lightweight form. Lightweight deletes never query the database; they
+preserve `old_record`, or provide `{"id": change.id}` when no old row was
+included. Pass `None` to `set_database_name()` to disable row fetching.
 
 ## Compatibility
 

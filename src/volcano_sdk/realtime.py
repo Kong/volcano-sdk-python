@@ -56,6 +56,7 @@ SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
 )
 NO_ACTIVE_SESSION = "No active session"
 CONNECTION_SESSION_UNAVAILABLE = "Realtime connection has no session binding"
+POSTGRES_FETCH_FAILED_MESSAGE = "Volcano realtime Postgres row fetch failed"
 
 
 def _empty_presence_data() -> Mapping[str, JSONValue]:
@@ -705,6 +706,7 @@ class Channel:
         if not self._postgres_delivery_is_current(identity):
             return
         delivery = _PostgresDelivery(change=change, identity=identity)
+        request = self._postgres_fetch_request(change)
         async with self._postgres_lock:
             if not self._postgres_delivery_is_current(identity):
                 return
@@ -716,17 +718,37 @@ class Channel:
                     queue_limit=POSTGRES_QUEUE_LIMIT,
                 )
                 self._postgres_worker = worker
-            await worker.enqueue(PostgresFetchJob(request=None, fallback=delivery))
+            await worker.enqueue(PostgresFetchJob(request=request, fallback=delivery))
 
     async def _deliver_postgres(
         self,
         outcome: PostgresFetchOutcome[_PostgresDelivery],
     ) -> None:
         delivery = outcome.job.fallback
+        if not self._postgres_delivery_is_current(delivery.identity):
+            return
+        change = delivery.change
+        if outcome.record is not None:
+            change = replace(change, record=outcome.record, id=None, mode=None)
+        elif outcome.job.request is not None:
+            error = outcome.error
+            if error is None:
+                identifier = (
+                    f"{change.schema}.{change.table}:{outcome.job.request.row_id}"
+                )
+                message = f"Postgres row not found: {identifier}"
+                error = LookupError(message)
+            asyncio.get_running_loop().call_exception_handler(
+                {
+                    "message": POSTGRES_FETCH_FAILED_MESSAGE,
+                    "exception": error,
+                    "channel": self._name,
+                }
+            )
         if self._postgres_delivery_is_current(delivery.identity):
             await self._emit(
                 "*",
-                delivery.change,
+                change,
                 postgres_identity=delivery.identity,
             )
 
