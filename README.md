@@ -61,6 +61,8 @@ rows = client.database("main").from_("items").select("*").eq("slug", "a").execut
 
 bucket = client.storage.from_("assets")
 bucket.upload("a.txt", b"hello")
+with open("avatar.png", "rb") as avatar:
+    bucket.upload("avatars/me.png", avatar)
 downloaded = bucket.download("a.txt")
 assert downloaded == b"hello"
 first_kibibyte = bucket.download("archive.bin", byte_range="bytes=0-1023")

@@ -4,7 +4,7 @@ import base64
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from io import SEEK_END, BytesIO
+from io import SEEK_END, BytesIO, StringIO
 from typing import Any, BinaryIO, cast
 
 import pytest
@@ -357,6 +357,12 @@ def anon_key_with_project_id(project_id: str | None) -> str:
     return f"header.{encoded.decode()}.signature"
 
 
+def signed_in_client(transport: FakeTransport) -> VolcanoClient:
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    return client
+
+
 def test_public_facade_delegates_to_the_contract_operations() -> None:
     transport = FakeTransport()
     client = VolcanoClient(
@@ -518,6 +524,53 @@ def test_public_facade_delegates_to_the_contract_operations() -> None:
     assert transport.calls[11][1]["authorization"] == "service-key"
     assert transport.calls[11][1]["key"] == "build"
     assert transport.calls[11][1]["token"] == lease.token
+
+
+def test_storage_upload_reads_a_caller_owned_binary_stream_from_its_position() -> None:
+    transport = FakeTransport()
+    client = signed_in_client(transport)
+    source = BytesIO(b"skip-uploaded")
+    source.seek(5)
+
+    client.storage.from_("assets").upload("a.txt", source)
+
+    assert not source.closed
+    assert source.tell() == len(b"skip-uploaded")
+    assert transport.calls[-1] == (
+        "uploadStorageObject",
+        {
+            "authorization": "access-token",
+            "bucket_name": "assets",
+            "path": "a.txt",
+            "data": b"uploaded",
+        },
+    )
+
+
+def test_storage_upload_rejects_text_streams_before_transport() -> None:
+    transport = FakeTransport()
+    client = signed_in_client(transport)
+
+    with pytest.raises(TypeError, match="binary"):
+        client.storage.from_("assets").upload(
+            "a.txt",
+            cast("BinaryIO", StringIO("text")),
+        )
+
+    assert all(operation != "uploadStorageObject" for operation, _ in transport.calls)
+
+
+def test_storage_upload_reports_temporarily_unavailable_streams() -> None:
+    transport = FakeTransport()
+    client = signed_in_client(transport)
+
+    with pytest.raises(BlockingIOError, match="temporarily unavailable"):
+        client.storage.from_("assets").upload(
+            "a.txt",
+            cast("BinaryIO", TemporarilyUnavailableReader()),
+        )
+
+    assert all(operation != "uploadStorageObject" for operation, _ in transport.calls)
 
 
 def test_storage_list_normalizes_an_empty_terminal_cursor() -> None:
