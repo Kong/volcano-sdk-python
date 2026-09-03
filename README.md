@@ -206,6 +206,23 @@ deleted_rows = (
 
 Updates and deletes require at least one filter; Volcano rejects filterless mutations.
 
+Use `database_connection_string()` inside a Volcano function to select database
+access without changing the advertised `DATABASE_URL` target:
+
+```python
+import os
+
+from volcano_sdk import database_connection_string
+
+connection_string = database_connection_string(
+    os.environ["DATABASE_URL"],
+    user_id=event.get("__volcano_auth", {}).get("user_id"),
+)
+```
+
+Pass a user ID to enforce that user's Row-Level Security policies. Omit
+`user_id` for full service access.
+
 `sign_up()` returns an immutable acknowledgement and never creates or replaces a session. The
 response is identical for new and existing email addresses. Call `sign_in()` separately after the
 account is ready to establish a session.
