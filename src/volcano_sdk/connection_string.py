@@ -1,10 +1,11 @@
 """Postgres connection helpers for Volcano functions."""
 
 import re
-from urllib.parse import SplitResult, quote, unquote, urlsplit
+from urllib.parse import quote, unquote
 
 _FULL_ACCESS_APP_NAME = "volcano_full_access"
 _USER_ACCESS_APP_NAME = "volcano_user_access"
+_CONNECTION_URI_PREFIX = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
 _INVALID_PERCENT_ENCODING = re.compile(r"%(?![0-9A-Fa-f]{2})")
 _REQUIRED_ERROR = (
     "database_connection_string: base_connection_string (DATABASE_URL) is required"
@@ -23,37 +24,36 @@ def database_connection_string(
     if not base_connection_string:
         raise ValueError(_REQUIRED_ERROR)
 
-    connection = _connection_url(base_connection_string)
-    parameters = _query_parameters(connection.query)
+    target, query = _connection_parts(base_connection_string)
+    parameters = _query_parameters(query)
     application_name = quote(_database_application_name(user_id), safe="")
     parameters.append(f"application_name={application_name}")
-    query = "&".join(parameters)
-    target = base_connection_string.partition("?")[0]
-    return f"{target}?{query}"
+    return f"{target}?{'&'.join(parameters)}"
 
 
-def _connection_url(value: str) -> SplitResult:
-    try:
-        connection = urlsplit(value)
-    except ValueError:
-        raise ValueError(_INVALID_ERROR) from None
-    if (
-        not connection.scheme
-        or connection.fragment
-        or _INVALID_PERCENT_ENCODING.search(value)
-    ):
+def _connection_parts(value: str) -> tuple[str, str]:
+    prefix = _CONNECTION_URI_PREFIX.match(value)
+    if prefix is None or _INVALID_PERCENT_ENCODING.search(value):
         raise ValueError(_INVALID_ERROR)
-    return connection
+
+    userinfo_end = value.find("@", prefix.end())
+    query_start = value.find("?", max(prefix.end(), userinfo_end + 1))
+    if query_start == -1:
+        return value, ""
+    return value[:query_start], value[query_start + 1 :]
 
 
 def _query_parameters(query: str) -> list[str]:
     if not query:
         return []
-    return [
+    parameters = [
         parameter
         for parameter in query.split("&")
         if unquote(parameter.partition("=")[0]) != "application_name"
     ]
+    while parameters and not parameters[-1]:
+        parameters.pop()
+    return parameters
 
 
 def _database_application_name(user_id: str | None) -> str:

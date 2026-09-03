@@ -222,6 +222,8 @@ connection_string = database_connection_string(
 
 Pass a user ID to enforce that user's Row-Level Security policies. Omit
 `user_id` for full service access.
+The helper preserves libpq connection syntax, including hostless and multi-host
+targets, and leaves unrelated query values unchanged.
 
 `sign_up()` returns an immutable acknowledgement and never creates or replaces a session. The
 response is identical for new and existing email addresses. Call `sign_in()` separately after the

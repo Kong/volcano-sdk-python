@@ -52,12 +52,29 @@ def test_database_connection_string_preserves_hostless_uri_authority() -> None:
     )
 
 
+def test_database_connection_string_preserves_libpq_credentials() -> None:
+    assert database_connection_string("postgres://u:pa?ss#word@host/db") == (
+        "postgres://u:pa?ss#word@host/db?application_name=volcano_full_access"
+    )
+
+
+def test_database_connection_string_accepts_multi_host_ipv6_uri() -> None:
+    assert database_connection_string("postgresql://[::1],[::2]/db") == (
+        "postgresql://[::1],[::2]/db?application_name=volcano_full_access"
+    )
+
+
+def test_database_connection_string_drops_trailing_query_separator() -> None:
+    assert database_connection_string("postgresql://host/db?sslmode=require&") == (
+        "postgresql://host/db?sslmode=require&application_name=volcano_full_access"
+    )
+
+
 @pytest.mark.parametrize(
     "value",
     [
         "databases/app",
         "postgres://db.example.com/%",
-        "postgres://db.example.com/app#target",
     ],
 )
 def test_database_connection_string_rejects_invalid_url(value: str) -> None:
