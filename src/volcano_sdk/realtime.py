@@ -1348,8 +1348,10 @@ class Realtime:
             try:
                 for channel in tuple(self._channels.values()):
                     await channel._reset()
-                if connection is not None:
-                    await connection.disconnect()
             finally:
-                self._connection_session_lineage = None
-                self._connection_access_token = None
+                try:
+                    if connection is not None:
+                        await connection.disconnect()
+                finally:
+                    self._connection_session_lineage = None
+                    self._connection_access_token = None

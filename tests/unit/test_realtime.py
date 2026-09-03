@@ -2286,6 +2286,43 @@ def test_realtime_disconnect_resets_channels_after_transport_failure(
     assert second.calls == ["connect", "channel:broadcast:contract", "disconnect"]
 
 
+def test_realtime_disconnect_closes_transport_when_channel_reset_is_cancelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("contract")
+        await channel.subscribe()
+        reset_started = asyncio.Event()
+
+        async def blocking_reset() -> None:
+            reset_started.set()
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(channel, "_reset", blocking_reset)
+        disconnecting = asyncio.create_task(client.realtime.disconnect())
+        await reset_started.wait()
+        disconnecting.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await disconnecting
+
+        assert official.state.value == "disconnected"
+        assert official.calls[-1] == "disconnect"
+        assert client.realtime._connection is None
+        assert client.realtime._connection_access_token is None
+        assert client.realtime._connection_session_lineage is None
+
+    asyncio.run(scenario())
+
+
 def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
