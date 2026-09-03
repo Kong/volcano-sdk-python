@@ -15,6 +15,7 @@ from volcano_sdk import (
     RealtimePresenceInfo,
     VolcanoClient,
 )
+from volcano_sdk import realtime as realtime_module
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -40,6 +41,47 @@ def test_realtime_database_binding_can_be_replaced_and_cleared() -> None:
 
     client.realtime.set_database_name(None)
     assert client.realtime.database_name is None
+
+
+def test_realtime_fetches_a_session_bound_postgres_row() -> None:
+    transport = RealtimeDatabaseTransport([{"id": 42, "body": "fetched"}])
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    request = realtime_module._PostgresFetchRequest(
+        database_name="app",
+        access_token="captured-token",
+        table="messages",
+        row_id=42,
+    )
+
+    assert client.realtime._fetch_postgres_row(request) == {
+        "id": 42,
+        "body": "fetched",
+    }
+    assert transport.queries == [
+        {
+            "authorization": "captured-token",
+            "database_name": "app",
+            "body": {
+                "table": "messages",
+                "filters": [{"column": "id", "operator": "eq", "value": 42}],
+                "limit": 1,
+            },
+        }
+    ]
+
+
+def test_realtime_row_fetch_returns_none_when_the_row_is_absent() -> None:
+    transport = RealtimeDatabaseTransport([])
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    request = realtime_module._PostgresFetchRequest(
+        database_name="app",
+        access_token="captured-token",
+        table="messages",
+        row_id=42,
+    )
+
+    assert client.realtime._fetch_postgres_row(request) is None
+    assert transport.queries[0]["body"]["table"] == "messages"
 
 
 @dataclass(frozen=True)
@@ -153,6 +195,29 @@ class AuthTransport:
     ) -> Response:
         del authorization, key, token
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
+
+
+class RealtimeDatabaseTransport(AuthTransport):
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        super().__init__()
+        self.rows = rows
+        self.queries: list[dict[str, Any]] = []
+
+    def query_database_select(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> Response:
+        self.queries.append(
+            {
+                "authorization": authorization,
+                "database_name": database_name,
+                "body": body,
+            }
+        )
+        return Response(200, {"data": self.rows})
 
 
 class FakeSubscription:
