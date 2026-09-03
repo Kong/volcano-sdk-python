@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, cast
 from uuid import uuid4
@@ -10,7 +10,6 @@ from uuid import uuid4
 from ._lock_guard import LockGuard, _lease_now
 from ._lock_worker import LockRenewer
 from ._transport import Transport, invoke, response_payload
-from .errors import VolcanoError
 from .models import LockLease, LockState
 
 if TYPE_CHECKING:
@@ -213,15 +212,13 @@ class Locks:
         *,
         body_failed: bool,
     ) -> None:
-        release_error: Exception | None = None
-        try:
+        failure = guard._renewal_failure()
+        if body_failed or failure is not None:
+            with suppress(Exception):
+                self.release(key, guard.lease)
+        else:
             self.release(key, guard.lease)
-        except (KeyError, TypeError, ValueError, VolcanoError) as error:
-            release_error = error
         if body_failed:
             return
-        failure = guard._renewal_failure()
         if failure is not None:
             raise failure
-        if release_error is not None:
-            raise release_error

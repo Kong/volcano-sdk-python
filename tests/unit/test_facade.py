@@ -743,10 +743,12 @@ def test_locks_with_lock_reports_renewal_failure_after_release(
 def test_locks_with_lock_preserves_body_failure_and_releases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    release_failure = "release failed"
+
     class FailingReleaseTransport(FakeTransport):
         def release_project_lock(self, **kwargs: Any) -> FakeResponse:
             self.calls.append(("releaseProjectLock", kwargs))
-            return FakeResponse(500, {"message": "release failed"})
+            raise RuntimeError(release_failure)
 
     class NoopRenewer:
         def __init__(
