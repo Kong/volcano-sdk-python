@@ -16,11 +16,15 @@ from ._realtime_fetch_worker import (
     PostgresFetchOutcome,
     PostgresFetchWorker,
 )
-from .database import Database
+from ._transport import (
+    AsyncDatabaseSelectTransport,
+    Transport,
+    invoke_async,
+    response_payload,
+)
 from .models import JSONValue, _freeze_json
 
 if TYPE_CHECKING:
-    from ._transport import Transport
     from .models import Session
 
 MessageCallback = Callable[[Any], Any]
@@ -56,6 +60,7 @@ SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
 )
 NO_ACTIVE_SESSION = "No active session"
 CONNECTION_SESSION_UNAVAILABLE = "Realtime connection has no session binding"
+POSTGRES_FETCH_FAILED_MESSAGE = "Volcano realtime Postgres row fetch failed"
 
 
 def _empty_presence_data() -> Mapping[str, JSONValue]:
@@ -171,15 +176,6 @@ class _CallbackDelivery:
     event: str
     data: Any
     postgres_identity: _PostgresDeliveryIdentity | None = None
-
-
-@dataclass(slots=True)
-class _SessionBoundDatabaseContext:
-    _transport: Transport
-    access_token: str
-
-    def _session_token(self) -> str:
-        return self.access_token
 
 
 def _postgres_change(data: Any) -> PostgresChange | None:
@@ -642,8 +638,8 @@ class Channel:
         async with self._postgres_lock:
             worker = self._postgres_worker
             self._postgres_worker = None
-            if worker is not None:
-                await worker.close()
+        if worker is not None:
+            await worker.abort()
 
     def _postgres_delivery_is_current(
         self,
@@ -705,6 +701,7 @@ class Channel:
         if not self._postgres_delivery_is_current(identity):
             return
         delivery = _PostgresDelivery(change=change, identity=identity)
+        request = self._postgres_fetch_request(change)
         async with self._postgres_lock:
             if not self._postgres_delivery_is_current(identity):
                 return
@@ -716,17 +713,41 @@ class Channel:
                     queue_limit=POSTGRES_QUEUE_LIMIT,
                 )
                 self._postgres_worker = worker
-            await worker.enqueue(PostgresFetchJob(request=None, fallback=delivery))
+        try:
+            await worker.enqueue(PostgresFetchJob(request=request, fallback=delivery))
+        except RuntimeError:
+            if self._postgres_delivery_is_current(identity):
+                raise
 
     async def _deliver_postgres(
         self,
         outcome: PostgresFetchOutcome[_PostgresDelivery],
     ) -> None:
         delivery = outcome.job.fallback
+        if not self._postgres_delivery_is_current(delivery.identity):
+            return
+        change = delivery.change
+        if outcome.record is not None:
+            change = replace(change, record=outcome.record, id=None, mode=None)
+        elif outcome.job.request is not None:
+            error = outcome.error
+            if error is None:
+                identifier = (
+                    f"{change.schema}.{change.table}:{outcome.job.request.row_id}"
+                )
+                message = f"Postgres row not found: {identifier}"
+                error = LookupError(message)
+            asyncio.get_running_loop().call_exception_handler(
+                {
+                    "message": POSTGRES_FETCH_FAILED_MESSAGE,
+                    "exception": error,
+                    "channel": self._name,
+                }
+            )
         if self._postgres_delivery_is_current(delivery.identity):
             await self._emit(
                 "*",
-                delivery.change,
+                change,
                 postgres_identity=delivery.identity,
             )
 
@@ -970,8 +991,7 @@ class Channel:
         await asyncio.gather(task, return_exceptions=True)
 
     async def _reset(self) -> None:
-        self._subscription = None
-        self._subscribed = False
+        self._invalidate()
         await self._end_postgres_epoch()
         await self._cancel_presence_sync()
         task = self._callback_task
@@ -991,6 +1011,10 @@ class Channel:
         self._presence_state.clear()
         self._discard_presence_sync()
         self._tracked_state = MappingProxyType({})
+        self._subscribed = False
+
+    def _invalidate(self) -> None:
+        self._subscription = None
         self._subscribed = False
 
 
@@ -1035,22 +1059,28 @@ class Realtime:
         """Bind lightweight Postgres changes to a project database."""
         self._database_name = name
 
-    def _fetch_postgres_row(
+    async def _fetch_postgres_row(
         self,
         request: _PostgresFetchRequest,
     ) -> dict[str, Any] | None:
-        context = _SessionBoundDatabaseContext(
+        transport = cast(
+            "AsyncDatabaseSelectTransport",
             self._client_context._transport,
-            request.access_token,
         )
-        rows = (
-            Database(context, request.database_name)
-            .from_(request.table)
-            .select("*")
-            .eq("id", request.row_id)
-            .limit(1)
-            .execute()
+        response = await invoke_async(
+            transport.query_database_select_async,
+            authorization=request.access_token,
+            database_name=request.database_name,
+            body={
+                "table": request.table,
+                "filters": [
+                    {"column": "id", "operator": "eq", "value": request.row_id}
+                ],
+                "limit": 1,
+            },
         )
+        payload = response_payload(response, 200)
+        rows = list(payload["data"])
         return rows[0] if rows else None
 
     def on_connect(self, callback: RealtimeCallback) -> UnsubscribeCallback:
@@ -1318,11 +1348,22 @@ class Realtime:
         async with self._connection_lock:
             connection = self._connection
             self._connection = None
-            self._connection_session_lineage = None
-            self._connection_access_token = None
+            channels = tuple(self._channels.values())
+            for channel in channels:
+                channel._invalidate()
+            cancelled: asyncio.CancelledError | None = None
             try:
-                if connection is not None:
-                    await connection.disconnect()
+                for channel in channels:
+                    try:
+                        await channel._reset()
+                    except asyncio.CancelledError as error:
+                        cancelled = error
             finally:
-                for channel in tuple(self._channels.values()):
-                    await channel._reset()
+                try:
+                    if connection is not None:
+                        await connection.disconnect()
+                finally:
+                    self._connection_session_lineage = None
+                    self._connection_access_token = None
+            if cancelled is not None:
+                raise cancelled

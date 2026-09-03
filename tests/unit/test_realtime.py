@@ -53,7 +53,7 @@ def test_realtime_fetches_a_session_bound_postgres_row() -> None:
         row_id=42,
     )
 
-    assert client.realtime._fetch_postgres_row(request) == {
+    assert asyncio.run(client.realtime._fetch_postgres_row(request)) == {
         "id": 42,
         "body": "fetched",
     }
@@ -80,7 +80,7 @@ def test_realtime_row_fetch_returns_none_when_the_row_is_absent() -> None:
         row_id=42,
     )
 
-    assert client.realtime._fetch_postgres_row(request) is None
+    assert asyncio.run(client.realtime._fetch_postgres_row(request)) is None
     assert transport.queries[0]["body"]["table"] == "messages"
 
 
@@ -219,6 +219,46 @@ class RealtimeDatabaseTransport(AuthTransport):
         )
         return Response(200, {"data": self.rows})
 
+    async def query_database_select_async(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> Response:
+        return self.query_database_select(
+            authorization=authorization,
+            database_name=database_name,
+            body=body,
+        )
+
+
+class BlockingRealtimeDatabaseTransport(RealtimeDatabaseTransport):
+    def __init__(self) -> None:
+        super().__init__([{"id": 42, "body": "fetched"}])
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+        self.cancelled = asyncio.Event()
+
+    async def query_database_select_async(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> Response:
+        self.started.set()
+        try:
+            await self.release.wait()
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            raise
+        return await super().query_database_select_async(
+            authorization=authorization,
+            database_name=database_name,
+            body=body,
+        )
+
 
 class FakeSubscription:
     def __init__(
@@ -319,6 +359,7 @@ class FakeCentrifugeClient:
         self.presence_error: Exception | None = None
         self.presence_entered: asyncio.Event | None = None
         self.presence_release: asyncio.Event | None = None
+        self.disconnect_probe: Callable[[], None] | None = None
         self.subscription: FakeSubscription | None = None
         self._subs: dict[str, FakeSubscription] = {}
 
@@ -330,6 +371,8 @@ class FakeCentrifugeClient:
 
     async def disconnect(self) -> None:
         self.calls.append("disconnect")
+        if self.disconnect_probe is not None:
+            self.disconnect_probe()
         self.state = SimpleNamespace(value="disconnected")
         self._subs.clear()
         if self.events is not None:
@@ -708,6 +751,206 @@ def test_realtime_captures_supported_postgres_fetch_request() -> None:
         client.realtime.set_database_name(None)
         assert channel._postgres_fetch_request(change) is None
         await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_fetches_lightweight_postgres_rows() -> None:
+    official = FakeCentrifugeClient()
+    transport = RealtimeDatabaseTransport([{"id": 42, "body": "fetched"}])
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    client.realtime.set_database_name("app")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        received = asyncio.Event()
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+
+        def on_insert(change: Any) -> None:
+            changes.append(change)
+            received.set()
+
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=on_insert,
+        )
+        await channel.subscribe()
+        subscription = official.subscription
+        assert subscription is not None
+
+        await subscription.emit(
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "id": 42,
+                "mode": "lightweight",
+                "timestamp": "2026-09-03T12:00:00Z",
+            }
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.2)
+
+        assert changes[0].record == {"id": 42, "body": "fetched"}
+        assert changes[0].id is None
+        assert changes[0].mode is None
+        assert transport.queries == [
+            {
+                "authorization": "access-1",
+                "database_name": "app",
+                "body": {
+                    "table": "messages",
+                    "filters": [{"column": "id", "operator": "eq", "value": 42}],
+                    "limit": 1,
+                },
+            }
+        ]
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_delivers_lightweight_fallback_when_row_is_absent() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=RealtimeDatabaseTransport([]),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    client.realtime.set_database_name("app")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        errors: list[dict[str, Any]] = []
+        received = asyncio.Event()
+        asyncio.get_running_loop().set_exception_handler(
+            lambda _loop, context: errors.append(context)
+        )
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+
+        def on_update(change: Any) -> None:
+            changes.append(change)
+            received.set()
+
+        channel.on_postgres_changes(
+            "UPDATE",
+            schema="public",
+            table="messages",
+            callback=on_update,
+        )
+        await channel.subscribe()
+        subscription = official.subscription
+        assert subscription is not None
+
+        await subscription.emit(
+            {
+                "type": "UPDATE",
+                "schema": "public",
+                "table": "messages",
+                "id": 404,
+                "mode": "lightweight",
+                "timestamp": "2026-09-03T12:00:00Z",
+            }
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.2)
+
+        assert changes[0].record is None
+        assert changes[0].id == 404
+        assert changes[0].mode == "lightweight"
+        assert errors[0]["message"] == "Volcano realtime Postgres row fetch failed"
+        assert isinstance(errors[0]["exception"], LookupError)
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_unsubscribe_does_not_wait_for_obsolete_row_fetches() -> None:
+    official = FakeCentrifugeClient()
+    transport = BlockingRealtimeDatabaseTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    client.realtime.set_database_name("app")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=lambda _change: None,
+        )
+        await channel.subscribe()
+        subscription = official.subscription
+        assert subscription is not None
+
+        await subscription.emit(
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "id": 42,
+                "mode": "lightweight",
+                "timestamp": "2026-09-03T12:00:00Z",
+            }
+        )
+        await asyncio.wait_for(transport.started.wait(), timeout=0.2)
+
+        await asyncio.wait_for(channel.unsubscribe(), timeout=0.2)
+        assert transport.cancelled.is_set()
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_disconnect_invalidates_channels_before_clearing_auth() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        await channel.subscribe()
+        observed = False
+
+        def observe_disconnect_boundary() -> None:
+            nonlocal observed
+            assert not channel._subscribed
+            assert client.realtime._connection_token() == "access-1"
+            observed = True
+
+        official.disconnect_probe = observe_disconnect_boundary
+        await client.realtime.disconnect()
+
+        assert observed
+        with pytest.raises(RuntimeError, match="no session binding"):
+            client.realtime._connection_token()
 
     asyncio.run(scenario())
 
@@ -2041,6 +2284,58 @@ def test_realtime_disconnect_resets_channels_after_transport_failure(
     asyncio.run(scenario())
     assert first.calls == ["connect", "channel:broadcast:contract", "disconnect"]
     assert second.calls == ["connect", "channel:broadcast:contract", "disconnect"]
+
+
+def test_realtime_disconnect_closes_transport_when_channel_reset_is_cancelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        first = client.realtime.channel("first")
+        second = client.realtime.channel("second")
+        await first.subscribe()
+        await second.subscribe()
+        reset_started = asyncio.Event()
+        second_reset = False
+        original_second_reset = second._reset
+
+        async def blocking_reset() -> None:
+            reset_started.set()
+            await asyncio.Event().wait()
+
+        async def observe_second_reset() -> None:
+            nonlocal second_reset
+            await original_second_reset()
+            second_reset = True
+
+        monkeypatch.setattr(first, "_reset", blocking_reset)
+        monkeypatch.setattr(second, "_reset", observe_second_reset)
+        disconnecting = asyncio.create_task(client.realtime.disconnect())
+        await reset_started.wait()
+        disconnecting.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await disconnecting
+
+        assert official.state.value == "disconnected"
+        assert official.calls[-1] == "disconnect"
+        assert first._subscription is None
+        assert not first._subscribed
+        assert second_reset
+        assert second._subscription is None
+        assert not second._subscribed
+        assert client.realtime._connection is None
+        assert client.realtime._connection_access_token is None
+        assert client.realtime._connection_session_lineage is None
+
+    asyncio.run(scenario())
 
 
 def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(

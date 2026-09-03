@@ -47,7 +47,10 @@ class PostgresFetchWorker(Generic[FallbackT]):
 
     def __init__(
         self,
-        fetch: Callable[[_PostgresFetchRequest], PostgresRecord | None],
+        fetch: Callable[
+            [_PostgresFetchRequest],
+            Awaitable[PostgresRecord | None],
+        ],
         deliver: Callable[[PostgresFetchOutcome[FallbackT]], Awaitable[None]],
         *,
         queue_limit: int,
@@ -79,6 +82,8 @@ class PostgresFetchWorker(Generic[FallbackT]):
         """Drain accepted jobs and stop the worker."""
         async with self._state_lock:
             task = self._task
+            if self._closed and (task is None or task.cancelled()):
+                return
             if not self._closed:
                 self._closed = True
             self._raise_worker_failure()
@@ -87,6 +92,22 @@ class PostgresFetchWorker(Generic[FallbackT]):
             stop_task = self._stop_task
         if task is not None and stop_task is not None:
             await self._wait_for_close(task, stop_task)
+
+    async def abort(self) -> None:
+        """Discard obsolete jobs and stop without waiting for row fetches."""
+        self._closed = True
+        task = self._task
+        stop_task = self._stop_task
+        if stop_task is not None and not stop_task.done():
+            stop_task.cancel()
+        if task is not None and not task.done():
+            task.cancel()
+        pending = tuple(
+            candidate for candidate in (task, stop_task) if candidate is not None
+        )
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        self._discard_pending()
 
     def _raise_worker_failure(self) -> None:
         task = self._task
@@ -109,8 +130,15 @@ class PostgresFetchWorker(Generic[FallbackT]):
                 put_task.cancel()
                 await asyncio.gather(put_task, return_exceptions=True)
         if task in completed:
+            if task.cancelled():
+                raise RuntimeError(_WORKER_CLOSED)
             task.result()
         await put_task
+
+    def _discard_pending(self) -> None:
+        while not self._queue.empty():
+            self._queue.get_nowait()
+            self._queue.task_done()
 
     async def _wait_for_close(
         self,
@@ -146,7 +174,7 @@ class PostgresFetchWorker(Generic[FallbackT]):
             await self._deliver(PostgresFetchOutcome(job=job))
             return
         (result,) = await asyncio.gather(
-            asyncio.to_thread(self._fetch, job.request),
+            self._fetch(job.request),
             return_exceptions=True,
         )
         if isinstance(result, BaseException):
