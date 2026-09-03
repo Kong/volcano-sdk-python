@@ -485,7 +485,27 @@ def test_realtime_reuses_channels_with_the_same_auto_fetch_setting() -> None:
     )
 
 
-def test_realtime_rejects_conflicting_channel_auto_fetch_settings() -> None:
+def test_realtime_reuses_channels_with_the_same_fetch_configuration() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
+    channel = client.realtime.channel(
+        "public:messages",
+        channel_type="postgres",
+        fetch_batch_window_ms=10,
+        fetch_max_batch_size=25,
+    )
+
+    assert (
+        client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+            fetch_batch_window_ms=10,
+            fetch_max_batch_size=25,
+        )
+        is channel
+    )
+
+
+def test_realtime_rejects_conflicting_channel_fetch_configuration() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
     client.realtime.channel(
         "public:messages",
@@ -493,11 +513,36 @@ def test_realtime_rejects_conflicting_channel_auto_fetch_settings() -> None:
         auto_fetch=False,
     )
 
-    with pytest.raises(ValueError, match="auto_fetch setting"):
+    with pytest.raises(ValueError, match="fetch configuration"):
         client.realtime.channel(
             "public:messages",
             channel_type="postgres",
             auto_fetch=True,
+        )
+
+
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        ({"fetch_batch_window_ms": True}, "fetch_batch_window_ms"),
+        ({"fetch_batch_window_ms": 0}, "fetch_batch_window_ms"),
+        ({"fetch_batch_window_ms": 1.5}, "fetch_batch_window_ms"),
+        ({"fetch_max_batch_size": True}, "fetch_max_batch_size"),
+        ({"fetch_max_batch_size": 0}, "fetch_max_batch_size"),
+        ({"fetch_max_batch_size": 129}, "fetch_max_batch_size"),
+    ],
+)
+def test_realtime_rejects_invalid_channel_fetch_configuration(
+    options: dict[str, Any],
+    message: str,
+) -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
+
+    with pytest.raises(ValueError, match=message):
+        client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+            **options,
         )
 
 
@@ -938,6 +983,68 @@ def test_realtime_batches_compatible_lightweight_postgres_rows() -> None:
                 },
             }
         ]
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_honors_channel_fetch_max_batch_size() -> None:
+    official = FakeCentrifugeClient()
+    transport = RealtimeDatabaseTransport(
+        [
+            {"id": 42, "body": "first"},
+            {"id": 43, "body": "second"},
+        ]
+    )
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    client.realtime.set_database_name("app")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        received = asyncio.Event()
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+            fetch_max_batch_size=1,
+        )
+
+        def on_insert(change: Any) -> None:
+            changes.append(change)
+            if len(changes) == 2:
+                received.set()
+
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=on_insert,
+        )
+        await channel.subscribe()
+        subscription = official.subscription
+        assert subscription is not None
+
+        for row_id in (42, 43):
+            await subscription.emit(
+                {
+                    "type": "INSERT",
+                    "schema": "public",
+                    "table": "messages",
+                    "id": row_id,
+                    "mode": "lightweight",
+                    "timestamp": "2026-09-03T12:00:00Z",
+                }
+            )
+        await asyncio.wait_for(received.wait(), timeout=0.2)
+
+        query_ids = [
+            query["body"]["filters"][0]["value"] for query in transport.queries
+        ]
+        assert query_ids == [[42], [43]]
         await client.realtime.disconnect()
 
     asyncio.run(scenario())

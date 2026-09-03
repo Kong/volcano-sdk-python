@@ -626,6 +626,8 @@ changes = client.realtime.channel(
     "public:messages",
     channel_type="postgres",
     auto_fetch=True,
+    fetch_batch_window_ms=20,
+    fetch_max_batch_size=50,
 )
 stop_changes = changes.on_postgres_changes(
     "INSERT",
@@ -645,9 +647,11 @@ If the row is absent or the query fails, the callback receives the lightweight
 notification with its `id` and `mode` intact. Non-public schemas also retain
 that lightweight form. Lightweight deletes never query the database; they
 preserve `old_record`, or provide `{"id": change.id}` when no old row was
-included. Set `auto_fetch=False` on a Postgres channel to keep lightweight
-notifications without querying their rows. Pass `None` to
-`set_database_name()` to disable row fetching for every channel.
+included. Tune a channel's batching with `fetch_batch_window_ms` and
+`fetch_max_batch_size`; the defaults are 20 milliseconds and 50 rows. Set
+`auto_fetch=False` on a Postgres channel to keep lightweight notifications
+without querying their rows. Pass `None` to `set_database_name()` to disable
+row fetching for every channel.
 
 ## Compatibility
 
