@@ -11,6 +11,11 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
+from ._realtime_fetch_worker import (
+    PostgresFetchJob,
+    PostgresFetchOutcome,
+    PostgresFetchWorker,
+)
 from .database import Database
 from .models import JSONValue, _freeze_json
 
@@ -34,6 +39,7 @@ CENTRIFUGE_ERROR = cast(
     importlib.import_module("centrifuge").CentrifugeError,
 )
 CALLBACK_QUEUE_LIMIT = 128
+POSTGRES_QUEUE_LIMIT = 128
 NO_PENDING_CALLBACK = object()
 CALLBACK_QUEUE_FULL_MESSAGE = (
     "Volcano realtime callback queue is full; publication dropped"
@@ -152,6 +158,19 @@ class _PostgresFetchRequest:
 class _PostgresDeliveryIdentity:
     session_lineage: int
     subscription_epoch: int
+
+
+@dataclass(frozen=True, slots=True)
+class _PostgresDelivery:
+    change: PostgresChange
+    identity: _PostgresDeliveryIdentity
+
+
+@dataclass(frozen=True, slots=True)
+class _CallbackDelivery:
+    event: str
+    data: Any
+    postgres_identity: _PostgresDeliveryIdentity | None = None
 
 
 @dataclass(slots=True)
@@ -397,20 +416,20 @@ class _ChannelEvents:
     async def on_subscribing(self, ctx: Any) -> None:
         del ctx
         self._channel._subscribed = False
-        self._channel._end_postgres_epoch()
+        await self._channel._end_postgres_epoch()
         await self._channel._presence_unsubscribed()
 
     async def on_subscribed(self, ctx: Any) -> None:
         del ctx
         self._channel._subscribed = True
-        self._channel._begin_postgres_epoch()
+        await self._channel._begin_postgres_epoch()
         if self._channel._type == "presence":
             self._channel._schedule_presence_sync()
 
     async def on_unsubscribed(self, ctx: Any) -> None:
         del ctx
         self._channel._subscribed = False
-        self._channel._end_postgres_epoch()
+        await self._channel._end_postgres_epoch()
         await self._channel._presence_unsubscribed()
 
     async def on_join(self, ctx: Any) -> None:
@@ -498,7 +517,7 @@ class Channel:
         self._presence_lock = asyncio.Lock()
         self._presence_sync_task: asyncio.Task[None] | None = None
         self._presence_sync_pending = False
-        self._callback_queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue(
+        self._callback_queue: asyncio.Queue[_CallbackDelivery] = asyncio.Queue(
             maxsize=CALLBACK_QUEUE_LIMIT
         )
         self._callback_task: asyncio.Task[None] | None = None
@@ -507,6 +526,8 @@ class Channel:
         self._pending_presence_sync: Any = NO_PENDING_CALLBACK
         self._postgres_epoch = 0
         self._postgres_session_lineage = 0
+        self._postgres_lock = asyncio.Lock()
+        self._postgres_worker: PostgresFetchWorker[_PostgresDelivery] | None = None
 
     @property
     def name(self) -> str:
@@ -598,14 +619,25 @@ class Channel:
             subscription_epoch=self._postgres_epoch,
         )
 
-    def _begin_postgres_epoch(self) -> None:
-        if self._type == "postgres":
-            self._postgres_epoch += 1
-            self._postgres_session_lineage = self._realtime._connection_lineage()
+    async def _begin_postgres_epoch(self) -> None:
+        if self._type != "postgres":
+            return
+        await self._stop_postgres_worker()
+        self._postgres_epoch += 1
+        self._postgres_session_lineage = self._realtime._connection_lineage()
 
-    def _end_postgres_epoch(self) -> None:
-        if self._type == "postgres":
-            self._postgres_epoch += 1
+    async def _end_postgres_epoch(self) -> None:
+        if self._type != "postgres":
+            return
+        self._postgres_epoch += 1
+        await self._stop_postgres_worker()
+
+    async def _stop_postgres_worker(self) -> None:
+        async with self._postgres_lock:
+            worker = self._postgres_worker
+            self._postgres_worker = None
+            if worker is not None:
+                await worker.close()
 
     def _postgres_delivery_is_current(
         self,
@@ -622,14 +654,41 @@ class Channel:
 
     async def _receive_postgres_change(self, data: Any) -> None:
         change = _postgres_change(data)
-        if change is None:
+        if change is None or not self._callbacks.get("*"):
             return
         if change.mode == "lightweight" and change.type == "DELETE":
             old_record = change.old_record
             if old_record is None and change.id is not None:
                 old_record = {"id": change.id}
             change = replace(change, old_record=old_record, id=None, mode=None)
-        await self._emit("*", change)
+        identity = self._capture_postgres_delivery_identity()
+        if not self._postgres_delivery_is_current(identity):
+            return
+        delivery = _PostgresDelivery(change=change, identity=identity)
+        async with self._postgres_lock:
+            if not self._postgres_delivery_is_current(identity):
+                return
+            worker = self._postgres_worker
+            if worker is None:
+                worker = PostgresFetchWorker(
+                    self._realtime._fetch_postgres_row,
+                    self._deliver_postgres,
+                    queue_limit=POSTGRES_QUEUE_LIMIT,
+                )
+                self._postgres_worker = worker
+            await worker.enqueue(PostgresFetchJob(request=None, fallback=delivery))
+
+    async def _deliver_postgres(
+        self,
+        outcome: PostgresFetchOutcome[_PostgresDelivery],
+    ) -> None:
+        delivery = outcome.job.fallback
+        if self._postgres_delivery_is_current(delivery.identity):
+            await self._emit(
+                "*",
+                delivery.change,
+                postgres_identity=delivery.identity,
+            )
 
     async def subscribe(self) -> None:
         """Subscribe to this channel."""
@@ -643,7 +702,13 @@ class Channel:
         """Unsubscribe from this channel."""
         await self._realtime._unsubscribe(self)
 
-    async def _emit(self, event: str, data: Any) -> None:
+    async def _emit(
+        self,
+        event: str,
+        data: Any,
+        *,
+        postgres_identity: _PostgresDeliveryIdentity | None = None,
+    ) -> None:
         if not self._callbacks.get(event):
             return
         if event == "presence_sync":
@@ -657,7 +722,9 @@ class Channel:
             )
             self._callback_stop = None
         try:
-            self._callback_queue.put_nowait((event, data))
+            self._callback_queue.put_nowait(
+                _CallbackDelivery(event, data, postgres_identity)
+            )
         except asyncio.QueueFull:
             if event == "presence_sync":
                 self._pending_presence_sync = data
@@ -682,11 +749,15 @@ class Channel:
 
     async def _dispatch_callbacks(self, stop: asyncio.Event) -> None:
         while not stop.is_set():
-            event, data = await self._callback_queue.get()
+            delivery = await self._callback_queue.get()
             try:
-                for callback in tuple(self._callbacks.get(event, [])):
+                if not self._callback_delivery_is_current(delivery):
+                    continue
+                for callback in tuple(self._callbacks.get(delivery.event, [])):
+                    if not self._callback_delivery_is_current(delivery):
+                        break
                     active_task = asyncio.create_task(
-                        self._run_callback(callback, data)
+                        self._run_callback(callback, delivery)
                     )
                     self._active_callback_task = active_task
                     try:
@@ -707,15 +778,25 @@ class Channel:
                 self._callback_queue.task_done()
                 self._enqueue_pending_presence_sync()
 
+    def _callback_delivery_is_current(self, delivery: _CallbackDelivery) -> bool:
+        identity = delivery.postgres_identity
+        return identity is None or self._postgres_delivery_is_current(identity)
+
     def _enqueue_pending_presence_sync(self) -> None:
         pending = self._pending_presence_sync
         if pending is NO_PENDING_CALLBACK or self._callback_queue.full():
             return
         self._pending_presence_sync = NO_PENDING_CALLBACK
-        self._callback_queue.put_nowait(("presence_sync", pending))
+        self._callback_queue.put_nowait(_CallbackDelivery("presence_sync", pending))
 
-    async def _run_callback(self, callback: MessageCallback, data: Any) -> None:
-        result = callback(data)
+    async def _run_callback(
+        self,
+        callback: MessageCallback,
+        delivery: _CallbackDelivery,
+    ) -> None:
+        if not self._callback_delivery_is_current(delivery):
+            return
+        result = callback(delivery.data)
         if inspect.isawaitable(result):
             await result
 
@@ -850,6 +931,8 @@ class Channel:
 
     async def _reset(self) -> None:
         self._subscription = None
+        self._subscribed = False
+        await self._end_postgres_epoch()
         await self._cancel_presence_sync()
         task = self._callback_task
         active_task = self._active_callback_task
