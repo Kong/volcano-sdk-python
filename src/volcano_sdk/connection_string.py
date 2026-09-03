@@ -1,7 +1,7 @@
 """Postgres connection helpers for Volcano functions."""
 
 import re
-from urllib.parse import SplitResult, parse_qsl, quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import SplitResult, quote, unquote, urlsplit, urlunsplit
 
 _FULL_ACCESS_APP_NAME = "volcano_full_access"
 _USER_ACCESS_APP_NAME = "volcano_user_access"
@@ -24,13 +24,10 @@ def database_connection_string(
         raise ValueError(_REQUIRED_ERROR)
 
     connection = _connection_url(base_connection_string)
-    parameters = [
-        (name, value)
-        for name, value in parse_qsl(connection.query, keep_blank_values=True)
-        if name != "application_name"
-    ]
-    parameters.append(("application_name", _database_application_name(user_id)))
-    query = urlencode(parameters, doseq=True, quote_via=quote)
+    parameters = _query_parameters(connection.query)
+    application_name = quote(_database_application_name(user_id), safe="")
+    parameters.append(f"application_name={application_name}")
+    query = "&".join(parameters)
     return urlunsplit(connection._replace(query=query))
 
 
@@ -39,9 +36,23 @@ def _connection_url(value: str) -> SplitResult:
         connection = urlsplit(value)
     except ValueError:
         raise ValueError(_INVALID_ERROR) from None
-    if not connection.scheme or _INVALID_PERCENT_ENCODING.search(value):
+    if (
+        not connection.scheme
+        or connection.fragment
+        or _INVALID_PERCENT_ENCODING.search(value)
+    ):
         raise ValueError(_INVALID_ERROR)
     return connection
+
+
+def _query_parameters(query: str) -> list[str]:
+    if not query:
+        return []
+    return [
+        parameter
+        for parameter in query.split("&")
+        if unquote(parameter.partition("=")[0]) != "application_name"
+    ]
 
 
 def _database_application_name(user_id: str | None) -> str:

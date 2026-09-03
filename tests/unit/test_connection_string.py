@@ -6,12 +6,24 @@ from volcano_sdk import database_connection_string
 def test_database_connection_string_selects_full_access() -> None:
     base = (
         "postgresql://user:p%40ss@db.example.com/app?"
-        "sslmode=require&application_name=old#target"
+        "sslmode=require&application_name=old"
     )
 
     assert database_connection_string(base) == (
         "postgresql://user:p%40ss@db.example.com/app?"
-        "sslmode=require&application_name=volcano_full_access#target"
+        "sslmode=require&application_name=volcano_full_access"
+    )
+
+
+def test_database_connection_string_preserves_unrelated_query_encoding() -> None:
+    base = (
+        "postgresql://db.example.com/app?"
+        "options=-c+search_path%3Dapp&application_name=old"
+    )
+
+    assert database_connection_string(base) == (
+        "postgresql://db.example.com/app?"
+        "options=-c+search_path%3Dapp&application_name=volcano_full_access"
     )
 
 
@@ -34,7 +46,14 @@ def test_database_connection_string_treats_empty_user_id_as_full_access() -> Non
     assert result.endswith("application_name=volcano_full_access")
 
 
-@pytest.mark.parametrize("value", ["databases/app", "postgres://db.example.com/%"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        "databases/app",
+        "postgres://db.example.com/%",
+        "postgres://db.example.com/app#target",
+    ],
+)
 def test_database_connection_string_rejects_invalid_url(value: str) -> None:
     with pytest.raises(
         ValueError,
