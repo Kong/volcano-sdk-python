@@ -65,7 +65,7 @@ def test_lock_guard_exposes_the_latest_immutable_lease(
     guard = LockGuard(original, ttl=5, started_at=clock[0])
 
     clock[0] = 104.0
-    assert guard._replace_lease(renewed, started_at=clock[0])
+    assert guard.replace_lease(renewed, started_at=clock[0])
 
     assert guard.lease is renewed
     assert not guard.lost
@@ -79,7 +79,7 @@ def test_lock_guard_calculates_renewal_delay_from_remaining_lease(
     monkeypatch.setattr(renewer_module, "_renewal_jitter", lambda: 0.0)
     guard = LockGuard(lease(), ttl=30, started_at=100.0)
 
-    assert guard._renewal_delay() == 10.0
+    assert guard.renewal_delay() == 10.0
 
 
 def test_lock_guard_rejects_a_renewal_completed_after_lease_expiry(
@@ -92,7 +92,7 @@ def test_lock_guard_rejects_a_renewal_completed_after_lease_expiry(
 
     clock[0] = 105.0
 
-    assert not guard._replace_lease(lease(), started_at=104.0)
+    assert not guard.replace_lease(lease(), started_at=104.0)
     assert guard.lease is original
     assert guard.lost
     assert isinstance(guard._renewal_failure(), TimeoutError)
@@ -133,7 +133,7 @@ def test_lock_guard_preserves_the_absolute_acquisition_deadline(
     )
 
     clock[0] = guard_module.MAX_LOCK_LIFETIME_SECONDS - 1
-    assert guard._replace_lease(lease(), started_at=clock[0])
+    assert guard.replace_lease(lease(), started_at=clock[0])
 
     assert guard._remaining_seconds() == 1.0
 
@@ -145,8 +145,8 @@ def test_lock_guard_preserves_the_first_loss_reason(
     guard = LockGuard(lease(), ttl=5, started_at=100.0)
     first = RuntimeError("renewal failed")
 
-    guard._mark_lost(first)
-    guard._mark_lost(RuntimeError("later failure"))
+    guard.mark_lost(first)
+    guard.mark_lost(RuntimeError("later failure"))
 
     assert guard.lost
     assert guard.wait_lost(timeout=0)
@@ -161,6 +161,6 @@ def test_lock_guard_classifies_expiry_before_a_late_renewal_error(
     guard = LockGuard(lease(), ttl=5, started_at=clock[0])
 
     clock[0] = 105.0
-    guard._mark_lost(RuntimeError("renewal timed out"))
+    guard.mark_lost(RuntimeError("renewal timed out"))
 
     assert isinstance(guard._renewal_failure(), TimeoutError)

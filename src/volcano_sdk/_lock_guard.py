@@ -96,7 +96,7 @@ class LockGuard:
                 wait = min(wait, timeout_remaining)
             self._lost.wait(wait)
 
-    def _replace_lease(self, lease: LockLease, *, started_at: float) -> bool:
+    def replace_lease(self, lease: LockLease, *, started_at: float) -> bool:
         with self._state_lock:
             now = _lease_now()
             self._expire_if_needed_locked(now)
@@ -110,7 +110,7 @@ class LockGuard:
             self._lease_deadline = deadline
             return True
 
-    def _mark_lost(self, failure: Exception) -> None:
+    def mark_lost(self, failure: Exception) -> None:
         with self._state_lock:
             self._expire_if_needed_locked(_lease_now())
             self._mark_lost_locked(failure)
@@ -121,7 +121,7 @@ class LockGuard:
             self._expire_if_needed_locked(now)
             return self._remaining_seconds_locked(now)
 
-    def _renewal_delay(self) -> float:
+    def renewal_delay(self) -> float:
         with self._state_lock:
             now = _lease_now()
             self._expire_if_needed_locked(now)
