@@ -63,6 +63,10 @@ def fetch_job(row_id: int) -> PostgresFetchJob[str]:
     )
 
 
+def passthrough_job(name: str) -> PostgresFetchJob[str]:
+    return PostgresFetchJob(request=None, fallback=name)
+
+
 async def wait_for_thread(event: threading.Event) -> None:
     assert await asyncio.to_thread(event.wait, 0.2)
 
@@ -98,6 +102,33 @@ def test_postgres_fetch_worker_bounds_and_orders_fetches() -> None:
             "lightweight-1",
             "lightweight-2",
             "lightweight-3",
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_postgres_fetch_worker_orders_passthrough_after_pending_fetch() -> None:
+    async def scenario() -> None:
+        fetch = BlockingRowFetch()
+        outcomes: list[PostgresFetchOutcome[str]] = []
+
+        async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
+            outcomes.append(outcome)
+
+        worker = PostgresFetchWorker(fetch, deliver, queue_limit=1)
+        await worker.enqueue(fetch_job(1))
+        await wait_for_thread(fetch.started)
+        await worker.enqueue(passthrough_job("full-payload"))
+
+        assert outcomes == []
+
+        fetch.release.set()
+        await asyncio.wait_for(worker.close(), timeout=0.2)
+
+        assert fetch.row_ids == [1]
+        assert outcomes == [
+            PostgresFetchOutcome(job=fetch_job(1), record={"id": 1}),
+            PostgresFetchOutcome(job=passthrough_job("full-payload")),
         ]
 
     asyncio.run(scenario())
