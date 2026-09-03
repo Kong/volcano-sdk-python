@@ -120,6 +120,9 @@ lease = client.locks.acquire("build", ttl=30)
 lease = client.locks.renew("build", lease, ttl=30)
 client.locks.release("build", lease)
 client.locks.force_release("stale-build")
+
+with client.locks.with_lock("deploy", ttl=30) as guard:
+    print(guard.lease.fencing_token)
 ```
 
 Storage removals run in input order. A failed request raises after any earlier
@@ -142,6 +145,12 @@ state without acquiring the lock.
 Lock acquisition and renewal require an integer TTL from 5 seconds through 90 days.
 `locks.renew()` returns a new immutable lease and leaves the previous value
 unchanged.
+`locks.with_lock()` renews the lease on a background thread, stops renewal
+before releasing the latest lease, and yields a `LockGuard`. Read
+`guard.lease` for the latest fencing token. Check `guard.lost` or call
+`guard.wait_lost(timeout=...)` when work must stop promptly after ownership is
+lost. If the context body succeeds, a renewal failure is raised after release;
+an exception from the body takes precedence.
 `locks.force_release()` drops any current lease without an ownership token.
 Use it only for administrative recovery behind fencing-token enforcement.
 `get_upload_session()` returns immutable progress and uploaded-part metadata for

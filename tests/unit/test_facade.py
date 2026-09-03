@@ -10,6 +10,7 @@ from typing import Any, BinaryIO, cast
 import pytest
 
 from volcano_sdk import (
+    LockGuard,
     LockLease,
     ServerError,
     Session,
@@ -20,6 +21,8 @@ from volcano_sdk import (
     UploadSessionStatus,
     VolcanoClient,
 )
+from volcano_sdk import _lock_guard as guard_module
+from volcano_sdk import locks as locks_module
 
 
 @dataclass(frozen=True)
@@ -640,6 +643,144 @@ def test_locks_renews_a_lease_without_mutating_the_original() -> None:
             },
         )
     ]
+
+
+def test_locks_with_lock_renews_an_unsafe_initial_lease_before_yielding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [100.0]
+    renewers: list[NoopRenewer] = []
+
+    class SlowAcquireTransport(FakeTransport):
+        def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
+            response = super().acquire_project_lock(**kwargs)
+            clock[0] = 104.0
+            return response
+
+    class NoopRenewer:
+        def __init__(
+            self,
+            locks: object,
+            key: str,
+            guard: LockGuard,
+            *,
+            ttl: int,
+        ) -> None:
+            del locks, key, guard, ttl
+            self.started = False
+            self.stopped = False
+            renewers.append(self)
+
+        def start(self) -> None:
+            self.started = True
+
+        def stop(self) -> None:
+            self.stopped = True
+
+    monkeypatch.setattr(locks_module, "_lease_now", lambda: clock[0])
+    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
+    monkeypatch.setattr(locks_module, "LockRenewer", NoopRenewer)
+    transport = SlowAcquireTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+
+    with client.locks.with_lock("build", ttl=5) as guard:
+        assert not guard.lost
+
+    assert [operation for operation, _ in transport.calls] == [
+        "acquireProjectLock",
+        "renewProjectLock",
+        "releaseProjectLock",
+    ]
+    assert [(renewer.started, renewer.stopped) for renewer in renewers] == [
+        (True, True)
+    ]
+
+
+def test_locks_with_lock_reports_renewal_failure_after_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failure = ServerError("renewal failed")
+
+    class FailingRenewer:
+        def __init__(
+            self,
+            locks: object,
+            key: str,
+            guard: LockGuard,
+            *,
+            ttl: int,
+        ) -> None:
+            del locks, key, ttl
+            self.guard = guard
+
+        def start(self) -> None:
+            pass
+
+        def stop(self) -> None:
+            self.guard.mark_lost(failure)
+
+    monkeypatch.setattr(locks_module, "LockRenewer", FailingRenewer)
+    transport = FakeTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+
+    with (
+        pytest.raises(ServerError, match="renewal failed"),
+        client.locks.with_lock("build", ttl=30),
+    ):
+        pass
+
+    assert transport.calls[-1][0] == "releaseProjectLock"
+
+
+def test_locks_with_lock_preserves_body_failure_and_releases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingReleaseTransport(FakeTransport):
+        def release_project_lock(self, **kwargs: Any) -> FakeResponse:
+            self.calls.append(("releaseProjectLock", kwargs))
+            return FakeResponse(500, {"message": "release failed"})
+
+    class NoopRenewer:
+        def __init__(
+            self,
+            locks: object,
+            key: str,
+            guard: LockGuard,
+            *,
+            ttl: int,
+        ) -> None:
+            del locks, key, guard, ttl
+
+        def start(self) -> None:
+            pass
+
+        def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr(locks_module, "LockRenewer", NoopRenewer)
+    transport = FailingReleaseTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+
+    body_failure = "body failed"
+    with (
+        pytest.raises(RuntimeError, match=body_failure),
+        client.locks.with_lock("build", ttl=30),
+    ):
+        raise RuntimeError(body_failure)
+
+    assert transport.calls[-1][0] == "releaseProjectLock"
 
 
 @pytest.mark.parametrize("ttl", [4, 7_776_001, 5.5, "5", True])
