@@ -1030,6 +1030,79 @@ def test_realtime_delivers_postgres_changes_to_unfiltered_on_callback() -> None:
     asyncio.run(scenario())
 
 
+def test_realtime_discards_callback_queued_before_resubscribe() -> None:
+    official = FakeCentrifugeClient()
+    transport = RealtimeDatabaseTransport([{"id": 2}])
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+        received: list[int] = []
+
+        async def on_change(change: Any) -> None:
+            record_id = change.record["id"]
+            if record_id == 1:
+                first_started.set()
+                await release_first.wait()
+            received.append(record_id)
+
+        client.realtime.set_database_name("app")
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        channel.on_postgres_changes(
+            "*",
+            schema="public",
+            table="messages",
+            callback=on_change,
+        )
+        await channel.subscribe()
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "record": {"id": 1},
+                "timestamp": "2026-09-02T12:00:00Z",
+            },
+        )
+        await asyncio.wait_for(first_started.wait(), timeout=0.2)
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "id": 2,
+                "mode": "lightweight",
+                "timestamp": "2026-09-02T12:00:01Z",
+            },
+        )
+        for _ in range(100):
+            if not channel._callback_queue.empty():
+                break
+            await asyncio.sleep(0.001)
+        assert not channel._callback_queue.empty()
+
+        await channel.unsubscribe()
+        await channel.subscribe()
+        release_first.set()
+        await asyncio.sleep(0.01)
+
+        assert received == [1]
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_autofetch_captures_database_selection() -> None:
     official = FakeCentrifugeClient()
     transport = RealtimeDatabaseTransport([{"id": 42}])
@@ -1693,7 +1766,7 @@ def test_realtime_newer_queued_snapshot_discards_older_pending_snapshot() -> Non
         blocker = asyncio.create_task(wait_forever())
         channel._callback_task = blocker
         for _ in range(channel._callback_queue.maxsize):
-            channel._callback_queue.put_nowait(("presence_sync", {"version": 0}))
+            await channel._emit("presence_sync", {"version": 0})
 
         await channel._emit("presence_sync", {"version": 1})
         channel._callback_queue.get_nowait()
@@ -1701,7 +1774,7 @@ def test_realtime_newer_queued_snapshot_discards_older_pending_snapshot() -> Non
         await channel._emit("presence_sync", {"version": 2})
         queued: list[Any] = []
         while not channel._callback_queue.empty():
-            queued.append(channel._callback_queue.get_nowait()[1])
+            queued.append(channel._callback_queue.get_nowait().data)
             channel._callback_queue.task_done()
         channel._enqueue_pending_presence_sync()
         blocker.cancel()

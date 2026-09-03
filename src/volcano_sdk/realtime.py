@@ -155,6 +155,13 @@ class _PostgresDelivery:
     subscription_epoch: int
 
 
+@dataclass(frozen=True, slots=True)
+class _CallbackDelivery:
+    event: str
+    data: Any
+    postgres_request: _PostgresDelivery | None = None
+
+
 @dataclass(slots=True)
 class _SessionBoundDatabaseContext:
     _transport: Transport
@@ -502,7 +509,7 @@ class Channel:
         self._presence_lock = asyncio.Lock()
         self._presence_sync_task: asyncio.Task[None] | None = None
         self._presence_sync_pending = False
-        self._callback_queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue(
+        self._callback_queue: asyncio.Queue[_CallbackDelivery] = asyncio.Queue(
             maxsize=CALLBACK_QUEUE_LIMIT
         )
         self._callback_task: asyncio.Task[None] | None = None
@@ -680,7 +687,7 @@ class Channel:
             return
         change = request.change
         if change.mode != "lightweight":
-            await self._emit("*", change)
+            await self._emit("*", change, postgres_request=request)
             return
         if change.type == "DELETE":
             old_record = change.old_record
@@ -689,10 +696,11 @@ class Channel:
             await self._emit(
                 "*",
                 replace(change, old_record=old_record, id=None, mode=None),
+                postgres_request=request,
             )
             return
         if request.database_name is None or request.access_token is None:
-            await self._emit("*", change)
+            await self._emit("*", change, postgres_request=request)
             return
         try:
             row = await asyncio.to_thread(
@@ -718,7 +726,7 @@ class Channel:
             )
             delivered = request.change
         if self._postgres_request_is_current(request):
-            await self._emit("*", delivered)
+            await self._emit("*", delivered, postgres_request=request)
 
     def _postgres_request_is_current(self, request: _PostgresDelivery) -> bool:
         session_generation, _session = self._realtime._client_context._capture_session()
@@ -767,7 +775,13 @@ class Channel:
         """Unsubscribe from this channel."""
         await self._realtime._unsubscribe(self)
 
-    async def _emit(self, event: str, data: Any) -> None:
+    async def _emit(
+        self,
+        event: str,
+        data: Any,
+        *,
+        postgres_request: _PostgresDelivery | None = None,
+    ) -> None:
         if not self._callbacks.get(event):
             return
         if event == "presence_sync":
@@ -781,7 +795,9 @@ class Channel:
             )
             self._callback_stop = None
         try:
-            self._callback_queue.put_nowait((event, data))
+            self._callback_queue.put_nowait(
+                _CallbackDelivery(event, data, postgres_request)
+            )
         except asyncio.QueueFull:
             if event == "presence_sync":
                 self._pending_presence_sync = data
@@ -806,11 +822,15 @@ class Channel:
 
     async def _dispatch_callbacks(self, stop: asyncio.Event) -> None:
         while not stop.is_set():
-            event, data = await self._callback_queue.get()
+            delivery = await self._callback_queue.get()
             try:
-                for callback in tuple(self._callbacks.get(event, [])):
+                if not self._callback_delivery_is_current(delivery):
+                    continue
+                for callback in tuple(self._callbacks.get(delivery.event, [])):
+                    if not self._callback_delivery_is_current(delivery):
+                        break
                     active_task = asyncio.create_task(
-                        self._run_callback(callback, data)
+                        self._run_callback(callback, delivery.data)
                     )
                     self._active_callback_task = active_task
                     try:
@@ -831,12 +851,16 @@ class Channel:
                 self._callback_queue.task_done()
                 self._enqueue_pending_presence_sync()
 
+    def _callback_delivery_is_current(self, delivery: _CallbackDelivery) -> bool:
+        request = delivery.postgres_request
+        return request is None or self._postgres_request_is_current(request)
+
     def _enqueue_pending_presence_sync(self) -> None:
         pending = self._pending_presence_sync
         if pending is NO_PENDING_CALLBACK or self._callback_queue.full():
             return
         self._pending_presence_sync = NO_PENDING_CALLBACK
-        self._callback_queue.put_nowait(("presence_sync", pending))
+        self._callback_queue.put_nowait(_CallbackDelivery("presence_sync", pending))
 
     async def _run_callback(self, callback: MessageCallback, data: Any) -> None:
         result = callback(data)
