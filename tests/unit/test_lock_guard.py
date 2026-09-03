@@ -25,9 +25,33 @@ def test_lease_clock_falls_back_to_portable_monotonic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delattr(time, "clock_gettime", raising=False)
-    monkeypatch.setattr(time, "monotonic", lambda: 123.0)
+    monkeypatch.setattr(guard_module, "_FALLBACK_CLOCK", lambda: 123.0)
 
     assert guard_module._lease_now() == 123.0
+
+
+def test_fallback_clock_includes_system_suspend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monotonic = iter((100.0, 100.0))
+    wall = iter((1_000.0, 1_005.0))
+    monkeypatch.setattr(time, "monotonic", lambda: next(monotonic))
+    monkeypatch.setattr(time, "time", lambda: next(wall))
+    clock = guard_module._FallbackClock()
+
+    assert clock() == 1_005.0
+
+
+def test_fallback_clock_ignores_wall_clock_rollbacks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monotonic = iter((100.0, 101.0))
+    wall = iter((1_000.0, 900.0))
+    monkeypatch.setattr(time, "monotonic", lambda: next(monotonic))
+    monkeypatch.setattr(time, "time", lambda: next(wall))
+    clock = guard_module._FallbackClock()
+
+    assert clock() == 1_001.0
 
 
 def test_lock_guard_exposes_the_latest_immutable_lease(
@@ -116,3 +140,16 @@ def test_lock_guard_preserves_the_first_loss_reason(
     assert guard.lost
     assert guard.wait_lost(timeout=0)
     assert guard._renewal_failure() is first
+
+
+def test_lock_guard_classifies_expiry_before_a_late_renewal_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
+    guard = LockGuard(lease(), ttl=5, started_at=clock[0])
+
+    clock[0] = 105.0
+    guard._mark_lost(RuntimeError("renewal timed out"))
+
+    assert isinstance(guard._renewal_failure(), TimeoutError)

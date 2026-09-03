@@ -15,10 +15,30 @@ SUSPEND_AWARE_CLOCK_ID = getattr(time, "CLOCK_BOOTTIME", None)
 _LEASE_EXPIRED = "lock lease expired before renewal completed"
 
 
+class _FallbackClock:
+    """Combine monotonic progress with suspend-aware wall time."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._monotonic = time.monotonic()
+        self._value = time.time()
+
+    def __call__(self) -> float:
+        with self._lock:
+            monotonic = time.monotonic()
+            elapsed = max(0.0, monotonic - self._monotonic)
+            self._monotonic = monotonic
+            self._value = max(self._value + elapsed, time.time())
+            return self._value
+
+
+_FALLBACK_CLOCK = _FallbackClock()
+
+
 def _lease_now() -> float:
     clock_gettime = getattr(time, "clock_gettime", None)
     if clock_gettime is None or SUSPEND_AWARE_CLOCK_ID is None:
-        return time.monotonic()
+        return _FALLBACK_CLOCK()
     return float(clock_gettime(SUSPEND_AWARE_CLOCK_ID))
 
 
@@ -90,6 +110,7 @@ class LockGuard:
 
     def _mark_lost(self, failure: Exception) -> None:
         with self._state_lock:
+            self._expire_if_needed_locked(_lease_now())
             self._mark_lost_locked(failure)
 
     def _remaining_seconds(self) -> float:
