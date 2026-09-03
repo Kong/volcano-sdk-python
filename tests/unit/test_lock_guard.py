@@ -133,9 +133,9 @@ def test_lock_guard_preserves_the_absolute_acquisition_deadline(
     )
 
     clock[0] = guard_module.MAX_LOCK_LIFETIME_SECONDS - 1
-    assert guard.replace_lease(lease(), started_at=clock[0])
-
-    assert guard._remaining_seconds() == 1.0
+    assert not guard.replace_lease(lease(), started_at=clock[0])
+    assert guard.lost
+    assert str(guard._renewal_failure()) == "lock renewal returned no safe lease window"
 
 
 def test_lock_guard_preserves_the_first_loss_reason(

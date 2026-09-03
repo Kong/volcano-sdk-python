@@ -66,6 +66,20 @@ class ExpiringWait:
         return False
 
 
+class SuspendWait:
+    def __init__(self, clock: list[float]) -> None:
+        self.clock = clock
+        self.calls: list[float | None] = []
+
+    def wait(self, timeout: float | None = None) -> bool:
+        self.calls.append(timeout)
+        self.clock[0] = 101.0 if len(self.calls) == 1 else 111.0
+        return False
+
+    def is_set(self) -> bool:
+        return False
+
+
 def test_lock_renewer_replaces_a_successfully_renewed_lease(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -126,6 +140,23 @@ def test_lock_renewer_does_not_renew_after_the_lease_expires_while_waiting(
 
     assert locks.calls == []
     assert guard.lost
+
+
+def test_lock_renewer_rechecks_the_suspend_aware_clock_in_bounded_waits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
+    monkeypatch.setattr(worker_module, "_lease_now", lambda: clock[0])
+    guard = LockGuard(lease(), ttl=30, started_at=clock[0])
+    monkeypatch.setattr(guard, "renewal_delay", lambda: 10.0)
+    renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
+    wait = SuspendWait(clock)
+    monkeypatch.setattr(renewer, "_stop", wait)
+
+    assert renewer._wait_until_renewal()
+
+    assert wait.calls == [1.0, 1.0]
 
 
 def test_lock_renewer_bounds_stalled_shutdown(

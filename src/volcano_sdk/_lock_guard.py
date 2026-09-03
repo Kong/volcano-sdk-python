@@ -15,6 +15,7 @@ MAX_LOCK_LIFETIME_SECONDS = 7_776_000
 LOSS_POLL_INTERVAL_SECONDS = 1.0
 SUSPEND_AWARE_CLOCK_ID = getattr(time, "CLOCK_BOOTTIME", None)
 _LEASE_EXPIRED = "lock lease expired before renewal completed"
+_NO_SAFE_RENEWAL_WINDOW = "lock renewal returned no safe lease window"
 
 
 class _FallbackClock:
@@ -105,6 +106,9 @@ class LockGuard:
             deadline = min(started_at + self._ttl, self._absolute_deadline)
             if deadline <= now:
                 self._mark_lost_locked(TimeoutError(_LEASE_EXPIRED))
+                return False
+            if _calculate_renewal_delay(self._ttl, remaining=deadline - now) == 0:
+                self._mark_lost_locked(TimeoutError(_NO_SAFE_RENEWAL_WINDOW))
                 return False
             self._lease = lease
             self._lease_deadline = deadline

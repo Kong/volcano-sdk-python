@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from .models import LockLease
 
 RENEWER_SHUTDOWN_TIMEOUT_SECONDS = 1.0
+MAX_RENEWAL_WAIT_SLICE_SECONDS = 1.0
 _RENEWER_SHUTDOWN_TIMEOUT_MESSAGE = "lock renewal did not stop before cleanup"
 
 
@@ -53,11 +54,21 @@ class LockRenewer:
             self._guard.mark_lost(TimeoutError(_RENEWER_SHUTDOWN_TIMEOUT_MESSAGE))
 
     def _run(self) -> None:
-        while not self._guard.lost:
-            if self._stop.wait(self._guard.renewal_delay()):
+        while self._wait_until_renewal():
+            if not self._renew_once():
                 return
-            if self._stop.is_set() or self._guard.lost or not self._renew_once():
-                return
+
+    def _wait_until_renewal(self) -> bool:
+        renew_at = _lease_now() + self._guard.renewal_delay()
+        while not self._stop.is_set():
+            if self._guard.lost:
+                return False
+            remaining = renew_at - _lease_now()
+            if remaining <= 0:
+                return True
+            if self._stop.wait(min(remaining, MAX_RENEWAL_WAIT_SLICE_SECONDS)):
+                return False
+        return False
 
     def _renew_once(self) -> bool:
         started_at = _lease_now()
