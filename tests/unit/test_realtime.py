@@ -570,6 +570,73 @@ def test_realtime_drops_queued_postgres_callbacks_from_an_old_epoch() -> None:
     asyncio.run(scenario())
 
 
+def test_realtime_only_queues_changes_with_an_interested_listener() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        @dataclass
+        class UnhashableListener:
+            changes: list[Any]
+            received: asyncio.Event
+
+            def __call__(self, change: Any) -> None:
+                self.changes.append(change)
+                self.received.set()
+
+        def publication(event: str, table: str) -> dict[str, Any]:
+            return {
+                "type": event,
+                "schema": "public",
+                "table": table,
+                "record": {"id": 1},
+                "timestamp": "2026-09-03T12:00:00Z",
+            }
+
+        filtered: list[Any] = []
+        unfiltered: list[Any] = []
+        unfiltered_received = asyncio.Event()
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        stop = channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=filtered.append,
+        )
+        await channel.subscribe()
+        subscription = official.subscription
+        assert subscription is not None
+
+        await subscription.emit(publication("UPDATE", "messages"))
+        await subscription.emit(publication("INSERT", "other"))
+
+        assert channel._postgres_worker is None
+
+        stop()
+        await subscription.emit(publication("INSERT", "messages"))
+
+        assert channel._postgres_worker is None
+
+        channel.on("*", UnhashableListener(unfiltered, unfiltered_received))
+        await subscription.emit(publication("UPDATE", "other"))
+        await asyncio.wait_for(unfiltered_received.wait(), timeout=0.2)
+
+        assert filtered == []
+        assert len(unfiltered) == 1
+        assert channel._postgres_worker is not None
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_routes_immutable_rls_scoped_postgres_changes() -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(
