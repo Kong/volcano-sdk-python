@@ -6,7 +6,7 @@ import asyncio
 import importlib
 import inspect
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any, Literal, Protocol, TypeAlias, cast
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -356,9 +356,7 @@ class _ChannelEvents:
 
     async def on_publication(self, ctx: PublicationContext) -> None:
         if self._channel._type == "postgres":
-            change = _postgres_change(ctx.pub.data)
-            if change is not None:
-                await self._channel._emit("*", change)
+            await self._channel._receive_postgres_change(ctx.pub.data)
             return
         await self._channel._emit("message", ctx.pub.data)
 
@@ -554,6 +552,17 @@ class Channel:
     def _ensure_presence(self) -> None:
         if self._type != "presence":
             raise ValueError(PRESENCE_ONLY)
+
+    async def _receive_postgres_change(self, data: Any) -> None:
+        change = _postgres_change(data)
+        if change is None:
+            return
+        if change.mode == "lightweight" and change.type == "DELETE":
+            old_record = change.old_record
+            if old_record is None and change.id is not None:
+                old_record = {"id": change.id}
+            change = replace(change, old_record=old_record, id=None, mode=None)
+        await self._emit("*", change)
 
     async def subscribe(self) -> None:
         """Subscribe to this channel."""
