@@ -8,8 +8,8 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..models.frontend_custom_domain_tls_config_mode import check_frontend_custom_domain_tls_config_mode
-from ..models.frontend_custom_domain_tls_config_mode import FrontendCustomDomainTLSConfigMode
+from ..models.byoc_frontend_custom_domain_tls_config_mode import BYOCFrontendCustomDomainTLSConfigMode
+from ..models.byoc_frontend_custom_domain_tls_config_mode import check_byoc_frontend_custom_domain_tls_config_mode
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -18,26 +18,25 @@ from typing import cast
 
 
 
-T = TypeVar("T", bound="FrontendCustomDomainTLSConfig")
+T = TypeVar("T", bound="BYOCFrontendCustomDomainTLSConfig")
 
 
 
 @_attrs_define
-class FrontendCustomDomainTLSConfig:
-    """ Deprecated compatibility model. Use BYOCFrontendCustomDomainTLSConfig.
+class BYOCFrontendCustomDomainTLSConfig:
+    """ Use certificate material that you manage.
 
         Attributes:
-            mode (FrontendCustomDomainTLSConfigMode):  Default: 'byoc'.
-            certificate_pem (str):
-            private_key_pem (str):
-            certificate_chain_pem (str | Unset):
+            mode (BYOCFrontendCustomDomainTLSConfigMode):
+            certificate_pem (str): Required. PEM-encoded certificate.
+            private_key_pem (str): Required. PEM-encoded private key.
+            certificate_chain_pem (str | Unset): Optional PEM-encoded certificate chain.
      """
 
+    mode: BYOCFrontendCustomDomainTLSConfigMode
     certificate_pem: str
     private_key_pem: str
-    mode: FrontendCustomDomainTLSConfigMode = 'byoc'
     certificate_chain_pem: str | Unset = UNSET
-    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
 
@@ -54,7 +53,7 @@ class FrontendCustomDomainTLSConfig:
 
 
         field_dict: dict[str, Any] = {}
-        field_dict.update(self.additional_properties)
+
         field_dict.update({
             "mode": mode,
             "certificate_pem": certificate_pem,
@@ -70,7 +69,7 @@ class FrontendCustomDomainTLSConfig:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        mode = check_frontend_custom_domain_tls_config_mode(d.pop("mode"))
+        mode = check_byoc_frontend_custom_domain_tls_config_mode(d.pop("mode"))
 
 
 
@@ -81,29 +80,12 @@ class FrontendCustomDomainTLSConfig:
 
         certificate_chain_pem = d.pop("certificate_chain_pem", UNSET)
 
-        frontend_custom_domain_tls_config = cls(
+        byoc_frontend_custom_domain_tls_config = cls(
             mode=mode,
             certificate_pem=certificate_pem,
             private_key_pem=private_key_pem,
             certificate_chain_pem=certificate_chain_pem,
         )
 
+        return byoc_frontend_custom_domain_tls_config
 
-        frontend_custom_domain_tls_config.additional_properties = d
-        return frontend_custom_domain_tls_config
-
-    @property
-    def additional_keys(self) -> list[str]:
-        return list(self.additional_properties.keys())
-
-    def __getitem__(self, key: str) -> Any:
-        return self.additional_properties[key]
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        self.additional_properties[key] = value
-
-    def __delitem__(self, key: str) -> None:
-        del self.additional_properties[key]
-
-    def __contains__(self, key: str) -> bool:
-        return key in self.additional_properties

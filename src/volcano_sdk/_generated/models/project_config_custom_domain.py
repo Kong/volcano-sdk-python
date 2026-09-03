@@ -12,7 +12,8 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
-  from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig
+  from ..models.byoc_project_config_frontend_custom_domain_tls_config import BYOCProjectConfigFrontendCustomDomainTLSConfig
+  from ..models.managed_project_config_frontend_custom_domain_tls_config import ManagedProjectConfigFrontendCustomDomainTLSConfig
 
 
 
@@ -24,31 +25,36 @@ T = TypeVar("T", bound="ProjectConfigCustomDomain")
 
 @_attrs_define
 class ProjectConfigCustomDomain:
-    """ Custom domain with BYOC TLS (PRO plan). `tls` is required when the
-    domain is first created and optional afterwards: providing new TLS
-    material for the same domain rotates the certificate in place (zero
-    downtime); omitting `tls` keeps the stored certificate. TLS material is
-    write-only and omitted from config export.
+    """ Custom domain with managed or BYOC TLS (PRO plan). `tls` is required
+    when the domain is first created and optional afterwards. BYOC TLS
+    material is write-only and omitted from config export.
 
         Attributes:
             domain (str): Fully-qualified domain name (hostname only, no scheme/path)
-            tls (FrontendCustomDomainTLSConfig | Unset):
+            tls (BYOCProjectConfigFrontendCustomDomainTLSConfig | ManagedProjectConfigFrontendCustomDomainTLSConfig |
+                Unset):
      """
 
     domain: str
-    tls: FrontendCustomDomainTLSConfig | Unset = UNSET
+    tls: BYOCProjectConfigFrontendCustomDomainTLSConfig | ManagedProjectConfigFrontendCustomDomainTLSConfig | Unset = UNSET
 
 
 
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig
+        from ..models.byoc_project_config_frontend_custom_domain_tls_config import BYOCProjectConfigFrontendCustomDomainTLSConfig
+        from ..models.managed_project_config_frontend_custom_domain_tls_config import ManagedProjectConfigFrontendCustomDomainTLSConfig
         domain = self.domain
 
-        tls: dict[str, Any] | Unset = UNSET
-        if not isinstance(self.tls, Unset):
+        tls: dict[str, Any] | Unset
+        if isinstance(self.tls, Unset):
+            tls = UNSET
+        elif isinstance(self.tls, ManagedProjectConfigFrontendCustomDomainTLSConfig):
             tls = self.tls.to_dict()
+        else:
+            tls = self.tls.to_dict()
+
 
 
         field_dict: dict[str, Any] = {}
@@ -65,18 +71,33 @@ class ProjectConfigCustomDomain:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig
+        from ..models.byoc_project_config_frontend_custom_domain_tls_config import BYOCProjectConfigFrontendCustomDomainTLSConfig
+        from ..models.managed_project_config_frontend_custom_domain_tls_config import ManagedProjectConfigFrontendCustomDomainTLSConfig
         d = dict(src_dict)
         domain = d.pop("domain")
 
-        _tls = d.pop("tls", UNSET)
-        tls: FrontendCustomDomainTLSConfig | Unset
-        if isinstance(_tls,  Unset):
-            tls = UNSET
-        else:
-            tls = FrontendCustomDomainTLSConfig.from_dict(_tls)
+        def _parse_tls(data: object) -> BYOCProjectConfigFrontendCustomDomainTLSConfig | ManagedProjectConfigFrontendCustomDomainTLSConfig | Unset:
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                componentsschemas_project_config_frontend_custom_domain_tls_config_type_0 = ManagedProjectConfigFrontendCustomDomainTLSConfig.from_dict(data)
 
 
+
+                return componentsschemas_project_config_frontend_custom_domain_tls_config_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            if not isinstance(data, dict):
+                raise TypeError()
+            componentsschemas_project_config_frontend_custom_domain_tls_config_type_1 = BYOCProjectConfigFrontendCustomDomainTLSConfig.from_dict(data)
+
+
+
+            return componentsschemas_project_config_frontend_custom_domain_tls_config_type_1
+
+        tls = _parse_tls(d.pop("tls", UNSET))
 
 
         project_config_custom_domain = cls(

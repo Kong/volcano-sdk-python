@@ -29,6 +29,9 @@ FEATURE_SHA256 = {
         "4685b29357a621068b25984ff0de29cd4c504eebe5cfb597f0b999e29878a668"
     ),
     "locks.feature": "76fa31f9a7c203e33b367e5ca1467b2334e7c85c960de8d5cab8638920137411",
+    "managed_tls.feature": (
+        "eca7f071f387c0f4e017bbce06c9fbe948a19b0ef3828521032faabcc7c063af"
+    ),
     "realtime.feature": (
         "e65862e27656cdd0afa8e552cb5a628d9831568e3299711e572ccd4f6b750696"
     ),
@@ -72,6 +75,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "a fresh client adopts the current session",
         "a fresh client tries to refresh the signed-out session",
         "an authenticated client",
+        "a managed custom-domain TLS request",
         "exactly the deleted contract row is returned",
         "exactly the fixture row is returned",
         "exactly the inserted contract row is returned",
@@ -86,6 +90,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the client reads the current session",
         "the client refreshes the current session",
         "the client listens for auth state changes",
+        "the client encodes the request and decodes a pending verification response",
         "the client signs out",
         "the client signs in with the contract user's credentials",
         "the client uploads and downloads the contract object",
@@ -97,6 +102,8 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the downloaded bytes equal the uploaded bytes",
         "the refreshed session becomes current",
         "the released lease is no longer held",
+        "the request selects managed TLS without certificate material",
+        "the response exposes the managed lifecycle and DNS records",
         "the SDK operation fails with an authentication error",
         "the stored object path equals the contract path",
         "the subscriber receives the contract message within 10 seconds",
