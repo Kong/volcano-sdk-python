@@ -433,7 +433,11 @@ def test_realtime_postgres_delivery_identity_changes_on_reauthentication() -> No
 
         client.auth.sign_in(email="user@example.com", password="secret")
 
+        identity_after_reauthentication = channel._capture_postgres_delivery_identity()
         assert not channel._postgres_delivery_is_current(identity)
+        assert not channel._postgres_delivery_is_current(
+            identity_after_reauthentication
+        )
         await client.realtime.disconnect()
 
     asyncio.run(scenario())

@@ -504,6 +504,7 @@ class Channel:
         self._callback_stop: asyncio.Event | None = None
         self._pending_presence_sync: Any = NO_PENDING_CALLBACK
         self._postgres_epoch = 0
+        self._postgres_session_lineage = 0
 
     @property
     def name(self) -> str:
@@ -590,17 +591,18 @@ class Channel:
             raise ValueError(PRESENCE_ONLY)
 
     def _capture_postgres_delivery_identity(self) -> _PostgresDeliveryIdentity:
-        _generation, lineage, _session = (
-            self._realtime._client_context._capture_session_binding()
-        )
         return _PostgresDeliveryIdentity(
-            session_lineage=lineage,
+            session_lineage=self._postgres_session_lineage,
             subscription_epoch=self._postgres_epoch,
         )
 
     def _begin_postgres_epoch(self) -> None:
         if self._type == "postgres":
             self._postgres_epoch += 1
+            _generation, lineage, _session = (
+                self._realtime._client_context._capture_session_binding()
+            )
+            self._postgres_session_lineage = lineage
 
     def _end_postgres_epoch(self) -> None:
         if self._type == "postgres":
