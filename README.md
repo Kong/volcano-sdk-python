@@ -612,6 +612,7 @@ Postgres channels deliver immutable, RLS-scoped row changes and filter
 callbacks by event, schema, and table:
 
 ```python
+client.realtime.set_database_name("app")
 changes = client.realtime.channel(
     "public:messages",
     channel_type="postgres",
@@ -626,6 +627,7 @@ await changes.subscribe()
 stop_changes()
 ```
 
+Pass `None` to `set_database_name()` to clear the database binding.
 When the server sends only a lightweight notification, `record` is `None` and
 the change retains its `id` and `mode` for fallback handling.
 
