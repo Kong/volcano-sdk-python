@@ -9,6 +9,10 @@ from uuid import uuid4
 from ._transport import Transport, invoke, response_payload
 from .models import LockLease, LockState
 
+_MIN_LOCK_TTL_SECONDS = 5
+_MAX_LOCK_TTL_SECONDS = 7_776_000
+_INVALID_LOCK_TTL = "ttl must be an integer between 5 seconds and 90 days"
+
 
 class LocksContext(Protocol):
     """Client capabilities required by distributed locks."""
@@ -65,6 +69,15 @@ def _parse_datetime(value: object) -> datetime | None:
     return datetime.fromisoformat(str(value))
 
 
+def _validate_ttl(ttl: object) -> None:
+    if (
+        isinstance(ttl, bool)
+        or not isinstance(ttl, int)
+        or not _MIN_LOCK_TTL_SECONDS <= ttl <= _MAX_LOCK_TTL_SECONDS
+    ):
+        raise ValueError(_INVALID_LOCK_TTL)
+
+
 class Locks:
     """Acquire and release project-scoped distributed locks."""
 
@@ -89,6 +102,7 @@ class Locks:
 
     def acquire(self, key: str, *, ttl: int) -> LockLease:
         """Acquire a lock lease for the requested number of seconds."""
+        _validate_ttl(ttl)
         token = str(uuid4())
         response = invoke(
             self._client._transport.acquire_project_lock,
@@ -107,6 +121,7 @@ class Locks:
 
     def renew(self, key: str, lease: LockLease, *, ttl: int) -> LockLease:
         """Renew a lock lease and return its immutable replacement."""
+        _validate_ttl(ttl)
         transport = cast("LockRenewTransport", self._client._transport)
         response = invoke(
             transport.renew_project_lock,

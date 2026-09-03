@@ -642,6 +642,42 @@ def test_locks_renews_a_lease_without_mutating_the_original() -> None:
     ]
 
 
+@pytest.mark.parametrize("ttl", [4, 7_776_001, 5.5, "5", True])
+def test_locks_rejects_invalid_acquisition_ttl(ttl: object) -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+
+    with pytest.raises(ValueError, match="between 5 seconds and 90 days"):
+        client.locks.acquire("build", ttl=cast("int", ttl))
+
+    assert transport.calls == []
+
+
+@pytest.mark.parametrize("ttl", [4, 7_776_001, 5.5, "5", True])
+def test_locks_rejects_invalid_renewal_ttl(ttl: object) -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        _transport=transport,
+    )
+    lease = LockLease(
+        key="build",
+        token="00000000-0000-4000-8000-000000000001",
+        expires_at=datetime(2026, 8, 26, 12, 0, 30, tzinfo=UTC),
+        fencing_token=7,
+    )
+
+    with pytest.raises(ValueError, match="between 5 seconds and 90 days"):
+        client.locks.renew("build", lease, ttl=cast("int", ttl))
+
+    assert transport.calls == []
+
+
 def test_locks_force_releases_without_an_ownership_token() -> None:
     transport = FakeTransport()
     client = VolcanoClient(
