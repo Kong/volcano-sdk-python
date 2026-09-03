@@ -80,6 +80,7 @@ def test_database_connection_string_ignores_at_sign_in_query_value() -> None:
     "value",
     [
         "databases/app",
+        "https://db.example.com/app",
         "postgres://db.example.com/%",
     ],
 )

@@ -5,7 +5,7 @@ from urllib.parse import quote, unquote
 
 _FULL_ACCESS_APP_NAME = "volcano_full_access"
 _USER_ACCESS_APP_NAME = "volcano_user_access"
-_CONNECTION_URI_PREFIX = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
+_CONNECTION_URI_PREFIX = re.compile(r"^postgres(?:ql)?://")
 _INVALID_PERCENT_ENCODING = re.compile(r"%(?![0-9A-Fa-f]{2})")
 _REQUIRED_ERROR = (
     "database_connection_string: base_connection_string (DATABASE_URL) is required"
