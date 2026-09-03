@@ -30,6 +30,18 @@ def centrifuge_error(message: str) -> Exception:
     return error_type(message)
 
 
+def test_realtime_database_binding_can_be_replaced_and_cleared() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
+
+    assert client.realtime.database_name is None
+
+    client.realtime.set_database_name("app")
+    assert client.realtime.database_name == "app"
+
+    client.realtime.set_database_name(None)
+    assert client.realtime.database_name is None
+
+
 @dataclass(frozen=True)
 class Response:
     status_code: int

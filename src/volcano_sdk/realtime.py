@@ -823,6 +823,16 @@ class Realtime:
             tuple[str, Any, tuple[int, ...]]
         ] = asyncio.Queue(maxsize=CALLBACK_QUEUE_LIMIT)
         self._connection_callback_task: asyncio.Task[None] | None = None
+        self._database_name: str | None = None
+
+    @property
+    def database_name(self) -> str | None:
+        """Return the database bound to lightweight Postgres changes."""
+        return self._database_name
+
+    def set_database_name(self, name: str | None) -> None:
+        """Bind lightweight Postgres changes to a project database."""
+        self._database_name = name
 
     def on_connect(self, callback: RealtimeCallback) -> UnsubscribeCallback:
         """Register a connection callback and return its unsubscribe function."""
