@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import threading
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
@@ -218,6 +219,30 @@ class RealtimeDatabaseTransport(AuthTransport):
             }
         )
         return Response(200, {"data": self.rows})
+
+
+class BlockingRealtimeDatabaseTransport(RealtimeDatabaseTransport):
+    def __init__(self) -> None:
+        super().__init__([{"id": 42, "body": "fetched"}])
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def query_database_select(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> Response:
+        self.started.set()
+        if not self.release.wait(timeout=1):
+            message = "blocked realtime row fetch was not released"
+            raise TimeoutError(message)
+        return super().query_database_select(
+            authorization=authorization,
+            database_name=database_name,
+            body=body,
+        )
 
 
 class FakeSubscription:
@@ -829,6 +854,53 @@ def test_realtime_delivers_lightweight_fallback_when_row_is_absent() -> None:
         assert changes[0].mode == "lightweight"
         assert errors[0]["message"] == "Volcano realtime Postgres row fetch failed"
         assert isinstance(errors[0]["exception"], LookupError)
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_unsubscribe_does_not_wait_for_obsolete_row_fetches() -> None:
+    official = FakeCentrifugeClient()
+    transport = BlockingRealtimeDatabaseTransport()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    client.realtime.set_database_name("app")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=lambda _change: None,
+        )
+        await channel.subscribe()
+        subscription = official.subscription
+        assert subscription is not None
+
+        await subscription.emit(
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "id": 42,
+                "mode": "lightweight",
+                "timestamp": "2026-09-03T12:00:00Z",
+            }
+        )
+        assert await asyncio.to_thread(transport.started.wait, 0.2)
+
+        try:
+            await asyncio.wait_for(channel.unsubscribe(), timeout=0.2)
+        finally:
+            transport.release.set()
         await client.realtime.disconnect()
 
     asyncio.run(scenario())

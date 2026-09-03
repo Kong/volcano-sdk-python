@@ -643,8 +643,8 @@ class Channel:
         async with self._postgres_lock:
             worker = self._postgres_worker
             self._postgres_worker = None
-            if worker is not None:
-                await worker.close()
+        if worker is not None:
+            await worker.abort()
 
     def _postgres_delivery_is_current(
         self,
@@ -718,7 +718,11 @@ class Channel:
                     queue_limit=POSTGRES_QUEUE_LIMIT,
                 )
                 self._postgres_worker = worker
+        try:
             await worker.enqueue(PostgresFetchJob(request=request, fallback=delivery))
+        except RuntimeError:
+            if self._postgres_delivery_is_current(identity):
+                raise
 
     async def _deliver_postgres(
         self,

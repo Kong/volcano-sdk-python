@@ -134,6 +134,27 @@ def test_postgres_fetch_worker_orders_passthrough_after_pending_fetch() -> None:
     asyncio.run(scenario())
 
 
+def test_postgres_fetch_worker_aborts_obsolete_jobs_without_waiting() -> None:
+    async def scenario() -> None:
+        fetch = BlockingRowFetch()
+        outcomes: list[PostgresFetchOutcome[str]] = []
+
+        async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
+            outcomes.append(outcome)
+
+        worker = PostgresFetchWorker(fetch, deliver, queue_limit=1)
+        await worker.enqueue(fetch_job(1))
+        await wait_for_thread(fetch.started)
+        await worker.enqueue(fetch_job(2))
+
+        await asyncio.wait_for(worker.abort(), timeout=0.2)
+
+        assert outcomes == []
+        fetch.release.set()
+
+    asyncio.run(scenario())
+
+
 def test_postgres_fetch_worker_rejects_an_unbounded_queue() -> None:
     async def deliver(_outcome: PostgresFetchOutcome[str]) -> None:
         return None
