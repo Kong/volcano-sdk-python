@@ -15,6 +15,9 @@ FallbackT = TypeVar("FallbackT")
 PostgresRecord = dict[str, Any]
 _WORKER_CLOSED = "Postgres fetch worker is closed"
 _INVALID_QUEUE_LIMIT = "queue_limit must be positive"
+_INVALID_BATCH_WINDOW = "batch_window_seconds cannot be negative"
+_INVALID_BATCH_SIZE = "max_batch_size must be between 1 and queue_limit"
+_INVALID_RESULT_COUNT = "Postgres fetch returned an unexpected result count"
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,18 +51,26 @@ class PostgresFetchWorker(Generic[FallbackT]):
     def __init__(
         self,
         fetch: Callable[
-            [_PostgresFetchRequest],
-            Awaitable[PostgresRecord | None],
+            [tuple[_PostgresFetchRequest, ...]],
+            Awaitable[tuple[PostgresRecord | None, ...]],
         ],
         deliver: Callable[[PostgresFetchOutcome[FallbackT]], Awaitable[None]],
         *,
         queue_limit: int,
+        batch_window_seconds: float = 0,
+        max_batch_size: int = 1,
     ) -> None:
         """Create a worker with a fixed pending-job limit."""
         if queue_limit <= 0:
             raise ValueError(_INVALID_QUEUE_LIMIT)
+        if batch_window_seconds < 0:
+            raise ValueError(_INVALID_BATCH_WINDOW)
+        if not 1 <= max_batch_size <= queue_limit:
+            raise ValueError(_INVALID_BATCH_SIZE)
         self._fetch = fetch
         self._deliver = deliver
+        self._batch_window_seconds = batch_window_seconds
+        self._max_batch_size = max_batch_size
         self._queue: asyncio.Queue[PostgresFetchJob[FallbackT] | _StopWorker] = (
             asyncio.Queue(maxsize=queue_limit)
         )
@@ -160,27 +171,95 @@ class PostgresFetchWorker(Generic[FallbackT]):
         await asyncio.shield(task)
 
     async def _run(self) -> None:
+        pending: PostgresFetchJob[FallbackT] | _StopWorker | None = None
         while True:
-            item = await self._queue.get()
+            item = pending if pending is not None else await self._queue.get()
+            pending = None
+            batch: list[PostgresFetchJob[FallbackT]] = []
             try:
                 if isinstance(item, _StopWorker):
                     return
-                await self._fetch_and_deliver(item)
+                batch.append(item)
+                pending = await self._collect_batch(batch)
+                await self._fetch_and_deliver(batch)
             finally:
                 self._queue.task_done()
+                for _job in batch[1:]:
+                    self._queue.task_done()
 
-    async def _fetch_and_deliver(self, job: PostgresFetchJob[FallbackT]) -> None:
-        if job.request is None:
-            await self._deliver(PostgresFetchOutcome(job=job))
+    async def _collect_batch(
+        self,
+        batch: list[PostgresFetchJob[FallbackT]],
+    ) -> PostgresFetchJob[FallbackT] | _StopWorker | None:
+        first_request = batch[0].request
+        if first_request is None or self._max_batch_size == 1:
+            return None
+        deadline = asyncio.get_running_loop().time() + self._batch_window_seconds
+        while len(batch) < self._max_batch_size:
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return None
+            try:
+                async with asyncio.timeout(remaining):
+                    candidate = await self._queue.get()
+            except TimeoutError:
+                return None
+            if isinstance(candidate, _StopWorker):
+                return candidate
+            request = candidate.request
+            if (
+                request is None
+                or not self._same_fetch(first_request, request)
+                or self._repeats_row(batch, request)
+            ):
+                return candidate
+            batch.append(candidate)
+        return None
+
+    @staticmethod
+    def _same_fetch(
+        first: _PostgresFetchRequest,
+        request: _PostgresFetchRequest,
+    ) -> bool:
+        return (
+            first.database_name,
+            first.access_token,
+            first.table,
+        ) == (
+            request.database_name,
+            request.access_token,
+            request.table,
+        )
+
+    @staticmethod
+    def _repeats_row(
+        batch: list[PostgresFetchJob[FallbackT]],
+        request: _PostgresFetchRequest,
+    ) -> bool:
+        return any(
+            job.request is not None and job.request.row_id == request.row_id
+            for job in batch
+        )
+
+    async def _fetch_and_deliver(
+        self,
+        jobs: list[PostgresFetchJob[FallbackT]],
+    ) -> None:
+        requests = tuple(job.request for job in jobs if job.request is not None)
+        if not requests:
+            await self._deliver(PostgresFetchOutcome(job=jobs[0]))
             return
         (result,) = await asyncio.gather(
-            self._fetch(job.request),
+            self._fetch(requests),
             return_exceptions=True,
         )
         if isinstance(result, BaseException):
             if not isinstance(result, Exception):
                 raise result
-            outcome = PostgresFetchOutcome(job=job, error=result)
-        else:
-            outcome = PostgresFetchOutcome(job=job, record=result)
-        await self._deliver(outcome)
+            for job in jobs:
+                await self._deliver(PostgresFetchOutcome(job=job, error=result))
+            return
+        if len(result) != len(jobs):
+            raise RuntimeError(_INVALID_RESULT_COUNT)
+        for job, record in zip(jobs, result, strict=True):
+            await self._deliver(PostgresFetchOutcome(job=job, record=record))
