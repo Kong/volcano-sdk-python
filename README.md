@@ -139,6 +139,7 @@ uploaded bytes and the total size.
 part number to replace that part.
 `locks.get()` returns immutable lock availability, expiry, and fencing-token
 state without acquiring the lock.
+Lock acquisition and renewal require an integer TTL from 5 seconds through 90 days.
 `locks.renew()` returns a new immutable lease and leaves the previous value
 unchanged.
 `locks.force_release()` drops any current lease without an ownership token.
