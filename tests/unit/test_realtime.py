@@ -455,6 +455,53 @@ def test_realtime_channel_exposes_its_canonical_name() -> None:
     )
 
 
+def test_realtime_reuses_channels_with_the_same_auto_fetch_setting() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
+
+    enabled = client.realtime.channel(
+        "public:messages",
+        channel_type="postgres",
+    )
+    disabled = client.realtime.channel(
+        "public:archive",
+        channel_type="postgres",
+        auto_fetch=False,
+    )
+
+    assert (
+        client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+            auto_fetch=True,
+        )
+        is enabled
+    )
+    assert (
+        client.realtime.channel(
+            "public:archive",
+            channel_type="postgres",
+            auto_fetch=False,
+        )
+        is disabled
+    )
+
+
+def test_realtime_rejects_conflicting_channel_auto_fetch_settings() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
+    client.realtime.channel(
+        "public:messages",
+        channel_type="postgres",
+        auto_fetch=False,
+    )
+
+    with pytest.raises(ValueError, match="auto_fetch setting"):
+        client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+            auto_fetch=True,
+        )
+
+
 def test_realtime_postgres_delivery_identity_changes_on_reauthentication() -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(
@@ -814,6 +861,61 @@ def test_realtime_fetches_lightweight_postgres_rows() -> None:
                 },
             }
         ]
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_can_disable_lightweight_postgres_row_fetching() -> None:
+    official = FakeCentrifugeClient()
+    transport = RealtimeDatabaseTransport([{"id": 42, "body": "fetched"}])
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    client.realtime.set_database_name("app")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        received = asyncio.Event()
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+            auto_fetch=False,
+        )
+
+        def on_insert(change: Any) -> None:
+            changes.append(change)
+            received.set()
+
+        channel.on_postgres_changes(
+            "INSERT",
+            schema="public",
+            table="messages",
+            callback=on_insert,
+        )
+        await channel.subscribe()
+        subscription = official.subscription
+        assert subscription is not None
+
+        await subscription.emit(
+            {
+                "type": "INSERT",
+                "schema": "public",
+                "table": "messages",
+                "id": 42,
+                "mode": "lightweight",
+                "timestamp": "2026-09-03T12:00:00Z",
+            }
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.2)
+
+        assert changes[0].record is None
+        assert changes[0].id == 42
+        assert changes[0].mode == "lightweight"
+        assert transport.queries == []
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
