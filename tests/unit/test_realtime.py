@@ -473,6 +473,61 @@ def test_realtime_preserves_lightweight_postgres_metadata() -> None:
     asyncio.run(scenario())
 
 
+def test_realtime_normalizes_lightweight_postgres_deletes() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        changes: list[Any] = []
+        received = asyncio.Event()
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+
+        def on_delete(change: Any) -> None:
+            changes.append(change)
+            if len(changes) == 2:
+                received.set()
+
+        channel.on_postgres_changes(
+            "DELETE",
+            schema="public",
+            table="messages",
+            callback=on_delete,
+        )
+        await channel.subscribe()
+        common = {
+            "type": "DELETE",
+            "schema": "public",
+            "table": "messages",
+            "mode": "lightweight",
+            "timestamp": "2026-09-03T12:00:00Z",
+        }
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {**common, "id": 42},
+        )
+        await official.emit_wire_publication(
+            "project-id:postgres:public:messages:user-id",
+            {**common, "id": 43, "old_record": {"id": 43, "body": "old"}},
+        )
+        await asyncio.wait_for(received.wait(), timeout=0.1)
+
+        assert changes[0].old_record == {"id": 42}
+        assert changes[1].old_record == {"id": 43, "body": "old"}
+        assert all(change.id is None for change in changes)
+        assert all(change.mode is None for change in changes)
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_validates_postgres_change_operations() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
     broadcast = client.realtime.channel("contract")

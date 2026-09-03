@@ -629,7 +629,9 @@ stop_changes()
 
 Pass `None` to `set_database_name()` to clear the database binding.
 When the server sends only a lightweight notification, `record` is `None` and
-the change retains its `id` and `mode` for fallback handling.
+the change retains its `id` and `mode` for fallback handling. Lightweight
+deletes preserve `old_record`, or provide `{"id": change.id}` when no old row
+was included.
 
 ## Compatibility
 
