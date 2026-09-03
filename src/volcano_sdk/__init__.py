@@ -1,6 +1,7 @@
 """Public Volcano SDK facade."""
 
 from .client import VolcanoClient
+from .connection_string import database_connection_string
 from .errors import (
     AuthenticationError,
     ConflictError,
@@ -84,4 +85,5 @@ __all__ = [
     "ValidationError",
     "VolcanoClient",
     "VolcanoError",
+    "database_connection_string",
 ]
