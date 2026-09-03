@@ -672,6 +672,26 @@ class Channel:
                 return True
         return False
 
+    def _postgres_fetch_request(
+        self,
+        change: PostgresChange,
+    ) -> _PostgresFetchRequest | None:
+        database_name = self._realtime.database_name
+        if (
+            change.mode != "lightweight"
+            or change.type == "DELETE"
+            or change.schema != "public"
+            or change.id is None
+            or database_name is None
+        ):
+            return None
+        return _PostgresFetchRequest(
+            database_name=database_name,
+            access_token=self._realtime._connection_token(),
+            table=change.table,
+            row_id=change.id,
+        )
+
     async def _receive_postgres_change(self, data: Any) -> None:
         change = _postgres_change(data)
         if change is None or not self._has_postgres_listener(change):
@@ -990,6 +1010,7 @@ class Realtime:
         self._client_factory = client_factory
         self._connection: _VolcanoCentrifugeConnection | None = None
         self._connection_session_lineage: int | None = None
+        self._connection_access_token: str | None = None
         self._connection_lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
         self._removing_channels: set[str] = set()
@@ -1183,6 +1204,7 @@ class Realtime:
         if session is None:
             raise RuntimeError(NO_ACTIVE_SESSION)
         self._connection_session_lineage = lineage
+        self._connection_access_token = session.access_token
         return session.access_token
 
     def _connection_lineage(self) -> int:
@@ -1190,6 +1212,12 @@ class Realtime:
         if lineage is None:
             raise RuntimeError(CONNECTION_SESSION_UNAVAILABLE)
         return lineage
+
+    def _connection_token(self) -> str:
+        token = self._connection_access_token
+        if token is None:
+            raise RuntimeError(CONNECTION_SESSION_UNAVAILABLE)
+        return token
 
     def _address(self) -> str:
         parsed = urlsplit(self._api_url)
@@ -1216,10 +1244,12 @@ class Realtime:
             )
         )
         self._connection_session_lineage = lineage
+        self._connection_access_token = session.access_token
         try:
             await connection.connect()
         except BaseException:
             self._connection_session_lineage = None
+            self._connection_access_token = None
             raise
         self._connection = connection
         return connection
@@ -1289,6 +1319,7 @@ class Realtime:
             connection = self._connection
             self._connection = None
             self._connection_session_lineage = None
+            self._connection_access_token = None
             try:
                 if connection is not None:
                     await connection.disconnect()
