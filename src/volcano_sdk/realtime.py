@@ -16,6 +16,7 @@ from .models import JSONValue, _freeze_json
 
 if TYPE_CHECKING:
     from ._transport import Transport
+    from .models import Session
 
 MessageCallback = Callable[[Any], Any]
 RealtimeCallback = Callable[[Any], Any]
@@ -145,6 +146,12 @@ class _PostgresFetchRequest:
     row_id: JSONValue
 
 
+@dataclass(frozen=True, slots=True)
+class _PostgresDeliveryIdentity:
+    session_lineage: int
+    subscription_epoch: int
+
+
 @dataclass(slots=True)
 class _SessionBoundDatabaseContext:
     _transport: Transport
@@ -212,6 +219,8 @@ class RealtimeContext(Protocol):
     def _anon_token(self) -> str: ...
 
     def _session_token(self) -> str: ...
+
+    def _capture_session_binding(self) -> tuple[int, int, Session | None]: ...
 
 
 class CentrifugeSubscription(Protocol):
@@ -386,17 +395,20 @@ class _ChannelEvents:
     async def on_subscribing(self, ctx: Any) -> None:
         del ctx
         self._channel._subscribed = False
+        self._channel._end_postgres_epoch()
         await self._channel._presence_unsubscribed()
 
     async def on_subscribed(self, ctx: Any) -> None:
         del ctx
         self._channel._subscribed = True
+        self._channel._begin_postgres_epoch()
         if self._channel._type == "presence":
             self._channel._schedule_presence_sync()
 
     async def on_unsubscribed(self, ctx: Any) -> None:
         del ctx
         self._channel._subscribed = False
+        self._channel._end_postgres_epoch()
         await self._channel._presence_unsubscribed()
 
     async def on_join(self, ctx: Any) -> None:
@@ -491,6 +503,7 @@ class Channel:
         self._active_callback_task: asyncio.Task[None] | None = None
         self._callback_stop: asyncio.Event | None = None
         self._pending_presence_sync: Any = NO_PENDING_CALLBACK
+        self._postgres_epoch = 0
 
     @property
     def name(self) -> str:
@@ -575,6 +588,36 @@ class Channel:
     def _ensure_presence(self) -> None:
         if self._type != "presence":
             raise ValueError(PRESENCE_ONLY)
+
+    def _capture_postgres_delivery_identity(self) -> _PostgresDeliveryIdentity:
+        _generation, lineage, _session = (
+            self._realtime._client_context._capture_session_binding()
+        )
+        return _PostgresDeliveryIdentity(
+            session_lineage=lineage,
+            subscription_epoch=self._postgres_epoch,
+        )
+
+    def _begin_postgres_epoch(self) -> None:
+        if self._type == "postgres":
+            self._postgres_epoch += 1
+
+    def _end_postgres_epoch(self) -> None:
+        if self._type == "postgres":
+            self._postgres_epoch += 1
+
+    def _postgres_delivery_is_current(
+        self,
+        identity: _PostgresDeliveryIdentity,
+    ) -> bool:
+        _generation, lineage, _session = (
+            self._realtime._client_context._capture_session_binding()
+        )
+        return (
+            self._subscribed
+            and identity.subscription_epoch == self._postgres_epoch
+            and identity.session_lineage == lineage
+        )
 
     async def _receive_postgres_change(self, data: Any) -> None:
         change = _postgres_change(data)

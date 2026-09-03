@@ -412,6 +412,65 @@ def test_realtime_channel_exposes_its_canonical_name() -> None:
     )
 
 
+def test_realtime_postgres_delivery_identity_changes_on_reauthentication() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        await channel.subscribe()
+        identity = channel._capture_postgres_delivery_identity()
+
+        assert channel._postgres_delivery_is_current(identity)
+
+        client.auth.sign_in(email="user@example.com", password="secret")
+
+        assert not channel._postgres_delivery_is_current(identity)
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_postgres_delivery_identity_changes_on_resubscription() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        await channel.subscribe()
+        identity = channel._capture_postgres_delivery_identity()
+        subscription = official.subscription
+        assert subscription is not None
+
+        await subscription.emit_subscribing()
+        assert not channel._postgres_delivery_is_current(identity)
+
+        await subscription.emit_subscribed()
+        next_identity = channel._capture_postgres_delivery_identity()
+
+        assert not channel._postgres_delivery_is_current(identity)
+        assert channel._postgres_delivery_is_current(next_identity)
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_routes_immutable_rls_scoped_postgres_changes() -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(
