@@ -475,6 +475,34 @@ def test_realtime_postgres_delivery_identity_changes_on_resubscription() -> None
     asyncio.run(scenario())
 
 
+def test_realtime_postgres_delivery_identity_uses_connection_session() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        broadcast = client.realtime.channel("updates")
+        await broadcast.subscribe()
+
+        client.auth.sign_in(email="user@example.com", password="secret")
+        postgres = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        await postgres.subscribe()
+
+        identity = postgres._capture_postgres_delivery_identity()
+
+        assert not postgres._postgres_delivery_is_current(identity)
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_routes_immutable_rls_scoped_postgres_changes() -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(

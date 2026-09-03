@@ -48,6 +48,8 @@ CALLBACK_NOT_CALLABLE = "callback must be callable"
 SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
     "centrifuge client subscription registry is unavailable"
 )
+NO_ACTIVE_SESSION = "No active session"
+CONNECTION_SESSION_UNAVAILABLE = "Realtime connection has no session binding"
 
 
 def _empty_presence_data() -> Mapping[str, JSONValue]:
@@ -599,10 +601,7 @@ class Channel:
     def _begin_postgres_epoch(self) -> None:
         if self._type == "postgres":
             self._postgres_epoch += 1
-            _generation, lineage, _session = (
-                self._realtime._client_context._capture_session_binding()
-            )
-            self._postgres_session_lineage = lineage
+            self._postgres_session_lineage = self._realtime._connection_lineage()
 
     def _end_postgres_epoch(self) -> None:
         if self._type == "postgres":
@@ -887,6 +886,7 @@ class Realtime:
         self._api_url = api_url
         self._client_factory = client_factory
         self._connection: _VolcanoCentrifugeConnection | None = None
+        self._connection_session_lineage: int | None = None
         self._connection_lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
         self._removing_channels: set[str] = set()
@@ -1076,7 +1076,17 @@ class Realtime:
         await channel._reset()
 
     async def _token(self) -> str:
-        return self._client_context._session_token()
+        _generation, lineage, session = self._client_context._capture_session_binding()
+        if session is None:
+            raise RuntimeError(NO_ACTIVE_SESSION)
+        self._connection_session_lineage = lineage
+        return session.access_token
+
+    def _connection_lineage(self) -> int:
+        lineage = self._connection_session_lineage
+        if lineage is None:
+            raise RuntimeError(CONNECTION_SESSION_UNAVAILABLE)
+        return lineage
 
     def _address(self) -> str:
         parsed = urlsplit(self._api_url)
@@ -1091,15 +1101,23 @@ class Realtime:
     async def _connect_locked(self) -> _VolcanoCentrifugeConnection:
         if self._connection is not None:
             return self._connection
+        _generation, lineage, session = self._client_context._capture_session_binding()
+        if session is None:
+            raise RuntimeError(NO_ACTIVE_SESSION)
         connection = _VolcanoCentrifugeConnection(
             self._client_factory(
                 self._address(),
                 events=_ClientEvents(self),
-                token=self._client_context._session_token(),
+                token=session.access_token,
                 get_token=self._token,
             )
         )
-        await connection.connect()
+        self._connection_session_lineage = lineage
+        try:
+            await connection.connect()
+        except BaseException:
+            self._connection_session_lineage = None
+            raise
         self._connection = connection
         return connection
 
@@ -1167,6 +1185,7 @@ class Realtime:
         async with self._connection_lock:
             connection = self._connection
             self._connection = None
+            self._connection_session_lineage = None
             try:
                 if connection is not None:
                     await connection.disconnect()
