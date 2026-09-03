@@ -8,10 +8,14 @@ import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
-from typing import Any, Literal, Protocol, TypeAlias, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
+from .database import Database
 from .models import JSONValue, _freeze_json
+
+if TYPE_CHECKING:
+    from ._transport import Transport
 
 MessageCallback = Callable[[Any], Any]
 RealtimeCallback = Callable[[Any], Any]
@@ -133,6 +137,23 @@ class PostgresChange:
         object.__setattr__(self, "id", _freeze_json(self.id))
 
 
+@dataclass(frozen=True, slots=True)
+class _PostgresFetchRequest:
+    database_name: str
+    access_token: str
+    table: str
+    row_id: JSONValue
+
+
+@dataclass(slots=True)
+class _SessionBoundDatabaseContext:
+    _transport: Transport
+    access_token: str
+
+    def _session_token(self) -> str:
+        return self.access_token
+
+
 def _postgres_change(data: Any) -> PostgresChange | None:
     if not isinstance(data, Mapping):
         return None
@@ -185,6 +206,8 @@ def _postgres_change(data: Any) -> PostgresChange | None:
 
 class RealtimeContext(Protocol):
     """Client capabilities required by realtime connections."""
+
+    _transport: Transport
 
     def _anon_token(self) -> str: ...
 
@@ -842,6 +865,24 @@ class Realtime:
     def set_database_name(self, name: str | None) -> None:
         """Bind lightweight Postgres changes to a project database."""
         self._database_name = name
+
+    def _fetch_postgres_row(
+        self,
+        request: _PostgresFetchRequest,
+    ) -> dict[str, Any] | None:
+        context = _SessionBoundDatabaseContext(
+            self._client_context._transport,
+            request.access_token,
+        )
+        rows = (
+            Database(context, request.database_name)
+            .from_(request.table)
+            .select("*")
+            .eq("id", request.row_id)
+            .limit(1)
+            .execute()
+        )
+        return rows[0] if rows else None
 
     def on_connect(self, callback: RealtimeCallback) -> UnsubscribeCallback:
         """Register a connection callback and return its unsubscribe function."""
