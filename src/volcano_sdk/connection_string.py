@@ -36,7 +36,14 @@ def _connection_parts(value: str) -> tuple[str, str]:
     if prefix is None or _INVALID_PERCENT_ENCODING.search(value):
         raise ValueError(_INVALID_ERROR)
 
-    userinfo_end = value.find("@", prefix.end())
+    authority_end = value.find("/", prefix.end())
+    possible_userinfo_end = value.find("@", prefix.end())
+    userinfo_end = (
+        possible_userinfo_end
+        if possible_userinfo_end != -1
+        and (authority_end == -1 or possible_userinfo_end < authority_end)
+        else -1
+    )
     query_start = value.find("?", max(prefix.end(), userinfo_end + 1))
     if query_start == -1:
         return value, ""

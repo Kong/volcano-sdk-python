@@ -70,6 +70,12 @@ def test_database_connection_string_drops_trailing_query_separator() -> None:
     )
 
 
+def test_database_connection_string_ignores_at_sign_in_query_value() -> None:
+    assert database_connection_string("postgresql://host/db?options=foo@bar") == (
+        "postgresql://host/db?options=foo@bar&application_name=volcano_full_access"
+    )
+
+
 @pytest.mark.parametrize(
     "value",
     [
