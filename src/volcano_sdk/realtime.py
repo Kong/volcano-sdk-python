@@ -16,6 +16,7 @@ from .models import JSONValue, _freeze_json
 
 if TYPE_CHECKING:
     from ._transport import Transport
+    from .models import Session
 
 MessageCallback = Callable[[Any], Any]
 RealtimeCallback = Callable[[Any], Any]
@@ -47,6 +48,8 @@ CALLBACK_NOT_CALLABLE = "callback must be callable"
 SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
     "centrifuge client subscription registry is unavailable"
 )
+NO_ACTIVE_SESSION = "No active session"
+CONNECTION_SESSION_UNAVAILABLE = "Realtime connection has no session binding"
 
 
 def _empty_presence_data() -> Mapping[str, JSONValue]:
@@ -145,6 +148,12 @@ class _PostgresFetchRequest:
     row_id: JSONValue
 
 
+@dataclass(frozen=True, slots=True)
+class _PostgresDeliveryIdentity:
+    session_lineage: int
+    subscription_epoch: int
+
+
 @dataclass(slots=True)
 class _SessionBoundDatabaseContext:
     _transport: Transport
@@ -212,6 +221,8 @@ class RealtimeContext(Protocol):
     def _anon_token(self) -> str: ...
 
     def _session_token(self) -> str: ...
+
+    def _capture_session_binding(self) -> tuple[int, int, Session | None]: ...
 
 
 class CentrifugeSubscription(Protocol):
@@ -386,17 +397,20 @@ class _ChannelEvents:
     async def on_subscribing(self, ctx: Any) -> None:
         del ctx
         self._channel._subscribed = False
+        self._channel._end_postgres_epoch()
         await self._channel._presence_unsubscribed()
 
     async def on_subscribed(self, ctx: Any) -> None:
         del ctx
         self._channel._subscribed = True
+        self._channel._begin_postgres_epoch()
         if self._channel._type == "presence":
             self._channel._schedule_presence_sync()
 
     async def on_unsubscribed(self, ctx: Any) -> None:
         del ctx
         self._channel._subscribed = False
+        self._channel._end_postgres_epoch()
         await self._channel._presence_unsubscribed()
 
     async def on_join(self, ctx: Any) -> None:
@@ -491,6 +505,8 @@ class Channel:
         self._active_callback_task: asyncio.Task[None] | None = None
         self._callback_stop: asyncio.Event | None = None
         self._pending_presence_sync: Any = NO_PENDING_CALLBACK
+        self._postgres_epoch = 0
+        self._postgres_session_lineage = 0
 
     @property
     def name(self) -> str:
@@ -575,6 +591,34 @@ class Channel:
     def _ensure_presence(self) -> None:
         if self._type != "presence":
             raise ValueError(PRESENCE_ONLY)
+
+    def _capture_postgres_delivery_identity(self) -> _PostgresDeliveryIdentity:
+        return _PostgresDeliveryIdentity(
+            session_lineage=self._postgres_session_lineage,
+            subscription_epoch=self._postgres_epoch,
+        )
+
+    def _begin_postgres_epoch(self) -> None:
+        if self._type == "postgres":
+            self._postgres_epoch += 1
+            self._postgres_session_lineage = self._realtime._connection_lineage()
+
+    def _end_postgres_epoch(self) -> None:
+        if self._type == "postgres":
+            self._postgres_epoch += 1
+
+    def _postgres_delivery_is_current(
+        self,
+        identity: _PostgresDeliveryIdentity,
+    ) -> bool:
+        _generation, lineage, _session = (
+            self._realtime._client_context._capture_session_binding()
+        )
+        return (
+            self._subscribed
+            and identity.subscription_epoch == self._postgres_epoch
+            and identity.session_lineage == lineage
+        )
 
     async def _receive_postgres_change(self, data: Any) -> None:
         change = _postgres_change(data)
@@ -842,6 +886,7 @@ class Realtime:
         self._api_url = api_url
         self._client_factory = client_factory
         self._connection: _VolcanoCentrifugeConnection | None = None
+        self._connection_session_lineage: int | None = None
         self._connection_lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
         self._removing_channels: set[str] = set()
@@ -1031,7 +1076,17 @@ class Realtime:
         await channel._reset()
 
     async def _token(self) -> str:
-        return self._client_context._session_token()
+        _generation, lineage, session = self._client_context._capture_session_binding()
+        if session is None:
+            raise RuntimeError(NO_ACTIVE_SESSION)
+        self._connection_session_lineage = lineage
+        return session.access_token
+
+    def _connection_lineage(self) -> int:
+        lineage = self._connection_session_lineage
+        if lineage is None:
+            raise RuntimeError(CONNECTION_SESSION_UNAVAILABLE)
+        return lineage
 
     def _address(self) -> str:
         parsed = urlsplit(self._api_url)
@@ -1046,15 +1101,23 @@ class Realtime:
     async def _connect_locked(self) -> _VolcanoCentrifugeConnection:
         if self._connection is not None:
             return self._connection
+        _generation, lineage, session = self._client_context._capture_session_binding()
+        if session is None:
+            raise RuntimeError(NO_ACTIVE_SESSION)
         connection = _VolcanoCentrifugeConnection(
             self._client_factory(
                 self._address(),
                 events=_ClientEvents(self),
-                token=self._client_context._session_token(),
+                token=session.access_token,
                 get_token=self._token,
             )
         )
-        await connection.connect()
+        self._connection_session_lineage = lineage
+        try:
+            await connection.connect()
+        except BaseException:
+            self._connection_session_lineage = None
+            raise
         self._connection = connection
         return connection
 
@@ -1122,6 +1185,7 @@ class Realtime:
         async with self._connection_lock:
             connection = self._connection
             self._connection = None
+            self._connection_session_lineage = None
             try:
                 if connection is not None:
                     await connection.disconnect()
