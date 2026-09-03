@@ -21,7 +21,7 @@ _INVALID_QUEUE_LIMIT = "queue_limit must be positive"
 class PostgresFetchJob(Generic[FallbackT]):
     """Pair a captured row request with its lightweight fallback."""
 
-    request: _PostgresFetchRequest
+    request: _PostgresFetchRequest | None
     fallback: FallbackT
 
 
@@ -142,6 +142,9 @@ class PostgresFetchWorker(Generic[FallbackT]):
                 self._queue.task_done()
 
     async def _fetch_and_deliver(self, job: PostgresFetchJob[FallbackT]) -> None:
+        if job.request is None:
+            await self._deliver(PostgresFetchOutcome(job=job))
+            return
         (result,) = await asyncio.gather(
             asyncio.to_thread(self._fetch, job.request),
             return_exceptions=True,
