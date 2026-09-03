@@ -44,7 +44,7 @@ CENTRIFUGE_ERROR = cast(
 )
 CALLBACK_QUEUE_LIMIT = 128
 POSTGRES_QUEUE_LIMIT = 128
-POSTGRES_BATCH_WINDOW_SECONDS = 0.02
+POSTGRES_BATCH_WINDOW_MS = 20
 POSTGRES_MAX_BATCH_SIZE = 50
 NO_PENDING_CALLBACK = object()
 CALLBACK_QUEUE_FULL_MESSAGE = (
@@ -159,6 +159,42 @@ class _PostgresFetchRequest:
     access_token: str
     table: str
     row_id: JSONValue
+
+
+@dataclass(frozen=True, slots=True)
+class _PostgresFetchConfig:
+    enabled: bool
+    batch_window_ms: int
+    max_batch_size: int
+
+    @property
+    def batch_window_seconds(self) -> float:
+        return self.batch_window_ms / 1_000
+
+
+def _postgres_fetch_config(
+    *,
+    auto_fetch: bool,
+    fetch_batch_window_ms: object,
+    fetch_max_batch_size: object,
+) -> _PostgresFetchConfig:
+    if type(fetch_batch_window_ms) is not int or fetch_batch_window_ms <= 0:
+        message = "fetch_batch_window_ms must be a positive integer"
+        raise ValueError(message)
+    if (
+        type(fetch_max_batch_size) is not int
+        or not 1 <= fetch_max_batch_size <= POSTGRES_QUEUE_LIMIT
+    ):
+        message = (
+            f"fetch_max_batch_size must be an integer between 1 and "
+            f"{POSTGRES_QUEUE_LIMIT}"
+        )
+        raise ValueError(message)
+    return _PostgresFetchConfig(
+        enabled=auto_fetch,
+        batch_window_ms=fetch_batch_window_ms,
+        max_batch_size=fetch_max_batch_size,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -501,13 +537,13 @@ class Channel:
         name: str,
         channel_type: ChannelType,
         *,
-        auto_fetch: bool,
+        fetch_config: _PostgresFetchConfig,
     ) -> None:
         """Create a channel managed by a realtime facade."""
         self._realtime = realtime
         self._name = name
         self._type = channel_type
-        self._auto_fetch = auto_fetch
+        self._fetch_config = fetch_config
         self._callbacks: dict[str, list[MessageCallback]] = {}
         self._presence_state: dict[str, RealtimePresenceInfo] = {}
         self._presence_events: list[tuple[str, RealtimePresenceInfo]] = []
@@ -679,7 +715,7 @@ class Channel:
     ) -> _PostgresFetchRequest | None:
         database_name = self._realtime.database_name
         if (
-            not self._auto_fetch
+            not self._fetch_config.enabled
             or change.mode != "lightweight"
             or change.type == "DELETE"
             or change.schema != "public"
@@ -717,8 +753,8 @@ class Channel:
                     self._realtime._fetch_postgres_rows,
                     self._deliver_postgres,
                     queue_limit=POSTGRES_QUEUE_LIMIT,
-                    batch_window_seconds=POSTGRES_BATCH_WINDOW_SECONDS,
-                    max_batch_size=POSTGRES_MAX_BATCH_SIZE,
+                    batch_window_seconds=self._fetch_config.batch_window_seconds,
+                    max_batch_size=self._fetch_config.max_batch_size,
                 )
                 self._postgres_worker = worker
         try:
@@ -1183,9 +1219,16 @@ class Realtime:
         *,
         channel_type: ChannelType = "broadcast",
         auto_fetch: bool = True,
+        fetch_batch_window_ms: int = POSTGRES_BATCH_WINDOW_MS,
+        fetch_max_batch_size: int = POSTGRES_MAX_BATCH_SIZE,
     ) -> Channel:
         """Return a stable channel facade for a realtime name and configuration."""
         channel_type = _validate_channel_type(channel_type)
+        fetch_config = _postgres_fetch_config(
+            auto_fetch=auto_fetch,
+            fetch_batch_window_ms=fetch_batch_window_ms,
+            fetch_max_batch_size=fetch_max_batch_size,
+        )
         wire_name = f"{channel_type}:{name}"
         if wire_name in self._removing_channels:
             raise RuntimeError(CHANNEL_REMOVAL_IN_PROGRESS)
@@ -1195,12 +1238,12 @@ class Realtime:
                 self,
                 wire_name,
                 channel_type,
-                auto_fetch=auto_fetch,
+                fetch_config=fetch_config,
             )
             self._channels[wire_name] = channel
-        elif channel._auto_fetch != auto_fetch:
+        elif channel._fetch_config != fetch_config:
             message = (
-                f"channel {wire_name!r} already uses a different auto_fetch setting"
+                f"channel {wire_name!r} already uses a different fetch configuration"
             )
             raise ValueError(message)
         return channel
