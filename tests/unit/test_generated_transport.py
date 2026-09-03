@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from types import MappingProxyType
 
@@ -22,8 +23,35 @@ from volcano_sdk._transport import (
     StorageUploadPartRequest,
     StorageUploadSessionReference,
     StorageUploadSessionRequest,
+    TransportResponse,
     response_payload,
 )
+
+
+def test_generated_transport_queries_a_database_asynchronously() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"data": [{"id": 42}]})
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    async def query() -> TransportResponse:
+        return await transport.query_database_select_async(
+            authorization="access-token",
+            database_name="app",
+            body={"table": "messages", "limit": 1},
+        )
+
+    response = asyncio.run(query())
+
+    assert response.payload == {"data": [{"id": 42}]}
+    assert requests[0].url.path == "/databases/app/query/select"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
 
 
 def test_generated_transport_builds_an_oauth_authorization_url() -> None:

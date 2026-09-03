@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import threading
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
@@ -54,7 +53,7 @@ def test_realtime_fetches_a_session_bound_postgres_row() -> None:
         row_id=42,
     )
 
-    assert client.realtime._fetch_postgres_row(request) == {
+    assert asyncio.run(client.realtime._fetch_postgres_row(request)) == {
         "id": 42,
         "body": "fetched",
     }
@@ -81,7 +80,7 @@ def test_realtime_row_fetch_returns_none_when_the_row_is_absent() -> None:
         row_id=42,
     )
 
-    assert client.realtime._fetch_postgres_row(request) is None
+    assert asyncio.run(client.realtime._fetch_postgres_row(request)) is None
     assert transport.queries[0]["body"]["table"] == "messages"
 
 
@@ -220,14 +219,28 @@ class RealtimeDatabaseTransport(AuthTransport):
         )
         return Response(200, {"data": self.rows})
 
+    async def query_database_select_async(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> Response:
+        return self.query_database_select(
+            authorization=authorization,
+            database_name=database_name,
+            body=body,
+        )
+
 
 class BlockingRealtimeDatabaseTransport(RealtimeDatabaseTransport):
     def __init__(self) -> None:
         super().__init__([{"id": 42, "body": "fetched"}])
-        self.started = threading.Event()
-        self.release = threading.Event()
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+        self.cancelled = asyncio.Event()
 
-    def query_database_select(
+    async def query_database_select_async(
         self,
         *,
         authorization: str,
@@ -235,10 +248,12 @@ class BlockingRealtimeDatabaseTransport(RealtimeDatabaseTransport):
         body: dict[str, Any],
     ) -> Response:
         self.started.set()
-        if not self.release.wait(timeout=1):
-            message = "blocked realtime row fetch was not released"
-            raise TimeoutError(message)
-        return super().query_database_select(
+        try:
+            await self.release.wait()
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            raise
+        return await super().query_database_select_async(
             authorization=authorization,
             database_name=database_name,
             body=body,
@@ -344,6 +359,7 @@ class FakeCentrifugeClient:
         self.presence_error: Exception | None = None
         self.presence_entered: asyncio.Event | None = None
         self.presence_release: asyncio.Event | None = None
+        self.disconnect_probe: Callable[[], None] | None = None
         self.subscription: FakeSubscription | None = None
         self._subs: dict[str, FakeSubscription] = {}
 
@@ -355,6 +371,8 @@ class FakeCentrifugeClient:
 
     async def disconnect(self) -> None:
         self.calls.append("disconnect")
+        if self.disconnect_probe is not None:
+            self.disconnect_probe()
         self.state = SimpleNamespace(value="disconnected")
         self._subs.clear()
         if self.events is not None:
@@ -895,13 +913,44 @@ def test_realtime_unsubscribe_does_not_wait_for_obsolete_row_fetches() -> None:
                 "timestamp": "2026-09-03T12:00:00Z",
             }
         )
-        assert await asyncio.to_thread(transport.started.wait, 0.2)
+        await asyncio.wait_for(transport.started.wait(), timeout=0.2)
 
-        try:
-            await asyncio.wait_for(channel.unsubscribe(), timeout=0.2)
-        finally:
-            transport.release.set()
+        await asyncio.wait_for(channel.unsubscribe(), timeout=0.2)
+        assert transport.cancelled.is_set()
         await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_disconnect_invalidates_channels_before_clearing_auth() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        await channel.subscribe()
+        observed = False
+
+        def observe_disconnect_boundary() -> None:
+            nonlocal observed
+            assert not channel._subscribed
+            assert client.realtime._connection_token() == "access-1"
+            observed = True
+
+        official.disconnect_probe = observe_disconnect_boundary
+        await client.realtime.disconnect()
+
+        assert observed
+        with pytest.raises(RuntimeError, match="no session binding"):
+            client.realtime._connection_token()
 
     asyncio.run(scenario())
 

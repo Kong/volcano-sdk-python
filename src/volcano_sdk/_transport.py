@@ -190,7 +190,7 @@ from .errors import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
     from ._generated.models.auth_link_o_auth_provider_provider import (
         AuthLinkOAuthProviderProvider,
@@ -611,9 +611,31 @@ class Transport(Protocol):
     ) -> TransportResponse: ...
 
 
+class AsyncDatabaseSelectTransport(Protocol):
+    """Async database query capability used by cancellable realtime fetches."""
+
+    async def query_database_select_async(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> TransportResponse: ...
+
+
 def invoke(operation: Callable[..., Any], **kwargs: Any) -> Any:
     try:
         return operation(**kwargs)
+    except httpx.HTTPError as error:
+        raise TransportError(str(error) or "Volcano transport failed") from error
+
+
+async def invoke_async(
+    operation: Callable[..., Awaitable[Any]],
+    **kwargs: Any,
+) -> Any:
+    try:
+        return await operation(**kwargs)
     except httpx.HTTPError as error:
         raise TransportError(str(error) or "Volcano transport failed") from error
 
@@ -1247,6 +1269,21 @@ class GeneratedTransport:
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = query_database_select.sync_detailed(
+                database_name,
+                client=client,
+                body=DatabaseSelectRequest.from_dict(body),
+            )
+        return self._response(response)
+
+    async def query_database_select_async(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> TransportResponse:
+        async with self._client(authorization) as client:
+            response = await query_database_select.asyncio_detailed(
                 database_name,
                 client=client,
                 body=DatabaseSelectRequest.from_dict(body),

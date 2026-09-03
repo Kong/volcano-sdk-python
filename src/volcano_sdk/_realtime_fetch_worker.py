@@ -47,7 +47,10 @@ class PostgresFetchWorker(Generic[FallbackT]):
 
     def __init__(
         self,
-        fetch: Callable[[_PostgresFetchRequest], PostgresRecord | None],
+        fetch: Callable[
+            [_PostgresFetchRequest],
+            Awaitable[PostgresRecord | None],
+        ],
         deliver: Callable[[PostgresFetchOutcome[FallbackT]], Awaitable[None]],
         *,
         queue_limit: int,
@@ -73,8 +76,7 @@ class PostgresFetchWorker(Generic[FallbackT]):
             self._raise_worker_failure()
             if self._task is None:
                 self._task = asyncio.create_task(self._run())
-            task = self._task
-        await self._put_while_running(job, task)
+            await self._put_while_running(job, self._task)
 
     async def close(self) -> None:
         """Drain accepted jobs and stop the worker."""
@@ -93,14 +95,13 @@ class PostgresFetchWorker(Generic[FallbackT]):
 
     async def abort(self) -> None:
         """Discard obsolete jobs and stop without waiting for row fetches."""
-        async with self._state_lock:
-            self._closed = True
-            task = self._task
-            stop_task = self._stop_task
-            if stop_task is not None and not stop_task.done():
-                stop_task.cancel()
-            if task is not None and not task.done():
-                task.cancel()
+        self._closed = True
+        task = self._task
+        stop_task = self._stop_task
+        if stop_task is not None and not stop_task.done():
+            stop_task.cancel()
+        if task is not None and not task.done():
+            task.cancel()
         pending = tuple(
             candidate for candidate in (task, stop_task) if candidate is not None
         )
@@ -173,7 +174,7 @@ class PostgresFetchWorker(Generic[FallbackT]):
             await self._deliver(PostgresFetchOutcome(job=job))
             return
         (result,) = await asyncio.gather(
-            asyncio.to_thread(self._fetch, job.request),
+            self._fetch(job.request),
             return_exceptions=True,
         )
         if isinstance(result, BaseException):

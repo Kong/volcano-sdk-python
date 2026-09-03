@@ -16,11 +16,15 @@ from ._realtime_fetch_worker import (
     PostgresFetchOutcome,
     PostgresFetchWorker,
 )
-from .database import Database
+from ._transport import (
+    AsyncDatabaseSelectTransport,
+    Transport,
+    invoke_async,
+    response_payload,
+)
 from .models import JSONValue, _freeze_json
 
 if TYPE_CHECKING:
-    from ._transport import Transport
     from .models import Session
 
 MessageCallback = Callable[[Any], Any]
@@ -172,15 +176,6 @@ class _CallbackDelivery:
     event: str
     data: Any
     postgres_identity: _PostgresDeliveryIdentity | None = None
-
-
-@dataclass(slots=True)
-class _SessionBoundDatabaseContext:
-    _transport: Transport
-    access_token: str
-
-    def _session_token(self) -> str:
-        return self.access_token
 
 
 def _postgres_change(data: Any) -> PostgresChange | None:
@@ -1061,22 +1056,28 @@ class Realtime:
         """Bind lightweight Postgres changes to a project database."""
         self._database_name = name
 
-    def _fetch_postgres_row(
+    async def _fetch_postgres_row(
         self,
         request: _PostgresFetchRequest,
     ) -> dict[str, Any] | None:
-        context = _SessionBoundDatabaseContext(
+        transport = cast(
+            "AsyncDatabaseSelectTransport",
             self._client_context._transport,
-            request.access_token,
         )
-        rows = (
-            Database(context, request.database_name)
-            .from_(request.table)
-            .select("*")
-            .eq("id", request.row_id)
-            .limit(1)
-            .execute()
+        response = await invoke_async(
+            transport.query_database_select_async,
+            authorization=request.access_token,
+            database_name=request.database_name,
+            body={
+                "table": request.table,
+                "filters": [
+                    {"column": "id", "operator": "eq", "value": request.row_id}
+                ],
+                "limit": 1,
+            },
         )
+        payload = response_payload(response, 200)
+        rows = list(payload["data"])
         return rows[0] if rows else None
 
     def on_connect(self, callback: RealtimeCallback) -> UnsubscribeCallback:
@@ -1344,11 +1345,11 @@ class Realtime:
         async with self._connection_lock:
             connection = self._connection
             self._connection = None
-            self._connection_session_lineage = None
-            self._connection_access_token = None
             try:
+                for channel in tuple(self._channels.values()):
+                    await channel._reset()
                 if connection is not None:
                     await connection.disconnect()
             finally:
-                for channel in tuple(self._channels.values()):
-                    await channel._reset()
+                self._connection_session_lineage = None
+                self._connection_access_token = None
