@@ -66,6 +66,7 @@ class VolcanoClient:
         self._service_key = service_key
         self._session_lock = threading.Lock()
         self._session_generation = 0
+        self._session_lineage = 0
         self._current_session: Session | None = None
         self._auth_callbacks: dict[int, AuthStateCallback] = {}
         self._next_auth_callback_id = 0
@@ -139,6 +140,7 @@ class VolcanoClient:
         with self._session_lock:
             self._current_session = session
             self._session_generation += 1
+            self._session_lineage += 1
             callback_ids = tuple(self._auth_callbacks)
             dispatch = self._enqueue_auth_state_change(callback_ids, event, session)
         if dispatch:
@@ -147,6 +149,14 @@ class VolcanoClient:
     def _capture_session(self) -> tuple[int, Session | None]:
         with self._session_lock:
             return self._session_generation, self._current_session
+
+    def _capture_session_binding(self) -> tuple[int, int, Session | None]:
+        with self._session_lock:
+            return (
+                self._session_generation,
+                self._session_lineage,
+                self._current_session,
+            )
 
     def _set_session_if_current(
         self,
@@ -160,6 +170,8 @@ class VolcanoClient:
                 return False
             self._current_session = session
             self._session_generation += 1
+            if event != "TOKEN_REFRESHED":
+                self._session_lineage += 1
             callback_ids = tuple(self._auth_callbacks)
             dispatch = self._enqueue_auth_state_change(callback_ids, event, session)
         if dispatch:
@@ -177,6 +189,7 @@ class VolcanoClient:
                 return False
             self._current_session = None
             self._session_generation += 1
+            self._session_lineage += 1
             callback_ids = tuple(self._auth_callbacks)
             dispatch = self._enqueue_auth_state_change(callback_ids, event, None)
         if dispatch:

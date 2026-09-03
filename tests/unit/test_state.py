@@ -895,6 +895,45 @@ def test_auth_state_subscription_reports_session_transitions() -> None:
     ]
 
 
+def test_auth_session_binding_preserves_lineage_across_token_refresh() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    generation, lineage, _session = client._capture_session_binding()
+
+    refreshed = client.auth.refresh_session()
+    next_generation, next_lineage, captured = client._capture_session_binding()
+
+    assert next_generation != generation
+    assert next_lineage == lineage
+    assert captured is refreshed
+
+
+def test_auth_session_binding_changes_lineage_across_reauthentication() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    generation, lineage, _session = client._capture_session_binding()
+
+    client.auth.sign_out()
+    signed_out_generation, signed_out_lineage, signed_out = (
+        client._capture_session_binding()
+    )
+
+    assert signed_out_generation != generation
+    assert signed_out_lineage != lineage
+    assert signed_out is None
+
+    client.auth.sign_in(email="user@example.com", password="secret")
+    signed_in_generation, signed_in_lineage, signed_in = (
+        client._capture_session_binding()
+    )
+
+    assert signed_in_generation != signed_out_generation
+    assert signed_in_lineage != signed_out_lineage
+    assert signed_in is client.current_session
+
+
 def test_auth_state_subscription_unsubscribes_idempotently() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
