@@ -73,7 +73,7 @@ class PostgresFetchWorker(Generic[FallbackT]):
             self._raise_worker_failure()
             if self._task is None:
                 self._task = asyncio.create_task(self._run())
-            await self._queue.put(job)
+            await self._put_while_running(job, self._task)
 
     async def close(self) -> None:
         """Drain accepted jobs and stop the worker."""
@@ -92,6 +92,25 @@ class PostgresFetchWorker(Generic[FallbackT]):
         task = self._task
         if task is not None and task.done():
             task.result()
+
+    async def _put_while_running(
+        self,
+        job: PostgresFetchJob[FallbackT],
+        task: asyncio.Task[None],
+    ) -> None:
+        put_task = asyncio.create_task(self._queue.put(job))
+        try:
+            completed, _pending = await asyncio.wait(
+                (task, put_task),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            if not put_task.done():
+                put_task.cancel()
+                await asyncio.gather(put_task, return_exceptions=True)
+        if task in completed:
+            task.result()
+        await put_task
 
     async def _wait_for_close(
         self,

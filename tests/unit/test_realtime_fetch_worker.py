@@ -193,3 +193,40 @@ def test_postgres_fetch_worker_recovers_from_cancelled_close() -> None:
         assert [outcome.record for outcome in outcomes] == [{"id": 1}, {"id": 2}]
 
     asyncio.run(scenario())
+
+
+def test_postgres_fetch_worker_unblocks_a_full_enqueue_after_failure() -> None:
+    async def scenario() -> None:
+        failure = RuntimeError("delivery failed")
+        delivery_started = asyncio.Event()
+        release_delivery = asyncio.Event()
+
+        async def fail_delivery(_outcome: PostgresFetchOutcome[str]) -> None:
+            delivery_started.set()
+            await release_delivery.wait()
+            raise failure
+
+        worker = PostgresFetchWorker(
+            BlockingRowFetch(),
+            fail_delivery,
+            queue_limit=1,
+        )
+        await worker.enqueue(fetch_job(2))
+        await delivery_started.wait()
+        await worker.enqueue(fetch_job(3))
+        blocked_enqueue = asyncio.create_task(worker.enqueue(fetch_job(4)))
+        await asyncio.sleep(0)
+        assert not blocked_enqueue.done()
+
+        release_delivery.set()
+        try:
+            with pytest.raises(RuntimeError) as raised:
+                await asyncio.wait_for(blocked_enqueue, timeout=0.2)
+        finally:
+            task = worker._task
+            if task is not None:
+                await asyncio.gather(task, return_exceptions=True)
+
+        assert raised.value is failure
+
+    asyncio.run(scenario())
