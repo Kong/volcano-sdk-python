@@ -23,4 +23,8 @@ def renewal_delay(ttl: int, *, remaining: float) -> float:
         remaining - RENEWAL_SAFETY_MARGIN_SECONDS - RENEWAL_REQUEST_BUDGET_SECONDS,
     )
     delay = min(ttl / 3, MAX_RENEWAL_DELAY_SECONDS, latest)
-    return min(max(0.0, delay * (1 + _renewal_jitter())), latest)
+    return min(
+        max(0.0, delay * (1 + _renewal_jitter())),
+        MAX_RENEWAL_DELAY_SECONDS,
+        latest,
+    )
