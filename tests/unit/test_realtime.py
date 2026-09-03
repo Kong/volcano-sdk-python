@@ -2298,15 +2298,25 @@ def test_realtime_disconnect_closes_transport_when_channel_reset_is_cancelled(
     client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
-        channel = client.realtime.channel("contract")
-        await channel.subscribe()
+        first = client.realtime.channel("first")
+        second = client.realtime.channel("second")
+        await first.subscribe()
+        await second.subscribe()
         reset_started = asyncio.Event()
+        second_reset = False
+        original_second_reset = second._reset
 
         async def blocking_reset() -> None:
             reset_started.set()
             await asyncio.Event().wait()
 
-        monkeypatch.setattr(channel, "_reset", blocking_reset)
+        async def observe_second_reset() -> None:
+            nonlocal second_reset
+            await original_second_reset()
+            second_reset = True
+
+        monkeypatch.setattr(first, "_reset", blocking_reset)
+        monkeypatch.setattr(second, "_reset", observe_second_reset)
         disconnecting = asyncio.create_task(client.realtime.disconnect())
         await reset_started.wait()
         disconnecting.cancel()
@@ -2316,6 +2326,11 @@ def test_realtime_disconnect_closes_transport_when_channel_reset_is_cancelled(
 
         assert official.state.value == "disconnected"
         assert official.calls[-1] == "disconnect"
+        assert first._subscription is None
+        assert not first._subscribed
+        assert second_reset
+        assert second._subscription is None
+        assert not second._subscribed
         assert client.realtime._connection is None
         assert client.realtime._connection_access_token is None
         assert client.realtime._connection_session_lineage is None

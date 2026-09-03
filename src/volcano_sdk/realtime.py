@@ -991,8 +991,7 @@ class Channel:
         await asyncio.gather(task, return_exceptions=True)
 
     async def _reset(self) -> None:
-        self._subscription = None
-        self._subscribed = False
+        self._invalidate()
         await self._end_postgres_epoch()
         await self._cancel_presence_sync()
         task = self._callback_task
@@ -1012,6 +1011,10 @@ class Channel:
         self._presence_state.clear()
         self._discard_presence_sync()
         self._tracked_state = MappingProxyType({})
+        self._subscribed = False
+
+    def _invalidate(self) -> None:
+        self._subscription = None
         self._subscribed = False
 
 
@@ -1345,9 +1348,16 @@ class Realtime:
         async with self._connection_lock:
             connection = self._connection
             self._connection = None
+            channels = tuple(self._channels.values())
+            for channel in channels:
+                channel._invalidate()
+            cancelled: asyncio.CancelledError | None = None
             try:
-                for channel in tuple(self._channels.values()):
-                    await channel._reset()
+                for channel in channels:
+                    try:
+                        await channel._reset()
+                    except asyncio.CancelledError as error:
+                        cancelled = error
             finally:
                 try:
                     if connection is not None:
@@ -1355,3 +1365,5 @@ class Realtime:
                 finally:
                     self._connection_session_lineage = None
                     self._connection_access_token = None
+            if cancelled is not None:
+                raise cancelled
