@@ -213,11 +213,14 @@ class Locks:
         body_failed: bool,
     ) -> None:
         failure = guard._renewal_failure()
-        if body_failed or failure is not None:
-            with suppress(Exception):
+        try:
+            if body_failed or failure is not None:
+                with suppress(Exception):
+                    self.release(key, guard.lease)
+            else:
                 self.release(key, guard.lease)
-        else:
-            self.release(key, guard.lease)
+        finally:
+            guard._close()
         if body_failed:
             return
         if failure is not None:

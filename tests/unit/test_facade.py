@@ -698,6 +698,8 @@ def test_locks_with_lock_renews_an_unsafe_initial_lease_before_yielding(
     assert [(renewer.started, renewer.stopped) for renewer in renewers] == [
         (True, True)
     ]
+    assert guard.lost
+    assert guard.wait_lost(timeout=0)
 
 
 def test_locks_with_lock_reports_renewal_failure_after_release(
