@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from contextlib import suppress
 from typing import Any
 
 import pytest
@@ -131,5 +132,64 @@ def test_postgres_fetch_worker_delivers_fallback_and_continues_after_failure() -
             PostgresFetchOutcome(job=fetch_job(1), error=failure),
             PostgresFetchOutcome(job=fetch_job(2), record={"id": 2}),
         ]
+
+    asyncio.run(scenario())
+
+
+def test_postgres_fetch_worker_rejects_work_after_delivery_failure() -> None:
+    async def scenario() -> None:
+        failure = RuntimeError("delivery failed")
+        delivery_started = asyncio.Event()
+
+        async def fail_delivery(_outcome: PostgresFetchOutcome[str]) -> None:
+            delivery_started.set()
+            raise failure
+
+        worker = PostgresFetchWorker(
+            BlockingRowFetch(),
+            fail_delivery,
+            queue_limit=1,
+        )
+        await worker.enqueue(fetch_job(2))
+        await delivery_started.wait()
+        await asyncio.sleep(0)
+
+        with pytest.raises(RuntimeError) as raised:
+            await worker.enqueue(fetch_job(3))
+
+        assert raised.value is failure
+
+    asyncio.run(scenario())
+
+
+def test_postgres_fetch_worker_recovers_from_cancelled_close() -> None:
+    async def scenario() -> None:
+        fetch = BlockingRowFetch()
+        outcomes: list[PostgresFetchOutcome[str]] = []
+
+        async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
+            outcomes.append(outcome)
+
+        worker = PostgresFetchWorker(fetch, deliver, queue_limit=1)
+        await worker.enqueue(fetch_job(1))
+        await wait_for_thread(fetch.started)
+        await worker.enqueue(fetch_job(2))
+
+        interrupted_close = asyncio.create_task(worker.close())
+        await asyncio.sleep(0)
+        interrupted_close.cancel()
+        with suppress(asyncio.CancelledError):
+            await interrupted_close
+
+        fetch.release.set()
+        try:
+            await asyncio.wait_for(worker.close(), timeout=0.2)
+        finally:
+            task = worker._task
+            if task is not None and not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+
+        assert [outcome.record for outcome in outcomes] == [{"id": 1}, {"id": 2}]
 
     asyncio.run(scenario())

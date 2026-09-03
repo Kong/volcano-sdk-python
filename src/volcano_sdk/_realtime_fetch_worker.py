@@ -62,6 +62,7 @@ class PostgresFetchWorker(Generic[FallbackT]):
         )
         self._state_lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
+        self._stop_task: asyncio.Task[None] | None = None
         self._closed = False
 
     async def enqueue(self, job: PostgresFetchJob[FallbackT]) -> None:
@@ -69,6 +70,7 @@ class PostgresFetchWorker(Generic[FallbackT]):
         async with self._state_lock:
             if self._closed:
                 raise RuntimeError(_WORKER_CLOSED)
+            self._raise_worker_failure()
             if self._task is None:
                 self._task = asyncio.create_task(self._run())
             await self._queue.put(job)
@@ -79,10 +81,36 @@ class PostgresFetchWorker(Generic[FallbackT]):
             task = self._task
             if not self._closed:
                 self._closed = True
-                if task is not None:
-                    await self._queue.put(_STOP_WORKER)
-        if task is not None:
-            await asyncio.shield(task)
+            self._raise_worker_failure()
+            if task is not None and self._stop_task is None:
+                self._stop_task = asyncio.create_task(self._queue.put(_STOP_WORKER))
+            stop_task = self._stop_task
+        if task is not None and stop_task is not None:
+            await self._wait_for_close(task, stop_task)
+
+    def _raise_worker_failure(self) -> None:
+        task = self._task
+        if task is not None and task.done():
+            task.result()
+
+    async def _wait_for_close(
+        self,
+        task: asyncio.Task[None],
+        stop_task: asyncio.Task[None],
+    ) -> None:
+        completed, _pending = await asyncio.wait(
+            (task, stop_task),
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if task in completed:
+            try:
+                task.result()
+            except BaseException:
+                stop_task.cancel()
+                await asyncio.gather(stop_task, return_exceptions=True)
+                raise
+        await asyncio.shield(stop_task)
+        await asyncio.shield(task)
 
     async def _run(self) -> None:
         while True:
