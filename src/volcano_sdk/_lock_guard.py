@@ -141,6 +141,11 @@ class LockGuard:
             self._expire_if_needed_locked(_lease_now())
             return self._failure
 
+    def _close(self) -> None:
+        with self._state_lock:
+            self._expire_if_needed_locked(_lease_now())
+            self._lost.set()
+
     def _mark_lost_locked(self, failure: Exception) -> None:
         if self._failure is None:
             self._failure = failure

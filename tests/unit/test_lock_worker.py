@@ -33,7 +33,7 @@ class RecordingLocks:
 
 
 class FailingLocks:
-    def __init__(self, failure: VolcanoError) -> None:
+    def __init__(self, failure: Exception) -> None:
         self.failure = failure
 
     def renew(self, key: str, lease: LockLease, *, ttl: int) -> LockLease:
@@ -106,6 +106,39 @@ def test_lock_renewer_records_an_sdk_failure(
     renewer = LockRenewer(FailingLocks(failure), "build", guard, ttl=30)
 
     assert not renewer._renew_once()
+
+    assert guard.lost
+    assert guard._renewal_failure() is failure
+
+
+def test_lock_renewer_records_an_unexpected_ordinary_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    failure = RuntimeError("service credential changed")
+    guard = LockGuard(lease(), ttl=30, started_at=100.0)
+    renewer = LockRenewer(FailingLocks(failure), "build", guard, ttl=30)
+
+    assert not renewer._renew_once()
+
+    assert guard.lost
+    assert guard._renewal_failure() is failure
+
+
+def test_lock_renewer_records_a_failure_outside_the_renewal_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    failure = RuntimeError("scheduling failed")
+    guard = LockGuard(lease(), ttl=30, started_at=100.0)
+
+    def fail_schedule() -> float:
+        raise failure
+
+    monkeypatch.setattr(guard, "renewal_delay", fail_schedule)
+    renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
+
+    renewer._run()
 
     assert guard.lost
     assert guard._renewal_failure() is failure
