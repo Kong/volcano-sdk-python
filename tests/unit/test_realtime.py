@@ -637,6 +637,81 @@ def test_realtime_only_queues_changes_with_an_interested_listener() -> None:
     asyncio.run(scenario())
 
 
+def test_realtime_captures_supported_postgres_fetch_request() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    client.realtime.set_database_name("app")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel(
+            "public:messages",
+            channel_type="postgres",
+        )
+        await channel.subscribe()
+        change = realtime_module.PostgresChange(
+            type="INSERT",
+            schema="public",
+            table="messages",
+            id=42,
+            mode="lightweight",
+        )
+
+        request = channel._postgres_fetch_request(change)
+        client.realtime.set_database_name("next")
+
+        assert request == realtime_module._PostgresFetchRequest(
+            database_name="app",
+            access_token="access-1",
+            table="messages",
+            row_id=42,
+        )
+        assert (
+            channel._postgres_fetch_request(
+                realtime_module.PostgresChange(
+                    type="INSERT",
+                    schema="private",
+                    table="messages",
+                    id=42,
+                    mode="lightweight",
+                )
+            )
+            is None
+        )
+        assert (
+            channel._postgres_fetch_request(
+                realtime_module.PostgresChange(
+                    type="DELETE",
+                    schema="public",
+                    table="messages",
+                    id=42,
+                    mode="lightweight",
+                )
+            )
+            is None
+        )
+        assert (
+            channel._postgres_fetch_request(
+                realtime_module.PostgresChange(
+                    type="UPDATE",
+                    schema="public",
+                    table="messages",
+                    record={"id": 42},
+                )
+            )
+            is None
+        )
+        client.realtime.set_database_name(None)
+        assert channel._postgres_fetch_request(change) is None
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_routes_immutable_rls_scoped_postgres_changes() -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(
@@ -1383,6 +1458,7 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
         transport.access_token = "access-2"
         client.auth.sign_in(email="user@example.com", password="secret")
         assert await factory_arguments["get_token"]() == "access-2"
+        assert client.realtime._connection_token() == "access-2"
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
