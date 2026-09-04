@@ -5,14 +5,33 @@ from __future__ import annotations
 import base64
 import binascii
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol, cast
+from io import SEEK_END, BytesIO
+from tempfile import TemporaryFile
+from typing import Any, BinaryIO, Protocol, cast
 from urllib.parse import quote
 
-from ._transport import Transport, TransportResponse, invoke, response_payload
-from .models import JSONValue, StorageObject, StoragePage
+from ._transport import (
+    StorageUploadPartRequest,
+    StorageUploadSessionReference,
+    StorageUploadSessionRequest,
+    Transport,
+    TransportResponse,
+    invoke,
+    response_payload,
+)
+from .models import (
+    JSONValue,
+    StorageObject,
+    StoragePage,
+    UploadPart,
+    UploadSession,
+    UploadSessionState,
+    UploadSessionStatus,
+)
 
 _INVALID_STORAGE_PAGE = "Expected a complete storage page"
 _INVALID_STORAGE_PATH = "Storage path must be a non-empty string"
@@ -21,6 +40,10 @@ _INVALID_STORAGE_VISIBILITY = "is_public must be a boolean"
 _INVALID_STORAGE_ANON_KEY = "Anon key must contain a project ID"
 _INVALID_PUBLIC_URL_PATH = "Public URL paths cannot contain dot segments"
 _JWT_PART_COUNT = 3
+_HTTP_PARTIAL_CONTENT = 206
+_UPLOAD_SPOOL_READ_SIZE = 1_048_576
+_UPLOAD_SOURCE_UNAVAILABLE = "Upload source is temporarily unavailable"
+_INVALID_SIMPLE_UPLOAD = "Upload data must be bytes or a readable binary stream"
 
 
 def _optional_datetime(value: object) -> datetime | None:
@@ -79,6 +102,50 @@ def _storage_page(payload: object) -> StoragePage:
     )
 
 
+def _upload_session(payload: object) -> UploadSession:
+    values = cast("Mapping[str, object]", payload)
+    raw_expires_at = values["expires_at"]
+    expires_at = (
+        datetime.fromisoformat(raw_expires_at)
+        if isinstance(raw_expires_at, str)
+        else cast("datetime", raw_expires_at)
+    )
+    return UploadSession(
+        session_id=cast("str", values["session_id"]),
+        part_size=cast("int", values["part_size"]),
+        total_parts=cast("int", values["total_parts"]),
+        expires_at=expires_at,
+    )
+
+
+def _upload_part(payload: object) -> UploadPart:
+    values = cast("Mapping[str, object]", payload)
+    return UploadPart(
+        part_number=cast("int", values["part_number"]),
+        etag=cast("str", values["etag"]),
+        size=cast("int", values["size"]),
+    )
+
+
+def _upload_session_status(payload: object) -> UploadSessionStatus:
+    values = cast("Mapping[str, object]", payload)
+    raw_parts = cast("list[object]", values.get("parts", []))
+    return UploadSessionStatus(
+        session_id=cast("str", values["session_id"]),
+        status=cast("UploadSessionState", values["status"]),
+        path=cast("str", values["path"]),
+        content_type=cast("str", values["content_type"]),
+        total_size=cast("int", values["total_size"]),
+        part_size=cast("int", values["part_size"]),
+        total_parts=cast("int", values["total_parts"]),
+        parts_uploaded=cast("int", values["parts_uploaded"]),
+        bytes_uploaded=cast("int", values["bytes_uploaded"]),
+        parts=tuple(_upload_part(part) for part in raw_parts),
+        expires_at=cast("datetime", _optional_datetime(values["expires_at"])),
+        created_at=cast("datetime", _optional_datetime(values["created_at"])),
+    )
+
+
 def _storage_paths(paths: object) -> tuple[str, ...]:
     if isinstance(paths, str):
         raw_paths: tuple[object, ...] = (paths,)
@@ -133,6 +200,79 @@ def _encoded_storage_path(path: str) -> str:
     if any(segment in {".", ".."} for segment in segments):
         raise ValueError(_INVALID_PUBLIC_URL_PATH)
     return "/".join(quote(segment, safe="") for segment in segments)
+
+
+def _remaining_upload_bytes(source: BinaryIO) -> int | None:
+    try:
+        if not source.seekable():
+            return None
+        position = source.tell()
+    except (AttributeError, OSError, ValueError):
+        return None
+    try:
+        try:
+            source.seek(0, SEEK_END)
+            remaining = max(0, source.tell() - position)
+        except (OSError, ValueError):
+            remaining = None
+    finally:
+        source.seek(position)
+    return remaining
+
+
+def _spool_upload_source(source: BinaryIO, target: BinaryIO) -> None:
+    while True:
+        chunk = cast("bytes | None", source.read(_UPLOAD_SPOOL_READ_SIZE))
+        if chunk is None:
+            raise BlockingIOError(_UPLOAD_SOURCE_UNAVAILABLE)
+        if chunk == b"":
+            return
+        target.write(chunk)
+
+
+def _read_upload_part(source: BinaryIO, part_size: int) -> bytes:
+    part = bytearray()
+    while len(part) < part_size:
+        chunk = cast("bytes | None", source.read(part_size - len(part)))
+        if chunk is None:
+            raise BlockingIOError(_UPLOAD_SOURCE_UNAVAILABLE)
+        if chunk == b"":
+            break
+        part.extend(chunk)
+    return bytes(part)
+
+
+def _simple_upload_bytes(data: object) -> bytes:
+    if isinstance(data, bytes):
+        return data
+    read = getattr(data, "read", None)
+    if not callable(read):
+        raise TypeError(_INVALID_SIMPLE_UPLOAD)
+    value = read()
+    if value is None:
+        raise BlockingIOError(_UPLOAD_SOURCE_UNAVAILABLE)
+    if not isinstance(value, bytes):
+        raise TypeError(_INVALID_SIMPLE_UPLOAD)
+    return value
+
+
+@contextmanager
+def _resumable_upload_source(
+    data: bytes | BinaryIO,
+) -> Generator[tuple[BinaryIO, int], None, None]:
+    if isinstance(data, bytes):
+        with BytesIO(data) as source:
+            yield source, len(data)
+        return
+    remaining = _remaining_upload_bytes(data)
+    if remaining is not None:
+        yield data, remaining
+        return
+    with TemporaryFile(mode="w+b") as source:
+        _spool_upload_source(data, source)
+        total_size = source.tell()
+        source.seek(0)
+        yield source, total_size
 
 
 class StorageContext(Protocol):
@@ -222,6 +362,76 @@ class StorageVisibilityTransport(Protocol):
         ...
 
 
+class StorageUploadSessionTransport(Protocol):
+    """Transport capability required to create resumable upload sessions."""
+
+    def create_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionRequest,
+    ) -> TransportResponse:
+        """Create one resumable upload session."""
+        ...
+
+
+class StorageUploadPartTransport(Protocol):
+    """Transport capability required to upload resumable storage parts."""
+
+    def upload_part(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadPartRequest,
+    ) -> TransportResponse:
+        """Upload one resumable storage part."""
+        ...
+
+
+class StorageCompleteUploadTransport(Protocol):
+    """Transport capability required to complete resumable storage uploads."""
+
+    def complete_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionReference,
+    ) -> TransportResponse:
+        """Complete one resumable storage upload session."""
+        ...
+
+
+class StorageUploadStatusTransport(Protocol):
+    """Transport capability required to inspect resumable storage uploads."""
+
+    def get_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionReference,
+    ) -> TransportResponse:
+        """Get one resumable storage upload session."""
+        ...
+
+
+class StorageAbortUploadTransport(Protocol):
+    """Transport capability required to abort resumable storage uploads."""
+
+    def abort_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionReference,
+    ) -> TransportResponse:
+        """Abort one resumable storage upload session."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class StorageBucket:
     """Operations scoped to one storage bucket."""
@@ -229,28 +439,197 @@ class StorageBucket:
     _client: StorageContext
     _name: str
 
-    def upload(self, path: str, data: bytes) -> dict[str, Any]:
-        """Upload bytes to a path in this bucket."""
+    def upload(self, path: str, data: bytes | BinaryIO) -> dict[str, Any]:
+        """Upload bytes or the remaining contents of a binary stream."""
         response = invoke(
             self._client._transport.upload_storage_object,
             authorization=self._client._session_token(),
             bucket_name=self._name,
             path=path,
-            data=data,
+            data=_simple_upload_bytes(data),
         )
         payload = response_payload(response, 201)
         return dict(payload)
 
-    def download(self, path: str) -> bytes:
+    def download(self, path: str, *, byte_range: str | None = None) -> bytes:
         """Download bytes from a path in this bucket."""
         response = invoke(
             self._client._transport.download_storage_object,
             authorization=self._client._session_token(),
             bucket_name=self._name,
             path=path,
+            byte_range=byte_range,
+        )
+        expected_status = (
+            _HTTP_PARTIAL_CONTENT
+            if byte_range is not None and response.status_code == _HTTP_PARTIAL_CONTENT
+            else 200
+        )
+        response_payload(response, expected_status)
+        return bytes(response.content)
+
+    def create_upload_session(
+        self,
+        path: str,
+        *,
+        total_size: int,
+        content_type: str = "application/octet-stream",
+        part_size: int | None = None,
+    ) -> UploadSession:
+        """Create server state for a resumable upload."""
+        transport = cast("StorageUploadSessionTransport", self._client._transport)
+        response = invoke(
+            transport.create_upload_session,
+            authorization=self._client._session_token(),
+            bucket_name=self._name,
+            request=StorageUploadSessionRequest(
+                path=_storage_path(path),
+                content_type=content_type,
+                total_size=total_size,
+                part_size=part_size,
+            ),
+        )
+        return _upload_session(response_payload(response, 201))
+
+    def upload_part(
+        self,
+        path: str,
+        *,
+        session_id: str,
+        part_number: int,
+        data: bytes,
+    ) -> UploadPart:
+        """Upload one part of a resumable upload session."""
+        transport = cast("StorageUploadPartTransport", self._client._transport)
+        response = invoke(
+            transport.upload_part,
+            authorization=self._client._session_token(),
+            bucket_name=self._name,
+            request=StorageUploadPartRequest(
+                path=_storage_path(path),
+                session_id=session_id,
+                part_number=part_number,
+                data=data,
+            ),
+        )
+        return _upload_part(response_payload(response, 200))
+
+    def complete_upload_session(
+        self,
+        path: str,
+        *,
+        session_id: str,
+    ) -> StorageObject:
+        """Complete a resumable upload and return the stored object."""
+        transport = cast("StorageCompleteUploadTransport", self._client._transport)
+        response = invoke(
+            transport.complete_upload_session,
+            authorization=self._client._session_token(),
+            bucket_name=self._name,
+            request=StorageUploadSessionReference(
+                path=_storage_path(path),
+                session_id=session_id,
+            ),
+        )
+        payload = cast("Mapping[str, object]", response_payload(response, 200))
+        return _storage_object(payload["object"])
+
+    def get_upload_session(
+        self,
+        path: str,
+        *,
+        session_id: str,
+    ) -> UploadSessionStatus:
+        """Get resumable upload progress and uploaded part metadata."""
+        transport = cast("StorageUploadStatusTransport", self._client._transport)
+        response = invoke(
+            transport.get_upload_session,
+            authorization=self._client._session_token(),
+            bucket_name=self._name,
+            request=StorageUploadSessionReference(
+                path=_storage_path(path),
+                session_id=session_id,
+            ),
+        )
+        return _upload_session_status(response_payload(response, 200))
+
+    def abort_upload_session(
+        self,
+        path: str,
+        *,
+        session_id: str,
+    ) -> None:
+        """Abort a resumable upload and discard its uploaded parts."""
+        transport = cast("StorageAbortUploadTransport", self._client._transport)
+        response = invoke(
+            transport.abort_upload_session,
+            authorization=self._client._session_token(),
+            bucket_name=self._name,
+            request=StorageUploadSessionReference(
+                path=_storage_path(path),
+                session_id=session_id,
+            ),
         )
         response_payload(response, 200)
-        return bytes(response.content)
+
+    def upload_resumable(
+        self,
+        path: str,
+        data: bytes | BinaryIO,
+        *,
+        content_type: str = "application/octet-stream",
+        part_size: int | None = None,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> StorageObject:
+        """Upload bytes or a binary stream through a resumable session."""
+        path = _storage_path(path)
+        self._client._session_token()
+        with _resumable_upload_source(data) as (source, total_size):
+            session = self.create_upload_session(
+                path,
+                total_size=total_size,
+                content_type=content_type,
+                part_size=part_size,
+            )
+            upload_succeeded = False
+            try:
+                self._upload_session_parts(
+                    path,
+                    source,
+                    session,
+                    total_size,
+                    on_progress,
+                )
+                upload_succeeded = True
+            finally:
+                if not upload_succeeded:
+                    self._abort_failed_upload(path, session.session_id)
+            return self.complete_upload_session(path, session_id=session.session_id)
+
+    def _upload_session_parts(
+        self,
+        path: str,
+        source: BinaryIO,
+        session: UploadSession,
+        total_size: int,
+        on_progress: Callable[[int, int], None] | None,
+    ) -> None:
+        uploaded = 0
+        for part_index in range(session.total_parts):
+            part = _read_upload_part(source, session.part_size)
+            self.upload_part(
+                path,
+                session_id=session.session_id,
+                part_number=part_index + 1,
+                data=part,
+            )
+            uploaded += len(part)
+            if on_progress is not None:
+                on_progress(uploaded, total_size)
+
+    def _abort_failed_upload(self, path: str, session_id: str) -> None:
+        with suppress(Exception):
+            self.abort_upload_session(path, session_id=session_id)
 
     def list(
         self,

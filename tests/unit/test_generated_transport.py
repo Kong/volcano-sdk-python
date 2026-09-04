@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from types import MappingProxyType
 
@@ -17,7 +18,40 @@ from volcano_sdk._generated.models.auth_update_user_response_200 import (
     AuthUpdateUserResponse200,
 )
 from volcano_sdk._generated.types import Unset
-from volcano_sdk._transport import GeneratedTransport, response_payload
+from volcano_sdk._transport import (
+    GeneratedTransport,
+    StorageUploadPartRequest,
+    StorageUploadSessionReference,
+    StorageUploadSessionRequest,
+    TransportResponse,
+    response_payload,
+)
+
+
+def test_generated_transport_queries_a_database_asynchronously() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"data": [{"id": 42}]})
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    async def query() -> TransportResponse:
+        return await transport.query_database_select_async(
+            authorization="access-token",
+            database_name="app",
+            body={"table": "messages", "limit": 1},
+        )
+
+    response = asyncio.run(query())
+
+    assert response.payload == {"data": [{"id": 42}]}
+    assert requests[0].url.path == "/databases/app/query/select"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
 
 
 def test_generated_transport_builds_an_oauth_authorization_url() -> None:
@@ -40,6 +74,144 @@ def test_generated_transport_builds_an_oauth_authorization_url() -> None:
         "client_state": "state-value",
         "response_mode": "code",
     }
+
+
+def test_generated_transport_resolves_and_invokes_a_function() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/functions/resolve":
+            return httpx.Response(
+                200,
+                json={
+                    "name": "send-welcome",
+                    "function_id": "00000000-0000-4000-8000-000000000040",
+                    "cache_ttl_seconds": 60,
+                },
+            )
+        return httpx.Response(
+            422,
+            json={"details": {"reason": "invalid order"}},
+            headers={"X-Volcano-Version": "staging-v1"},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    resolved = transport.resolve_function_for_invocation(
+        authorization="access-token",
+        name="send-welcome",
+    )
+    response = transport.invoke_function(
+        authorization="access-token",
+        function_id="00000000-0000-4000-8000-000000000040",
+        payload={
+            "user_id": "user-123",
+            "previous": MappingProxyType({"attempt": 1}),
+        },
+    )
+
+    assert resolved.payload["function_id"] == ("00000000-0000-4000-8000-000000000040")
+    assert response.status_code == 422
+    assert response.payload == {"details": {"reason": "invalid order"}}
+    assert [request.url.path for request in requests] == [
+        "/functions/resolve",
+        "/functions/00000000-0000-4000-8000-000000000040/invoke",
+    ]
+    assert requests[0].url.params["name"] == "send-welcome"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert json.loads(requests[1].content) == {
+        "payload": {
+            "user_id": "user-123",
+            "previous": {"attempt": 1},
+        }
+    }
+
+
+def test_generated_transport_reads_project_logs() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/search"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "event-1",
+                            "timestamp": "2026-09-02T12:00:00Z",
+                            "body": "ready",
+                            "resource": {
+                                "type": "function",
+                                "id": "00000000-0000-4000-8000-000000000040",
+                            },
+                        }
+                    ],
+                    "limit": 25,
+                    "has_more": False,
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "start_time": "2026-09-02T12:00:00Z",
+                        "end_time": "2026-09-02T12:05:00Z",
+                        "counts": {
+                            "levels": {"info": 2},
+                            "regions": {"us-east-1": 2},
+                            "resource_ids": {"00000000-0000-4000-8000-000000000040": 2},
+                        },
+                        "total": 2,
+                    }
+                ],
+                "total": 2,
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+    project_id = "00000000-0000-4000-8000-000000000001"
+    resource = {"resource": {"type": "function"}}
+
+    search = transport.search_project_logs(
+        authorization="access-token",
+        project_id=project_id,
+        request={**resource, "limit": 25, "query": "misspelled-filter"},
+    )
+    activity = transport.get_project_log_activity(
+        authorization="access-token",
+        project_id=project_id,
+        request={
+            "resource": {"type": "function", "unknown_selector": True},
+            "bucket_count": 12,
+        },
+    )
+
+    assert search.payload["data"][0]["id"] == "event-1"
+    assert activity.payload["total"] == 2
+    assert [request.url.path for request in requests] == [
+        f"/projects/{project_id}/logs/search",
+        f"/projects/{project_id}/logs/activity",
+    ]
+    assert [json.loads(request.content) for request in requests] == [
+        {**resource, "limit": 25, "query": "misspelled-filter"},
+        {
+            "resource": {"type": "function", "unknown_selector": True},
+            "bucket_count": 12,
+        },
+    ]
+    assert all(
+        request.headers["authorization"] == "Bearer access-token"
+        for request in requests
+    )
 
 
 def test_generated_transport_exchanges_an_oauth_code() -> None:
@@ -1193,6 +1365,7 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
         authorization="access-token",
         bucket_name="assets",
         path="a.txt",
+        byte_range="bytes=0-4",
     )
     listed = transport.list_storage_objects(
         authorization="access-token",
@@ -1254,6 +1427,7 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
         "filters": [{"column": "slug", "operator": "eq", "value": "a"}],
     }
     assert b"hello" in requests[3].content
+    assert requests[4].headers["range"] == "bytes=0-4"
     assert json.loads(requests[6].content) == {"ttl_seconds": 30}
     assert requests[6].headers["x-volcano-lock-token"] == (
         "00000000-0000-4000-8000-000000000001"
@@ -1286,6 +1460,301 @@ def test_generated_transport_deletes_a_storage_object() -> None:
     assert requests[0].method == "DELETE"
     assert requests[0].url.path == "/storage/assets/archive/a.txt"
     assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
+def test_generated_transport_creates_an_upload_session_with_json() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            201,
+            json={
+                "session_id": "session-123",
+                "part_size": 8_388_608,
+                "total_parts": 3,
+                "expires_at": "2026-09-09T12:00:00Z",
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.create_upload_session(
+        authorization="access-token",
+        bucket_name="assets",
+        request=StorageUploadSessionRequest(
+            path="videos/demo clip.mp4",
+            content_type="video/mp4",
+            total_size=20_000_000,
+            part_size=8_388_608,
+        ),
+    )
+
+    assert response.status_code == 201
+    assert response.payload["session_id"] == "session-123"
+    assert len(requests) == 1
+    assert requests[0].url.path == "/storage/assets/videos/demo clip.mp4"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert requests[0].headers["content-type"] == "application/json"
+    assert json.loads(requests[0].content) == {
+        "object_path": "videos/demo clip.mp4",
+        "content_type": "video/mp4",
+        "total_size": 20_000_000,
+        "part_size": 8_388_608,
+    }
+
+
+def test_generated_transport_uploads_a_binary_part() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={"part_number": 2, "etag": "etag-part-2", "size": 6},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.upload_part(
+        authorization="access-token",
+        bucket_name="assets",
+        request=StorageUploadPartRequest(
+            path="videos/demo clip.mp4",
+            session_id="session-123",
+            part_number=2,
+            data=b"chunk\x00",
+        ),
+    )
+
+    assert response.payload == {
+        "part_number": 2,
+        "etag": "etag-part-2",
+        "size": 6,
+    }
+    assert len(requests) == 1
+    assert requests[0].method == "PUT"
+    assert requests[0].url.path == "/storage/assets/videos/demo clip.mp4"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert requests[0].headers["content-type"] == "application/octet-stream"
+    assert requests[0].headers["x-upload-session"] == "session-123"
+    assert requests[0].headers["x-part-number"] == "2"
+    assert requests[0].content == b"chunk\x00"
+
+
+def test_generated_transport_completes_an_upload_session() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "object": {
+                    "id": "00000000-0000-4000-8000-000000000020",
+                    "bucket_id": "00000000-0000-4000-8000-000000000030",
+                    "name": "videos/demo clip.mp4",
+                    "size": 20_000_000,
+                    "mime_type": "video/mp4",
+                    "is_public": False,
+                }
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.complete_upload_session(
+        authorization="access-token",
+        bucket_name="assets",
+        request=StorageUploadSessionReference(
+            path="videos/demo clip.mp4",
+            session_id="session-123",
+        ),
+    )
+
+    assert response.payload["object"]["name"] == "videos/demo clip.mp4"
+    assert len(requests) == 1
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/storage/assets/videos/demo clip.mp4"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert requests[0].headers["x-upload-session"] == "session-123"
+    assert requests[0].headers["x-upload-complete"] == "true"
+
+
+def test_generated_transport_gets_upload_session_status_as_json() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/json"},
+            json={
+                "session_id": "session-123",
+                "status": "uploading",
+                "path": "videos/demo clip.mp4",
+                "content_type": "video/mp4",
+                "total_size": 20_000_000,
+                "part_size": 8_388_608,
+                "total_parts": 3,
+                "parts_uploaded": 1,
+                "bytes_uploaded": 8_388_608,
+                "parts": [],
+                "expires_at": "2026-09-09T12:00:00Z",
+                "created_at": "2026-09-02T12:00:00Z",
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.get_upload_session(
+        authorization="access-token",
+        bucket_name="assets",
+        request=StorageUploadSessionReference(
+            path="videos/demo clip.mp4",
+            session_id="session-123",
+        ),
+    )
+
+    assert response.payload["session_id"] == "session-123"
+    assert len(requests) == 1
+    assert requests[0].method == "GET"
+    assert requests[0].url.path == "/storage/assets/videos/demo clip.mp4"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert requests[0].headers["x-upload-session"] == "session-123"
+
+
+def test_generated_transport_aborts_an_upload_session() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"message": "upload session aborted"})
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.abort_upload_session(
+        authorization="access-token",
+        bucket_name="assets",
+        request=StorageUploadSessionReference(
+            path="videos/demo clip.mp4",
+            session_id="session-123",
+        ),
+    )
+
+    assert response.status_code == 200
+    assert len(requests) == 1
+    assert requests[0].method == "DELETE"
+    assert requests[0].url.path == "/storage/assets/videos/demo clip.mp4"
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+    assert requests[0].headers["x-upload-session"] == "session-123"
+
+
+def test_generated_transport_gets_project_lock_state() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "held": True,
+                "expires_at": "2026-08-26T12:00:30Z",
+                "fencing_token": 7,
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.get_project_lock(
+        authorization="service-key",
+        key="build:queue",
+    )
+
+    assert response.payload["held"] is True
+    assert len(requests) == 1
+    assert requests[0].method == "GET"
+    assert requests[0].url.path == "/locks/build:queue"
+    assert requests[0].headers["authorization"] == "Bearer service-key"
+    assert requests[0].headers["x-volcano-request-id"]
+
+
+def test_generated_transport_renews_a_project_lock() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={"expires_at": "2026-08-26T12:01:00Z", "fencing_token": 7},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.renew_project_lock(
+        authorization="service-key",
+        key="build:queue",
+        ttl=60,
+        token="00000000-0000-4000-8000-000000000001",
+    )
+
+    assert response.payload["fencing_token"] == 7
+    assert len(requests) == 1
+    assert requests[0].method == "PATCH"
+    assert requests[0].url.path == "/locks/build:queue/lease"
+    assert json.loads(requests[0].content) == {"ttl_seconds": 60}
+    assert requests[0].headers["authorization"] == "Bearer service-key"
+    assert requests[0].headers["x-volcano-lock-token"] == (
+        "00000000-0000-4000-8000-000000000001"
+    )
+    assert requests[0].headers["x-volcano-request-id"]
+
+
+def test_generated_transport_force_releases_a_project_lock() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(204)
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.force_release_project_lock(
+        authorization="service-key",
+        key="build:queue",
+    )
+
+    assert response.status_code == 204
+    assert len(requests) == 1
+    assert requests[0].method == "DELETE"
+    assert requests[0].url.path == "/locks/build:queue"
+    assert requests[0].headers["authorization"] == "Bearer service-key"
+    assert requests[0].headers["x-volcano-request-id"]
+    assert "x-volcano-lock-token" not in requests[0].headers
 
 
 def test_generated_transport_moves_a_storage_object() -> None:

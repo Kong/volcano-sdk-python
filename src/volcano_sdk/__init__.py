@@ -1,6 +1,8 @@
 """Public Volcano SDK facade."""
 
+from ._lock_guard import LockGuard
 from .client import VolcanoClient
+from .connection_string import database_connection_string
 from .errors import (
     AuthenticationError,
     ConflictError,
@@ -18,8 +20,12 @@ from .models import (
     AuthStateCallback,
     AuthSubscription,
     EmailChangeResult,
+    FunctionResponse,
     LinkedOAuthProvider,
     LockLease,
+    LockState,
+    LogActivityResponse,
+    LogSearchResponse,
     OAuthProviderName,
     OAuthProviderTokenStatus,
     Session,
@@ -27,7 +33,18 @@ from .models import (
     SignUpResult,
     StorageObject,
     StoragePage,
+    UploadPart,
+    UploadSession,
+    UploadSessionState,
+    UploadSessionStatus,
     User,
+)
+from .realtime import (
+    PostgresChange,
+    RealtimeConnectContext,
+    RealtimeDisconnectContext,
+    RealtimeErrorContext,
+    RealtimePresenceInfo,
 )
 
 __all__ = [
@@ -38,12 +55,22 @@ __all__ = [
     "AuthenticationError",
     "ConflictError",
     "EmailChangeResult",
+    "FunctionResponse",
     "LinkedOAuthProvider",
+    "LockGuard",
     "LockLease",
+    "LockState",
+    "LogActivityResponse",
+    "LogSearchResponse",
     "NotFoundError",
     "OAuthProviderName",
     "OAuthProviderTokenStatus",
+    "PostgresChange",
     "RateLimitedError",
+    "RealtimeConnectContext",
+    "RealtimeDisconnectContext",
+    "RealtimeErrorContext",
+    "RealtimePresenceInfo",
     "ServerError",
     "Session",
     "SessionChangedError",
@@ -52,8 +79,13 @@ __all__ = [
     "StorageObject",
     "StoragePage",
     "TransportError",
+    "UploadPart",
+    "UploadSession",
+    "UploadSessionState",
+    "UploadSessionStatus",
     "User",
     "ValidationError",
     "VolcanoClient",
     "VolcanoError",
+    "database_connection_string",
 ]

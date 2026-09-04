@@ -24,6 +24,13 @@ AuthChangeEvent: TypeAlias = Literal[
     "SIGNED_OUT",
     "TOKEN_REFRESHED",
 ]
+UploadSessionState: TypeAlias = Literal[
+    "pending",
+    "uploading",
+    "completing",
+    "completed",
+    "aborted",
+]
 
 
 def _freeze_json(value: JSONValue) -> JSONValue:
@@ -174,6 +181,109 @@ class LockLease:
     token: str
     expires_at: datetime | None
     fencing_token: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class LockState:
+    """Current state of a distributed lock."""
+
+    held: bool
+    expires_at: datetime | None
+    fencing_token: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class FunctionResponse:
+    """Response returned by an invoked function."""
+
+    data: Mapping[str, JSONValue] = field(hash=False)
+    status: int
+    headers: Mapping[str, str] = field(hash=False)
+    version: str | None
+
+    def __post_init__(self) -> None:
+        """Defensively freeze response data and headers."""
+        object.__setattr__(self, "data", _freeze_json(self.data))
+        object.__setattr__(
+            self,
+            "headers",
+            MappingProxyType(dict(self.headers)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LogSearchResponse:
+    """Immutable page returned by a project log search."""
+
+    data: tuple[Mapping[str, JSONValue], ...] = field(hash=False)
+    limit: int
+    has_more: bool
+    next_cursor: str | None = None
+
+    def __post_init__(self) -> None:
+        """Defensively freeze log events owned by this value."""
+        object.__setattr__(
+            self,
+            "data",
+            tuple(_freeze_json(event) for event in self.data),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LogActivityResponse:
+    """Immutable bucketed project log activity."""
+
+    data: tuple[Mapping[str, JSONValue], ...] = field(hash=False)
+    total: int
+
+    def __post_init__(self) -> None:
+        """Defensively freeze activity buckets owned by this value."""
+        object.__setattr__(
+            self,
+            "data",
+            tuple(_freeze_json(bucket) for bucket in self.data),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class UploadSession:
+    """Server-created state for a resumable storage upload."""
+
+    session_id: str
+    part_size: int
+    total_parts: int
+    expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class UploadPart:
+    """Metadata returned after uploading one resumable part."""
+
+    part_number: int
+    etag: str
+    size: int
+
+
+@dataclass(frozen=True, slots=True)
+class UploadSessionStatus:
+    """Server-reported progress for one resumable storage upload."""
+
+    session_id: str
+    status: UploadSessionState
+    path: str
+    content_type: str
+    total_size: int
+    part_size: int
+    total_parts: int
+    parts_uploaded: int
+    bytes_uploaded: int
+    parts: tuple[UploadPart, ...]
+    expires_at: datetime
+    created_at: datetime
+
+    def __post_init__(self) -> None:
+        """Defensively snapshot uploaded part metadata."""
+        object.__setattr__(self, "parts", tuple(self.parts))
 
 
 @dataclass(frozen=True, slots=True)

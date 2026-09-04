@@ -27,28 +27,48 @@ def test_generate_emits_required_contract_operations(tmp_path: Path) -> None:
         "move_storage_object.py",
         "update_storage_object_visibility.py",
         "acquire_project_lock.py",
+        "force_release_project_lock.py",
+        "get_project_log_activity.py",
+        "get_project_lock.py",
+        "invoke_function.py",
         "release_project_lock.py",
+        "resolve_function_for_invocation.py",
+        "search_project_logs.py",
+        "renew_project_lock.py",
     }
 
 
-def test_generate_rejects_a_missing_visibility_operation(
+@pytest.mark.parametrize(
+    "missing_operation",
+    [
+        "force_release_project_lock.py",
+        "invoke_function.py",
+        "search_project_logs.py",
+        "update_storage_object_visibility.py",
+    ],
+)
+def test_generate_rejects_a_missing_required_operation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    missing_operation: str,
 ) -> None:
     script = run_path(str(ROOT / "scripts" / "generate_openapi.py"))
     generate = script["generate"]
     output = tmp_path / "_generated"
 
-    def generate_without_visibility(*_args: object, **_kwargs: object) -> None:
+    def generate_without_required_operation(
+        *_args: object,
+        **_kwargs: object,
+    ) -> None:
         operations = output / "api" / "storage_objects"
         operations.mkdir(parents=True)
         for name in script["REQUIRED_OPERATION_MODULES"]:
-            if name != "update_storage_object_visibility.py":
+            if name != missing_operation:
                 (operations / name).touch()
 
-    monkeypatch.setattr(subprocess, "run", generate_without_visibility)
+    monkeypatch.setattr(subprocess, "run", generate_without_required_operation)
 
-    with pytest.raises(RuntimeError, match=r"update_storage_object_visibility\.py"):
+    with pytest.raises(RuntimeError, match=missing_operation.replace(".", r"\.")):
         generate(output)
 
 

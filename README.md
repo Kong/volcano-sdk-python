@@ -38,12 +38,66 @@ updated_user = client.auth.update_user(
 )
 assert updated_user.id == session.user_id
 
+function = client.functions.invoke(
+    "send-welcome",
+    {"user_id": session.user_id},
+)
+print(function.status, function.version, function.data)
+
+logs = client.logs.search(
+    "00000000-0000-4000-8000-000000000001",
+    {"resource": {"type": "function"}, "limit": 100},
+)
+for event in logs.data:
+    print(event["timestamp"], event["body"])
+
+activity = client.logs.activity(
+    "00000000-0000-4000-8000-000000000001",
+    {"resource": {"type": "function"}, "bucket_count": 24},
+)
+print(activity.total)
+
 rows = client.database("main").from_("items").select("*").eq("slug", "a").execute()
 
 bucket = client.storage.from_("assets")
 bucket.upload("a.txt", b"hello")
+with open("avatar.png", "rb") as avatar:
+    bucket.upload("avatars/me.png", avatar)
 downloaded = bucket.download("a.txt")
 assert downloaded == b"hello"
+first_kibibyte = bucket.download("archive.bin", byte_range="bytes=0-1023")
+video = b"demo video"
+uploaded = bucket.upload_resumable(
+    "videos/automatic.mp4",
+    video,
+    content_type="video/mp4",
+    on_progress=lambda uploaded, total: print(f"{uploaded}/{total}"),
+)
+print(uploaded.name)
+upload_session = bucket.create_upload_session(
+    "videos/demo.mp4",
+    total_size=len(video),
+    content_type="video/mp4",
+    part_size=8_388_608,
+)
+print(upload_session.session_id, upload_session.total_parts)
+part = bucket.upload_part(
+    "videos/demo.mp4",
+    session_id=upload_session.session_id,
+    part_number=1,
+    data=video,
+)
+print(part.etag)
+status = bucket.get_upload_session(
+    "videos/demo.mp4",
+    session_id=upload_session.session_id,
+)
+print(status.parts_uploaded, status.bytes_uploaded)
+completed = bucket.complete_upload_session(
+    "videos/demo.mp4",
+    session_id=upload_session.session_id,
+)
+print(completed.name)
 
 page = bucket.list("avatars", limit=100)
 for object_ in page.objects:
@@ -60,14 +114,64 @@ print(public_object.public_url)
 public_url = bucket.get_public_url("avatars/a.png")
 print(public_url)
 
+state = client.locks.get("build")
+print(state.held)
 lease = client.locks.acquire("build", ttl=30)
+lease = client.locks.renew("build", lease, ttl=30)
 client.locks.release("build", lease)
+client.locks.force_release("stale-build")
+
+with client.locks.with_lock("deploy", ttl=30) as guard:
+    print(guard.lease.fencing_token)
 ```
 
 Storage removals run in input order. A failed request raises after any earlier
 paths have already been deleted. Visibility updates return the server-confirmed
 object; `public_url` is set only when the object is public.
 `get_public_url()` constructs a URL locally and does not check object visibility.
+Pass an HTTP byte range to download only part of an object.
+`create_upload_session()` returns the immutable server-selected part size,
+part count, and expiration time for a resumable upload.
+`upload_resumable()` accepts bytes or a binary file-like object, creates a
+session, and uploads server-sized chunks. It streams seekable files directly;
+non-seekable inputs are spooled to a temporary file with bounded reads. If a
+part or progress callback fails, it makes a best-effort abort and raises the
+original error. `on_progress` runs after each successful part with cumulative
+uploaded bytes and the total size.
+`upload_part()` returns immutable part metadata and can safely retry the same
+part number to replace that part.
+`locks.get()` returns immutable lock availability, expiry, and fencing-token
+state without acquiring the lock.
+Lock acquisition and renewal require an integer TTL from 5 seconds through 90 days.
+`locks.renew()` returns a new immutable lease and leaves the previous value
+unchanged.
+`locks.with_lock()` renews the lease on a background thread, stops renewal
+before releasing the latest lease, and yields a `LockGuard`. Read
+`guard.lease` for the latest fencing token. Check `guard.lost` or call
+`guard.wait_lost(timeout=...)` when work must stop promptly after ownership is
+lost. If the context body succeeds, a renewal failure is raised after release;
+an exception from the body takes precedence.
+`locks.force_release()` drops any current lease without an ownership token.
+Use it only for administrative recovery behind fencing-token enforcement.
+`get_upload_session()` returns immutable progress and uploaded-part metadata for
+resuming an interrupted upload.
+`complete_upload_session()` assembles the uploaded parts and returns the stored
+object.
+`abort_upload_session(path, session_id=...)` abandons a session and discards its
+uploaded parts.
+
+`functions.invoke()` resolves a DNS-safe function name and sends a JSON object.
+It uses the active user session when present, then a configured service key,
+then the anonymous key. An anonymous key can invoke a public function without a
+user session; the function receives no user identity. The immutable result
+includes the response body, status, headers, and `X-Volcano-Version`. A
+function's own non-2xx response is returned when the version header proves it
+ran; platform failures raise typed SDK errors.
+
+`logs.search()` returns an immutable page of retained runtime or deployment log
+events. Pass `next_cursor` back as `cursor` to continue a search. `logs.activity()`
+returns immutable time buckets using the same resource selector and query syntax.
+Both methods require an active user session.
 
 Database builders are immutable, so you can safely reuse a base query. Chain `neq()`, `gt()`,
 `gte()`, `lt()`, and `lte()` for comparison filters:
@@ -115,6 +219,25 @@ deleted_rows = (
 ```
 
 Updates and deletes require at least one filter; Volcano rejects filterless mutations.
+
+Use `database_connection_string()` inside a Volcano function to select database
+access without changing the advertised `DATABASE_URL` target:
+
+```python
+import os
+
+from volcano_sdk import database_connection_string
+
+connection_string = database_connection_string(
+    os.environ["DATABASE_URL"],
+    user_id=event.get("__volcano_auth", {}).get("user_id"),
+)
+```
+
+Pass a user ID to enforce that user's Row-Level Security policies. Omit
+`user_id` for full service access.
+The helper preserves libpq connection syntax, including hostless and multi-host
+targets, and leaves unrelated query values unchanged.
 
 `sign_up()` returns an immutable acknowledgement and never creates or replaces a session. The
 response is identical for new and existing email addresses. Call `sign_in()` separately after the
@@ -442,22 +565,114 @@ Realtime is async. Channels wrap `centrifuge-python`; the underlying client and
 subscription objects are not part of the public API.
 
 ```python
+stop_connect = client.realtime.on_connect(
+    lambda context: print("connected", context.client)
+)
+client.realtime.on_disconnect(
+    lambda context: print("disconnected", context.code, context.reason)
+)
+client.realtime.on_error(
+    lambda context: print("realtime error", context.code, context.message)
+)
+
 channel = client.realtime.channel("updates")
+assert channel.name == "broadcast:updates"
 channel.on("message", print)
 
 await channel.subscribe()
+assert client.realtime.is_connected
 await channel.send({"event": "message", "value": "contract"})
-await channel.unsubscribe()
+await client.realtime.remove_channel("updates")
+assert client.realtime.is_connected
 await client.realtime.disconnect()
+assert not client.realtime.is_connected
+stop_connect()
 ```
+
+Broadcast channels use Centrifuge's native stream recovery when server history
+is available. `await channel.unsubscribe()` pauses delivery while retaining the
+in-memory recovery position; a later `await channel.subscribe()` resumes the
+same subscription and requests missed publications. Removing the channel or
+disconnecting the realtime client discards that position. Recovery is not
+persisted across processes and never crosses an auth session lineage.
+
+Presence channels expose server-managed user metadata and join/leave events:
+
+```python
+presence = client.realtime.channel("lobby", channel_type="presence")
+presence.on("join", lambda info: print("joined", info.user, info.data))
+presence.on("leave", lambda info: print("left", info.user))
+stop_sync = presence.on_presence_sync(
+    lambda state: print("present clients", tuple(state))
+)
+
+await presence.subscribe()
+await presence.track({"status": "online"})
+assert presence.tracked_state == {"status": "online"}
+current = presence.get_presence_state()
+await client.realtime.remove_channel("lobby", channel_type="presence")
+stop_sync()
+```
+
+`remove_channel()` unsubscribes and forgets one channel. `remove_all_channels()`
+does the same for every managed channel without disconnecting the shared
+realtime transport, so later calls to `channel()` return fresh facades.
+Connection callbacks receive immutable contexts, may be synchronous or async,
+and run outside the transport event processor. Each registration returns an
+idempotent function that stops future delivery.
+Access-token refreshes preserve a realtime connection only while the auth
+session lineage remains current. After signing in again or changing users,
+call `disconnect()` before subscribing channels for the new session; the SDK
+refuses to rebind an existing connection across that identity boundary.
+Presence state and client metadata are immutable snapshots. Volcano derives
+the remote identity and metadata from the authenticated user; `track()` stores
+optional local state in `tracked_state` but does not replace that server-managed
+identity. Presence is resynchronized after reconnects. Query failures are
+reported through `realtime.on_error()` and clear the current snapshot.
+
+Postgres channels deliver immutable, RLS-scoped row changes and filter
+callbacks by event, schema, and table:
+
+```python
+client.realtime.set_database_name("app")
+changes = client.realtime.channel(
+    "public:messages",
+    channel_type="postgres",
+    auto_fetch=True,
+    fetch_batch_window_ms=20,
+    fetch_max_batch_size=50,
+)
+stop_changes = changes.on_postgres_changes(
+    "INSERT",
+    schema="public",
+    table="messages",
+    callback=lambda change: print(change.record),
+)
+await changes.subscribe()
+stop_changes()
+```
+
+Binding a database automatically fetches the matching row for lightweight
+`INSERT` and `UPDATE` notifications in the `public` schema. The fetch uses the
+realtime connection's RLS-scoped access token. Compatible row lookups are
+batched while callback delivery preserves publication order.
+If the row is absent or the query fails, the callback receives the lightweight
+notification with its `id` and `mode` intact. Non-public schemas also retain
+that lightweight form. Lightweight deletes never query the database; they
+preserve `old_record`, or provide `{"id": change.id}` when no old row was
+included. Tune a channel's batching with `fetch_batch_window_ms` and
+`fetch_max_batch_size`; the defaults are 20 milliseconds and 50 rows. Set
+`auto_fetch=False` on a Postgres channel to keep lightweight notifications
+without querying their rows. Pass `None` to `set_database_name()` to disable
+row fetching for every channel.
 
 ## Compatibility
 
 The POC supports Python 3.11 and 3.14. Its public facade is intentionally
-independent of generated httpx types. Compatibility is verified against the
-bundled Volcano API contract from hosting commit
-`cb12eb4636252cb658f13850dad930fa73a5dc4c`; `openapi/openapi.yaml` has SHA-256
-`95e5c102830db382064180afca4c62ad8b11faabf58148f9d21236046b930090`.
+independent of generated httpx types. The bundled `openapi/openapi.yaml` includes
+the managed auth page contract from [Hosting #945](https://github.com/Kong/volcano-hosting/pull/945)
+and the OAuth provider response contract from [Hosting #991](https://github.com/Kong/volcano-hosting/pull/991).
+Its SHA-256 is `68e9d526b8acad3736027ca2278f2534967710d867a6941e338e00f77a77ac76`.
 
 The realtime wrapper includes a narrow compatibility adapter for Volcano's
 project-prefixed publication channels. It still delegates connection,

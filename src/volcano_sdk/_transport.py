@@ -58,7 +58,29 @@ from ._generated.api.database_queries import (
     query_database_select,
     query_database_update,
 )
-from ._generated.api.locks import acquire_project_lock, release_project_lock
+from ._generated.api.functions import resolve_function_for_invocation
+from ._generated.api.functions.invoke_function import (
+    _get_kwargs as invoke_function_kwargs,
+)
+from ._generated.api.locks import (
+    acquire_project_lock,
+    force_release_project_lock,
+    get_project_lock,
+    release_project_lock,
+    renew_project_lock,
+)
+from ._generated.api.logs.get_project_log_activity import (
+    _build_response as build_log_activity_response,
+)
+from ._generated.api.logs.get_project_log_activity import (
+    _get_kwargs as log_activity_kwargs,
+)
+from ._generated.api.logs.search_project_logs import (
+    _build_response as build_log_search_response,
+)
+from ._generated.api.logs.search_project_logs import (
+    _get_kwargs as log_search_kwargs,
+)
 from ._generated.api.o_auth_authentication import auth_o_auth_exchange
 from ._generated.api.o_auth_authentication.auth_link_o_auth_provider import (
     _get_kwargs as link_oauth_provider_kwargs,
@@ -88,6 +110,7 @@ from ._generated.api.storage_objects import (
     list_storage_objects,
     move_storage_object,
     update_storage_object_visibility,
+    upload_part,
     upload_storage_object,
 )
 from ._generated.client import AuthenticatedClient
@@ -130,13 +153,20 @@ from ._generated.models.call_o_auth_provider_api_body import CallOAuthProviderAP
 from ._generated.models.call_o_auth_provider_api_response_200 import (
     CallOAuthProviderAPIResponse200,
 )
+from ._generated.models.create_upload_session_request import CreateUploadSessionRequest
 from ._generated.models.database_delete_request import DatabaseDeleteRequest
 from ._generated.models.database_insert_request import DatabaseInsertRequest
 from ._generated.models.database_select_request import DatabaseSelectRequest
 from ._generated.models.database_update_request import DatabaseUpdateRequest
+from ._generated.models.function_invocation_request import FunctionInvocationRequest
+from ._generated.models.function_invocation_request_payload import (
+    FunctionInvocationRequestPayload,
+)
 from ._generated.models.get_o_auth_provider_token_response_200 import (
     GetOAuthProviderTokenResponse200,
 )
+from ._generated.models.log_activity_request import LogActivityRequest
+from ._generated.models.log_search_request import LogSearchRequest
 from ._generated.models.project_lock_lease_request import ProjectLockLeaseRequest
 from ._generated.models.refresh_o_auth_provider_token_response_200 import (
     RefreshOAuthProviderTokenResponse200,
@@ -160,7 +190,7 @@ from .errors import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
     from ._generated.models.auth_link_o_auth_provider_provider import (
         AuthLinkOAuthProviderProvider,
@@ -225,6 +255,45 @@ class TransportResponse(Protocol):
 
     @property
     def headers(self) -> Mapping[str, str] | None: ...
+
+
+class _RawHTTPResponse(Protocol):
+    @property
+    def status_code(self) -> int: ...
+
+    @property
+    def content(self) -> bytes: ...
+
+    @property
+    def headers(self) -> Mapping[str, str]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class StorageUploadSessionRequest:
+    """Values needed to create a resumable storage upload session."""
+
+    path: str
+    content_type: str
+    total_size: int
+    part_size: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class StorageUploadPartRequest:
+    """Values needed to upload one resumable storage part."""
+
+    path: str
+    session_id: str
+    part_number: int
+    data: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class StorageUploadSessionReference:
+    """Values identifying one resumable storage upload session."""
+
+    path: str
+    session_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -521,6 +590,7 @@ class Transport(Protocol):
         authorization: str,
         bucket_name: str,
         path: str,
+        byte_range: str | None = None,
     ) -> TransportResponse: ...
 
     def acquire_project_lock(
@@ -541,9 +611,31 @@ class Transport(Protocol):
     ) -> TransportResponse: ...
 
 
+class AsyncDatabaseSelectTransport(Protocol):
+    """Async database query capability used by cancellable realtime fetches."""
+
+    async def query_database_select_async(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> TransportResponse: ...
+
+
 def invoke(operation: Callable[..., Any], **kwargs: Any) -> Any:
     try:
         return operation(**kwargs)
+    except httpx.HTTPError as error:
+        raise TransportError(str(error) or "Volcano transport failed") from error
+
+
+async def invoke_async(
+    operation: Callable[..., Awaitable[Any]],
+    **kwargs: Any,
+) -> Any:
+    try:
+        return await operation(**kwargs)
     except httpx.HTTPError as error:
         raise TransportError(str(error) or "Volcano transport failed") from error
 
@@ -641,7 +733,7 @@ class GeneratedTransport:
         )
 
     @staticmethod
-    def _raw_response(response: httpx.Response) -> TransportResponse:
+    def _raw_response(response: _RawHTTPResponse) -> TransportResponse:
         try:
             payload = json.loads(response.content)
         except (json.JSONDecodeError, UnicodeDecodeError):
@@ -1183,6 +1275,21 @@ class GeneratedTransport:
             )
         return self._response(response)
 
+    async def query_database_select_async(
+        self,
+        *,
+        authorization: str,
+        database_name: str,
+        body: dict[str, Any],
+    ) -> TransportResponse:
+        async with self._client(authorization) as client:
+            response = await query_database_select.asyncio_detailed(
+                database_name,
+                client=client,
+                body=DatabaseSelectRequest.from_dict(body),
+            )
+        return self._response(response)
+
     def query_database_insert(
         self,
         *,
@@ -1253,18 +1360,109 @@ class GeneratedTransport:
             )
         return self._response(response)
 
+    def create_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionRequest,
+    ) -> TransportResponse:
+        body = CreateUploadSessionRequest(
+            object_path=request.path,
+            content_type=request.content_type,
+            total_size=request.total_size,
+            part_size=request.part_size if request.part_size is not None else UNSET,
+        )
+        with self._client(authorization) as client:
+            response = upload_storage_object.sync_detailed(
+                bucket_name,
+                request.path,
+                client=client,
+                body=body,
+            )
+        return self._response(response)
+
+    def upload_part(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadPartRequest,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = upload_part.sync_detailed(
+                bucket_name,
+                request.path,
+                client=client,
+                body=File(payload=BytesIO(request.data)),
+                x_upload_session=request.session_id,
+                x_part_number=request.part_number,
+            )
+        return self._response(response)
+
+    def complete_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionReference,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = upload_storage_object.sync_detailed(
+                bucket_name,
+                request.path,
+                client=client,
+                x_upload_session=request.session_id,
+                x_upload_complete="true",
+            )
+        return self._response(response)
+
+    def get_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionReference,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = download_storage_object.sync_detailed(
+                bucket_name,
+                request.path,
+                client=client,
+                x_upload_session=request.session_id,
+            )
+        return self._raw_response(response)
+
+    def abort_upload_session(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        request: StorageUploadSessionReference,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = delete_storage_object.sync_detailed(
+                bucket_name,
+                request.path,
+                client=client,
+                x_upload_session=request.session_id,
+            )
+        return self._response(response)
+
     def download_storage_object(
         self,
         *,
         authorization: str,
         bucket_name: str,
         path: str,
+        byte_range: str | None = None,
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = download_storage_object.sync_detailed(
                 bucket_name,
                 path,
                 client=client,
+                range_=byte_range if byte_range is not None else UNSET,
             )
         return self._response(response)
 
@@ -1351,6 +1549,79 @@ class GeneratedTransport:
             )
         return self._response(response)
 
+    def resolve_function_for_invocation(
+        self,
+        *,
+        authorization: str,
+        name: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = resolve_function_for_invocation.sync_detailed(
+                client=client,
+                name=name,
+            )
+        return self._response(response)
+
+    def invoke_function(
+        self,
+        *,
+        authorization: str,
+        function_id: str,
+        payload: Mapping[str, JSONValue],
+    ) -> TransportResponse:
+        plain_payload = cast("dict[str, JSONValue]", _plain_json(payload))
+        body = FunctionInvocationRequest(
+            payload=FunctionInvocationRequestPayload.from_dict(plain_payload)
+        )
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                **invoke_function_kwargs(
+                    UUID(function_id),
+                    body=body,
+                )
+            )
+        return self._raw_response(response)
+
+    def search_project_logs(
+        self,
+        *,
+        authorization: str,
+        project_id: str,
+        request: Mapping[str, JSONValue],
+    ) -> TransportResponse:
+        plain_request = cast("dict[str, Any]", _plain_json(request))
+        with self._client(authorization) as client:
+            request_kwargs = log_search_kwargs(
+                UUID(project_id), body=LogSearchRequest.from_dict(plain_request)
+            )
+            request_kwargs["json"] = plain_request
+            raw_response = client.get_httpx_client().request(**request_kwargs)
+            response = build_log_search_response(
+                client=client,
+                response=raw_response,
+            )
+        return self._response(response)
+
+    def get_project_log_activity(
+        self,
+        *,
+        authorization: str,
+        project_id: str,
+        request: Mapping[str, JSONValue],
+    ) -> TransportResponse:
+        plain_request = cast("dict[str, Any]", _plain_json(request))
+        with self._client(authorization) as client:
+            request_kwargs = log_activity_kwargs(
+                UUID(project_id), body=LogActivityRequest.from_dict(plain_request)
+            )
+            request_kwargs["json"] = plain_request
+            raw_response = client.get_httpx_client().request(**request_kwargs)
+            response = build_log_activity_response(
+                client=client,
+                response=raw_response,
+            )
+        return self._response(response)
+
     def acquire_project_lock(
         self,
         *,
@@ -1361,6 +1632,52 @@ class GeneratedTransport:
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = acquire_project_lock.sync_detailed(
+                key,
+                client=client,
+                body=ProjectLockLeaseRequest(ttl_seconds=ttl),
+                x_volcano_lock_token=cast("UUID", token),
+                x_volcano_request_id=cast("UUID", str(uuid4())),
+            )
+        return self._response(response)
+
+    def get_project_lock(
+        self,
+        *,
+        authorization: str,
+        key: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = get_project_lock.sync_detailed(
+                key,
+                client=client,
+                x_volcano_request_id=cast("UUID", str(uuid4())),
+            )
+        return self._response(response)
+
+    def force_release_project_lock(
+        self,
+        *,
+        authorization: str,
+        key: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = force_release_project_lock.sync_detailed(
+                key,
+                client=client,
+                x_volcano_request_id=cast("UUID", str(uuid4())),
+            )
+        return self._response(response)
+
+    def renew_project_lock(
+        self,
+        *,
+        authorization: str,
+        key: str,
+        ttl: int,
+        token: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = renew_project_lock.sync_detailed(
                 key,
                 client=client,
                 body=ProjectLockLeaseRequest(ttl_seconds=ttl),
