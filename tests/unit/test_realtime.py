@@ -966,6 +966,7 @@ def test_realtime_batches_compatible_lightweight_postgres_rows() -> None:
         await channel.subscribe()
         subscription = official.subscription
         assert subscription is not None
+        assert subscription.recoverable is False
 
         for row_id in (42, 43):
             await subscription.emit(
@@ -1987,7 +1988,7 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
         assert channel.on("message", received.append) is channel
         await channel.subscribe()
         assert official.subscription is not None
-        assert official.subscription.recoverable is False
+        assert official.subscription.recoverable is True
         await official.emit_wire_publication(
             "project-id:broadcast:contract",
             {"event": "message", "value": "contract"},
@@ -2035,6 +2036,67 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
         ("unsubscribe", None),
     ]
     assert received == [{"event": "message", "value": "contract"}]
+
+
+def test_realtime_broadcast_resubscribe_retains_recoverable_subscription() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        channel = client.realtime.channel("room")
+        await channel.subscribe()
+        subscription = official.subscription
+        assert subscription is not None
+        assert subscription.recoverable is True
+
+        await channel.unsubscribe()
+        await channel.subscribe()
+
+        assert official.subscription is subscription
+        assert subscription.calls == [
+            ("subscribe", None),
+            ("unsubscribe", None),
+            ("subscribe", None),
+        ]
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_centrifuge_preserves_recovery_position_across_unsubscribe() -> None:
+    async def scenario() -> None:
+        centrifuge = importlib.import_module("centrifuge")
+        client = centrifuge.Client(
+            "ws://localhost/realtime/v1/websocket",
+            loop=asyncio.get_running_loop(),
+        )
+        subscription = client.new_subscription("broadcast:room", recoverable=True)
+        subscription._recover = True
+        subscription._epoch = "stream-epoch"
+        subscription._offset = 41
+        subscription.state = centrifuge.SubscriptionState.SUBSCRIBED
+
+        async def unsubscribe_without_transport(_channel: str) -> None:
+            return None
+
+        client._unsubscribe = unsubscribe_without_transport
+
+        await subscription.unsubscribe()
+        command = client._construct_subscribe_command(subscription, 1)
+
+        subscribe = command["subscribe"]
+        assert subscribe["channel"] == "broadcast:room"
+        assert subscribe["recoverable"] is True
+        assert subscribe["recover"] is True
+        assert subscribe["epoch"] == "stream-epoch"
+        assert subscribe["offset"] == 41
+
+    asyncio.run(scenario())
 
 
 def test_realtime_rejects_a_session_change_during_connect() -> None:
