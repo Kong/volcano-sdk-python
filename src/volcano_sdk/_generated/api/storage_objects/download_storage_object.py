@@ -114,6 +114,7 @@ def sync_detailed(
 
     **Session Status (with X-Upload-Session header):**
     Returns the status of a resumable upload session, including which parts have been uploaded.
+    Anonymous sessions must reuse the exact anon key that created the session.
 
     Args:
         bucket_name (str):
@@ -162,6 +163,7 @@ def sync(
 
     **Session Status (with X-Upload-Session header):**
     Returns the status of a resumable upload session, including which parts have been uploaded.
+    Anonymous sessions must reuse the exact anon key that created the session.
 
     Args:
         bucket_name (str):
@@ -205,6 +207,7 @@ async def asyncio_detailed(
 
     **Session Status (with X-Upload-Session header):**
     Returns the status of a resumable upload session, including which parts have been uploaded.
+    Anonymous sessions must reuse the exact anon key that created the session.
 
     Args:
         bucket_name (str):
@@ -253,6 +256,7 @@ async def asyncio(
 
     **Session Status (with X-Upload-Session header):**
     Returns the status of a resumable upload session, including which parts have been uploaded.
+    Anonymous sessions must reuse the exact anon key that created the session.
 
     Args:
         bucket_name (str):

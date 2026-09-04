@@ -8,6 +8,8 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.list_databases_status import check_list_databases_status
+from ...models.list_databases_status import ListDatabasesStatus
 from ...models.paginated_databases import PaginatedDatabases
 from ...types import UNSET, Unset
 from typing import cast
@@ -24,6 +26,7 @@ def _get_kwargs(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
+    status: ListDatabasesStatus | Unset = UNSET,
 
 ) -> dict[str, Any]:
     
@@ -43,6 +46,12 @@ def _get_kwargs(
     params["offset"] = offset
 
     params["search"] = search
+
+    json_status: str | Unset = UNSET
+    if not isinstance(status, Unset):
+        json_status = status
+
+    params["status"] = json_status
 
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
@@ -92,6 +101,7 @@ def sync_detailed(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
+    status: ListDatabasesStatus | Unset = UNSET,
 
 ) -> Response[PaginatedDatabases]:
     """ List all databases for a project
@@ -110,6 +120,7 @@ def sync_detailed(
         ending_before (str | Unset):
         offset (int | Unset):  Default: 0.
         search (str | Unset):
+        status (ListDatabasesStatus | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -128,6 +139,7 @@ cursor=cursor,
 ending_before=ending_before,
 offset=offset,
 search=search,
+status=status,
 
     )
 
@@ -147,6 +159,7 @@ def sync(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
+    status: ListDatabasesStatus | Unset = UNSET,
 
 ) -> PaginatedDatabases | None:
     """ List all databases for a project
@@ -165,6 +178,7 @@ def sync(
         ending_before (str | Unset):
         offset (int | Unset):  Default: 0.
         search (str | Unset):
+        status (ListDatabasesStatus | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -184,6 +198,7 @@ cursor=cursor,
 ending_before=ending_before,
 offset=offset,
 search=search,
+status=status,
 
     ).parsed
 
@@ -197,6 +212,7 @@ async def asyncio_detailed(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
+    status: ListDatabasesStatus | Unset = UNSET,
 
 ) -> Response[PaginatedDatabases]:
     """ List all databases for a project
@@ -215,6 +231,7 @@ async def asyncio_detailed(
         ending_before (str | Unset):
         offset (int | Unset):  Default: 0.
         search (str | Unset):
+        status (ListDatabasesStatus | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -233,6 +250,7 @@ cursor=cursor,
 ending_before=ending_before,
 offset=offset,
 search=search,
+status=status,
 
     )
 
@@ -252,6 +270,7 @@ async def asyncio(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
+    status: ListDatabasesStatus | Unset = UNSET,
 
 ) -> PaginatedDatabases | None:
     """ List all databases for a project
@@ -270,6 +289,7 @@ async def asyncio(
         ending_before (str | Unset):
         offset (int | Unset):  Default: 0.
         search (str | Unset):
+        status (ListDatabasesStatus | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -289,5 +309,6 @@ cursor=cursor,
 ending_before=ending_before,
 offset=offset,
 search=search,
+status=status,
 
     )).parsed

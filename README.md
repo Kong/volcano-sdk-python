@@ -669,10 +669,10 @@ row fetching for every channel.
 ## Compatibility
 
 The POC supports Python 3.11 and 3.14. Its public facade is intentionally
-independent of generated httpx types. The bundled `openapi/openapi.yaml` includes
-the managed auth page contract from [Hosting #945](https://github.com/Kong/volcano-hosting/pull/945)
-and the OAuth provider response contract from [Hosting #991](https://github.com/Kong/volcano-hosting/pull/991).
-Its SHA-256 is `bdd8d476bf4b742d5edb5c28d9d95fe81f623394d17c0b765de1160cf38bbbca`.
+independent of generated httpx types. The bundled `openapi/openapi.yaml` matches
+the public bundle from [Hosting #991](https://github.com/Kong/volcano-hosting/pull/991)
+at commit `ef03f689e`.
+Its SHA-256 is `076d97809c95f50567d8b100f4188c1fe2b74e73a388e335c79850e66edfc0e4`.
 
 Generated operations are internal. Transport adapters use `sync_detailed()` or
 `asyncio_detailed()` to inspect HTTP status before interpreting the parsed body.
