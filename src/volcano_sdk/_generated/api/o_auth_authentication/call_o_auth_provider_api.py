@@ -111,7 +111,7 @@ def sync_detailed(
     - GitHub repositories: `/user/repos`
     - Microsoft Graph profile: `/me`
 
-    The response wraps the provider's raw JSON value with request metadata.
+    The response is the raw JSON response from the provider's API.
 
     Args:
         provider (CallOAuthProviderAPIProvider):
@@ -161,7 +161,7 @@ def sync(
     - GitHub repositories: `/user/repos`
     - Microsoft Graph profile: `/me`
 
-    The response wraps the provider's raw JSON value with request metadata.
+    The response is the raw JSON response from the provider's API.
 
     Args:
         provider (CallOAuthProviderAPIProvider):
@@ -206,7 +206,7 @@ async def asyncio_detailed(
     - GitHub repositories: `/user/repos`
     - Microsoft Graph profile: `/me`
 
-    The response wraps the provider's raw JSON value with request metadata.
+    The response is the raw JSON response from the provider's API.
 
     Args:
         provider (CallOAuthProviderAPIProvider):
@@ -256,7 +256,7 @@ async def asyncio(
     - GitHub repositories: `/user/repos`
     - Microsoft Graph profile: `/me`
 
-    The response wraps the provider's raw JSON value with request metadata.
+    The response is the raw JSON response from the provider's API.
 
     Args:
         provider (CallOAuthProviderAPIProvider):

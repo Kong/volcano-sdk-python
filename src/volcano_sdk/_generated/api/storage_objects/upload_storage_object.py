@@ -103,6 +103,10 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         response_403 = cast(Any, None)
         return response_403
 
+    if response.status_code == 404:
+        response_404 = cast(Any, None)
+        return response_404
+
     if response.status_code == 413:
         response_413 = cast(Any, None)
         return response_413
@@ -154,6 +158,12 @@ def sync_detailed(
     **Complete Resumable Session:**
     Complete a session after all parts are uploaded.
     Requires: `X-Upload-Session` header with session ID and `X-Upload-Complete: true` header.
+
+    **Resumable Session Ownership:**
+    A session created with a user access token remains bound to that user. A session
+    created with an anon key remains bound to that exact anon key. Reuse the same
+    identity or anon key for part uploads, status, completion, and abort requests;
+    an ownership mismatch returns `404`.
 
     Args:
         bucket_name (str):
@@ -213,6 +223,12 @@ def sync(
     Complete a session after all parts are uploaded.
     Requires: `X-Upload-Session` header with session ID and `X-Upload-Complete: true` header.
 
+    **Resumable Session Ownership:**
+    A session created with a user access token remains bound to that user. A session
+    created with an anon key remains bound to that exact anon key. Reuse the same
+    identity or anon key for part uploads, status, completion, and abort requests;
+    an ownership mismatch returns `404`.
+
     Args:
         bucket_name (str):
         path (str):
@@ -265,6 +281,12 @@ async def asyncio_detailed(
     **Complete Resumable Session:**
     Complete a session after all parts are uploaded.
     Requires: `X-Upload-Session` header with session ID and `X-Upload-Complete: true` header.
+
+    **Resumable Session Ownership:**
+    A session created with a user access token remains bound to that user. A session
+    created with an anon key remains bound to that exact anon key. Reuse the same
+    identity or anon key for part uploads, status, completion, and abort requests;
+    an ownership mismatch returns `404`.
 
     Args:
         bucket_name (str):
@@ -323,6 +345,12 @@ async def asyncio(
     **Complete Resumable Session:**
     Complete a session after all parts are uploaded.
     Requires: `X-Upload-Session` header with session ID and `X-Upload-Complete: true` header.
+
+    **Resumable Session Ownership:**
+    A session created with a user access token remains bound to that user. A session
+    created with an anon key remains bound to that exact anon key. Reuse the same
+    identity or anon key for part uploads, status, completion, and abort requests;
+    an ownership mismatch returns `404`.
 
     Args:
         bucket_name (str):

@@ -12,6 +12,10 @@ from ..types import UNSET, Unset
 
 from ..models.create_function_body_runtime import check_create_function_body_runtime
 from ..models.create_function_body_runtime import CreateFunctionBodyRuntime
+from ..models.function_http_auth_mode import check_function_http_auth_mode
+from ..models.function_http_auth_mode import FunctionHTTPAuthMode
+from ..models.function_invocation_mode import check_function_invocation_mode
+from ..models.function_invocation_mode import FunctionInvocationMode
 from ..types import File, FileTypes
 from ..types import UNSET, Unset
 from io import BytesIO
@@ -45,12 +49,24 @@ class CreateFunctionBody:
                 - Python: def handler() (in main.py)
                 - Ruby: def handler() (in main.rb)
                  Default: 'handler'. Example: handler.
+            is_public (bool | Unset): Whether the function can be reached through public invocation ingress. Default: False.
+            invocation_mode (FunctionInvocationMode | Unset): Invocation contract. `rpc` preserves the existing POST
+                `{payload: ...}` contract;
+                `http` forwards HTTP request semantics to the function runtime.
+            http_auth_mode (FunctionHTTPAuthMode | Unset): Authentication applied by the HTTP ingress. `none` is valid only
+                for public
+                HTTP-mode functions and is intended for externally signed webhooks.
+            openapi_spec (str | Unset): JSON-encoded OpenAPI 3.0 or 3.1 metadata for an HTTP-mode function.
      """
 
     name: str
     code: File
     runtime: CreateFunctionBodyRuntime
     handler: str | Unset = 'handler'
+    is_public: bool | Unset = False
+    invocation_mode: FunctionInvocationMode | Unset = UNSET
+    http_auth_mode: FunctionHTTPAuthMode | Unset = UNSET
+    openapi_spec: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -67,6 +83,20 @@ class CreateFunctionBody:
 
         handler = self.handler
 
+        is_public = self.is_public
+
+        invocation_mode: str | Unset = UNSET
+        if not isinstance(self.invocation_mode, Unset):
+            invocation_mode = self.invocation_mode
+
+
+        http_auth_mode: str | Unset = UNSET
+        if not isinstance(self.http_auth_mode, Unset):
+            http_auth_mode = self.http_auth_mode
+
+
+        openapi_spec = self.openapi_spec
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -77,6 +107,14 @@ class CreateFunctionBody:
         })
         if handler is not UNSET:
             field_dict["handler"] = handler
+        if is_public is not UNSET:
+            field_dict["is_public"] = is_public
+        if invocation_mode is not UNSET:
+            field_dict["invocation_mode"] = invocation_mode
+        if http_auth_mode is not UNSET:
+            field_dict["http_auth_mode"] = http_auth_mode
+        if openapi_spec is not UNSET:
+            field_dict["openapi_spec"] = openapi_spec
 
         return field_dict
 
@@ -98,6 +136,26 @@ class CreateFunctionBody:
 
         if not isinstance(self.handler, Unset):
             files.append(("handler", (None, str(self.handler).encode(), "text/plain")))
+
+
+
+        if not isinstance(self.is_public, Unset):
+            files.append(("is_public", (None, str(self.is_public).encode(), "text/plain")))
+
+
+
+        if not isinstance(self.invocation_mode, Unset):
+            files.append(("invocation_mode", (None, str(self.invocation_mode).encode(), "text/plain")))
+
+
+
+        if not isinstance(self.http_auth_mode, Unset):
+            files.append(("http_auth_mode", (None, str(self.http_auth_mode).encode(), "text/plain")))
+
+
+
+        if not isinstance(self.openapi_spec, Unset):
+            files.append(("openapi_spec", (None, str(self.openapi_spec).encode(), "text/plain")))
 
 
 
@@ -129,11 +187,39 @@ class CreateFunctionBody:
 
         handler = d.pop("handler", UNSET)
 
+        is_public = d.pop("is_public", UNSET)
+
+        _invocation_mode = d.pop("invocation_mode", UNSET)
+        invocation_mode: FunctionInvocationMode | Unset
+        if isinstance(_invocation_mode,  Unset):
+            invocation_mode = UNSET
+        else:
+            invocation_mode = check_function_invocation_mode(_invocation_mode)
+
+
+
+
+        _http_auth_mode = d.pop("http_auth_mode", UNSET)
+        http_auth_mode: FunctionHTTPAuthMode | Unset
+        if isinstance(_http_auth_mode,  Unset):
+            http_auth_mode = UNSET
+        else:
+            http_auth_mode = check_function_http_auth_mode(_http_auth_mode)
+
+
+
+
+        openapi_spec = d.pop("openapi_spec", UNSET)
+
         create_function_body = cls(
             name=name,
             code=code,
             runtime=runtime,
             handler=handler,
+            is_public=is_public,
+            invocation_mode=invocation_mode,
+            http_auth_mode=http_auth_mode,
+            openapi_spec=openapi_spec,
         )
 
 

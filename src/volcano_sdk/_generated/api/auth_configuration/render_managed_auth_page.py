@@ -71,9 +71,11 @@ def sync_detailed(
     client: AuthenticatedClient | Client,
 
 ) -> Response[Any | str]:
-    """ Render managed reset-password page
+    """ Render a managed auth page
 
-     Public HTML endpoint for the managed reset-password page.
+     Public HTML endpoint for signup, forgot-password, device approval,
+    verify-email, and reset-password pages. Login uses the path without a
+    page type.
     Requires `Accept: text/html`.
     Returns 404 when managed hosted pages are disabled for the project.
 
@@ -109,9 +111,11 @@ def sync(
     client: AuthenticatedClient | Client,
 
 ) -> Any | str | None:
-    """ Render managed reset-password page
+    """ Render a managed auth page
 
-     Public HTML endpoint for the managed reset-password page.
+     Public HTML endpoint for signup, forgot-password, device approval,
+    verify-email, and reset-password pages. Login uses the path without a
+    page type.
     Requires `Accept: text/html`.
     Returns 404 when managed hosted pages are disabled for the project.
 
@@ -142,9 +146,11 @@ async def asyncio_detailed(
     client: AuthenticatedClient | Client,
 
 ) -> Response[Any | str]:
-    """ Render managed reset-password page
+    """ Render a managed auth page
 
-     Public HTML endpoint for the managed reset-password page.
+     Public HTML endpoint for signup, forgot-password, device approval,
+    verify-email, and reset-password pages. Login uses the path without a
+    page type.
     Requires `Accept: text/html`.
     Returns 404 when managed hosted pages are disabled for the project.
 
@@ -180,9 +186,11 @@ async def asyncio(
     client: AuthenticatedClient | Client,
 
 ) -> Any | str | None:
-    """ Render managed reset-password page
+    """ Render a managed auth page
 
-     Public HTML endpoint for the managed reset-password page.
+     Public HTML endpoint for signup, forgot-password, device approval,
+    verify-email, and reset-password pages. Login uses the path without a
+    page type.
     Requires `Accept: text/html`.
     Returns 404 when managed hosted pages are disabled for the project.
 

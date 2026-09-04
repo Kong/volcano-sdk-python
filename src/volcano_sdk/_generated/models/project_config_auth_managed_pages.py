@@ -12,6 +12,7 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
+  from ..models.project_config_auth_page_appearance import ProjectConfigAuthPageAppearance
   from ..models.project_config_auth_redirects import ProjectConfigAuthRedirects
   from ..models.project_config_hosted_pages import ProjectConfigHostedPages
 
@@ -31,17 +32,20 @@ class ProjectConfigAuthManagedPages:
             redirects (ProjectConfigAuthRedirects | Unset):
             pages (ProjectConfigHostedPages | Unset): Hosted auth pages keyed by page type (PRO plan). Upsert-only: omitted
                 pages are left untouched (there is no delete for hosted pages).
+            appearance (ProjectConfigAuthPageAppearance | Unset):
      """
 
     enabled: bool | Unset = UNSET
     redirects: ProjectConfigAuthRedirects | Unset = UNSET
     pages: ProjectConfigHostedPages | Unset = UNSET
+    appearance: ProjectConfigAuthPageAppearance | Unset = UNSET
 
 
 
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.project_config_auth_page_appearance import ProjectConfigAuthPageAppearance
         from ..models.project_config_auth_redirects import ProjectConfigAuthRedirects
         from ..models.project_config_hosted_pages import ProjectConfigHostedPages
         enabled = self.enabled
@@ -54,6 +58,10 @@ class ProjectConfigAuthManagedPages:
         if not isinstance(self.pages, Unset):
             pages = self.pages.to_dict()
 
+        appearance: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.appearance, Unset):
+            appearance = self.appearance.to_dict()
+
 
         field_dict: dict[str, Any] = {}
 
@@ -65,6 +73,8 @@ class ProjectConfigAuthManagedPages:
             field_dict["redirects"] = redirects
         if pages is not UNSET:
             field_dict["pages"] = pages
+        if appearance is not UNSET:
+            field_dict["appearance"] = appearance
 
         return field_dict
 
@@ -72,6 +82,7 @@ class ProjectConfigAuthManagedPages:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.project_config_auth_page_appearance import ProjectConfigAuthPageAppearance
         from ..models.project_config_auth_redirects import ProjectConfigAuthRedirects
         from ..models.project_config_hosted_pages import ProjectConfigHostedPages
         d = dict(src_dict)
@@ -97,10 +108,21 @@ class ProjectConfigAuthManagedPages:
 
 
 
+        _appearance = d.pop("appearance", UNSET)
+        appearance: ProjectConfigAuthPageAppearance | Unset
+        if isinstance(_appearance,  Unset):
+            appearance = UNSET
+        else:
+            appearance = ProjectConfigAuthPageAppearance.from_dict(_appearance)
+
+
+
+
         project_config_auth_managed_pages = cls(
             enabled=enabled,
             redirects=redirects,
             pages=pages,
+            appearance=appearance,
         )
 
         return project_config_auth_managed_pages

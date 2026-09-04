@@ -429,7 +429,7 @@ def _oauth_provider_token_status_from_payload(
 def _oauth_api_data_from_payload(payload: object) -> JSONValue:
     if not isinstance(payload, CallOAuthProviderAPIResponse200):
         raise VolcanoError(_INVALID_OAUTH_API_RESPONSE)
-    return _freeze_json(cast("JSONValue", payload.data))
+    return _freeze_json(cast("JSONValue", payload.additional_properties))
 
 
 class AuthContext(Protocol):
