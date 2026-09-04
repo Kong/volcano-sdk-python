@@ -628,7 +628,7 @@ def test_realtime_postgres_delivery_identity_changes_on_resubscription() -> None
     asyncio.run(scenario())
 
 
-def test_realtime_postgres_delivery_identity_uses_connection_session() -> None:
+def test_realtime_rejects_new_subscriptions_after_session_changes() -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(
         anon_key="anon-key",
@@ -646,11 +646,10 @@ def test_realtime_postgres_delivery_identity_uses_connection_session() -> None:
             "public:messages",
             channel_type="postgres",
         )
-        await postgres.subscribe()
 
-        identity = postgres._capture_postgres_delivery_identity()
-
-        assert not postgres._postgres_delivery_is_current(identity)
+        with pytest.raises(RuntimeError, match="session changed"):
+            await postgres.subscribe()
+        assert postgres._subscription is None
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -2088,6 +2087,8 @@ def test_realtime_retains_a_provisional_connection_when_cleanup_fails() -> None:
         assert client.realtime._connection is not None
 
         official.disconnect_error = None
+        with pytest.raises(RuntimeError, match="session changed"):
+            await client.realtime.channel("room").subscribe()
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
