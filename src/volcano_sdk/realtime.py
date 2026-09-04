@@ -62,6 +62,7 @@ SUBSCRIPTION_REGISTRY_UNAVAILABLE = (
 )
 NO_ACTIVE_SESSION = "No active session"
 CONNECTION_SESSION_UNAVAILABLE = "Realtime connection has no session binding"
+CONNECTION_SESSION_CHANGED = "Realtime connection session changed"
 POSTGRES_FETCH_FAILED_MESSAGE = "Volcano realtime Postgres row fetch failed"
 
 
@@ -1300,12 +1301,18 @@ class Realtime:
         await channel._reset()
 
     async def _token(self) -> str:
+        lineage = self._connection_lineage()
+        session = self._session_for_lineage(lineage)
+        self._connection_access_token = session.access_token
+        return session.access_token
+
+    def _session_for_lineage(self, expected_lineage: int) -> Session:
         _generation, lineage, session = self._client_context._capture_session_binding()
         if session is None:
             raise RuntimeError(NO_ACTIVE_SESSION)
-        self._connection_session_lineage = lineage
-        self._connection_access_token = session.access_token
-        return session.access_token
+        if lineage != expected_lineage:
+            raise RuntimeError(CONNECTION_SESSION_CHANGED)
+        return session
 
     def _connection_lineage(self) -> int:
         lineage = self._connection_session_lineage
@@ -1351,6 +1358,16 @@ class Realtime:
             self._connection_session_lineage = None
             self._connection_access_token = None
             raise
+        try:
+            current_session = self._session_for_lineage(lineage)
+        except RuntimeError:
+            try:
+                await connection.disconnect()
+            finally:
+                self._connection_session_lineage = None
+                self._connection_access_token = None
+            raise
+        self._connection_access_token = current_session.access_token
         self._connection = connection
         return connection
 

@@ -13,6 +13,7 @@ from volcano_sdk import (
     RealtimeDisconnectContext,
     RealtimeErrorContext,
     RealtimePresenceInfo,
+    Session,
     VolcanoClient,
 )
 from volcano_sdk import realtime as realtime_module
@@ -418,6 +419,21 @@ class FakeCentrifugeClient:
         subscription = self._subs.get(name)
         if subscription is not None:
             await subscription.emit(data)
+
+
+class BlockingConnectCentrifugeClient(FakeCentrifugeClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.connect_started = asyncio.Event()
+        self.connect_release = asyncio.Event()
+
+    async def connect(self) -> None:
+        self.calls.append("connect")
+        self.connect_started.set()
+        await self.connect_release.wait()
+        self.state = SimpleNamespace(value="connected")
+        if self.events is not None:
+            await self.events.on_connected(SimpleNamespace(client="client-123"))
 
 
 @dataclass(frozen=True)
@@ -1984,9 +2000,22 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
         with pytest.raises(RuntimeError, match="must be subscribed"):
             await channel.send({"event": "message", "value": "late"})
 
-        transport.access_token = "access-2"
-        client.auth.sign_in(email="user@example.com", password="secret")
+        generation, _lineage, _session = client._capture_session_binding()
+        refreshed = Session(
+            access_token="access-2",
+            refresh_token="refresh-token-2",
+            user_id="user-123",
+        )
+        assert client._set_session_if_current(
+            refreshed,
+            generation,
+            event="TOKEN_REFRESHED",
+        )
         assert await factory_arguments["get_token"]() == "access-2"
+        transport.access_token = "access-3"
+        client.auth.sign_in(email="user@example.com", password="secret")
+        with pytest.raises(RuntimeError, match="session changed"):
+            await factory_arguments["get_token"]()
         assert client.realtime._connection_token() == "access-2"
         await client.realtime.disconnect()
 
@@ -2004,6 +2033,32 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
         ("unsubscribe", None),
     ]
     assert received == [{"event": "message", "value": "contract"}]
+
+
+def test_realtime_rejects_a_session_change_during_connect() -> None:
+    transport = AuthTransport()
+    official = BlockingConnectCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        subscribing = asyncio.create_task(client.realtime.channel("room").subscribe())
+        await official.connect_started.wait()
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="user@example.com", password="secret")
+        official.connect_release.set()
+
+        with pytest.raises(RuntimeError, match="session changed"):
+            await subscribing
+
+    asyncio.run(scenario())
+
+    assert official.calls == ["connect", "disconnect"]
+    assert client.realtime._connection is None
 
 
 def test_realtime_connection_callbacks_receive_immutable_contexts() -> None:

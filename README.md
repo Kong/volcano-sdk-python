@@ -613,6 +613,10 @@ realtime transport, so later calls to `channel()` return fresh facades.
 Connection callbacks receive immutable contexts, may be synchronous or async,
 and run outside the transport event processor. Each registration returns an
 idempotent function that stops future delivery.
+Access-token refreshes preserve a realtime connection only while the auth
+session lineage remains current. After signing in again or changing users,
+call `disconnect()` before subscribing channels for the new session; the SDK
+refuses to rebind an existing connection across that identity boundary.
 Presence state and client metadata are immutable snapshots. Volcano derives
 the remote identity and metadata from the authenticated user; `track()` stores
 optional local state in `tracked_state` but does not replace that server-managed
