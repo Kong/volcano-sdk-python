@@ -674,6 +674,10 @@ the managed auth page contract from [Hosting #945](https://github.com/Kong/volca
 and the OAuth provider response contract from [Hosting #991](https://github.com/Kong/volcano-hosting/pull/991).
 Its SHA-256 is `68e9d526b8acad3736027ca2278f2534967710d867a6941e338e00f77a77ac76`.
 
+Generated operations are internal. Transport adapters use `sync_detailed()` or
+`asyncio_detailed()` to inspect HTTP status before interpreting the parsed body.
+The generated parsed-body-only shortcuts are not public SDK APIs.
+
 The realtime wrapper includes a narrow compatibility adapter for Volcano's
 project-prefixed publication channels. It still delegates connection,
 subscription, publish, and disconnect behavior to `centrifuge-python` 0.6.
