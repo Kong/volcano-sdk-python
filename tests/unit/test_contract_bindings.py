@@ -17,13 +17,13 @@ ROOT = Path(__file__).parents[2]
 FEATURE_SHA256 = {
     "auth.feature": "c237deb0b3be98d64689699a0ffdcd272e7ef027a2b69439b1768195042ed493",
     "database-delete.feature": (
-        "f1358e5c97fc8483b49a250ef63761ac937e22e0bc3f90c24c5db0462ba10a21"
+        "b328579ee9b33cbb313dd4d13eb899d53f64344c5e5beb00dbfb7eed2098e2c7"
     ),
     "database-insert.feature": (
         "46150600af9f54b690bc5c9b8f230c5ba4e3be755e50ad0921051faa95e45316"
     ),
     "database-update.feature": (
-        "44d657acf525b86add59453b6ae5c9e03f423fd17b6dfbf28f7fff0aece2919d"
+        "7a64470474f2ba842faf1b8352ccc2cd7efa8183212ab309c1321dffb9c093d3"
     ),
     "database.feature": (
         "4685b29357a621068b25984ff0de29cd4c504eebe5cfb597f0b999e29878a668"
@@ -81,6 +81,10 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the SDK operation succeeds",
         "the client acquires and releases the contract lock",
         "the client deletes its contract row",
+        "the client deletes a missing contract row",
+        "the client updates a missing contract row",
+        "the existing contract row is unchanged",
+        "the mutation returns an empty row list",
         "the client inserts its contract row",
         'the client selects the contract table where "slug" equals the fixture slug',
         "the client reads the current session",

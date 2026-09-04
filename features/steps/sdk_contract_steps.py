@@ -266,6 +266,53 @@ def deleted_contract_row_returned(context: Any) -> None:
     assert world.last_outcome.value == [expected]
 
 
+@when("the client updates a missing contract row")
+def update_missing_contract_row(context: Any) -> None:
+    world = _world(context)
+    table = world.client.database(world.fixture["database_name"]).from_(
+        world.fixture["table_name"]
+    )
+    missing_slug = f"{world.fixture['fixture_row']['slug']}-missing"
+    world.record(
+        lambda: (
+            table.update({"value": "must-not-be-written"})
+            .eq("slug", missing_slug)
+            .execute()
+        )
+    )
+
+
+@when("the client deletes a missing contract row")
+def delete_missing_contract_row(context: Any) -> None:
+    world = _world(context)
+    table = world.client.database(world.fixture["database_name"]).from_(
+        world.fixture["table_name"]
+    )
+    missing_slug = f"{world.fixture['fixture_row']['slug']}-missing"
+    world.record(lambda: table.delete().eq("slug", missing_slug).execute())
+
+
+@then("the mutation returns an empty row list")
+def mutation_returns_empty_list(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.last_outcome.value == []
+
+
+@then("the existing contract row is unchanged")
+def existing_contract_row_unchanged(context: Any) -> None:
+    world = _world(context)
+    row = world.fixture["fixture_row"]
+    result = (
+        world.client.database(world.fixture["database_name"])
+        .from_(world.fixture["table_name"])
+        .select("*")
+        .eq("slug", row["slug"])
+        .execute()
+    )
+    assert result == [row]
+
+
 @when("the client uploads and downloads the contract object")
 def upload_and_download(context: Any) -> None:
     world = _world(context)
