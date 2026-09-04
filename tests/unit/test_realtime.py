@@ -2068,6 +2068,37 @@ def test_realtime_broadcast_resubscribe_retains_recoverable_subscription() -> No
     asyncio.run(scenario())
 
 
+def test_centrifuge_preserves_recovery_position_across_unsubscribe() -> None:
+    async def scenario() -> None:
+        centrifuge = importlib.import_module("centrifuge")
+        client = centrifuge.Client(
+            "ws://localhost/realtime/v1/websocket",
+            loop=asyncio.get_running_loop(),
+        )
+        subscription = client.new_subscription("broadcast:room", recoverable=True)
+        subscription._recover = True
+        subscription._epoch = "stream-epoch"
+        subscription._offset = 41
+        subscription.state = centrifuge.SubscriptionState.SUBSCRIBED
+
+        async def unsubscribe_without_transport(_channel: str) -> None:
+            return None
+
+        client._unsubscribe = unsubscribe_without_transport
+
+        await subscription.unsubscribe()
+        command = client._construct_subscribe_command(subscription, 1)
+
+        subscribe = command["subscribe"]
+        assert subscribe["channel"] == "broadcast:room"
+        assert subscribe["recoverable"] is True
+        assert subscribe["recover"] is True
+        assert subscribe["epoch"] == "stream-epoch"
+        assert subscribe["offset"] == 41
+
+    asyncio.run(scenario())
+
+
 def test_realtime_rejects_a_session_change_during_connect() -> None:
     transport = AuthTransport()
     official = BlockingConnectCentrifugeClient()
