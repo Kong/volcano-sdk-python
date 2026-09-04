@@ -589,6 +589,13 @@ assert not client.realtime.is_connected
 stop_connect()
 ```
 
+Broadcast channels use Centrifuge's native stream recovery when server history
+is available. `await channel.unsubscribe()` pauses delivery while retaining the
+in-memory recovery position; a later `await channel.subscribe()` resumes the
+same subscription and requests missed publications. Removing the channel or
+disconnecting the realtime client discards that position. Recovery is not
+persisted across processes and never crosses an auth session lineage.
+
 Presence channels expose server-managed user metadata and join/leave events:
 
 ```python

@@ -1382,7 +1382,7 @@ class Realtime:
                     channel._name,
                     events=_ChannelEvents(channel),
                     join_leave=channel._type == "presence",
-                    recoverable=channel._type == "presence",
+                    recoverable=channel._type != "postgres",
                 )
             await channel._subscription.subscribe()
             if channel._type == "presence":
