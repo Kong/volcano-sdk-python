@@ -671,8 +671,8 @@ row fetching for every channel.
 The POC supports Python 3.11 and 3.14. Its public facade is intentionally
 independent of generated httpx types. Compatibility is verified against the
 bundled Volcano API contract from hosting commit
-`cb12eb4636252cb658f13850dad930fa73a5dc4c`; `openapi/openapi.yaml` has SHA-256
-`95e5c102830db382064180afca4c62ad8b11faabf58148f9d21236046b930090`.
+`91f1983dc733caee5ca70d32607ece0427a56f44`; `openapi/openapi.yaml` has SHA-256
+`0049bfc31e5dd72eaf8d0394a9c354e97f1d8a3723a013df19f40108b21535fc`.
 
 The realtime wrapper includes a narrow compatibility adapter for Volcano's
 project-prefixed publication channels. It still delegates connection,
