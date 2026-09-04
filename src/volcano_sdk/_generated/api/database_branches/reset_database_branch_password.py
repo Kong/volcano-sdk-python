@@ -93,7 +93,9 @@ def sync_detailed(
 
      Issues a new password for the branch and invalidates the previous
     connection string. Existing connections are not interrupted; new ones
-    must use the returned string.
+    must use the returned string. Proxies pick the rotation up within a few
+    seconds, so the previous password can still open new connections until
+    then.
 
     The parent database's credentials are untouched.
 
@@ -136,7 +138,9 @@ def sync(
 
      Issues a new password for the branch and invalidates the previous
     connection string. Existing connections are not interrupted; new ones
-    must use the returned string.
+    must use the returned string. Proxies pick the rotation up within a few
+    seconds, so the previous password can still open new connections until
+    then.
 
     The parent database's credentials are untouched.
 
@@ -174,7 +178,9 @@ async def asyncio_detailed(
 
      Issues a new password for the branch and invalidates the previous
     connection string. Existing connections are not interrupted; new ones
-    must use the returned string.
+    must use the returned string. Proxies pick the rotation up within a few
+    seconds, so the previous password can still open new connections until
+    then.
 
     The parent database's credentials are untouched.
 
@@ -217,7 +223,9 @@ async def asyncio(
 
      Issues a new password for the branch and invalidates the previous
     connection string. Existing connections are not interrupted; new ones
-    must use the returned string.
+    must use the returned string. Proxies pick the rotation up within a few
+    seconds, so the previous password can still open new connections until
+    then.
 
     The parent database's credentials are untouched.
 
