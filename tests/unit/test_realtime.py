@@ -360,6 +360,7 @@ class FakeCentrifugeClient:
         self.presence_entered: asyncio.Event | None = None
         self.presence_release: asyncio.Event | None = None
         self.disconnect_probe: Callable[[], None] | None = None
+        self.disconnect_error: Exception | None = None
         self.subscription: FakeSubscription | None = None
         self._subs: dict[str, FakeSubscription] = {}
 
@@ -373,6 +374,8 @@ class FakeCentrifugeClient:
         self.calls.append("disconnect")
         if self.disconnect_probe is not None:
             self.disconnect_probe()
+        if self.disconnect_error is not None:
+            raise self.disconnect_error
         self.state = SimpleNamespace(value="disconnected")
         self._subs.clear()
         if self.events is not None:
@@ -625,7 +628,7 @@ def test_realtime_postgres_delivery_identity_changes_on_resubscription() -> None
     asyncio.run(scenario())
 
 
-def test_realtime_postgres_delivery_identity_uses_connection_session() -> None:
+def test_realtime_rejects_new_subscriptions_after_session_changes() -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(
         anon_key="anon-key",
@@ -643,11 +646,10 @@ def test_realtime_postgres_delivery_identity_uses_connection_session() -> None:
             "public:messages",
             channel_type="postgres",
         )
-        await postgres.subscribe()
 
-        identity = postgres._capture_postgres_delivery_identity()
-
-        assert not postgres._postgres_delivery_is_current(identity)
+        with pytest.raises(RuntimeError, match="session changed"):
+            await postgres.subscribe()
+        assert postgres._subscription is None
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -2058,6 +2060,40 @@ def test_realtime_rejects_a_session_change_during_connect() -> None:
     asyncio.run(scenario())
 
     assert official.calls == ["connect", "disconnect"]
+    assert client.realtime._connection is None
+
+
+def test_realtime_retains_a_provisional_connection_when_cleanup_fails() -> None:
+    transport = AuthTransport()
+    official = BlockingConnectCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        subscribing = asyncio.create_task(client.realtime.channel("room").subscribe())
+        await official.connect_started.wait()
+        transport.access_token = "access-2"
+        client.auth.sign_in(email="user@example.com", password="secret")
+        cleanup_error = centrifuge_error("disconnect failed")
+        official.disconnect_error = cleanup_error
+        official.connect_release.set()
+
+        with pytest.raises(type(cleanup_error), match="disconnect failed"):
+            await subscribing
+        assert client.realtime._connection is not None
+
+        official.disconnect_error = None
+        with pytest.raises(RuntimeError, match="session changed"):
+            await client.realtime.channel("room").subscribe()
+        await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+    assert official.calls == ["connect", "disconnect", "disconnect"]
     assert client.realtime._connection is None
 
 

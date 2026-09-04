@@ -1338,6 +1338,7 @@ class Realtime:
 
     async def _connect_locked(self) -> _VolcanoCentrifugeConnection:
         if self._connection is not None:
+            self._session_for_lineage(self._connection_lineage())
             return self._connection
         _generation, lineage, session = self._client_context._capture_session_binding()
         if session is None:
@@ -1361,11 +1362,11 @@ class Realtime:
         try:
             current_session = self._session_for_lineage(lineage)
         except RuntimeError:
-            try:
-                await connection.disconnect()
-            finally:
-                self._connection_session_lineage = None
-                self._connection_access_token = None
+            self._connection = connection
+            await connection.disconnect()
+            self._connection = None
+            self._connection_session_lineage = None
+            self._connection_access_token = None
             raise
         self._connection_access_token = current_session.access_token
         self._connection = connection
