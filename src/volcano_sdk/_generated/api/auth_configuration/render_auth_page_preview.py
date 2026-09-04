@@ -8,8 +8,8 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.hosted_renderable_page_type import check_hosted_renderable_page_type
-from ...models.hosted_renderable_page_type import HostedRenderablePageType
+from ...models.hosted_auth_page_type import check_hosted_auth_page_type
+from ...models.hosted_auth_page_type import HostedAuthPageType
 from typing import cast
 from uuid import UUID
 
@@ -17,18 +17,27 @@ from uuid import UUID
 
 def _get_kwargs(
     id: UUID,
-    page_type: HostedRenderablePageType,
+    page_type: HostedAuthPageType,
+    *,
+    ticket: str,
 
 ) -> dict[str, Any]:
     
 
     
 
-    
+    params: dict[str, Any] = {}
+
+    params["ticket"] = ticket
+
+
+    params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
+
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/projects/{id}/auth/hosted/{page_type}".format(id=quote(str(id), safe=""),page_type=quote(str(page_type), safe=""),),
+        "url": "/projects/{id}/auth/pages/{page_type}/preview".format(id=quote(str(id), safe=""),page_type=quote(str(page_type), safe=""),),
+        "params": params,
     }
 
 
@@ -36,18 +45,18 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | str | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> str | None:
     if response.status_code == 200:
         response_200 = response.text
         return response_200
 
-    if response.status_code == 400:
-        response_400 = cast(Any, None)
-        return response_400
-
     if response.status_code == 404:
-        response_404 = cast(Any, None)
+        response_404 = response.text
         return response_404
+
+    if response.status_code == 500:
+        response_500 = response.text
+        return response_500
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -55,7 +64,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | str]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[str]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -66,35 +75,36 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 def sync_detailed(
     id: UUID,
-    page_type: HostedRenderablePageType,
+    page_type: HostedAuthPageType,
     *,
     client: AuthenticatedClient | Client,
+    ticket: str,
 
-) -> Response[Any | str]:
-    """ Render a managed auth page
+) -> Response[str]:
+    """ Render a short-lived managed auth page preview
 
-     Public HTML endpoint for signup, forgot-password, device approval,
-    verify-email, and reset-password pages. Login uses the path without a
-    page type.
-    Requires `Accept: text/html`.
-    Returns 404 when managed hosted pages are disabled for the project.
+     Public HTML endpoint for a preview URL returned by the POST operation.
+    The signed ticket contains the unsaved appearance, expires shortly, and
+    runs the production page runtime against mocked authentication responses.
 
     Args:
         id (UUID):
-        page_type (HostedRenderablePageType):
+        page_type (HostedAuthPageType):
+        ticket (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | str]
+        Response[str]
      """
 
 
     kwargs = _get_kwargs(
         id=id,
 page_type=page_type,
+ticket=ticket,
 
     )
 
@@ -106,29 +116,29 @@ page_type=page_type,
 
 def sync(
     id: UUID,
-    page_type: HostedRenderablePageType,
+    page_type: HostedAuthPageType,
     *,
     client: AuthenticatedClient | Client,
+    ticket: str,
 
-) -> Any | str | None:
-    """ Render a managed auth page
+) -> str | None:
+    """ Render a short-lived managed auth page preview
 
-     Public HTML endpoint for signup, forgot-password, device approval,
-    verify-email, and reset-password pages. Login uses the path without a
-    page type.
-    Requires `Accept: text/html`.
-    Returns 404 when managed hosted pages are disabled for the project.
+     Public HTML endpoint for a preview URL returned by the POST operation.
+    The signed ticket contains the unsaved appearance, expires shortly, and
+    runs the production page runtime against mocked authentication responses.
 
     Args:
         id (UUID):
-        page_type (HostedRenderablePageType):
+        page_type (HostedAuthPageType):
+        ticket (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | str
+        str
      """
 
 
@@ -136,40 +146,42 @@ def sync(
         id=id,
 page_type=page_type,
 client=client,
+ticket=ticket,
 
     ).parsed
 
 async def asyncio_detailed(
     id: UUID,
-    page_type: HostedRenderablePageType,
+    page_type: HostedAuthPageType,
     *,
     client: AuthenticatedClient | Client,
+    ticket: str,
 
-) -> Response[Any | str]:
-    """ Render a managed auth page
+) -> Response[str]:
+    """ Render a short-lived managed auth page preview
 
-     Public HTML endpoint for signup, forgot-password, device approval,
-    verify-email, and reset-password pages. Login uses the path without a
-    page type.
-    Requires `Accept: text/html`.
-    Returns 404 when managed hosted pages are disabled for the project.
+     Public HTML endpoint for a preview URL returned by the POST operation.
+    The signed ticket contains the unsaved appearance, expires shortly, and
+    runs the production page runtime against mocked authentication responses.
 
     Args:
         id (UUID):
-        page_type (HostedRenderablePageType):
+        page_type (HostedAuthPageType):
+        ticket (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | str]
+        Response[str]
      """
 
 
     kwargs = _get_kwargs(
         id=id,
 page_type=page_type,
+ticket=ticket,
 
     )
 
@@ -181,29 +193,29 @@ page_type=page_type,
 
 async def asyncio(
     id: UUID,
-    page_type: HostedRenderablePageType,
+    page_type: HostedAuthPageType,
     *,
     client: AuthenticatedClient | Client,
+    ticket: str,
 
-) -> Any | str | None:
-    """ Render a managed auth page
+) -> str | None:
+    """ Render a short-lived managed auth page preview
 
-     Public HTML endpoint for signup, forgot-password, device approval,
-    verify-email, and reset-password pages. Login uses the path without a
-    page type.
-    Requires `Accept: text/html`.
-    Returns 404 when managed hosted pages are disabled for the project.
+     Public HTML endpoint for a preview URL returned by the POST operation.
+    The signed ticket contains the unsaved appearance, expires shortly, and
+    runs the production page runtime against mocked authentication responses.
 
     Args:
         id (UUID):
-        page_type (HostedRenderablePageType):
+        page_type (HostedAuthPageType):
+        ticket (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | str
+        str
      """
 
 
@@ -211,5 +223,6 @@ async def asyncio(
         id=id,
 page_type=page_type,
 client=client,
+ticket=ticket,
 
     )).parsed

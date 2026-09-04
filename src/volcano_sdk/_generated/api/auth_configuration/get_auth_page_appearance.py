@@ -8,8 +8,8 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.hosted_renderable_page_type import check_hosted_renderable_page_type
-from ...models.hosted_renderable_page_type import HostedRenderablePageType
+from ...models.auth_page_appearance_response import AuthPageAppearanceResponse
+from ...models.error import Error
 from typing import cast
 from uuid import UUID
 
@@ -17,7 +17,6 @@ from uuid import UUID
 
 def _get_kwargs(
     id: UUID,
-    page_type: HostedRenderablePageType,
 
 ) -> dict[str, Any]:
     
@@ -28,7 +27,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/projects/{id}/auth/hosted/{page_type}".format(id=quote(str(id), safe=""),page_type=quote(str(page_type), safe=""),),
+        "url": "/projects/{id}/auth/pages/appearance".format(id=quote(str(id), safe=""),),
     }
 
 
@@ -36,18 +35,41 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | str | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> AuthPageAppearanceResponse | Error | None:
     if response.status_code == 200:
-        response_200 = response.text
+        response_200 = AuthPageAppearanceResponse.from_dict(response.json())
+
+
+
         return response_200
 
-    if response.status_code == 400:
-        response_400 = cast(Any, None)
-        return response_400
+    if response.status_code == 401:
+        response_401 = Error.from_dict(response.json())
+
+
+
+        return response_401
+
+    if response.status_code == 403:
+        response_403 = Error.from_dict(response.json())
+
+
+
+        return response_403
 
     if response.status_code == 404:
-        response_404 = cast(Any, None)
+        response_404 = Error.from_dict(response.json())
+
+
+
         return response_404
+
+    if response.status_code == 500:
+        response_500 = Error.from_dict(response.json())
+
+
+
+        return response_500
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -55,7 +77,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | str]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[AuthPageAppearanceResponse | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -66,35 +88,26 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 def sync_detailed(
     id: UUID,
-    page_type: HostedRenderablePageType,
     *,
-    client: AuthenticatedClient | Client,
+    client: AuthenticatedClient,
 
-) -> Response[Any | str]:
-    """ Render a managed auth page
-
-     Public HTML endpoint for signup, forgot-password, device approval,
-    verify-email, and reset-password pages. Login uses the path without a
-    page type.
-    Requires `Accept: text/html`.
-    Returns 404 when managed hosted pages are disabled for the project.
+) -> Response[AuthPageAppearanceResponse | Error]:
+    """ Get managed auth page appearance
 
     Args:
         id (UUID):
-        page_type (HostedRenderablePageType):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | str]
+        Response[AuthPageAppearanceResponse | Error]
      """
 
 
     kwargs = _get_kwargs(
         id=id,
-page_type=page_type,
 
     )
 
@@ -106,70 +119,52 @@ page_type=page_type,
 
 def sync(
     id: UUID,
-    page_type: HostedRenderablePageType,
     *,
-    client: AuthenticatedClient | Client,
+    client: AuthenticatedClient,
 
-) -> Any | str | None:
-    """ Render a managed auth page
-
-     Public HTML endpoint for signup, forgot-password, device approval,
-    verify-email, and reset-password pages. Login uses the path without a
-    page type.
-    Requires `Accept: text/html`.
-    Returns 404 when managed hosted pages are disabled for the project.
+) -> AuthPageAppearanceResponse | Error | None:
+    """ Get managed auth page appearance
 
     Args:
         id (UUID):
-        page_type (HostedRenderablePageType):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | str
+        AuthPageAppearanceResponse | Error
      """
 
 
     return sync_detailed(
         id=id,
-page_type=page_type,
 client=client,
 
     ).parsed
 
 async def asyncio_detailed(
     id: UUID,
-    page_type: HostedRenderablePageType,
     *,
-    client: AuthenticatedClient | Client,
+    client: AuthenticatedClient,
 
-) -> Response[Any | str]:
-    """ Render a managed auth page
-
-     Public HTML endpoint for signup, forgot-password, device approval,
-    verify-email, and reset-password pages. Login uses the path without a
-    page type.
-    Requires `Accept: text/html`.
-    Returns 404 when managed hosted pages are disabled for the project.
+) -> Response[AuthPageAppearanceResponse | Error]:
+    """ Get managed auth page appearance
 
     Args:
         id (UUID):
-        page_type (HostedRenderablePageType):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | str]
+        Response[AuthPageAppearanceResponse | Error]
      """
 
 
     kwargs = _get_kwargs(
         id=id,
-page_type=page_type,
 
     )
 
@@ -181,35 +176,26 @@ page_type=page_type,
 
 async def asyncio(
     id: UUID,
-    page_type: HostedRenderablePageType,
     *,
-    client: AuthenticatedClient | Client,
+    client: AuthenticatedClient,
 
-) -> Any | str | None:
-    """ Render a managed auth page
-
-     Public HTML endpoint for signup, forgot-password, device approval,
-    verify-email, and reset-password pages. Login uses the path without a
-    page type.
-    Requires `Accept: text/html`.
-    Returns 404 when managed hosted pages are disabled for the project.
+) -> AuthPageAppearanceResponse | Error | None:
+    """ Get managed auth page appearance
 
     Args:
         id (UUID):
-        page_type (HostedRenderablePageType):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | str
+        AuthPageAppearanceResponse | Error
      """
 
 
     return (await asyncio_detailed(
         id=id,
-page_type=page_type,
 client=client,
 
     )).parsed

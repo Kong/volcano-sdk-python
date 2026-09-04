@@ -8,8 +8,8 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.hosted_renderable_page_type import check_hosted_renderable_page_type
-from ...models.hosted_renderable_page_type import HostedRenderablePageType
+from ...models.error import Error
+from ...models.update_auth_page_theme_request import UpdateAuthPageThemeRequest
 from typing import cast
 from uuid import UUID
 
@@ -17,37 +17,73 @@ from uuid import UUID
 
 def _get_kwargs(
     id: UUID,
-    page_type: HostedRenderablePageType,
+    *,
+    body: UpdateAuthPageThemeRequest,
 
 ) -> dict[str, Any]:
-    
+    headers: dict[str, Any] = {}
+
 
     
 
     
 
     _kwargs: dict[str, Any] = {
-        "method": "get",
-        "url": "/projects/{id}/auth/hosted/{page_type}".format(id=quote(str(id), safe=""),page_type=quote(str(page_type), safe=""),),
+        "method": "put",
+        "url": "/projects/{id}/auth/pages/theme".format(id=quote(str(id), safe=""),),
     }
 
+    _kwargs["json"] = body.to_dict()
 
+    headers["Content-Type"] = "application/json"
+
+    _kwargs["headers"] = headers
     return _kwargs
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | str | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Error | UpdateAuthPageThemeRequest | None:
     if response.status_code == 200:
-        response_200 = response.text
+        response_200 = UpdateAuthPageThemeRequest.from_dict(response.json())
+
+
+
         return response_200
 
     if response.status_code == 400:
-        response_400 = cast(Any, None)
+        response_400 = Error.from_dict(response.json())
+
+
+
         return response_400
 
+    if response.status_code == 401:
+        response_401 = Error.from_dict(response.json())
+
+
+
+        return response_401
+
+    if response.status_code == 403:
+        response_403 = Error.from_dict(response.json())
+
+
+
+        return response_403
+
     if response.status_code == 404:
-        response_404 = cast(Any, None)
+        response_404 = Error.from_dict(response.json())
+
+
+
         return response_404
+
+    if response.status_code == 500:
+        response_500 = Error.from_dict(response.json())
+
+
+
+        return response_500
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -55,7 +91,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | str]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | UpdateAuthPageThemeRequest]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -66,35 +102,29 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 def sync_detailed(
     id: UUID,
-    page_type: HostedRenderablePageType,
     *,
-    client: AuthenticatedClient | Client,
+    client: AuthenticatedClient,
+    body: UpdateAuthPageThemeRequest,
 
-) -> Response[Any | str]:
-    """ Render a managed auth page
-
-     Public HTML endpoint for signup, forgot-password, device approval,
-    verify-email, and reset-password pages. Login uses the path without a
-    page type.
-    Requires `Accept: text/html`.
-    Returns 404 when managed hosted pages are disabled for the project.
+) -> Response[Error | UpdateAuthPageThemeRequest]:
+    """ Save the managed auth page theme
 
     Args:
         id (UUID):
-        page_type (HostedRenderablePageType):
+        body (UpdateAuthPageThemeRequest):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | str]
+        Response[Error | UpdateAuthPageThemeRequest]
      """
 
 
     kwargs = _get_kwargs(
         id=id,
-page_type=page_type,
+body=body,
 
     )
 
@@ -106,70 +136,58 @@ page_type=page_type,
 
 def sync(
     id: UUID,
-    page_type: HostedRenderablePageType,
     *,
-    client: AuthenticatedClient | Client,
+    client: AuthenticatedClient,
+    body: UpdateAuthPageThemeRequest,
 
-) -> Any | str | None:
-    """ Render a managed auth page
-
-     Public HTML endpoint for signup, forgot-password, device approval,
-    verify-email, and reset-password pages. Login uses the path without a
-    page type.
-    Requires `Accept: text/html`.
-    Returns 404 when managed hosted pages are disabled for the project.
+) -> Error | UpdateAuthPageThemeRequest | None:
+    """ Save the managed auth page theme
 
     Args:
         id (UUID):
-        page_type (HostedRenderablePageType):
+        body (UpdateAuthPageThemeRequest):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | str
+        Error | UpdateAuthPageThemeRequest
      """
 
 
     return sync_detailed(
         id=id,
-page_type=page_type,
 client=client,
+body=body,
 
     ).parsed
 
 async def asyncio_detailed(
     id: UUID,
-    page_type: HostedRenderablePageType,
     *,
-    client: AuthenticatedClient | Client,
+    client: AuthenticatedClient,
+    body: UpdateAuthPageThemeRequest,
 
-) -> Response[Any | str]:
-    """ Render a managed auth page
-
-     Public HTML endpoint for signup, forgot-password, device approval,
-    verify-email, and reset-password pages. Login uses the path without a
-    page type.
-    Requires `Accept: text/html`.
-    Returns 404 when managed hosted pages are disabled for the project.
+) -> Response[Error | UpdateAuthPageThemeRequest]:
+    """ Save the managed auth page theme
 
     Args:
         id (UUID):
-        page_type (HostedRenderablePageType):
+        body (UpdateAuthPageThemeRequest):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | str]
+        Response[Error | UpdateAuthPageThemeRequest]
      """
 
 
     kwargs = _get_kwargs(
         id=id,
-page_type=page_type,
+body=body,
 
     )
 
@@ -181,35 +199,29 @@ page_type=page_type,
 
 async def asyncio(
     id: UUID,
-    page_type: HostedRenderablePageType,
     *,
-    client: AuthenticatedClient | Client,
+    client: AuthenticatedClient,
+    body: UpdateAuthPageThemeRequest,
 
-) -> Any | str | None:
-    """ Render a managed auth page
-
-     Public HTML endpoint for signup, forgot-password, device approval,
-    verify-email, and reset-password pages. Login uses the path without a
-    page type.
-    Requires `Accept: text/html`.
-    Returns 404 when managed hosted pages are disabled for the project.
+) -> Error | UpdateAuthPageThemeRequest | None:
+    """ Save the managed auth page theme
 
     Args:
         id (UUID):
-        page_type (HostedRenderablePageType):
+        body (UpdateAuthPageThemeRequest):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | str
+        Error | UpdateAuthPageThemeRequest
      """
 
 
     return (await asyncio_detailed(
         id=id,
-page_type=page_type,
 client=client,
+body=body,
 
     )).parsed
