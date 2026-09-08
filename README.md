@@ -180,6 +180,12 @@ events. Pass `next_cursor` back as `cursor` to continue a search. `logs.activity
 returns immutable time buckets using the same resource selector and query syntax.
 Both methods require an active user session.
 
+Database selects refresh the captured session after an HTTP 401 and retry the
+same query once. Concurrent reads reuse a successful refresh for that session.
+Replacing or signing out the session prevents replay and raises `SessionChangedError`.
+A failed refresh preserves the original read error. Writes, HTTP 403 responses,
+and network failures do not trigger this retry.
+
 Database builders are immutable, so you can safely reuse a base query. Chain `neq()`, `gt()`,
 `gte()`, `lt()`, and `lte()` for comparison filters:
 
