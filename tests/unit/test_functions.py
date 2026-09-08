@@ -4,9 +4,11 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
+import httpx
 import pytest
 
 from volcano_sdk import ServerError, VolcanoClient
+from volcano_sdk._transport import GeneratedTransport
 
 if TYPE_CHECKING:
     from volcano_sdk._transport import Transport
@@ -99,6 +101,44 @@ def test_functions_returns_a_function_owned_error_response() -> None:
     assert result.status == 422
     assert result.data == {"error": "invalid order"}
     assert result.version == "v2"
+
+
+@pytest.mark.parametrize("version", [None, "v2"])
+def test_functions_returns_none_for_an_empty_http_204(version: str | None) -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/functions/resolve":
+            return httpx.Response(
+                200,
+                json={
+                    "name": "send-welcome",
+                    "function_id": "00000000-0000-4000-8000-000000000040",
+                    "cache_ttl_seconds": 60,
+                },
+            )
+        headers = {} if version is None else {"X-Volcano-Version": version}
+        return httpx.Response(204, headers=headers)
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+
+    result = client.functions.invoke("send-welcome")
+
+    assert result.status == 204
+    assert result.data is None
+    assert result.version == version
+    assert result.headers.get("x-volcano-version") == version
+
+
+@pytest.mark.parametrize("payload", [[], "text", 1, None])
+def test_functions_still_rejects_non_object_http_200(payload: object) -> None:
+    transport = FakeFunctionsTransport()
+    transport.invoke_response = FakeResponse(200, payload, {})
+
+    with pytest.raises(TypeError, match="Expected a complete function response"):
+        functions_client(transport).functions.invoke("send-welcome")
 
 
 def test_function_response_has_a_stable_hash() -> None:

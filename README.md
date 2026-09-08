@@ -125,6 +125,9 @@ with client.locks.with_lock("deploy", ttl=30) as guard:
     print(guard.lease.fencing_token)
 ```
 
+Function invocation returns `data=None` for an empty HTTP 204 response, retaining
+the status, headers, and version. Other responses still require a JSON object.
+
 Storage removals run in input order. A failed request raises after any earlier
 paths have already been deleted. Visibility updates return the server-confirmed
 object; `public_url` is set only when the object is public.
