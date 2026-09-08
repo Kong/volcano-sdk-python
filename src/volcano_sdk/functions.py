@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ._transport import TransportResponse, invoke, response_payload
@@ -94,11 +95,14 @@ class Functions:
         if not _HTTP_SUCCESS_MIN <= status < _HTTP_SUCCESS_MAX and version is None:
             response_payload(response, _HTTP_SUCCESS_MIN)
         data = response.payload
-        if not isinstance(data, Mapping):
+        no_content = (
+            status == HTTPStatus.NO_CONTENT and not response.content and data is None
+        )
+        if not isinstance(data, Mapping) and not no_content:
             raise TypeError(_INVALID_FUNCTION_RESPONSE)
         headers = {} if response.headers is None else dict(response.headers)
         return FunctionResponse(
-            data=cast("Mapping[str, JSONValue]", data),
+            data=cast("Mapping[str, JSONValue] | None", data),
             status=status,
             headers=headers,
             version=version,
