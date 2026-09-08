@@ -34,6 +34,7 @@ from .models import (
 )
 
 _INVALID_STORAGE_PAGE = "Expected a complete storage page"
+_INVALID_CONTENT_TYPE = "content_type must be a non-blank printable ASCII string"
 _INVALID_STORAGE_PATH = "Storage path must be a non-empty string"
 _INVALID_STORAGE_PATHS = "Storage paths must be non-empty strings"
 _INVALID_STORAGE_VISIBILITY = "is_public must be a boolean"
@@ -432,6 +433,19 @@ class StorageAbortUploadTransport(Protocol):
         ...
 
 
+def _upload_content_type(value: object) -> str:
+    if value is None:
+        return "application/octet-stream"
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or not value.isascii()
+        or not value.isprintable()
+    ):
+        raise ValueError(_INVALID_CONTENT_TYPE)
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class StorageBucket:
     """Operations scoped to one storage bucket."""
@@ -439,14 +453,22 @@ class StorageBucket:
     _client: StorageContext
     _name: str
 
-    def upload(self, path: str, data: bytes | BinaryIO) -> dict[str, Any]:
+    def upload(
+        self,
+        path: str,
+        data: bytes | BinaryIO,
+        *,
+        content_type: str | None = None,
+    ) -> dict[str, Any]:
         """Upload bytes or the remaining contents of a binary stream."""
+        mime_type = _upload_content_type(content_type)
         response = invoke(
             self._client._transport.upload_storage_object,
             authorization=self._client._session_token(),
             bucket_name=self._name,
             path=path,
             data=_simple_upload_bytes(data),
+            content_type=mime_type,
         )
         payload = response_payload(response, 201)
         return dict(payload)

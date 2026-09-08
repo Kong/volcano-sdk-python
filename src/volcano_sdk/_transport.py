@@ -582,6 +582,7 @@ class Transport(Protocol):
         bucket_name: str,
         path: str,
         data: bytes,
+        content_type: str = "application/octet-stream",
     ) -> TransportResponse: ...
 
     def download_storage_object(
@@ -1342,13 +1343,14 @@ class GeneratedTransport:
         bucket_name: str,
         path: str,
         data: bytes,
+        content_type: str = "application/octet-stream",
     ) -> TransportResponse:
         file_name = PurePosixPath(path).name or "file"
         body = UploadStorageObjectFilesBody(
             file=File(
                 payload=BytesIO(data),
                 file_name=file_name,
-                mime_type="application/octet-stream",
+                mime_type=content_type,
             )
         )
         with self._client(authorization) as client:

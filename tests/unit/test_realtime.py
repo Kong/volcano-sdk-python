@@ -160,8 +160,9 @@ class AuthTransport:
         bucket_name: str,
         path: str,
         data: bytes,
+        content_type: str = "application/octet-stream",
     ) -> Response:
-        del authorization, bucket_name, path, data
+        del authorization, bucket_name, path, data, content_type
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
     def download_storage_object(

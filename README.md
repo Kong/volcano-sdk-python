@@ -60,7 +60,7 @@ print(activity.total)
 rows = client.database("main").from_("items").select("*").eq("slug", "a").execute()
 
 bucket = client.storage.from_("assets")
-bucket.upload("a.txt", b"hello")
+bucket.upload("a.txt", b"hello", content_type="text/plain; charset=utf-8")
 with open("avatar.png", "rb") as avatar:
     bucket.upload("avatars/me.png", avatar)
 downloaded = bucket.download("a.txt")
@@ -127,6 +127,10 @@ with client.locks.with_lock("deploy", ttl=30) as guard:
 
 Function invocation returns `data=None` for an empty HTTP 204 response, retaining
 the status, headers, and version. Other responses still require a JSON object.
+
+Simple uploads accept an optional `content_type` for the multipart file part.
+Omit it or pass `None` to retain `application/octet-stream`. Explicit values must
+be non-blank printable ASCII; MIME parameters such as `charset=utf-8` are allowed.
 
 Storage removals run in input order. A failed request raises after any earlier
 paths have already been deleted. Visibility updates return the server-confirmed
