@@ -516,6 +516,9 @@ if session is not None:
 auth-state subscribers. It raises `ValueError` when the session type or any credential field is
 incomplete.
 
+Password sign-in raises `SessionChangedError` if local session state changes while the request is
+in flight. The late response does not replace the newer state or emit a sign-in notification.
+
 Refresh the session with its current refresh token:
 
 ```python

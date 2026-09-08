@@ -958,6 +958,7 @@ class Auth:
 
     def sign_in(self, *, email: str, password: str) -> Session:
         """Sign in a user and store the returned session."""
+        generation, _ = self._client._capture_session()
         response = invoke(
             self._client._transport.auth_signin,
             authorization=self._client._anon_token(),
@@ -966,7 +967,8 @@ class Auth:
         )
         payload = response_payload(response, 200)
         session = _session_from_payload(payload)
-        self._client._set_session(session)
+        if not self._client._set_session_if_current(session, generation):
+            raise SessionChangedError
         return session
 
     def refresh_session(self) -> Session:
