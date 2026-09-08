@@ -167,6 +167,8 @@ def _linked_oauth_providers() -> AuthListOAuthProvidersResponse200:
 
 
 class StateTransport:
+    on_signin: Callable[[], None] | None = None
+
     def __init__(self) -> None:
         self.next_access_token = "access-1"
         self.signup_response = Response(
@@ -327,6 +329,8 @@ class StateTransport:
 
     def auth_signin(self, **kwargs: Any) -> Response:
         self.authorizations.append(("auth", kwargs["authorization"]))
+        if self.on_signin is not None:
+            self.on_signin()
         return Response(
             200,
             {
@@ -872,6 +876,39 @@ def test_auth_facade_reads_an_empty_session_without_transport() -> None:
 
     assert client.auth.get_session() is None
     assert transport.authorizations == []
+
+
+def test_sign_in_does_not_replace_a_session_adopted_during_the_request() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    replacement = Session(
+        "replacement-access", "replacement-refresh", "replacement-user"
+    )
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    transport.on_signin = replace_session
+    with pytest.raises(SessionChangedError):
+        client.auth.sign_in(email="user@example.com", password="secret")
+
+    assert client.auth.get_session() == replacement
+
+
+def test_sign_in_does_not_restore_a_session_cleared_during_the_request() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    received: list[str] = []
+    client.auth.on_auth_state_change(lambda event, _session: received.append(event))
+    received.clear()
+    transport.on_signin = client.auth.sign_out
+
+    with pytest.raises(SessionChangedError):
+        client.auth.sign_in(email="user@example.com", password="secret")
+
+    assert client.auth.get_session() is None
+    assert received == ["SIGNED_OUT"]
 
 
 def test_auth_state_subscription_reports_session_transitions() -> None:
