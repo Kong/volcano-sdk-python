@@ -494,6 +494,7 @@ def test_public_facade_delegates_to_the_contract_operations() -> None:
         "bucket_name": "assets",
         "path": "a.txt",
         "data": b"hello",
+        "content_type": "application/octet-stream",
     }
     assert transport.calls[6][1] == {
         "authorization": "access-token",
@@ -546,6 +547,7 @@ def test_storage_upload_reads_a_caller_owned_binary_stream_from_its_position() -
             "bucket_name": "assets",
             "path": "a.txt",
             "data": b"uploaded",
+            "content_type": "application/octet-stream",
         },
     )
 
