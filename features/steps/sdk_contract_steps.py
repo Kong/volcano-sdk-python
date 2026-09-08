@@ -182,7 +182,7 @@ def fixture_row_returned(context: Any) -> None:
 @when("the client inserts its contract row")
 def insert_contract_row(context: Any) -> None:
     world = _world(context)
-    row = world.fixture["mutation_rows"]["python"]["insert"]
+    row = world.fixture["mutation_rows"]["insert"]
     table = world.client.database(world.fixture["database_name"]).from_(
         world.fixture["table_name"]
     )
@@ -201,14 +201,14 @@ def insert_contract_row(context: Any) -> None:
 def inserted_contract_row_returned(context: Any) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    expected = world.fixture["mutation_rows"]["python"]["insert"]
+    expected = world.fixture["mutation_rows"]["insert"]
     assert world.last_outcome.value == [expected]
 
 
 @when("the client updates its contract row")
 def update_contract_row(context: Any) -> None:
     world = _world(context)
-    row = world.fixture["mutation_rows"]["python"]["update"]
+    row = world.fixture["mutation_rows"]["update"]
     table = world.client.database(world.fixture["database_name"]).from_(
         world.fixture["table_name"]
     )
@@ -235,14 +235,14 @@ def update_contract_row(context: Any) -> None:
 def updated_contract_row_returned(context: Any) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    expected = world.fixture["mutation_rows"]["python"]["update"]["after"]
+    expected = world.fixture["mutation_rows"]["update"]["after"]
     assert world.last_outcome.value == [expected]
 
 
 @when("the client deletes its contract row")
 def delete_contract_row(context: Any) -> None:
     world = _world(context)
-    row = world.fixture["mutation_rows"]["python"]["delete"]
+    row = world.fixture["mutation_rows"]["delete"]
     table = world.client.database(world.fixture["database_name"]).from_(
         world.fixture["table_name"]
     )
@@ -262,7 +262,7 @@ def delete_contract_row(context: Any) -> None:
 def deleted_contract_row_returned(context: Any) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    expected = world.fixture["mutation_rows"]["python"]["delete"]
+    expected = world.fixture["mutation_rows"]["delete"]
     assert world.last_outcome.value == [expected]
 
 
