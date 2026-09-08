@@ -135,12 +135,14 @@ class VolcanoClient:
         self,
         session: Session,
         *,
-        event: AuthChangeEvent = "SIGNED_IN",
+        event: AuthChangeEvent | None = "SIGNED_IN",
     ) -> None:
         with self._session_lock:
             self._current_session = session
             self._session_generation += 1
             self._session_lineage += 1
+            if event is None:
+                return
             callback_ids = tuple(self._auth_callbacks)
             dispatch = self._enqueue_auth_state_change(callback_ids, event, session)
         if dispatch:

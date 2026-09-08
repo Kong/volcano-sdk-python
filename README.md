@@ -512,8 +512,9 @@ if session is not None:
     fresh.auth.set_session(session)
 ```
 
-`set_session()` copies the session without making a request or persisting credentials. It raises
-`ValueError` when the session type or any credential field is incomplete.
+`set_session()` copies the session without making a request, persisting credentials, or notifying
+auth-state subscribers. It raises `ValueError` when the session type or any credential field is
+incomplete.
 
 Refresh the session with its current refresh token:
 
