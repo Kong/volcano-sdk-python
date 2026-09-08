@@ -1707,6 +1707,10 @@ def test_get_hosted_auth_url_rejects_an_unknown_action() -> None:
 
 def test_adopt_hosted_auth_session_validates_state_and_stores_an_owned_copy() -> None:
     client = VolcanoClient(anon_key="anon", _transport=StateTransport())
+    received: list[tuple[str, Session | None]] = []
+    client.auth.on_auth_state_change(
+        lambda event, session: received.append((event, session))
+    )
     supplied = Session(
         access_token="hosted-access",
         refresh_token="hosted-refresh",
@@ -1722,6 +1726,7 @@ def test_adopt_hosted_auth_session_validates_state_and_stores_an_owned_copy() ->
     assert adopted == supplied
     assert adopted is not supplied
     assert client.auth.get_session() is adopted
+    assert received == [("INITIAL_SESSION", None), ("SIGNED_IN", adopted)]
 
 
 def test_hosted_auth_state_mismatch_preserves_current_session() -> None:
@@ -2711,9 +2716,21 @@ def test_auth_facade_reads_established_immutable_session_without_transport() -> 
     assert transport.authorizations == calls_after_sign_in
 
 
-def test_auth_facade_adopts_an_owned_session_without_transport() -> None:
+@pytest.mark.parametrize("existing_session", [False, True])
+def test_auth_facade_adopts_an_owned_session_without_transport(
+    *,
+    existing_session: bool,
+) -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
+    if existing_session:
+        client.auth.sign_in(email="user@example.com", password="secret")
+    calls_before = list(transport.authorizations)
+    received: list[tuple[str, Session | None]] = []
+    client.auth.on_auth_state_change(
+        lambda event, session: received.append((event, session))
+    )
+    received.clear()
     supplied = Session(
         access_token="adopted-access",
         refresh_token="adopted-refresh",
@@ -2725,7 +2742,12 @@ def test_auth_facade_adopts_an_owned_session_without_transport() -> None:
     assert adopted == supplied
     assert adopted is not supplied
     assert client.auth.get_session() is adopted
-    assert transport.authorizations == []
+    assert transport.authorizations == calls_before
+    assert received == []
+    client.auth.on_auth_state_change(
+        lambda event, session: received.append((event, session))
+    )
+    assert received == [("INITIAL_SESSION", adopted)]
 
 
 def test_auth_facade_adoption_replaces_the_current_session() -> None:

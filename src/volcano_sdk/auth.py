@@ -450,7 +450,7 @@ class AuthContext(Protocol):
         self,
         session: Session,
         *,
-        event: AuthChangeEvent = "SIGNED_IN",
+        event: AuthChangeEvent | None = "SIGNED_IN",
     ) -> None: ...
 
     def _capture_session(self) -> tuple[int, Session | None]: ...
@@ -497,9 +497,9 @@ class Auth:
         return self._client._subscribe_auth_state_change(callback)
 
     def set_session(self, session: Session) -> Session:
-        """Copy a complete session into local client state."""
+        """Copy a complete session locally without notifying auth subscribers."""
         owned = _copy_complete_session(session)
-        self._client._set_session(owned)
+        self._client._set_session(owned, event=None)
         return owned
 
     def sign_up(
@@ -697,7 +697,9 @@ class Auth:
     ) -> Session:
         """Validate returned hosted-auth state before storing its session."""
         _validate_hosted_auth_callback_state(state, expected_state)
-        return self.set_session(session)
+        owned = _copy_complete_session(session)
+        self._client._set_session(owned)
+        return owned
 
     def sign_in_with_oauth(
         self,
