@@ -28,7 +28,7 @@ tag and GitHub release. `publish.yml` runs as **Check release package** and:
 Registry publishing is not implemented in this phase. There is no upload job,
 registry credential request, or publishing environment dependency. A GitHub
 release does not mean the package is available from PyPI.
-Workflows serialize releases.
+Package checks serialize runs for the same tag; different releases run independently.
 
 ## One-time setup
 
