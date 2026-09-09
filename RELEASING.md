@@ -68,9 +68,8 @@ be installed from its registry.
 ## Recovery
 
 Re-run a failed Release Please job to rediscover an existing pending release PR.
-For a failed publish, re-run the publish workflow or dispatch `Publish SDK` on
-`main` with an existing stable release tag. It rebuilds and rechecks that commit;
-it never publishes arbitrary branch contents.
+For a failed publish, re-run its original `Publish SDK` workflow run. It rebuilds
+and rechecks the release event's commit. There is no arbitrary-ref dispatch input.
 
 PyPI's publisher skips already-uploaded files so a partial upload can complete.
 Do not delete or move a released tag to repair a package. Fix the source and
