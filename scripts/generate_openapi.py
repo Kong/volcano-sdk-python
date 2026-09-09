@@ -28,6 +28,7 @@ REQUIRED_OPERATION_MODULES = {
     "query_database_select.py",
     "release_project_lock.py",
     "renew_project_lock.py",
+    "replace_shared_variables.py",
     "resolve_function_for_invocation.py",
     "search_project_logs.py",
     "update_storage_object_visibility.py",

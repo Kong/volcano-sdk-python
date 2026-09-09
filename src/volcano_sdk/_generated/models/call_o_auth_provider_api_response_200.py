@@ -29,7 +29,7 @@ class CallOAuthProviderAPIResponse200:
             provider (CallOAuthProviderAPIResponse200Provider):
             endpoint (str):
             status_code (int):
-            data (Any): Raw provider JSON value, or null when the provider returns no body
+            data (Any): Raw JSON value returned by the OAuth provider's API
      """
 
     provider: CallOAuthProviderAPIResponse200Provider
