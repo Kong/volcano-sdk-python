@@ -21,7 +21,6 @@ jobs:
         with:
           persist-credentials: false
       - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-      - run: bash .github/scripts/release-tests.sh
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}

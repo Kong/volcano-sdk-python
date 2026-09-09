@@ -9,8 +9,9 @@ release per merged PR. Breaking changes participate in version calculation.
 
 The Volcano GitHub App creates the release PR. The workflow enables GitHub's
 normal squash auto-merge only for that App's same-repository, non-draft release
-branch and an increasing stable version. Major versions use the same checks.
-It does not approve reviews or bypass branch protections.
+branch. Release Please owns version calculation, including major bumps.
+GitHub enforces required checks; the workflow does not approve reviews or bypass
+branch protections.
 
 Required `main` checks: `test (3.11)` and `test (3.14)`.
 Keep these required and auto-merge enabled in repository settings. If reviews
@@ -93,7 +94,6 @@ release a new version.
 ## Verification
 
 ```sh
-bash .github/scripts/release-tests.sh
 go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 ```
 
