@@ -96,6 +96,10 @@ from .ban_user_response_status import BanUserResponseStatus
 from .batch_function_deploy_failure import BatchFunctionDeployFailure
 from .batch_function_deploy_failure_operation import BatchFunctionDeployFailureOperation
 from .batch_function_deploy_response import BatchFunctionDeployResponse
+from .byoc_frontend_custom_domain_tls_config import BYOCFrontendCustomDomainTLSConfig
+from .byoc_frontend_custom_domain_tls_config_mode import BYOCFrontendCustomDomainTLSConfigMode
+from .byoc_project_config_frontend_custom_domain_tls_config import BYOCProjectConfigFrontendCustomDomainTLSConfig
+from .byoc_project_config_frontend_custom_domain_tls_config_mode import BYOCProjectConfigFrontendCustomDomainTLSConfigMode
 from .call_o_auth_provider_api_body import CallOAuthProviderAPIBody
 from .call_o_auth_provider_api_body_body import CallOAuthProviderAPIBodyBody
 from .call_o_auth_provider_api_body_method import CallOAuthProviderAPIBodyMethod
@@ -199,6 +203,7 @@ from .frontend_deployment_operation import FrontendDeploymentOperation
 from .frontend_deployment_status import FrontendDeploymentStatus
 from .frontend_domain_routing_record import FrontendDomainRoutingRecord
 from .frontend_domain_routing_record_record_type import FrontendDomainRoutingRecordRecordType
+from .frontend_domain_routing_record_zone_apex_record_type import FrontendDomainRoutingRecordZoneApexRecordType
 from .frontend_domain_verification_record import FrontendDomainVerificationRecord
 from .frontend_framework import FrontendFramework
 from .frontend_status import FrontendStatus
@@ -298,6 +303,10 @@ from .log_search_event import LogSearchEvent
 from .log_search_request import LogSearchRequest
 from .log_search_response import LogSearchResponse
 from .log_stream_request import LogStreamRequest
+from .managed_frontend_custom_domain_tls_config import ManagedFrontendCustomDomainTLSConfig
+from .managed_frontend_custom_domain_tls_config_mode import ManagedFrontendCustomDomainTLSConfigMode
+from .managed_project_config_frontend_custom_domain_tls_config import ManagedProjectConfigFrontendCustomDomainTLSConfig
+from .managed_project_config_frontend_custom_domain_tls_config_mode import ManagedProjectConfigFrontendCustomDomainTLSConfigMode
 from .metric_usage_data import MetricUsageData
 from .o_auth_config import OAuthConfig
 from .o_auth_config_provider import OAuthConfigProvider
@@ -594,6 +603,10 @@ __all__ = (
     "BatchFunctionDeployFailure",
     "BatchFunctionDeployFailureOperation",
     "BatchFunctionDeployResponse",
+    "BYOCFrontendCustomDomainTLSConfig",
+    "BYOCFrontendCustomDomainTLSConfigMode",
+    "BYOCProjectConfigFrontendCustomDomainTLSConfig",
+    "BYOCProjectConfigFrontendCustomDomainTLSConfigMode",
     "CallOAuthProviderAPIBody",
     "CallOAuthProviderAPIBodyBody",
     "CallOAuthProviderAPIBodyMethod",
@@ -697,6 +710,7 @@ __all__ = (
     "FrontendDeploymentStatus",
     "FrontendDomainRoutingRecord",
     "FrontendDomainRoutingRecordRecordType",
+    "FrontendDomainRoutingRecordZoneApexRecordType",
     "FrontendDomainVerificationRecord",
     "FrontendFramework",
     "FrontendStatus",
@@ -796,6 +810,10 @@ __all__ = (
     "LogSearchRequest",
     "LogSearchResponse",
     "LogStreamRequest",
+    "ManagedFrontendCustomDomainTLSConfig",
+    "ManagedFrontendCustomDomainTLSConfigMode",
+    "ManagedProjectConfigFrontendCustomDomainTLSConfig",
+    "ManagedProjectConfigFrontendCustomDomainTLSConfigMode",
     "MetricUsageData",
     "OAuthConfig",
     "OAuthConfigProvider",

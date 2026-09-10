@@ -13,6 +13,15 @@ from contract_support import (
 )
 
 from volcano_sdk import VolcanoClient
+from volcano_sdk._generated.models.create_frontend_custom_domain_request import (
+    CreateFrontendCustomDomainRequest,
+)
+from volcano_sdk._generated.models.frontend_custom_domain_response import (
+    FrontendCustomDomainResponse,
+)
+from volcano_sdk._generated.models.managed_frontend_custom_domain_tls_config import (
+    ManagedFrontendCustomDomainTLSConfig,
+)
 
 ACCESS_TOKEN_CLOCK_TICK_SECONDS = 1.1
 
@@ -442,3 +451,69 @@ def subscriber_received_message(context: Any) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value == world.realtime_message
+
+
+@given("a managed custom-domain TLS request")
+def managed_tls_request(context: Any) -> None:
+    _world(context).managed_tls_request = CreateFrontendCustomDomainRequest(
+        domain="app.example.com",
+        tls=ManagedFrontendCustomDomainTLSConfig(mode="managed"),
+    )
+
+
+@when("the client encodes the request and decodes a pending verification response")
+def encode_managed_tls_request(context: Any) -> None:
+    world = _world(context)
+    world.managed_tls_wire_request = world.managed_tls_request.to_dict()
+    world.managed_tls_response = FrontendCustomDomainResponse.from_dict(
+        {
+            "domain": "app.example.com",
+            "tls_mode": "managed",
+            "domain_status": "pending_verification",
+            "verification_status": "pending",
+            "verification_records": [
+                {
+                    "name": "_token.app.example.com",
+                    "type": "CNAME",
+                    "value": "_validation.volcano.dev",
+                }
+            ],
+            "required_routing_record": {
+                "record_type": "CNAME",
+                "zone_apex_record_type": "ALIAS",
+                "name": "app.example.com",
+                "value": "frontend.frontends.volcano.dev",
+            },
+            "effective_urls": ["https://frontend.frontends.volcano.dev/"],
+            "created_at": "2026-09-02T12:00:00Z",
+            "updated_at": "2026-09-02T12:00:00Z",
+        }
+    )
+
+
+@then("the request selects managed TLS without certificate material")
+def managed_tls_request_has_no_certificate(context: Any) -> None:
+    assert _world(context).managed_tls_wire_request == {
+        "domain": "app.example.com",
+        "tls": {"mode": "managed"},
+    }
+
+
+@then("the response exposes the managed lifecycle and DNS records")
+def managed_tls_response_has_lifecycle(context: Any) -> None:
+    response = _world(context).managed_tls_response
+    assert response.domain == "app.example.com"
+    assert response.tls_mode == "managed"
+    assert response.domain_status == "pending_verification"
+    assert response.verification_status == "pending"
+    assert response.verification_records[0].to_dict() == {
+        "name": "_token.app.example.com",
+        "type": "CNAME",
+        "value": "_validation.volcano.dev",
+    }
+    assert response.required_routing_record.to_dict() == {
+        "record_type": "CNAME",
+        "zone_apex_record_type": "ALIAS",
+        "name": "app.example.com",
+        "value": "frontend.frontends.volcano.dev",
+    }

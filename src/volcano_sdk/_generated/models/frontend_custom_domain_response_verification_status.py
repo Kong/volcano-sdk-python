@@ -1,8 +1,8 @@
 from typing import Literal
 
-FrontendCustomDomainResponseVerificationStatus = Literal['pending', 'verified']
+FrontendCustomDomainResponseVerificationStatus = Literal['failed', 'pending', 'verified']
 
-FRONTEND_CUSTOM_DOMAIN_RESPONSE_VERIFICATION_STATUS_VALUES: set[FrontendCustomDomainResponseVerificationStatus] = { 'pending', 'verified',  }
+FRONTEND_CUSTOM_DOMAIN_RESPONSE_VERIFICATION_STATUS_VALUES: set[FrontendCustomDomainResponseVerificationStatus] = { 'failed', 'pending', 'verified',  }
 
 def check_frontend_custom_domain_response_verification_status(value: str) -> FrontendCustomDomainResponseVerificationStatus:
     if value in FRONTEND_CUSTOM_DOMAIN_RESPONSE_VERIFICATION_STATUS_VALUES:

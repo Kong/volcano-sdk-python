@@ -30,12 +30,10 @@ class ProjectConfigFrontend:
 
         Attributes:
             name (str):
-            custom_domain (ProjectConfigCustomDomain | Unset): Custom domain with BYOC TLS (PRO plan). `tls` is required
-                when the
-                domain is first created and optional afterwards: providing new TLS
-                material for the same domain rotates the certificate in place (zero
-                downtime); omitting `tls` keeps the stored certificate. TLS material is
-                write-only and omitted from config export.
+            custom_domain (ProjectConfigCustomDomain | Unset): Custom domain with managed or BYOC TLS (PRO plan). `tls` is
+                required
+                when the domain is first created and optional afterwards. BYOC TLS
+                material is write-only and omitted from config export.
      """
 
     name: str

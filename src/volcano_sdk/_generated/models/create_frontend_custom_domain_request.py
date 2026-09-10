@@ -11,7 +11,8 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
-  from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig
+  from ..models.byoc_frontend_custom_domain_tls_config import BYOCFrontendCustomDomainTLSConfig
+  from ..models.managed_frontend_custom_domain_tls_config import ManagedFrontendCustomDomainTLSConfig
 
 
 
@@ -26,26 +27,31 @@ class CreateFrontendCustomDomainRequest:
     """ 
         Attributes:
             domain (str): Fully-qualified domain name (hostname only, no scheme/path) Example: app.example.com.
-            tls (FrontendCustomDomainTLSConfig):
+            tls (BYOCFrontendCustomDomainTLSConfig | ManagedFrontendCustomDomainTLSConfig):
      """
 
     domain: str
-    tls: FrontendCustomDomainTLSConfig
-    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+    tls: BYOCFrontendCustomDomainTLSConfig | ManagedFrontendCustomDomainTLSConfig
 
 
 
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig
+        from ..models.byoc_frontend_custom_domain_tls_config import BYOCFrontendCustomDomainTLSConfig
+        from ..models.managed_frontend_custom_domain_tls_config import ManagedFrontendCustomDomainTLSConfig
         domain = self.domain
 
-        tls = self.tls.to_dict()
+        tls: dict[str, Any]
+        if isinstance(self.tls, ManagedFrontendCustomDomainTLSConfig):
+            tls = self.tls.to_dict()
+        else:
+            tls = self.tls.to_dict()
+
 
 
         field_dict: dict[str, Any] = {}
-        field_dict.update(self.additional_properties)
+
         field_dict.update({
             "domain": domain,
             "tls": tls,
@@ -57,13 +63,31 @@ class CreateFrontendCustomDomainRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig
+        from ..models.byoc_frontend_custom_domain_tls_config import BYOCFrontendCustomDomainTLSConfig
+        from ..models.managed_frontend_custom_domain_tls_config import ManagedFrontendCustomDomainTLSConfig
         d = dict(src_dict)
         domain = d.pop("domain")
 
-        tls = FrontendCustomDomainTLSConfig.from_dict(d.pop("tls"))
+        def _parse_tls(data: object) -> BYOCFrontendCustomDomainTLSConfig | ManagedFrontendCustomDomainTLSConfig:
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                componentsschemas_create_frontend_custom_domain_tls_config_type_0 = ManagedFrontendCustomDomainTLSConfig.from_dict(data)
 
 
+
+                return componentsschemas_create_frontend_custom_domain_tls_config_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            if not isinstance(data, dict):
+                raise TypeError()
+            componentsschemas_create_frontend_custom_domain_tls_config_type_1 = BYOCFrontendCustomDomainTLSConfig.from_dict(data)
+
+
+
+            return componentsschemas_create_frontend_custom_domain_tls_config_type_1
+
+        tls = _parse_tls(d.pop("tls"))
 
 
         create_frontend_custom_domain_request = cls(
@@ -71,22 +95,5 @@ class CreateFrontendCustomDomainRequest:
             tls=tls,
         )
 
-
-        create_frontend_custom_domain_request.additional_properties = d
         return create_frontend_custom_domain_request
 
-    @property
-    def additional_keys(self) -> list[str]:
-        return list(self.additional_properties.keys())
-
-    def __getitem__(self, key: str) -> Any:
-        return self.additional_properties[key]
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        self.additional_properties[key] = value
-
-    def __delitem__(self, key: str) -> None:
-        del self.additional_properties[key]
-
-    def __contains__(self, key: str) -> bool:
-        return key in self.additional_properties
