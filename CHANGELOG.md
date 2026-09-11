@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/Kong/volcano-sdk-python/compare/v0.3.1...v0.3.2) (2026-09-11)
+
+
+### Bug Fixes
+
+* **logs:** refresh rejected session credentials once ([#122](https://github.com/Kong/volcano-sdk-python/issues/122)) ([35a7edc](https://github.com/Kong/volcano-sdk-python/commit/35a7edc727734dd695ac202b9aed309a543b9ad8))
+
 ## [0.3.1](https://github.com/Kong/volcano-sdk-python/compare/v0.3.0...v0.3.1) (2026-09-11)
 
 
