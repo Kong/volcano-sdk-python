@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 from behave import given, then, when
+from broadcast_pause import verify_broadcast_pause
 from contract_support import (
     CONTRACT_EXCEPTIONS,
     ContractWorld,
@@ -12,9 +13,10 @@ from contract_support import (
     classify_error,
 )
 
-from volcano_sdk import VolcanoClient
+from volcano_sdk import Session, VolcanoClient
 
 ACCESS_TOKEN_CLOCK_TICK_SECONDS = 1.1
+REJECTED_BEARER = "sdk-contract-rejected-access-token"
 
 
 def _world(context: Any) -> ContractWorld:
@@ -156,6 +158,39 @@ def auth_state_listener_observes_signed_in_user(context: Any) -> None:
 @given("an authenticated client")
 def authenticated_client(context: Any) -> None:
     _world(context).authenticate()
+
+
+@given("the client replaces its access token with a rejected token")
+def replace_access_token(context: Any) -> None:
+    client = _world(context).client
+    session = client.auth.get_session()
+    assert session is not None
+    client.auth.set_session(
+        Session(
+            access_token=REJECTED_BEARER,
+            refresh_token=session.refresh_token,
+            user_id=session.user_id,
+        )
+    )
+
+
+@then("the database read replaces the rejected token for the same user")
+def read_replaced_token(context: Any) -> None:
+    world = _world(context)
+    session = world.client.auth.get_session()
+    assert session is not None
+    assert session.access_token
+    assert session.access_token != REJECTED_BEARER
+    assert session.refresh_token
+    assert session.user_id == world.fixture["user_id"]
+
+
+@when("one client pauses delivery for 1 second and then resumes with the same handler")
+def pause_and_resume(context: Any) -> None:
+    world = _world(context)
+    if world.last_outcome is not None and not world.last_outcome.ok:
+        return
+    world.record(lambda: world.run(verify_broadcast_pause(world)))
 
 
 @when('the client selects the contract table where "slug" equals the fixture slug')

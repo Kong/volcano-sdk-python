@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import importlib.util
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from behave.step_registry import registry
@@ -24,6 +27,12 @@ FEATURE_SHA256 = {
     ),
     "database-update.feature": (
         "7a64470474f2ba842faf1b8352ccc2cd7efa8183212ab309c1321dffb9c093d3"
+    ),
+    "database-refresh.feature": (
+        "76eb18c448899a6849e84015f1a276a984e1005eb494042b45247c67923cac89"
+    ),
+    "realtime-pause.feature": (
+        "d4ff3e9cab94dfe1adabbe50e47c6ff46ca8fc48b357f1d9c425aea6d8519e33"
     ),
     "database.feature": (
         "4685b29357a621068b25984ff0de29cd4c504eebe5cfb597f0b999e29878a668"
@@ -68,6 +77,12 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         for definition in definitions
     }
     assert bound == {
+        "the client replaces its access token with a rejected token",
+        "the database read replaces the rejected token for the same user",
+        (
+            "one client pauses delivery for 1 second "
+            "and then resumes with the same handler"
+        ),
         "a service-role client",
         "a fresh client adopts the current session",
         "a fresh client tries to refresh the signed-out session",
@@ -106,6 +121,39 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the subscriber receives the contract message within 10 seconds",
         "two authenticated realtime clients",
     }
+
+
+@pytest.mark.parametrize("leak", [False, True])
+def test_broadcast_pause_checks_silence(
+    monkeypatch: pytest.MonkeyPatch, *, leak: bool
+) -> None:
+    pause = _load_module(
+        "contract_broadcast_pause", ROOT / "features" / "broadcast_pause.py"
+    )
+    subscriber = SimpleNamespace(
+        on=Mock(), subscribe=AsyncMock(), unsubscribe=AsyncMock()
+    )
+
+    async def publish(message: object) -> None:
+        paused = subscriber.unsubscribe.await_count > subscriber.subscribe.await_count
+        if leak or not paused:
+            subscriber.on.call_args.args[1](message)
+
+    world = SimpleNamespace(
+        subscriber=subscriber,
+        publisher=SimpleNamespace(send=AsyncMock(side_effect=publish)),
+        realtime_message={"event": "message", "value": "contract"},
+    )
+    monkeypatch.setattr(pause.asyncio, "sleep", AsyncMock())
+    if leak:
+        with pytest.raises(AssertionError, match="while paused"):
+            asyncio.run(pause.verify_broadcast_pause(world))
+    else:
+        assert (
+            asyncio.run(pause.verify_broadcast_pause(world)) == world.realtime_message
+        )
+    subscriber.on.assert_called_once()
+    pause.asyncio.sleep.assert_awaited_once_with(1)
 
 
 def test_fixture_loader_requires_absolute_private_file(tmp_path: Path) -> None:
