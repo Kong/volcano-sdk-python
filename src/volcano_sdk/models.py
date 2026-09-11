@@ -89,6 +89,11 @@ class Session:
     access_token: str
     refresh_token: str
     user_id: str
+    user: Mapping[str, JSONValue] | None = field(default=None, repr=False, hash=False)
+
+    def __post_init__(self) -> None:
+        """Own a local user snapshot without treating it as server validation."""
+        object.__setattr__(self, "user", _freeze_metadata(self.user))
 
 
 AuthStateCallback: TypeAlias = Callable[[AuthChangeEvent, Session | None], None]

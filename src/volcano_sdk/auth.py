@@ -202,10 +202,13 @@ def _has_complete_values(session: Session) -> bool:
 def _copy_complete_session(session: object) -> Session:
     if not isinstance(session, Session) or not _has_complete_values(session):
         raise ValueError(_INCOMPLETE_SESSION)
+    if session.user is not None and session.user.get("id") != session.user_id:
+        raise ValueError(_INCOMPLETE_SESSION)
     return Session(
         access_token=session.access_token,
         refresh_token=session.refresh_token,
         user_id=session.user_id,
+        user=session.user,
     )
 
 
@@ -224,6 +227,7 @@ def _session_from_payload(payload: object) -> Session:
             access_token=cast("str", values.get("access_token")),
             refresh_token=cast("str", values.get("refresh_token")),
             user_id=cast("str", user.get("id")),
+            user=cast("Mapping[str, JSONValue]", user),
         )
     )
 

@@ -406,6 +406,7 @@ def test_public_facade_delegates_to_the_contract_operations() -> None:
         access_token="access-token",
         refresh_token="refresh-token",
         user_id="user-123",
+        user={"id": "user-123"},
     )
     assert client.current_session is session
     assert rows == [{"slug": "a"}]

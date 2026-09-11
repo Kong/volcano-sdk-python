@@ -273,6 +273,12 @@ follow-up raises its usual typed error; it does not undo the successful signup.
 
 `get_session()` reads immutable local state. It does not refresh or validate the token.
 
+Sessions returned by authentication retain the user payload in `session.user`,
+including metadata. The snapshot is deeply immutable and available without a
+request. It is cached data, not proof of authentication; use `auth.get_user()`
+to fetch the server-validated profile. Existing three-field `Session` construction
+still works, with `user=None`. An adopted snapshot must have the same user ID.
+
 `get_user()` sends the active access token to Volcano and returns an immutable, server-validated
 profile with the complete public AuthUser fields. Profile timestamps are timezone-aware `datetime`
 values, and nested user and application metadata are immutable. The request does not replace the

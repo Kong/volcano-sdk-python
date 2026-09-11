@@ -1275,6 +1275,7 @@ def test_sign_in_anonymously_stores_the_returned_session_and_metadata() -> None:
         access_token="anonymous-access",
         refresh_token="anonymous-refresh",
         user_id="00000000-0000-4000-8000-000000000099",
+        user={"id": "00000000-0000-4000-8000-000000000099"},
     )
     assert client.auth.get_session() is session
     assert transport.anonymous_signin_calls == [
@@ -1924,6 +1925,7 @@ def test_exchange_oauth_code_stores_the_session_after_state_validation() -> None
         access_token="oauth-access",
         refresh_token="oauth-refresh",
         user_id="00000000-0000-4000-8000-000000000010",
+        user={"id": "00000000-0000-4000-8000-000000000010"},
     )
     assert client.auth.get_session() is result
     assert transport.oauth_exchange_calls == [
@@ -2821,6 +2823,7 @@ def test_auth_facade_reads_established_immutable_session_without_transport() -> 
         access_token="access-1",
         refresh_token="refresh-access-1",
         user_id="00000000-0000-4000-8000-000000000010",
+        user={"id": "00000000-0000-4000-8000-000000000010"},
     )
     assert transport.authorizations == calls_after_sign_in
 
@@ -2906,7 +2909,9 @@ def test_refresh_replaces_the_captured_session() -> None:
 
     refreshed = client.auth.refresh_session()
 
-    assert refreshed == Session("access-2", "refresh-2", established.user_id)
+    assert refreshed == Session(
+        "access-2", "refresh-2", established.user_id, user={"id": established.user_id}
+    )
     assert client.auth.get_session() is refreshed
 
 
