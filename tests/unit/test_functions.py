@@ -145,6 +145,7 @@ def test_functions_returns_none_for_an_empty_http_204(version: str | None) -> No
         (b"hello", "text/plain", "hello"),
         (b"42", "text/plain", "42"),
         (b"[]", "text/plain", ()),
+        (b"\n [1, 2]", "text/plain", "\n [1, 2]"),
         (b"broken json", "application/json", "broken json"),
         (b"NaN", "application/json", "NaN"),
         (b"", "text/plain", None),
