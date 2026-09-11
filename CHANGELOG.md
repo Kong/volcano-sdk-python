@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/Kong/volcano-sdk-python/compare/v0.3.4...v0.4.0) (2026-09-11)
+
+
+### Features
+
+* **auth:** retain a local user snapshot in sessions ([#127](https://github.com/Kong/volcano-sdk-python/issues/127)) ([76c9e74](https://github.com/Kong/volcano-sdk-python/commit/76c9e74c04f305de438842de669948a4601eb10c))
+
 ## [0.3.4](https://github.com/Kong/volcano-sdk-python/compare/v0.3.3...v0.3.4) (2026-09-11)
 
 
