@@ -177,7 +177,7 @@ class QueryBuilder(FilterBuilder):
             body["limit"] = self._limit
         if self._offset is not None:
             body["offset"] = self._offset
-        response = self._client.auth._session_read(
+        response = self._client.auth._session_request(
             lambda token: invoke(
                 self._client._transport.query_database_select,
                 authorization=token,
@@ -200,11 +200,13 @@ class InsertBuilder:
 
     def execute(self) -> list[dict[str, Any]]:
         """Insert one row and return the inserted rows."""
-        response = invoke(
-            self._client._transport.query_database_insert,
-            authorization=self._client._session_token(),
-            database_name=self._database_name,
-            body={"table": self._table, "values": _snapshot_row(self._values)},
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                self._client._transport.query_database_insert,
+                authorization=token,
+                database_name=self._database_name,
+                body={"table": self._table, "values": _snapshot_row(self._values)},
+            )
         )
         payload = response_payload(response, 200)
         return list(payload["data"])
@@ -225,15 +227,17 @@ class UpdateBuilder(FilterBuilder):
 
     def execute(self) -> list[dict[str, Any]]:
         """Update matching rows and return them."""
-        response = invoke(
-            self._client._transport.query_database_update,
-            authorization=self._client._session_token(),
-            database_name=self._database_name,
-            body={
-                "table": self._table,
-                "values": _snapshot_row(self._values),
-                "filters": list(self._filters),
-            },
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                self._client._transport.query_database_update,
+                authorization=token,
+                database_name=self._database_name,
+                body={
+                    "table": self._table,
+                    "values": _snapshot_row(self._values),
+                    "filters": list(self._filters),
+                },
+            )
         )
         payload = response_payload(response, 200)
         return list(payload["data"])
@@ -253,11 +257,13 @@ class DeleteBuilder(FilterBuilder):
 
     def execute(self) -> list[dict[str, Any]]:
         """Delete matching rows and return them."""
-        response = invoke(
-            self._client._transport.query_database_delete,
-            authorization=self._client._session_token(),
-            database_name=self._database_name,
-            body={"table": self._table, "filters": list(self._filters)},
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                self._client._transport.query_database_delete,
+                authorization=token,
+                database_name=self._database_name,
+                body={"table": self._table, "filters": list(self._filters)},
+            )
         )
         payload = response_payload(response, 200)
         return list(payload["data"])

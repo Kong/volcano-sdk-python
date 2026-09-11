@@ -989,7 +989,7 @@ class Auth:
             self._client._capture_session_binding()
         )
 
-    def _session_read(
+    def _session_request(
         self, operation: Callable[[str], TransportResponse]
     ) -> TransportResponse:
         binding = self._client._capture_session_binding()
