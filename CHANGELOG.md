@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/Kong/volcano-sdk-python/compare/v0.3.3...v0.3.4) (2026-09-11)
+
+
+### Bug Fixes
+
+* **functions:** preserve JSON values and text responses ([#126](https://github.com/Kong/volcano-sdk-python/issues/126)) ([ead66e1](https://github.com/Kong/volcano-sdk-python/commit/ead66e1ae294466e693e0c8025152c5929958e01))
+
 ## [0.3.3](https://github.com/Kong/volcano-sdk-python/compare/v0.3.2...v0.3.3) (2026-09-11)
 
 
