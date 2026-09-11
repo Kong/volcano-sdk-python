@@ -106,7 +106,9 @@ class Functions:
 def _function_data(response: TransportResponse) -> JSONValue:
     if not response.content:
         return cast("JSONValue", response.payload)
-    text = response.content.decode("utf-8", errors="replace")
+    text = response.content.decode("utf-8-sig", errors="replace")
+    if not text:
+        return None
     content_type = (_header(response.headers, "Content-Type") or "").lower()
     if "application/json" in content_type or text.startswith(("{", "[")):
         try:

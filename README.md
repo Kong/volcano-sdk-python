@@ -126,7 +126,7 @@ with client.locks.with_lock("deploy", ttl=30) as guard:
 ```
 
 Function invocation returns `data=None` for an empty HTTP 204 response, retaining
-the status, headers, and version. Other responses still require a JSON object.
+the status, headers, and version.
 
 Simple uploads accept an optional `content_type` for the multipart file part.
 Omit it or pass `None` to retain `application/octet-stream`. Explicit values must
