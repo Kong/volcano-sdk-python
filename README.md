@@ -280,18 +280,22 @@ including metadata. The snapshot is deeply immutable and available without a
 request. It is cached data, not proof of authentication; use `auth.get_user()`
 to fetch the server-validated profile. Existing three-field `Session` construction
 still works, with `user=None`. An adopted snapshot must have the same user ID.
+Successful `get_user()`, `update_user()`, `convert_anonymous()`, and
+`confirm_email_change()` calls update that local snapshot without changing tokens
+or emitting an auth-state event. Previously returned sessions remain immutable.
 
 `get_user()` sends the active access token to Volcano and returns an immutable, server-validated
 profile with the complete public AuthUser fields. Profile timestamps are timezone-aware `datetime`
-values, and nested user and application metadata are immutable. The request does not replace the
-session or cache the profile. If another authentication operation replaces the session while the
-request is in flight, `get_user()` raises `SessionChangedError` instead of returning a profile for
-stale credentials.
+values, and nested user and application metadata are immutable. The request updates the cached
+profile without changing credentials. If another authentication operation replaces the session
+while the request is in flight, `get_user()` raises `SessionChangedError` instead of returning a
+profile for stale credentials.
 
 `update_user()` updates the current user's password, metadata, or both. Metadata is a shallow patch:
 omitted keys remain unchanged, and setting a key to `None` removes it. The method returns the same
-immutable profile type as `get_user()` and does not replace the active session. It also rejects a
-response if another authentication operation replaces the session while the update is in flight.
+immutable profile type as `get_user()` and updates the cached profile without changing credentials.
+It also rejects a response if another authentication operation replaces the session while the
+update is in flight.
 
 Request a password reset email without creating or changing a session:
 
