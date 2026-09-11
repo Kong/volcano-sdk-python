@@ -58,7 +58,10 @@ def refresh_response() -> httpx.Response:
 
 
 @pytest.mark.parametrize("operation", ["search", "activity"])
-def test_logs_refresh_and_replay_the_same_request(operation: str) -> None:
+@pytest.mark.parametrize("rejection", [b'{"error":"expired"}', b"", b"not json", b"{}"])
+def test_logs_refresh_and_replay_the_same_request(
+    operation: str, rejection: bytes
+) -> None:
     requests: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -66,7 +69,7 @@ def test_logs_refresh_and_replay_the_same_request(operation: str) -> None:
         if request.url.path == "/auth/refresh":
             return refresh_response()
         if request.headers["authorization"] == "Bearer old-access":
-            return httpx.Response(401, json={"error": "expired"})
+            return httpx.Response(401, content=rejection)
         return httpx.Response(
             200, json={"data": [], "limit": 100, "has_more": False, "total": 0}
         )
@@ -79,6 +82,35 @@ def test_logs_refresh_and_replay_the_same_request(operation: str) -> None:
         "Bearer new-access",
     ]
     assert requests[0].url == requests[2].url
+    assert requests[0].content == requests[2].content
+
+
+@pytest.mark.parametrize("operation", ["search", "activity"])
+def test_logs_snapshot_nested_values_before_refresh_callbacks(operation: str) -> None:
+    requests: list[httpx.Request] = []
+    selector = {"type": "function"}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/refresh":
+            return refresh_response()
+        if len(requests) == 1:
+            return httpx.Response(401, json={"error": "expired"})
+        return httpx.Response(
+            200, json={"data": [], "limit": 100, "has_more": False, "total": 0}
+        )
+
+    client = make_client(handle)
+
+    def mutate_on_refresh(event: str, _session: Session | None) -> None:
+        if event == "TOKEN_REFRESHED":
+            selector.update(type="frontend")
+
+    client.auth.on_auth_state_change(mutate_on_refresh)
+    method = client.logs.search if operation == "search" else client.logs.activity
+    method("00000000-0000-4000-8000-000000000001", {"resource": selector})
+
+    assert selector == {"type": "frontend"}
     assert requests[0].content == requests[2].content
 
 

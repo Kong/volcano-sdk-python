@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ._transport import TransportResponse, invoke, response_payload
-from .models import JSONValue, LogActivityResponse, LogSearchResponse
+from .models import JSONValue, LogActivityResponse, LogSearchResponse, _freeze_json
 
 if TYPE_CHECKING:
     from .client import VolcanoClient
@@ -92,7 +92,8 @@ def _log_request(
         raise ValueError(_INVALID_PROJECT_ID)
     if not isinstance(request, Mapping):
         raise TypeError(_INVALID_LOG_REQUEST)
-    return project_id, cast("Mapping[str, JSONValue]", request)
+    snapshot = _freeze_json(cast("Mapping[str, JSONValue]", request))
+    return project_id, cast("Mapping[str, JSONValue]", snapshot)
 
 
 def _response_values(payload: object) -> Mapping[str, object]:
