@@ -1633,6 +1633,8 @@ class GeneratedTransport:
             )
             request_kwargs["json"] = plain_request
             raw_response = client.get_httpx_client().request(**request_kwargs)
+            if raw_response.status_code == HTTP_UNAUTHORIZED:
+                return self._raw_response(raw_response)
             response = build_log_search_response(
                 client=client,
                 response=raw_response,
@@ -1653,6 +1655,8 @@ class GeneratedTransport:
             )
             request_kwargs["json"] = plain_request
             raw_response = client.get_httpx_client().request(**request_kwargs)
+            if raw_response.status_code == HTTP_UNAUTHORIZED:
+                return self._raw_response(raw_response)
             response = build_log_activity_response(
                 client=client,
                 response=raw_response,
