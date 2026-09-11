@@ -73,6 +73,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_404
 
+    if response.status_code == 413:
+        response_413 = Error.from_dict(response.json())
+
+
+
+        return response_413
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
@@ -102,8 +109,9 @@ def sync_detailed(
     volcano-config.yaml rendering with `Accept: application/yaml` or
     `?format=yaml`; the YAML is returned verbatim as the raw response body
     (`Content-Type: application/yaml`) and is meant to be saved as-is.
-    Write-only secrets (SMTP password, OAuth client secrets, TLS material)
-    are omitted from the export; the YAML rendering adds a header comment
+    Variable values and write-only secrets (SMTP password, OAuth client secrets, TLS material)
+    are omitted from the export; shared_variables contains names only; the YAML rendering adds a header
+    comment
     describing how to set them via CLI environment interpolation.
 
     Args:
@@ -145,8 +153,9 @@ def sync(
     volcano-config.yaml rendering with `Accept: application/yaml` or
     `?format=yaml`; the YAML is returned verbatim as the raw response body
     (`Content-Type: application/yaml`) and is meant to be saved as-is.
-    Write-only secrets (SMTP password, OAuth client secrets, TLS material)
-    are omitted from the export; the YAML rendering adds a header comment
+    Variable values and write-only secrets (SMTP password, OAuth client secrets, TLS material)
+    are omitted from the export; shared_variables contains names only; the YAML rendering adds a header
+    comment
     describing how to set them via CLI environment interpolation.
 
     Args:
@@ -183,8 +192,9 @@ async def asyncio_detailed(
     volcano-config.yaml rendering with `Accept: application/yaml` or
     `?format=yaml`; the YAML is returned verbatim as the raw response body
     (`Content-Type: application/yaml`) and is meant to be saved as-is.
-    Write-only secrets (SMTP password, OAuth client secrets, TLS material)
-    are omitted from the export; the YAML rendering adds a header comment
+    Variable values and write-only secrets (SMTP password, OAuth client secrets, TLS material)
+    are omitted from the export; shared_variables contains names only; the YAML rendering adds a header
+    comment
     describing how to set them via CLI environment interpolation.
 
     Args:
@@ -226,8 +236,9 @@ async def asyncio(
     volcano-config.yaml rendering with `Accept: application/yaml` or
     `?format=yaml`; the YAML is returned verbatim as the raw response body
     (`Content-Type: application/yaml`) and is meant to be saved as-is.
-    Write-only secrets (SMTP password, OAuth client secrets, TLS material)
-    are omitted from the export; the YAML rendering adds a header comment
+    Variable values and write-only secrets (SMTP password, OAuth client secrets, TLS material)
+    are omitted from the export; shared_variables contains names only; the YAML rendering adds a header
+    comment
     describing how to set them via CLI environment interpolation.
 
     Args:

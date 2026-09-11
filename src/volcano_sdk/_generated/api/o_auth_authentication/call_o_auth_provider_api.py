@@ -66,20 +66,6 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_401
 
-    if response.status_code == 404:
-        response_404 = Error.from_dict(response.json())
-
-
-
-        return response_404
-
-    if response.status_code == 500:
-        response_500 = Error.from_dict(response.json())
-
-
-
-        return response_500
-
     if response.status_code == 502:
         response_502 = Error.from_dict(response.json())
 
@@ -126,10 +112,6 @@ def sync_detailed(
     - Microsoft Graph profile: `/me`
 
     The response wraps the provider's raw JSON value with request metadata.
-    An empty provider body is represented as `data: null`; the envelope
-    preserves the provider's HTTP status in `status_code`, including errors.
-    Provider response bodies are limited to 8 MiB after decompression.
-    Transport failures, invalid JSON, and oversized bodies return `502`.
 
     Args:
         provider (CallOAuthProviderAPIProvider):
@@ -180,10 +162,6 @@ def sync(
     - Microsoft Graph profile: `/me`
 
     The response wraps the provider's raw JSON value with request metadata.
-    An empty provider body is represented as `data: null`; the envelope
-    preserves the provider's HTTP status in `status_code`, including errors.
-    Provider response bodies are limited to 8 MiB after decompression.
-    Transport failures, invalid JSON, and oversized bodies return `502`.
 
     Args:
         provider (CallOAuthProviderAPIProvider):
@@ -229,10 +207,6 @@ async def asyncio_detailed(
     - Microsoft Graph profile: `/me`
 
     The response wraps the provider's raw JSON value with request metadata.
-    An empty provider body is represented as `data: null`; the envelope
-    preserves the provider's HTTP status in `status_code`, including errors.
-    Provider response bodies are limited to 8 MiB after decompression.
-    Transport failures, invalid JSON, and oversized bodies return `502`.
 
     Args:
         provider (CallOAuthProviderAPIProvider):
@@ -283,10 +257,6 @@ async def asyncio(
     - Microsoft Graph profile: `/me`
 
     The response wraps the provider's raw JSON value with request metadata.
-    An empty provider body is represented as `data: null`; the envelope
-    preserves the provider's HTTP status in `status_code`, including errors.
-    Provider response bodies are limited to 8 MiB after decompression.
-    Transport failures, invalid JSON, and oversized bodies return `502`.
 
     Args:
         provider (CallOAuthProviderAPIProvider):
