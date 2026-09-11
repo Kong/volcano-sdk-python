@@ -429,6 +429,67 @@ def downloaded_range_matches(context: Any) -> None:
     assert world.last_outcome.value["bytes"] == world.storage_bytes[2:8]
 
 
+@when("the client copies, moves, and removes a copy of the contract object")
+def copy_move_and_remove(context: Any) -> None:
+    world = _world(context)
+    bucket = world.client.storage.from_(world.fixture["bucket_name"])
+    source = world.storage_path
+    copied = f"{source}.copy"
+    moved = f"{source}.moved"
+
+    def cleanup() -> None:
+        for item in bucket.list(source).objects:
+            if item.name in {source, copied, moved}:
+                bucket.remove(item.name)
+
+    world.cleanup_callbacks.append(cleanup)
+
+    def operation() -> dict[str, Any]:
+        bucket.upload(source, world.storage_bytes)
+        bucket.copy(source, copied)
+        original_bytes = bucket.download(source)
+        copied_bytes = bucket.download(copied)
+        bucket.move(copied, moved)
+        moved_bytes = bucket.download(moved)
+        after_move = sorted(item.name for item in bucket.list(source).objects)
+        bucket.remove(moved)
+        after_remove = sorted(item.name for item in bucket.list(source).objects)
+        remaining_bytes = bucket.download(source)
+        return {
+            "bytes": [original_bytes, copied_bytes, moved_bytes, remaining_bytes],
+            "after_move": after_move,
+            "after_remove": after_remove,
+        }
+
+    world.record(operation)
+
+
+@then("the original, copied, and moved bytes equal the uploaded bytes")
+def lifecycle_bytes_match(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert all(
+        value == world.storage_bytes for value in world.last_outcome.value["bytes"]
+    )
+
+
+@then("moving the copy leaves only the original and moved paths")
+def moved_paths_match(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.last_outcome.value["after_move"] == sorted(
+        [world.storage_path, f"{world.storage_path}.moved"]
+    )
+
+
+@then("removing the moved object leaves the original unchanged")
+def removed_path_is_absent(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.last_outcome.value["after_remove"] == [world.storage_path]
+    assert world.last_outcome.value["bytes"][3] == world.storage_bytes
+
+
 @then("the stored object path equals the contract path")
 def stored_object_path_matches(context: Any) -> None:
     world = _world(context)

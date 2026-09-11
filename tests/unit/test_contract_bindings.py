@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).parents[2]
 FEATURE_SHA256 = {
+    "storage-lifecycle.feature": (
+        "08d00ac825bc186929904dea75af28052df964e446e7aeb0e2266711536aa88f"
+    ),
     "storage-range.feature": (
         "807424f26ccdf72e74b359eb52a807f3ae4657f95cdef0255f636a8f588e49cd"
     ),
@@ -83,6 +86,10 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         for definition in definitions
     }
     assert bound == {
+        "the client copies, moves, and removes a copy of the contract object",
+        "the original, copied, and moved bytes equal the uploaded bytes",
+        "moving the copy leaves only the original and moved paths",
+        "removing the moved object leaves the original unchanged",
         "the client uploads the contract object and downloads bytes 2 through 7",
         "the downloaded bytes equal uploaded bytes 2 through 7 inclusive",
         (
