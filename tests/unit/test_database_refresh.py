@@ -8,7 +8,13 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from volcano_sdk import AuthenticationError, Session, SessionChangedError, VolcanoClient
+from volcano_sdk import (
+    AuthenticationError,
+    Session,
+    SessionChangedError,
+    TransportError,
+    VolcanoClient,
+)
 from volcano_sdk._transport import GeneratedTransport
 
 if TYPE_CHECKING:
@@ -310,14 +316,12 @@ def test_read_rechecks_session_after_replay_or_failure_notification(
 
 
 @pytest.mark.parametrize("operation", ["select", "insert", "update", "delete"])
-def test_only_select_401_is_eligible_for_refresh(operation: str) -> None:
+def test_database_403_is_not_eligible_for_refresh(operation: str) -> None:
     paths: list[str] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
         paths.append(request.url.path)
-        return httpx.Response(
-            403 if operation == "select" else 401, json={"error": "denied"}
-        )
+        return httpx.Response(403, json={"error": "denied"})
 
     client = make_client(handle)
     table = client.database("db").from_("items")
@@ -330,3 +334,54 @@ def test_only_select_401_is_eligible_for_refresh(operation: str) -> None:
     with pytest.raises(AuthenticationError):
         queries[operation]()
     assert len(paths) == 1
+
+
+@pytest.mark.parametrize("operation", ["insert", "update", "delete"])
+@pytest.mark.parametrize("outcome", ["success", "denied", "replaced", "network"])
+def test_mutation_retries_only_an_explicit_401_under_the_same_session(
+    operation: str, outcome: str
+) -> None:
+    requests: list[httpx.Request] = []
+    replacement = Session("replacement", "replacement-refresh", "other")
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/refresh":
+            if outcome == "replaced":
+                client.auth.set_session(replacement)
+            return refreshed_response()
+        if outcome == "network":
+            message = "timeout"
+            raise httpx.ReadTimeout(message, request=request)
+        if (
+            request.headers["authorization"] == "Bearer old-access"
+            or outcome == "denied"
+        ):
+            return httpx.Response(401, json={"error": "expired"})
+        return rows_response()
+
+    client = make_client(handle)
+    table = client.database("db").from_("items").eq("id", 1)
+    mutation = {
+        "insert": table.insert({"id": 1}).execute,
+        "update": table.update({"id": 1}).execute,
+        "delete": table.delete().execute,
+    }[operation]
+    if outcome == "success":
+        assert mutation() == [{"id": 1}]
+    else:
+        errors = {
+            "denied": AuthenticationError,
+            "replaced": SessionChangedError,
+            "network": TransportError,
+        }
+        with pytest.raises(errors[outcome]):
+            mutation()
+    expected_requests = {"success": 3, "denied": 3, "replaced": 2, "network": 1}
+    assert len(requests) == expected_requests[outcome]
+    assert requests[0].url.path.endswith(f"/{operation}")
+    if len(requests) == 3:
+        assert requests[0].content == requests[2].content
+        assert requests[2].headers["authorization"] == "Bearer new-access"
+    if outcome == "replaced":
+        assert client.auth.get_session() == replacement
