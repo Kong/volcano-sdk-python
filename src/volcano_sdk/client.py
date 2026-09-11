@@ -22,6 +22,7 @@ from .realtime import CentrifugeFactory, Realtime
 from .storage import Storage
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from types import TracebackType
 
 _NO_ACTIVE_SESSION = "No active session"
@@ -166,6 +167,7 @@ class VolcanoClient:
         generation: int,
         *,
         event: AuthChangeEvent = "SIGNED_IN",
+        notifications: list[Callable[[], None]] | None = None,
     ) -> bool:
         with self._session_lock:
             if generation != self._session_generation:
@@ -177,7 +179,7 @@ class VolcanoClient:
             callback_ids = tuple(self._auth_callbacks)
             dispatch = self._enqueue_auth_state_change(callback_ids, event, session)
         if dispatch:
-            self._drain_auth_state_changes()
+            self._dispatch_or_defer(notifications)
         return True
 
     def _clear_session_if_current(
@@ -185,6 +187,7 @@ class VolcanoClient:
         generation: int,
         *,
         event: AuthChangeEvent = "SIGNED_OUT",
+        notifications: list[Callable[[], None]] | None = None,
     ) -> bool:
         with self._session_lock:
             if generation != self._session_generation:
@@ -195,8 +198,16 @@ class VolcanoClient:
             callback_ids = tuple(self._auth_callbacks)
             dispatch = self._enqueue_auth_state_change(callback_ids, event, None)
         if dispatch:
-            self._drain_auth_state_changes()
+            self._dispatch_or_defer(notifications)
         return True
+
+    def _dispatch_or_defer(
+        self, notifications: list[Callable[[], None]] | None
+    ) -> None:
+        if notifications is None:
+            self._drain_auth_state_changes()
+        else:
+            notifications.append(self._drain_auth_state_changes)
 
     def _subscribe_auth_state_change(
         self,
