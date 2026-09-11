@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).parents[2]
 FEATURE_SHA256 = {
+    "storage-range.feature": (
+        "807424f26ccdf72e74b359eb52a807f3ae4657f95cdef0255f636a8f588e49cd"
+    ),
     "storage-metadata.feature": (
         "8a99fab83abf3d73e41ab8557f681b8b1659299a942a1ceb18a2f85009f5af6e"
     ),
@@ -80,6 +83,8 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         for definition in definitions
     }
     assert bound == {
+        "the client uploads the contract object and downloads bytes 2 through 7",
+        "the downloaded bytes equal uploaded bytes 2 through 7 inclusive",
         (
             "the client uploads the contract object as text/plain "
             "and reads its stored metadata"
