@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/Kong/volcano-sdk-python/compare/v0.3.0...v0.3.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **database:** refresh rejected mutation credentials once ([#119](https://github.com/Kong/volcano-sdk-python/issues/119)) ([033dcd4](https://github.com/Kong/volcano-sdk-python/commit/033dcd4196929cb79310bfaa8d40c895c40eb46d))
+
 ## [0.3.0](https://github.com/Kong/volcano-sdk-python/compare/v0.2.0...v0.3.0) (2026-09-11)
 
 
