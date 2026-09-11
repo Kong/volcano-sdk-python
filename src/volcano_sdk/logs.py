@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ._transport import TransportResponse, invoke, response_payload
-from .models import JSONValue, LogActivityResponse, LogSearchResponse
+from .models import JSONValue, LogActivityResponse, LogSearchResponse, _freeze_json
 
 if TYPE_CHECKING:
     from .client import VolcanoClient
@@ -55,11 +55,13 @@ class Logs:
         """Search retained logs for one project resource type."""
         project_id, request = _log_request(project_id, request)
         transport = cast("LogsTransport", self._client._transport)
-        response = invoke(
-            transport.search_project_logs,
-            authorization=self._client._session_token(),
-            project_id=project_id,
-            request=request,
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                transport.search_project_logs,
+                authorization=token,
+                project_id=project_id,
+                request=request,
+            )
         )
         return _search_response(response_payload(response, 200))
 
@@ -71,11 +73,13 @@ class Logs:
         """Get bucketed activity for one project resource type."""
         project_id, request = _log_request(project_id, request)
         transport = cast("LogsTransport", self._client._transport)
-        response = invoke(
-            transport.get_project_log_activity,
-            authorization=self._client._session_token(),
-            project_id=project_id,
-            request=request,
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                transport.get_project_log_activity,
+                authorization=token,
+                project_id=project_id,
+                request=request,
+            )
         )
         return _activity_response(response_payload(response, 200))
 
@@ -88,7 +92,8 @@ def _log_request(
         raise ValueError(_INVALID_PROJECT_ID)
     if not isinstance(request, Mapping):
         raise TypeError(_INVALID_LOG_REQUEST)
-    return project_id, cast("Mapping[str, JSONValue]", request)
+    snapshot = _freeze_json(cast("Mapping[str, JSONValue]", request))
+    return project_id, cast("Mapping[str, JSONValue]", snapshot)
 
 
 def _response_values(payload: object) -> Mapping[str, object]:
