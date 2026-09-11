@@ -437,12 +437,15 @@ def copy_move_and_remove(context: Any) -> None:
     copied = f"{source}.copy"
     moved = f"{source}.moved"
 
-    def cleanup() -> None:
-        for item in bucket.list(source).objects:
-            if item.name in {source, copied, moved}:
-                bucket.remove(item.name)
+    for path in (source, copied, moved):
 
-    world.cleanup_callbacks.append(cleanup)
+        def cleanup(object_path: str = path) -> None:
+            if any(
+                item.name == object_path for item in bucket.list(object_path).objects
+            ):
+                bucket.remove(object_path)
+
+        world.cleanup_callbacks.append(cleanup)
 
     def operation() -> dict[str, Any]:
         bucket.upload(source, world.storage_bytes)

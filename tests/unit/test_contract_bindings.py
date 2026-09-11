@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, call
 
 import pytest
 from behave.step_registry import registry
@@ -174,6 +174,35 @@ def test_broadcast_pause_checks_silence(
         )
     subscriber.on.assert_called_once()
     pause.asyncio.sleep.assert_awaited_once_with(1)
+
+
+def test_lifecycle_cleanup_attempts_all_paths_after_a_deletion_failure() -> None:
+    registry.clear()
+    steps = _load_module(
+        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
+    )
+    paths = ["contract.txt", "contract.txt.copy", "contract.txt.moved"]
+    bucket = Mock()
+    bucket.list.return_value.objects = [SimpleNamespace(name=path) for path in paths]
+    bucket.remove.side_effect = [RuntimeError("delete failed"), None, None]
+    world = SimpleNamespace(
+        client=SimpleNamespace(
+            storage=SimpleNamespace(from_=Mock(return_value=bucket))
+        ),
+        fixture={"bucket_name": "assets"},
+        storage_path=paths[0],
+        cleanup_callbacks=[],
+        realtime_clients=[],
+        loop=Mock(),
+        record=Mock(),
+    )
+    steps.copy_move_and_remove(SimpleNamespace(contract=world))
+
+    with pytest.raises(ExceptionGroup, match="Python contract cleanup failed"):
+        steps.ContractWorld.cleanup(world)
+
+    assert bucket.remove.call_args_list == [call(path) for path in reversed(paths)]
+    world.loop.close.assert_called_once()
 
 
 def test_fixture_loader_requires_absolute_private_file(tmp_path: Path) -> None:
