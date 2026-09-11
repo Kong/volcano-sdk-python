@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).parents[2]
 FEATURE_SHA256 = {
+    "storage-metadata.feature": (
+        "8a99fab83abf3d73e41ab8557f681b8b1659299a942a1ceb18a2f85009f5af6e"
+    ),
     "auth.feature": "c237deb0b3be98d64689699a0ffdcd272e7ef027a2b69439b1768195042ed493",
     "database-delete.feature": (
         "b328579ee9b33cbb313dd4d13eb899d53f64344c5e5beb00dbfb7eed2098e2c7"
@@ -77,6 +80,11 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         for definition in definitions
     }
     assert bound == {
+        (
+            "the client uploads the contract object as text/plain "
+            "and reads its stored metadata"
+        ),
+        "the uploaded and listed object content types are text/plain",
         "the client replaces its access token with a rejected token",
         "the database read replaces the rejected token for the same user",
         (

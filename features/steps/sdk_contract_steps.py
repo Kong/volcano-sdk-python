@@ -370,6 +370,42 @@ def downloaded_bytes_match(context: Any) -> None:
     assert world.last_outcome.value["bytes"] == world.storage_bytes
 
 
+@when(
+    "the client uploads the contract object as text/plain and reads its stored metadata"
+)
+def upload_and_read_metadata(context: Any) -> None:
+    world = _world(context)
+
+    def operation() -> dict[str, Any]:
+        bucket = world.client.storage.from_(world.fixture["bucket_name"])
+        uploaded = bucket.upload(
+            world.storage_path, world.storage_bytes, content_type="text/plain"
+        )
+        world.cleanup_callbacks.append(lambda: bucket.remove(world.storage_path))
+        listed = bucket.list(world.storage_path)
+        return {
+            "path": uploaded["name"],
+            "bytes": bucket.download(world.storage_path),
+            "content_type": uploaded["mime_type"],
+            "listed": [
+                {"name": item.name, "mime_type": item.mime_type}
+                for item in listed.objects
+            ],
+        }
+
+    world.record(operation)
+
+
+@then("the uploaded and listed object content types are text/plain")
+def stored_content_types_match(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.last_outcome.value["content_type"] == "text/plain"
+    assert world.last_outcome.value["listed"] == [
+        {"name": world.storage_path, "mime_type": "text/plain"}
+    ]
+
+
 @then("the stored object path equals the contract path")
 def stored_object_path_matches(context: Any) -> None:
     world = _world(context)
