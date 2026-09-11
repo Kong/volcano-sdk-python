@@ -9,6 +9,7 @@ import secrets
 import threading
 from collections.abc import Mapping
 from contextlib import suppress
+from dataclasses import replace
 from datetime import datetime
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
@@ -520,8 +521,10 @@ class Auth:
         email: str,
         password: str,
         metadata: Mapping[str, object] | None = None,
+        sign_in_when_allowed: bool = False,
     ) -> SignUpResult:
-        """Create an account without creating or replacing a local session."""
+        """Sign up, optionally signing in when confirmation is not required."""
+        generation, _ = self._client._capture_session()
         transport = cast("AuthSignUpTransport", self._client._transport)
         response = invoke(
             transport.auth_signup,
@@ -530,7 +533,11 @@ class Auth:
             password=password,
             metadata=dict(metadata or {}),
         )
-        return _sign_up_result_from_payload(response_payload(response, 201))
+        result = _sign_up_result_from_payload(response_payload(response, 201))
+        if sign_in_when_allowed and not result.confirmation_required:
+            session = self._sign_in_for_generation(email, password, generation)
+            return replace(result, session=session)
+        return result
 
     def sign_in_anonymously(
         self,
@@ -971,6 +978,13 @@ class Auth:
     def sign_in(self, *, email: str, password: str) -> Session:
         """Sign in a user and store the returned session."""
         generation, _ = self._client._capture_session()
+        return self._sign_in_for_generation(email, password, generation)
+
+    def _sign_in_for_generation(
+        self, email: str, password: str, generation: int
+    ) -> Session:
+        if self._client._capture_session()[0] != generation:
+            raise SessionChangedError
         response = invoke(
             self._client._transport.auth_signin,
             authorization=self._client._anon_token(),
