@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import threading
 from collections import deque
-from typing import TYPE_CHECKING
+from dataclasses import replace
+from typing import TYPE_CHECKING, cast
 
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
@@ -16,13 +17,14 @@ from .models import (
     AuthChangeEvent,
     AuthStateCallback,
     AuthSubscription,
+    JSONValue,
     Session,
 )
 from .realtime import CentrifugeFactory, Realtime
 from .storage import Storage
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from types import TracebackType
 
 _NO_ACTIVE_SESSION = "No active session"
@@ -160,6 +162,19 @@ class VolcanoClient:
                 self._session_lineage,
                 self._current_session,
             )
+
+    def _update_session_user_if_current(
+        self, user: Mapping[str, JSONValue], generation: int
+    ) -> bool:
+        with self._session_lock:
+            current = self._current_session
+            if generation != self._session_generation or current is None:
+                return False
+            # Profile updates do not replace credentials or invalidate other requests.
+            self._current_session = replace(
+                current, user_id=cast("str", user["id"]), user=user
+            )
+        return True
 
     def _set_session_if_current(
         self,

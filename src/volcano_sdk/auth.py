@@ -262,7 +262,7 @@ def _email_change_result_from_payload(payload: object) -> EmailChangeResult:
     )
 
 
-def _user_from_payload(payload: object) -> User:
+def _user_from_payload(payload: object) -> tuple[User, Mapping[str, JSONValue]]:
     if not isinstance(
         payload,
         (
@@ -277,7 +277,7 @@ def _user_from_payload(payload: object) -> User:
     project_id = _none_if_unset(user.project_id)
     user_metadata = _none_if_unset(user.user_metadata)
     app_metadata = _none_if_unset(user.app_metadata)
-    return User(
+    profile = User(
         id=str(user.id),
         email=user.email,
         status=user.status,
@@ -299,6 +299,7 @@ def _user_from_payload(payload: object) -> User:
         created_at=_none_if_unset(user.created_at),
         updated_at=_none_if_unset(user.updated_at),
     )
+    return profile, cast("Mapping[str, JSONValue]", user.to_dict())
 
 
 def _none_if_unset(value: _T | Unset) -> _T | None:
@@ -468,6 +469,10 @@ class AuthContext(Protocol):
 
     def _capture_session_binding(self) -> tuple[int, int, Session | None]: ...
 
+    def _update_session_user_if_current(
+        self, user: Mapping[str, JSONValue], generation: int
+    ) -> bool: ...
+
     def _set_session_if_current(
         self,
         session: Session,
@@ -580,10 +585,7 @@ class Auth:
             password=password,
             metadata=dict(metadata or {}),
         )
-        user = _user_from_payload(response_payload(response, 200))
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
-        return user
+        return self._update_current_user(response_payload(response, 200), generation)
 
     def reset_password_for_email(self, *, email: str) -> None:
         """Request a reset email without revealing whether the account exists."""
@@ -636,10 +638,7 @@ class Auth:
             authorization=current.access_token,
             token=token,
         )
-        user = _user_from_payload(response_payload(response, 200))
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
-        return user
+        return self._update_current_user(response_payload(response, 200), generation)
 
     def delete_all_other_sessions(self) -> None:
         """Delete every other session while preserving the current session."""
@@ -945,6 +944,12 @@ class Auth:
         )
         response_payload(response, 200)
 
+    def _update_current_user(self, payload: object, generation: int) -> User:
+        user, snapshot = _user_from_payload(payload)
+        if not self._client._update_session_user_if_current(snapshot, generation):
+            raise SessionChangedError
+        return user
+
     def get_user(self) -> User:
         """Load a server-validated profile for the current session."""
         generation, current = self._client._capture_session()
@@ -952,10 +957,7 @@ class Auth:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast("AuthGetUserTransport", self._client._transport)
         response = invoke(transport.auth_get_user, authorization=current.access_token)
-        user = _user_from_payload(response_payload(response, 200))
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
-        return user
+        return self._update_current_user(response_payload(response, 200), generation)
 
     def update_user(
         self,
@@ -974,10 +976,7 @@ class Auth:
             password=password,
             metadata=None if metadata is None else dict(metadata),
         )
-        user = _user_from_payload(response_payload(response, 200))
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
-        return user
+        return self._update_current_user(response_payload(response, 200), generation)
 
     def sign_in(self, *, email: str, password: str) -> Session:
         """Sign in a user and store the returned session."""

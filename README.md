@@ -280,6 +280,9 @@ including metadata. The snapshot is deeply immutable and available without a
 request. It is cached data, not proof of authentication; use `auth.get_user()`
 to fetch the server-validated profile. Existing three-field `Session` construction
 still works, with `user=None`. An adopted snapshot must have the same user ID.
+Successful `get_user()`, `update_user()`, `convert_anonymous()`, and
+`confirm_email_change()` calls update that local snapshot without changing tokens
+or emitting an auth-state event. Previously returned sessions remain immutable.
 
 `get_user()` sends the active access token to Volcano and returns an immutable, server-validated
 profile with the complete public AuthUser fields. Profile timestamps are timezone-aware `datetime`
