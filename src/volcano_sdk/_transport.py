@@ -53,16 +53,31 @@ from ._generated.api.authentication.auth_signup_anonymous import (
     _get_kwargs as signup_anonymous_kwargs,
 )
 from ._generated.api.database_queries import (
-    query_database_delete,
-    query_database_insert,
     query_database_select,
-    query_database_update,
+)
+from ._generated.api.database_queries.query_database_delete import (
+    _build_response as build_database_delete_response,
+)
+from ._generated.api.database_queries.query_database_delete import (
+    _get_kwargs as database_delete_kwargs,
+)
+from ._generated.api.database_queries.query_database_insert import (
+    _build_response as build_database_insert_response,
+)
+from ._generated.api.database_queries.query_database_insert import (
+    _get_kwargs as database_insert_kwargs,
 )
 from ._generated.api.database_queries.query_database_select import (
     _build_response as build_database_select_response,
 )
 from ._generated.api.database_queries.query_database_select import (
     _get_kwargs as database_select_kwargs,
+)
+from ._generated.api.database_queries.query_database_update import (
+    _build_response as build_database_update_response,
+)
+from ._generated.api.database_queries.query_database_update import (
+    _get_kwargs as database_update_kwargs,
 )
 from ._generated.api.functions import resolve_function_for_invocation
 from ._generated.api.functions.invoke_function import (
@@ -1310,12 +1325,15 @@ class GeneratedTransport:
         body: dict[str, Any],
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = query_database_insert.sync_detailed(
-                database_name,
-                client=client,
-                body=DatabaseInsertRequest.from_dict(body),
+            response = client.get_httpx_client().request(
+                **database_insert_kwargs(
+                    database_name, body=DatabaseInsertRequest.from_dict(body)
+                )
             )
-        return self._response(response)
+            if response.status_code == HTTP_UNAUTHORIZED:
+                return self._raw_response(response)
+            parsed = build_database_insert_response(client=client, response=response)
+        return self._response(parsed)
 
     def query_database_update(
         self,
@@ -1325,12 +1343,15 @@ class GeneratedTransport:
         body: dict[str, Any],
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = query_database_update.sync_detailed(
-                database_name,
-                client=client,
-                body=DatabaseUpdateRequest.from_dict(body),
+            response = client.get_httpx_client().request(
+                **database_update_kwargs(
+                    database_name, body=DatabaseUpdateRequest.from_dict(body)
+                )
             )
-        return self._response(response)
+            if response.status_code == HTTP_UNAUTHORIZED:
+                return self._raw_response(response)
+            parsed = build_database_update_response(client=client, response=response)
+        return self._response(parsed)
 
     def query_database_delete(
         self,
@@ -1340,12 +1361,15 @@ class GeneratedTransport:
         body: dict[str, Any],
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = query_database_delete.sync_detailed(
-                database_name,
-                client=client,
-                body=DatabaseDeleteRequest.from_dict(body),
+            response = client.get_httpx_client().request(
+                **database_delete_kwargs(
+                    database_name, body=DatabaseDeleteRequest.from_dict(body)
+                )
             )
-        return self._response(response)
+            if response.status_code == HTTP_UNAUTHORIZED:
+                return self._raw_response(response)
+            parsed = build_database_delete_response(client=client, response=response)
+        return self._response(parsed)
 
     def upload_storage_object(
         self,
