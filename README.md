@@ -257,9 +257,19 @@ Pass a user ID to enforce that user's Row-Level Security policies. Omit
 The helper preserves libpq connection syntax, including hostless and multi-host
 targets, and leaves unrelated query values unchanged.
 
-`sign_up()` returns an immutable acknowledgement and never creates or replaces a session. The
-response is identical for new and existing email addresses. Call `sign_in()` separately after the
-account is ready to establish a session.
+`sign_up()` returns an immutable acknowledgement without changing the session by default.
+The signup acknowledgement is identical for new and existing email addresses. Pass
+`sign_in_when_allowed=True` to follow it with `sign_in()` only when confirmation is not required:
+
+```python
+result = client.auth.sign_up(
+    email="new-user@example.com", password="secret", sign_in_when_allowed=True
+)
+session = result.session  # None when no follow-up sign-in ran.
+```
+
+A successful follow-up stores the session and emits the normal sign-in event. A failed
+follow-up raises its usual typed error; it does not undo the successful signup.
 
 `get_session()` reads immutable local state. It does not refresh or validate the token.
 

@@ -159,10 +159,11 @@ class OAuthProviderTokenStatus:
 
 @dataclass(frozen=True, slots=True)
 class SignUpResult:
-    """Session-less acknowledgement returned after sign-up."""
+    """Sign-up acknowledgement with an optional follow-up sign-in session."""
 
     confirmation_required: bool
     message: str
+    session: Session | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
