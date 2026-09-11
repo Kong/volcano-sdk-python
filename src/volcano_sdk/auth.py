@@ -9,6 +9,7 @@ import secrets
 import threading
 from collections.abc import Mapping
 from contextlib import suppress
+from dataclasses import replace
 from datetime import datetime
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
@@ -520,8 +521,9 @@ class Auth:
         email: str,
         password: str,
         metadata: Mapping[str, object] | None = None,
+        sign_in_when_allowed: bool = False,
     ) -> SignUpResult:
-        """Create an account without creating or replacing a local session."""
+        """Sign up, optionally signing in when confirmation is not required."""
         transport = cast("AuthSignUpTransport", self._client._transport)
         response = invoke(
             transport.auth_signup,
@@ -530,7 +532,10 @@ class Auth:
             password=password,
             metadata=dict(metadata or {}),
         )
-        return _sign_up_result_from_payload(response_payload(response, 201))
+        result = _sign_up_result_from_payload(response_payload(response, 201))
+        if sign_in_when_allowed and not result.confirmation_required:
+            return replace(result, session=self.sign_in(email=email, password=password))
+        return result
 
     def sign_in_anonymously(
         self,

@@ -1181,6 +1181,52 @@ def test_sign_up_uses_empty_metadata_without_creating_a_session() -> None:
     assert transport.signup_calls[0]["metadata"] == {}
 
 
+@pytest.mark.parametrize("confirmation_required", [True, False])
+@pytest.mark.parametrize("sign_in_when_allowed", [True, False])
+def test_sign_up_only_signs_in_when_opted_in_and_allowed(
+    *, confirmation_required: bool, sign_in_when_allowed: bool
+) -> None:
+    transport = StateTransport()
+    transport.signup_response = Response(
+        201, {"confirmation_required": confirmation_required, "message": "Accepted"}
+    )
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    result = client.auth.sign_up(
+        email="new@example.com",
+        password="secret",
+        sign_in_when_allowed=sign_in_when_allowed,
+    )
+
+    signed_in = sign_in_when_allowed and not confirmation_required
+    assert (result.session is not None) is signed_in
+    assert result.session is client.auth.get_session()
+    assert result.confirmation_required is confirmation_required
+    assert result.message == "Accepted"
+    assert transport.authorizations == [("signup", "anon")] + (
+        [("auth", "anon")] if signed_in else []
+    )
+
+
+def test_sign_up_surfaces_followup_signin_failure_without_changing_session() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    established = client.auth.sign_in(email="user@example.com", password="secret")
+    transport.signup_response = Response(
+        201, {"confirmation_required": False, "message": "Accepted"}
+    )
+
+    def reject_signin() -> None:
+        message = "Sign-in rejected"
+        raise AuthenticationError(message)
+
+    transport.on_signin = reject_signin
+    with pytest.raises(AuthenticationError, match="Sign-in rejected"):
+        client.auth.sign_up(
+            email="new@example.com", password="secret", sign_in_when_allowed=True
+        )
+    assert client.auth.get_session() is established
+
+
 def test_sign_up_raises_typed_errors_without_changing_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
