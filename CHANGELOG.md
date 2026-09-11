@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/Kong/volcano-sdk-python/compare/v0.1.0...v0.2.0) (2026-09-11)
+
+
+### Features
+
+* **database:** refresh expired sessions for select queries ([#107](https://github.com/Kong/volcano-sdk-python/issues/107)) ([3de39c2](https://github.com/Kong/volcano-sdk-python/commit/3de39c2c5ee86b54cd08510fa6c01609bbb25bae))
+
 ## 0.1.0 (2026-09-09)
 
 
