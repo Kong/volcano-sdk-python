@@ -406,6 +406,29 @@ def stored_content_types_match(context: Any) -> None:
     ]
 
 
+@when("the client uploads the contract object and downloads bytes 2 through 7")
+def upload_and_download_range(context: Any) -> None:
+    world = _world(context)
+
+    def operation() -> dict[str, Any]:
+        bucket = world.client.storage.from_(world.fixture["bucket_name"])
+        uploaded = bucket.upload(world.storage_path, world.storage_bytes)
+        world.cleanup_callbacks.append(lambda: bucket.remove(world.storage_path))
+        return {
+            "bytes": bucket.download(world.storage_path, byte_range="bytes=2-7"),
+            "path": uploaded["name"],
+        }
+
+    world.record(operation)
+
+
+@then("the downloaded bytes equal uploaded bytes 2 through 7 inclusive")
+def downloaded_range_matches(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.last_outcome.value["bytes"] == world.storage_bytes[2:8]
+
+
 @then("the stored object path equals the contract path")
 def stored_object_path_matches(context: Any) -> None:
     world = _world(context)
