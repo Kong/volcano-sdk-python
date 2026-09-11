@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Protocol, Self, cast
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from .auth import Auth
     from .models import JSONValue
 
 from ._transport import Transport, invoke, response_payload
@@ -40,6 +41,7 @@ class DatabaseContext(Protocol):
     """Client capabilities required by database queries."""
 
     _transport: Transport
+    auth: Auth
 
     def _session_token(self) -> str: ...
 
@@ -175,11 +177,13 @@ class QueryBuilder(FilterBuilder):
             body["limit"] = self._limit
         if self._offset is not None:
             body["offset"] = self._offset
-        response = invoke(
-            self._client._transport.query_database_select,
-            authorization=self._client._session_token(),
-            database_name=self._database_name,
-            body=body,
+        response = self._client.auth._session_read(
+            lambda token: invoke(
+                self._client._transport.query_database_select,
+                authorization=token,
+                database_name=self._database_name,
+                body=body,
+            )
         )
         payload = response_payload(response, 200)
         return list(payload["data"])

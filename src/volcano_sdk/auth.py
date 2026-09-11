@@ -6,8 +6,11 @@ import base64
 import binascii
 import json
 import secrets
+import threading
 from collections.abc import Mapping
+from contextlib import suppress
 from datetime import datetime
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 from urllib.parse import quote, urlencode
 
@@ -118,10 +121,13 @@ _OAUTH_API_METHODS: frozenset[str] = frozenset({"GET", "POST"})
 _HOSTED_AUTH_ACTIONS: frozenset[str] = frozenset({"login", "signup", "forgot-password"})
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ._generated.models import (
         AuthListOAuthProvidersResponse200ProvidersItem,
     )
     from ._generated.models.auth_session import AuthSession as GeneratedAuthSession
+    from ._transport import TransportResponse
 
 
 def _is_non_empty_string(value: object) -> bool:
@@ -455,12 +461,15 @@ class AuthContext(Protocol):
 
     def _capture_session(self) -> tuple[int, Session | None]: ...
 
+    def _capture_session_binding(self) -> tuple[int, int, Session | None]: ...
+
     def _set_session_if_current(
         self,
         session: Session,
         generation: int,
         *,
         event: AuthChangeEvent = "SIGNED_IN",
+        notifications: list[Callable[[], None]] | None = None,
     ) -> bool: ...
 
     def _clear_session_if_current(
@@ -468,6 +477,7 @@ class AuthContext(Protocol):
         generation: int,
         *,
         event: AuthChangeEvent = "SIGNED_OUT",
+        notifications: list[Callable[[], None]] | None = None,
     ) -> bool: ...
 
     def _subscribe_auth_state_change(
@@ -482,6 +492,8 @@ class Auth:
     def __init__(self, client: AuthContext) -> None:
         """Create an authentication facade backed by a client."""
         self._client = client
+        self._refresh_lock = threading.RLock()
+        self._rejected_refresh: tuple[int, int] | None = None
 
     def get_session(self) -> Session | None:
         """Return the immutable locally held session without validating it."""
@@ -973,29 +985,108 @@ class Auth:
 
     def refresh_session(self) -> Session:
         """Refresh and replace the current session."""
-        generation, current = self._client._capture_session()
+        return self._refresh_session_for_binding(
+            self._client._capture_session_binding()
+        )
+
+    def _session_read(
+        self, operation: Callable[[str], TransportResponse]
+    ) -> TransportResponse:
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
+            raise RuntimeError(_NO_ACTIVE_SESSION)
+        response = operation(binding[2].access_token)
+        if response.status_code != HTTPStatus.UNAUTHORIZED:
+            return response
+        try:
+            self._refresh_session_for_binding(binding)
+        except SessionChangedError:
+            raise
+        except VolcanoError:
+            self._validate_read_failure(binding)
+            return response
+        session = self._owned_refresh_session(binding)[2]
+        if session is None:
+            raise SessionChangedError
+        response = operation(session.access_token)
+        self._owned_refresh_session(binding)
+        return response
+
+    def _validate_read_failure(self, binding: tuple[int, int, Session | None]) -> None:
+        with suppress(AuthenticationError):
+            self._owned_refresh_session(binding)
+
+    def _refresh_session_for_binding(
+        self, binding: tuple[int, int, Session | None]
+    ) -> Session:
+        generation, _, current = binding
         if current is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-
-        transport = cast("AuthRefreshTransport", self._client._transport)
-        response = invoke(
-            transport.auth_refresh,
-            authorization=self._client._anon_token(),
-            refresh_token=current.refresh_token,
-        )
+        notifications: list[Callable[[], None]] = []
         try:
-            payload = response_payload(response, 200)
+            with self._refresh_lock:
+                active_generation, _, _ = self._owned_refresh_session(binding)
+                if active_generation == generation:
+                    self._perform_refresh(binding, current, notifications)
+        finally:
+            # Only the dispatcher owner drains, after refresh coordination is released.
+            for dispatch in notifications:
+                dispatch()
+        active = self._owned_refresh_session(binding)[2]
+        if active is None:
+            raise SessionChangedError
+        return active
+
+    def _owned_refresh_session(
+        self, binding: tuple[int, int, Session | None]
+    ) -> tuple[int, int, Session | None]:
+        generation, lineage, _ = binding
+        active = self._client._capture_session_binding()
+        if self._rejected_refresh == (generation, lineage) and active == (
+            generation + 1,
+            lineage + 1,
+            None,
+        ):
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        if active[1] != lineage or active[2] is None:
+            raise SessionChangedError
+        return active
+
+    def _perform_refresh(
+        self,
+        binding: tuple[int, int, Session | None],
+        current: Session,
+        notifications: list[Callable[[], None]],
+    ) -> None:
+        generation, lineage, _ = binding
+        try:
+            refreshed = self._request_refreshed_session(current)
         except AuthenticationError:
-            self._client._clear_session_if_current(generation)
+            if not self._client._clear_session_if_current(
+                generation, notifications=notifications
+            ):
+                raise SessionChangedError from None
+            self._rejected_refresh = (generation, lineage)
             raise
-        refreshed = _session_from_payload(payload)
+        except VolcanoError:
+            self._owned_refresh_session(binding)
+            raise
         if not self._client._set_session_if_current(
-            refreshed,
-            generation,
-            event="TOKEN_REFRESHED",
+            refreshed, generation, event="TOKEN_REFRESHED", notifications=notifications
         ):
             raise SessionChangedError
-        return refreshed
+
+    def _request_refreshed_session(self, current: Session) -> Session:
+        transport = cast("AuthRefreshTransport", self._client._transport)
+        try:
+            response = invoke(
+                transport.auth_refresh,
+                authorization=self._client._anon_token(),
+                refresh_token=current.refresh_token,
+            )
+            return _session_from_payload(response_payload(response, 200))
+        except (KeyError, TypeError, ValueError) as error:
+            raise TransportError(_INCOMPLETE_SESSION) from error
 
     def sign_out(self) -> None:
         """Revoke and clear the current session."""
