@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/Kong/volcano-sdk-python/compare/v0.2.0...v0.3.0) (2026-09-11)
+
+
+### Features
+
+* **auth:** optionally sign in after signup ([#118](https://github.com/Kong/volcano-sdk-python/issues/118)) ([5715eb8](https://github.com/Kong/volcano-sdk-python/commit/5715eb81b63f7ff9f47fbe77fe5158712a4e48fa))
+
 ## [0.2.0](https://github.com/Kong/volcano-sdk-python/compare/v0.1.0...v0.2.0) (2026-09-11)
 
 
