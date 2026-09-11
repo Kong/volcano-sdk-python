@@ -58,6 +58,12 @@ from ._generated.api.database_queries import (
     query_database_select,
     query_database_update,
 )
+from ._generated.api.database_queries.query_database_select import (
+    _build_response as build_database_select_response,
+)
+from ._generated.api.database_queries.query_database_select import (
+    _get_kwargs as database_select_kwargs,
+)
 from ._generated.api.functions import resolve_function_for_invocation
 from ._generated.api.functions.invoke_function import (
     _get_kwargs as invoke_function_kwargs,
@@ -212,6 +218,7 @@ if TYPE_CHECKING:
     )
     from .models import JSONValue
 
+HTTP_UNAUTHORIZED = 401
 HTTP_NOT_FOUND = 404
 HTTP_CONFLICT = 409
 HTTP_RATE_LIMITED = 429
@@ -1269,12 +1276,16 @@ class GeneratedTransport:
         body: dict[str, Any],
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = query_database_select.sync_detailed(
-                database_name,
-                client=client,
-                body=DatabaseSelectRequest.from_dict(body),
+            response = client.get_httpx_client().request(
+                **database_select_kwargs(
+                    database_name,
+                    body=DatabaseSelectRequest.from_dict(body),
+                )
             )
-        return self._response(response)
+            if response.status_code == HTTP_UNAUTHORIZED:
+                return self._raw_response(response)
+            parsed = build_database_select_response(client=client, response=response)
+        return self._response(parsed)
 
     async def query_database_select_async(
         self,

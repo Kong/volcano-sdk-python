@@ -86,6 +86,23 @@ def test_second_401_is_returned_without_another_refresh() -> None:
     assert paths.count("/auth/refresh") == 1
 
 
+@pytest.mark.parametrize("body", [b"", b"not json", b"{}"])
+def test_select_refreshes_on_401_without_a_valid_error_body(body: bytes) -> None:
+    paths: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path == "/auth/refresh":
+            return refreshed_response()
+        if request.headers["authorization"] == "Bearer old-access":
+            return httpx.Response(401, content=body)
+        return rows_response()
+
+    client = make_client(handle)
+    assert client.database("db").from_("items").execute() == [{"id": 1}]
+    assert len(paths) == 3
+
+
 @pytest.mark.parametrize("refresh_status", [401, 503])
 def test_failed_refresh_preserves_original_read_error(refresh_status: int) -> None:
     paths: list[str] = []
