@@ -168,6 +168,7 @@ def _linked_oauth_providers() -> AuthListOAuthProvidersResponse200:
 
 class StateTransport:
     on_signin: Callable[[], None] | None = None
+    on_signup: Callable[[], None] | None = None
 
     def __init__(self) -> None:
         self.next_access_token = "access-1"
@@ -343,6 +344,8 @@ class StateTransport:
     def auth_signup(self, **kwargs: Any) -> Response:
         self.authorizations.append(("signup", kwargs["authorization"]))
         self.signup_calls.append(kwargs)
+        if self.on_signup is not None:
+            self.on_signup()
         return self.signup_response
 
     def auth_signup_anonymous(self, **kwargs: Any) -> Response:
@@ -1205,6 +1208,29 @@ def test_sign_up_only_signs_in_when_opted_in_and_allowed(
     assert transport.authorizations == [("signup", "anon")] + (
         [("auth", "anon")] if signed_in else []
     )
+
+
+@pytest.mark.parametrize("replace_during", ["signup", "signin"])
+def test_signup_followup_does_not_replace_a_newer_session(replace_during: str) -> None:
+    transport = StateTransport()
+    transport.signup_response = Response(
+        201, {"confirmation_required": False, "message": "Accepted"}
+    )
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    replacement = Session("replacement", "refresh", "other")
+
+    def replace_session() -> None:
+        client.auth.set_session(replacement)
+
+    if replace_during == "signup":
+        transport.on_signup = replace_session
+    else:
+        transport.on_signin = replace_session
+    with pytest.raises(SessionChangedError):
+        client.auth.sign_up(
+            email="new@example.com", password="secret", sign_in_when_allowed=True
+        )
+    assert client.auth.get_session() == replacement
 
 
 def test_sign_up_surfaces_followup_signin_failure_without_changing_session() -> None:
