@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier, Thread
+from threading import Barrier, Event, Thread
 from typing import TYPE_CHECKING
 
 import httpx
@@ -215,6 +215,40 @@ def test_concurrent_failed_refresh_preserves_each_read_error() -> None:
         for read in reads:
             with pytest.raises(AuthenticationError, match="read expired"):
                 read.result(timeout=5)
+
+
+def test_read_completes_before_a_queued_refresh_listener_changes_session() -> None:
+    listening = Event()
+    release = Event()
+    replacement = Session("replacement", "refresh", "other")
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/refresh":
+            return refreshed_response()
+        if request.headers["authorization"] == "Bearer old-access":
+            return httpx.Response(401, json={"error": "expired"})
+        return rows_response()
+
+    client = make_client(handle)
+
+    def on_auth_change(event: str, _session: Session | None) -> None:
+        if event == "INITIAL_SESSION":
+            listening.set()
+            release.wait(timeout=5)
+        if event == "TOKEN_REFRESHED":
+            client.auth.set_session(replacement)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        registration = pool.submit(client.auth.on_auth_state_change, on_auth_change)
+        try:
+            assert listening.wait(timeout=5)
+            read = pool.submit(client.database("db").from_("items").execute)
+            assert read.result(timeout=2) == [{"id": 1}]
+            assert client.current_session != replacement
+        finally:
+            release.set()
+        registration.result(timeout=5).unsubscribe()
+    assert client.current_session == replacement
 
 
 def test_refresh_listener_can_wait_for_another_refresh_thread() -> None:
