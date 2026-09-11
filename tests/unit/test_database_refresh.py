@@ -338,8 +338,9 @@ def test_database_403_is_not_eligible_for_refresh(operation: str) -> None:
 
 @pytest.mark.parametrize("operation", ["insert", "update", "delete"])
 @pytest.mark.parametrize("outcome", ["success", "denied", "replaced", "network"])
+@pytest.mark.parametrize("rejection", [b'{"error":"expired"}', b"", b"not json", b"{}"])
 def test_mutation_retries_only_an_explicit_401_under_the_same_session(
-    operation: str, outcome: str
+    operation: str, outcome: str, rejection: bytes
 ) -> None:
     requests: list[httpx.Request] = []
     replacement = Session("replacement", "replacement-refresh", "other")
@@ -357,7 +358,7 @@ def test_mutation_retries_only_an_explicit_401_under_the_same_session(
             request.headers["authorization"] == "Bearer old-access"
             or outcome == "denied"
         ):
-            return httpx.Response(401, json={"error": "expired"})
+            return httpx.Response(401, content=rejection)
         return rows_response()
 
     client = make_client(handle)
