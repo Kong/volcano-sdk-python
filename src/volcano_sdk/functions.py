@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping
-from http import HTTPStatus
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ._transport import TransportResponse, invoke, response_payload
@@ -94,19 +94,32 @@ class Functions:
         version = _header(response.headers, "X-Volcano-Version")
         if not _HTTP_SUCCESS_MIN <= status < _HTTP_SUCCESS_MAX and version is None:
             response_payload(response, _HTTP_SUCCESS_MIN)
-        data = response.payload
-        no_content = (
-            status == HTTPStatus.NO_CONTENT and not response.content and data is None
-        )
-        if not isinstance(data, Mapping) and not no_content:
-            raise TypeError(_INVALID_FUNCTION_RESPONSE)
         headers = {} if response.headers is None else dict(response.headers)
         return FunctionResponse(
-            data=cast("Mapping[str, JSONValue] | None", data),
+            data=_function_data(response),
             status=status,
             headers=headers,
             version=version,
         )
+
+
+def _function_data(response: TransportResponse) -> JSONValue:
+    if not response.content:
+        return cast("JSONValue", response.payload)
+    text = response.content.decode("utf-8", errors="replace")
+    content_type = (_header(response.headers, "Content-Type") or "").lower()
+    if "application/json" in content_type or text.startswith(("{", "[")):
+        try:
+            return cast(
+                "JSONValue", json.loads(text, parse_constant=_reject_json_constant)
+            )
+        except ValueError:
+            pass
+    return text
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(value)
 
 
 def _header(headers: Mapping[str, str] | None, name: str) -> str | None:

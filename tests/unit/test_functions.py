@@ -132,13 +132,55 @@ def test_functions_returns_none_for_an_empty_http_204(version: str | None) -> No
     assert result.headers.get("x-volcano-version") == version
 
 
-@pytest.mark.parametrize("payload", [[], "text", 1, None])
-def test_functions_still_rejects_non_object_http_200(payload: object) -> None:
-    transport = FakeFunctionsTransport()
-    transport.invoke_response = FakeResponse(200, payload, {})
+@pytest.mark.parametrize("status", [200, 422])
+@pytest.mark.parametrize(
+    ("content", "content_type", "expected"),
+    [
+        (b'{"ok":true}', "application/json", {"ok": True}),
+        (b'[1,{"ok":true}]', "application/json", (1, {"ok": True})),
+        (b'"hello"', "application/json", "hello"),
+        (b"42", "application/json", 42),
+        (b"true", "application/json", True),
+        (b"null", "application/json", None),
+        (b"hello", "text/plain", "hello"),
+        (b"42", "text/plain", "42"),
+        (b"[]", "text/plain", ()),
+        (b"broken json", "application/json", "broken json"),
+        (b"NaN", "application/json", "NaN"),
+        (b"", "text/plain", None),
+    ],
+)
+def test_functions_preserve_json_values_and_text(
+    content: bytes, content_type: str, expected: object, status: int
+) -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/functions/resolve":
+            return httpx.Response(
+                200,
+                json={
+                    "name": "send-welcome",
+                    "function_id": "00000000-0000-4000-8000-000000000040",
+                    "cache_ttl_seconds": 60,
+                },
+            )
+        return httpx.Response(
+            status,
+            content=content,
+            headers={"Content-Type": content_type, "X-Volcano-Version": "v2"},
+        )
 
-    with pytest.raises(TypeError, match="Expected a complete function response"):
-        functions_client(transport).functions.invoke("send-welcome")
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+    result = VolcanoClient(anon_key="anon", _transport=transport).functions.invoke(
+        "send-welcome"
+    )
+
+    assert result.data == expected
+    assert result.status == status
+    assert result.version == "v2"
+    assert result.headers["content-type"] == content_type
 
 
 def test_function_response_has_a_stable_hash() -> None:

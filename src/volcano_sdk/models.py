@@ -197,7 +197,7 @@ class LockState:
 class FunctionResponse:
     """Response returned by an invoked function."""
 
-    data: Mapping[str, JSONValue] | None = field(hash=False)
+    data: JSONValue = field(hash=False)
     status: int
     headers: Mapping[str, str] = field(hash=False)
     version: str | None
