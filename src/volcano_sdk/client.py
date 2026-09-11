@@ -5,11 +5,12 @@ from __future__ import annotations
 import threading
 from collections import deque
 from dataclasses import replace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
 from .database import Database
+from .errors import AuthenticationError
 from .functions import Functions
 from .locks import Locks
 from .logs import Logs
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
 
 _NO_ACTIVE_SESSION = "No active session"
 _NO_SERVICE_KEY = "No service key configured"
+_PROFILE_USER_MISMATCH = "Profile user does not match the active session"
 
 
 class _CallbackOutcome:
@@ -170,10 +172,10 @@ class VolcanoClient:
             current = self._current_session
             if generation != self._session_generation or current is None:
                 return False
+            if user["id"] != current.user_id:
+                raise AuthenticationError(_PROFILE_USER_MISMATCH)
             # Profile updates do not replace credentials or invalidate other requests.
-            self._current_session = replace(
-                current, user_id=cast("str", user["id"]), user=user
-            )
+            self._current_session = replace(current, user=user)
         return True
 
     def _set_session_if_current(
