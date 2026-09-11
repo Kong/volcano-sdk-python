@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/Kong/volcano-sdk-python/compare/v0.3.2...v0.3.3) (2026-09-11)
+
+
+### Bug Fixes
+
+* **database:** preserve raw authentication rejections ([#123](https://github.com/Kong/volcano-sdk-python/issues/123)) ([0ed8d4d](https://github.com/Kong/volcano-sdk-python/commit/0ed8d4d11f63be95bc26194b0ebd88e72c6d08a8))
+
 ## [0.3.2](https://github.com/Kong/volcano-sdk-python/compare/v0.3.1...v0.3.2) (2026-09-11)
 
 
