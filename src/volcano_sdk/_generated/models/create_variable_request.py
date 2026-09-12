@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..types import UNSET, Unset
 
 
 
@@ -24,10 +25,14 @@ class CreateVariableRequest:
         Attributes:
             name (str):
             value (str):
+            shared (bool | Unset): Include this name in the project's shared function variables. Omission preserves existing
+                membership; new variables default to true for legacy clients. Send false explicitly to create a non-shared
+                variable.
      """
 
     name: str
     value: str
+    shared: bool | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -39,6 +44,8 @@ class CreateVariableRequest:
 
         value = self.value
 
+        shared = self.shared
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -46,6 +53,8 @@ class CreateVariableRequest:
             "name": name,
             "value": value,
         })
+        if shared is not UNSET:
+            field_dict["shared"] = shared
 
         return field_dict
 
@@ -58,9 +67,12 @@ class CreateVariableRequest:
 
         value = d.pop("value")
 
+        shared = d.pop("shared", UNSET)
+
         create_variable_request = cls(
             name=name,
             value=value,
+            shared=shared,
         )
 
 

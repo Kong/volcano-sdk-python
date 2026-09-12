@@ -12,6 +12,8 @@ from ..models.function_http_auth_mode import check_function_http_auth_mode
 from ..models.function_http_auth_mode import FunctionHTTPAuthMode
 from ..models.function_invocation_mode import check_function_invocation_mode
 from ..models.function_invocation_mode import FunctionInvocationMode
+from ..models.project_config_function_variable_scope import check_project_config_function_variable_scope
+from ..models.project_config_function_variable_scope import ProjectConfigFunctionVariableScope
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -32,11 +34,24 @@ class ProjectConfigFunction:
     """ Configuration for an existing (deployed) function. Functions are never
     created or deleted through the manifest. When `schedulers` is declared
     it is fully synced (schedulers absent from the list are deleted);
-    omitting `schedulers` leaves the function's schedulers untouched.
+    omitting `schedulers` leaves the function's schedulers untouched. The
+    same applies to `variables`: declaring it replaces the function's
+    declared variable names, and omitting it leaves them untouched.
 
         Attributes:
             name (str):
             public (bool | Unset): Function visibility for anon-key invocation
+            variable_scope (ProjectConfigFunctionVariableScope | Unset): Which project variables this function receives.
+                `all` (the default)
+                gives it the project variables marked `shared: true`. `scoped` gives it only the variables
+                it selects: every name declared in `variables`, plus the names
+                Volcano detects in its source that the project defines.
+            variables (list[str] | Unset): Project variable names this function requires, on top of the ones
+                detected in its source. Declare a name here when the function reads
+                it through a computed key, which detection cannot see, or when the
+                function must not deploy without it: a declared name the project does
+                not define fails the apply, while a detected name it does not define
+                is ignored. Only used when `variable_scope` is `scoped`.
             invocation_mode (FunctionInvocationMode | Unset): Invocation contract. `rpc` preserves the existing POST
                 `{payload: ...}` contract;
                 `http` forwards HTTP request semantics to the function runtime.
@@ -50,6 +65,8 @@ class ProjectConfigFunction:
 
     name: str
     public: bool | Unset = UNSET
+    variable_scope: ProjectConfigFunctionVariableScope | Unset = UNSET
+    variables: list[str] | Unset = UNSET
     invocation_mode: FunctionInvocationMode | Unset = UNSET
     http_auth_mode: FunctionHTTPAuthMode | Unset = UNSET
     openapi_spec: None | ProjectConfigFunctionOpenapiSpecType0 | Unset = UNSET
@@ -65,6 +82,17 @@ class ProjectConfigFunction:
         name = self.name
 
         public = self.public
+
+        variable_scope: str | Unset = UNSET
+        if not isinstance(self.variable_scope, Unset):
+            variable_scope = self.variable_scope
+
+
+        variables: list[str] | Unset = UNSET
+        if not isinstance(self.variables, Unset):
+            variables = self.variables
+
+
 
         invocation_mode: str | Unset = UNSET
         if not isinstance(self.invocation_mode, Unset):
@@ -101,6 +129,10 @@ class ProjectConfigFunction:
         })
         if public is not UNSET:
             field_dict["public"] = public
+        if variable_scope is not UNSET:
+            field_dict["variable_scope"] = variable_scope
+        if variables is not UNSET:
+            field_dict["variables"] = variables
         if invocation_mode is not UNSET:
             field_dict["invocation_mode"] = invocation_mode
         if http_auth_mode is not UNSET:
@@ -122,6 +154,19 @@ class ProjectConfigFunction:
         name = d.pop("name")
 
         public = d.pop("public", UNSET)
+
+        _variable_scope = d.pop("variable_scope", UNSET)
+        variable_scope: ProjectConfigFunctionVariableScope | Unset
+        if isinstance(_variable_scope,  Unset):
+            variable_scope = UNSET
+        else:
+            variable_scope = check_project_config_function_variable_scope(_variable_scope)
+
+
+
+
+        variables = cast(list[str], d.pop("variables", UNSET))
+
 
         _invocation_mode = d.pop("invocation_mode", UNSET)
         invocation_mode: FunctionInvocationMode | Unset
@@ -178,6 +223,8 @@ class ProjectConfigFunction:
         project_config_function = cls(
             name=name,
             public=public,
+            variable_scope=variable_scope,
+            variables=variables,
             invocation_mode=invocation_mode,
             http_auth_mode=http_auth_mode,
             openapi_spec=openapi_spec,
