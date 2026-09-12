@@ -9,8 +9,7 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.error import Error
-from ...models.update_variable_request import UpdateVariableRequest
-from ...models.variable import Variable
+from ...models.replace_shared_variables_body import ReplaceSharedVariablesBody
 from typing import cast
 from uuid import UUID
 
@@ -18,9 +17,8 @@ from uuid import UUID
 
 def _get_kwargs(
     id: UUID,
-    name: str,
     *,
-    body: UpdateVariableRequest,
+    body: ReplaceSharedVariablesBody,
 
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
@@ -32,7 +30,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "put",
-        "url": "/projects/{id}/variables/{name}".format(id=quote(str(id), safe=""),name=quote(str(name), safe=""),),
+        "url": "/projects/{id}/shared-variables".format(id=quote(str(id), safe=""),),
     }
 
     _kwargs["json"] = body.to_dict()
@@ -44,20 +42,43 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Error | Variable | None:
-    if response.status_code == 200:
-        response_200 = Variable.from_dict(response.json())
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Error | None:
+    if response.status_code == 204:
+        response_204 = cast(Any, None)
+        return response_204
+
+    if response.status_code == 400:
+        response_400 = Error.from_dict(response.json())
 
 
 
-        return response_200
+        return response_400
+
+    if response.status_code == 401:
+        response_401 = cast(Any, None)
+        return response_401
 
     if response.status_code == 404:
-        response_404 = Error.from_dict(response.json())
-
-
-
+        response_404 = cast(Any, None)
         return response_404
+
+    if response.status_code == 409:
+        response_409 = Error.from_dict(response.json())
+
+
+
+        return response_409
+
+    if response.status_code == 413:
+        response_413 = Error.from_dict(response.json())
+
+
+
+        return response_413
+
+    if response.status_code == 500:
+        response_500 = cast(Any, None)
+        return response_500
 
     if response.status_code == 503:
         response_503 = Error.from_dict(response.json())
@@ -72,7 +93,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | Variable]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -83,34 +104,33 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 def sync_detailed(
     id: UUID,
-    name: str,
     *,
     client: AuthenticatedClient,
-    body: UpdateVariableRequest,
+    body: ReplaceSharedVariablesBody,
 
-) -> Response[Error | Variable]:
-    """ Update a variable
+) -> Response[Any | Error]:
+    """ Replace shared variable names
 
-     Updates a project-level environment variable and triggers asynchronous propagation
-    to deployed functions and frontends in the project's configured regions.
+     Atomically replaces the complete shared function-variable list without
+    changing values. Names must already exist. Validates final affected
+    function environments before membership or propagation side effects.
+    An empty list clears membership. Omitted names remain stored as non-shared variables.
 
     Args:
         id (UUID):
-        name (str):
-        body (UpdateVariableRequest):
+        body (ReplaceSharedVariablesBody):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Error | Variable]
+        Response[Any | Error]
      """
 
 
     kwargs = _get_kwargs(
         id=id,
-name=name,
 body=body,
 
     )
@@ -123,34 +143,33 @@ body=body,
 
 def sync(
     id: UUID,
-    name: str,
     *,
     client: AuthenticatedClient,
-    body: UpdateVariableRequest,
+    body: ReplaceSharedVariablesBody,
 
-) -> Error | Variable | None:
-    """ Update a variable
+) -> Any | Error | None:
+    """ Replace shared variable names
 
-     Updates a project-level environment variable and triggers asynchronous propagation
-    to deployed functions and frontends in the project's configured regions.
+     Atomically replaces the complete shared function-variable list without
+    changing values. Names must already exist. Validates final affected
+    function environments before membership or propagation side effects.
+    An empty list clears membership. Omitted names remain stored as non-shared variables.
 
     Args:
         id (UUID):
-        name (str):
-        body (UpdateVariableRequest):
+        body (ReplaceSharedVariablesBody):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Error | Variable
+        Any | Error
      """
 
 
     return sync_detailed(
         id=id,
-name=name,
 client=client,
 body=body,
 
@@ -158,34 +177,33 @@ body=body,
 
 async def asyncio_detailed(
     id: UUID,
-    name: str,
     *,
     client: AuthenticatedClient,
-    body: UpdateVariableRequest,
+    body: ReplaceSharedVariablesBody,
 
-) -> Response[Error | Variable]:
-    """ Update a variable
+) -> Response[Any | Error]:
+    """ Replace shared variable names
 
-     Updates a project-level environment variable and triggers asynchronous propagation
-    to deployed functions and frontends in the project's configured regions.
+     Atomically replaces the complete shared function-variable list without
+    changing values. Names must already exist. Validates final affected
+    function environments before membership or propagation side effects.
+    An empty list clears membership. Omitted names remain stored as non-shared variables.
 
     Args:
         id (UUID):
-        name (str):
-        body (UpdateVariableRequest):
+        body (ReplaceSharedVariablesBody):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Error | Variable]
+        Response[Any | Error]
      """
 
 
     kwargs = _get_kwargs(
         id=id,
-name=name,
 body=body,
 
     )
@@ -198,34 +216,33 @@ body=body,
 
 async def asyncio(
     id: UUID,
-    name: str,
     *,
     client: AuthenticatedClient,
-    body: UpdateVariableRequest,
+    body: ReplaceSharedVariablesBody,
 
-) -> Error | Variable | None:
-    """ Update a variable
+) -> Any | Error | None:
+    """ Replace shared variable names
 
-     Updates a project-level environment variable and triggers asynchronous propagation
-    to deployed functions and frontends in the project's configured regions.
+     Atomically replaces the complete shared function-variable list without
+    changing values. Names must already exist. Validates final affected
+    function environments before membership or propagation side effects.
+    An empty list clears membership. Omitted names remain stored as non-shared variables.
 
     Args:
         id (UUID):
-        name (str):
-        body (UpdateVariableRequest):
+        body (ReplaceSharedVariablesBody):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Error | Variable
+        Any | Error
      """
 
 
     return (await asyncio_detailed(
         id=id,
-name=name,
 client=client,
 body=body,
 
