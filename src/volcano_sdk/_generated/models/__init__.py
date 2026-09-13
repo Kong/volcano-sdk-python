@@ -122,6 +122,7 @@ from .create_frontend_body_framework import CreateFrontendBodyFramework
 from .create_frontend_custom_domain_request import CreateFrontendCustomDomainRequest
 from .create_function_body import CreateFunctionBody
 from .create_function_body_runtime import CreateFunctionBodyRuntime
+from .create_function_body_variable_scope import CreateFunctionBodyVariableScope
 from .create_function_scheduler_request import CreateFunctionSchedulerRequest
 from .create_function_scheduler_request_payload import CreateFunctionSchedulerRequestPayload
 from .create_functions_batch_body import CreateFunctionsBatchBody
@@ -355,6 +356,7 @@ from .project_config_email_templates import ProjectConfigEmailTemplates
 from .project_config_frontend import ProjectConfigFrontend
 from .project_config_function import ProjectConfigFunction
 from .project_config_function_openapi_spec_type_0 import ProjectConfigFunctionOpenapiSpecType0
+from .project_config_function_variable_scope import ProjectConfigFunctionVariableScope
 from .project_config_hosted_page import ProjectConfigHostedPage
 from .project_config_hosted_pages import ProjectConfigHostedPages
 from .project_config_missing_resource import ProjectConfigMissingResource
@@ -439,6 +441,7 @@ from .realtime_stats import RealtimeStats
 from .refresh_o_auth_provider_token_provider import RefreshOAuthProviderTokenProvider
 from .refresh_o_auth_provider_token_response_200 import RefreshOAuthProviderTokenResponse200
 from .render_default_managed_auth_page_action import RenderDefaultManagedAuthPageAction
+from .replace_shared_variables_body import ReplaceSharedVariablesBody
 from .reset_database_password_response_200 import ResetDatabasePasswordResponse200
 from .resolve_function_response import ResolveFunctionResponse
 from .resource_reference import ResourceReference
@@ -620,6 +623,7 @@ __all__ = (
     "CreateFrontendCustomDomainRequest",
     "CreateFunctionBody",
     "CreateFunctionBodyRuntime",
+    "CreateFunctionBodyVariableScope",
     "CreateFunctionsBatchBody",
     "CreateFunctionSchedulerRequest",
     "CreateFunctionSchedulerRequestPayload",
@@ -853,6 +857,7 @@ __all__ = (
     "ProjectConfigFrontend",
     "ProjectConfigFunction",
     "ProjectConfigFunctionOpenapiSpecType0",
+    "ProjectConfigFunctionVariableScope",
     "ProjectConfigHostedPage",
     "ProjectConfigHostedPages",
     "ProjectConfigMissingResource",
@@ -937,6 +942,7 @@ __all__ = (
     "RefreshOAuthProviderTokenProvider",
     "RefreshOAuthProviderTokenResponse200",
     "RenderDefaultManagedAuthPageAction",
+    "ReplaceSharedVariablesBody",
     "ResetDatabasePasswordResponse200",
     "ResolveFunctionResponse",
     "ResourceReference",
