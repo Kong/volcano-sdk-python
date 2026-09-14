@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/Kong/volcano-sdk-python/compare/v0.4.0...v0.5.0) (2026-09-14)
+
+
+### Features
+
+* **projects:** add list metadata expansions ([#60](https://github.com/Kong/volcano-sdk-python/issues/60)) ([0a7bb3d](https://github.com/Kong/volcano-sdk-python/commit/0a7bb3d0b6077a151fd0b4c435fce7170cf41356))
+
 ## [0.4.0](https://github.com/Kong/volcano-sdk-python/compare/v0.3.4...v0.4.0) (2026-09-11)
 
 
