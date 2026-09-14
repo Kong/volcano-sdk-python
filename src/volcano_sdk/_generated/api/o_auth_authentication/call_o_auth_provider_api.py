@@ -129,7 +129,9 @@ def sync_detailed(
     An empty provider body is represented as `data: null`; the envelope
     preserves the provider's HTTP status in `status_code`, including errors.
     Provider response bodies are limited to 8 MiB after decompression.
-    Transport failures, invalid JSON, and oversized bodies return `502`.
+    Transport failures, invalid JSON (including invalid UTF-8), and oversized
+    bodies return `502`. Provider redirects to another origin are blocked and
+    return `400`.
 
     Args:
         provider (CallOAuthProviderAPIProvider):
@@ -183,7 +185,9 @@ def sync(
     An empty provider body is represented as `data: null`; the envelope
     preserves the provider's HTTP status in `status_code`, including errors.
     Provider response bodies are limited to 8 MiB after decompression.
-    Transport failures, invalid JSON, and oversized bodies return `502`.
+    Transport failures, invalid JSON (including invalid UTF-8), and oversized
+    bodies return `502`. Provider redirects to another origin are blocked and
+    return `400`.
 
     Args:
         provider (CallOAuthProviderAPIProvider):
@@ -232,7 +236,9 @@ async def asyncio_detailed(
     An empty provider body is represented as `data: null`; the envelope
     preserves the provider's HTTP status in `status_code`, including errors.
     Provider response bodies are limited to 8 MiB after decompression.
-    Transport failures, invalid JSON, and oversized bodies return `502`.
+    Transport failures, invalid JSON (including invalid UTF-8), and oversized
+    bodies return `502`. Provider redirects to another origin are blocked and
+    return `400`.
 
     Args:
         provider (CallOAuthProviderAPIProvider):
@@ -286,7 +292,9 @@ async def asyncio(
     An empty provider body is represented as `data: null`; the envelope
     preserves the provider's HTTP status in `status_code`, including errors.
     Provider response bodies are limited to 8 MiB after decompression.
-    Transport failures, invalid JSON, and oversized bodies return `502`.
+    Transport failures, invalid JSON (including invalid UTF-8), and oversized
+    bodies return `502`. Provider redirects to another origin are blocked and
+    return `400`.
 
     Args:
         provider (CallOAuthProviderAPIProvider):

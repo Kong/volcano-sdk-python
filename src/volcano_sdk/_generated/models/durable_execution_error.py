@@ -8,27 +8,28 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..models.project_health_status import check_project_health_status
-from ..models.project_health_status import ProjectHealthStatus
-from typing import cast
+from ..types import UNSET, Unset
 
 
 
 
 
 
-T = TypeVar("T", bound="ProjectHealthSummary")
+T = TypeVar("T", bound="DurableExecutionError")
 
 
 
 @_attrs_define
-class ProjectHealthSummary:
-    """ 
+class DurableExecutionError:
+    """ Why a failed or timed-out execution ended.
+
         Attributes:
-            status (ProjectHealthStatus):
+            type_ (str | Unset):
+            message (str | Unset):
      """
 
-    status: ProjectHealthStatus
+    type_: str | Unset = UNSET
+    message: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -36,14 +37,19 @@ class ProjectHealthSummary:
 
 
     def to_dict(self) -> dict[str, Any]:
-        status: str = self.status
+        type_ = self.type_
+
+        message = self.message
 
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "status": status,
         })
+        if type_ is not UNSET:
+            field_dict["type"] = type_
+        if message is not UNSET:
+            field_dict["message"] = message
 
         return field_dict
 
@@ -52,18 +58,18 @@ class ProjectHealthSummary:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        status = check_project_health_status(d.pop("status"))
+        type_ = d.pop("type", UNSET)
 
+        message = d.pop("message", UNSET)
 
-
-
-        project_health_summary = cls(
-            status=status,
+        durable_execution_error = cls(
+            type_=type_,
+            message=message,
         )
 
 
-        project_health_summary.additional_properties = d
-        return project_health_summary
+        durable_execution_error.additional_properties = d
+        return durable_execution_error
 
     @property
     def additional_keys(self) -> list[str]:

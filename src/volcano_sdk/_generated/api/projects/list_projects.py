@@ -9,8 +9,6 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.error import Error
-from ...models.list_projects_include_item import check_list_projects_include_item
-from ...models.list_projects_include_item import ListProjectsIncludeItem
 from ...models.paginated_projects import PaginatedProjects
 from ...types import UNSET, Unset
 from typing import cast
@@ -25,7 +23,6 @@ def _get_kwargs(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
-    include: list[ListProjectsIncludeItem] | Unset = UNSET,
 
 ) -> dict[str, Any]:
     
@@ -45,16 +42,6 @@ def _get_kwargs(
     params["offset"] = offset
 
     params["search"] = search
-
-    json_include: list[str] | Unset = UNSET
-    if not isinstance(include, Unset):
-        json_include = []
-        for include_item_data in include:
-            include_item: str = include_item_data
-            json_include.append(include_item)
-
-
-    params["include"] = json_include
 
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
@@ -110,7 +97,6 @@ def sync_detailed(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
-    include: list[ListProjectsIncludeItem] | Unset = UNSET,
 
 ) -> Response[Error | PaginatedProjects]:
     """ List all projects for authenticated user
@@ -121,9 +107,7 @@ def sync_detailed(
     `limit`, returns `next_cursor`/`prev_cursor`, and supports a bounded
     `offset` past the cursor anchor. Supplying `limit` without `page`
     selects cursor mode. `search` applies a case-insensitive project-name
-    filter in either mode. `include` optionally expands each returned
-    project with its Git connection and/or aggregate health summary using
-    `git_connection` and `health`. Sending `page` with `cursor` or `ending_before`,
+    filter in either mode. Sending `page` with `cursor` or `ending_before`,
     or sending both cursor directions, returns 400.
 
     Args:
@@ -133,7 +117,6 @@ def sync_detailed(
         ending_before (str | Unset):
         offset (int | Unset):  Default: 0.
         search (str | Unset):
-        include (list[ListProjectsIncludeItem] | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -151,7 +134,6 @@ cursor=cursor,
 ending_before=ending_before,
 offset=offset,
 search=search,
-include=include,
 
     )
 
@@ -170,7 +152,6 @@ def sync(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
-    include: list[ListProjectsIncludeItem] | Unset = UNSET,
 
 ) -> Error | PaginatedProjects | None:
     """ List all projects for authenticated user
@@ -181,9 +162,7 @@ def sync(
     `limit`, returns `next_cursor`/`prev_cursor`, and supports a bounded
     `offset` past the cursor anchor. Supplying `limit` without `page`
     selects cursor mode. `search` applies a case-insensitive project-name
-    filter in either mode. `include` optionally expands each returned
-    project with its Git connection and/or aggregate health summary using
-    `git_connection` and `health`. Sending `page` with `cursor` or `ending_before`,
+    filter in either mode. Sending `page` with `cursor` or `ending_before`,
     or sending both cursor directions, returns 400.
 
     Args:
@@ -193,7 +172,6 @@ def sync(
         ending_before (str | Unset):
         offset (int | Unset):  Default: 0.
         search (str | Unset):
-        include (list[ListProjectsIncludeItem] | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -212,7 +190,6 @@ cursor=cursor,
 ending_before=ending_before,
 offset=offset,
 search=search,
-include=include,
 
     ).parsed
 
@@ -225,7 +202,6 @@ async def asyncio_detailed(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
-    include: list[ListProjectsIncludeItem] | Unset = UNSET,
 
 ) -> Response[Error | PaginatedProjects]:
     """ List all projects for authenticated user
@@ -236,9 +212,7 @@ async def asyncio_detailed(
     `limit`, returns `next_cursor`/`prev_cursor`, and supports a bounded
     `offset` past the cursor anchor. Supplying `limit` without `page`
     selects cursor mode. `search` applies a case-insensitive project-name
-    filter in either mode. `include` optionally expands each returned
-    project with its Git connection and/or aggregate health summary using
-    `git_connection` and `health`. Sending `page` with `cursor` or `ending_before`,
+    filter in either mode. Sending `page` with `cursor` or `ending_before`,
     or sending both cursor directions, returns 400.
 
     Args:
@@ -248,7 +222,6 @@ async def asyncio_detailed(
         ending_before (str | Unset):
         offset (int | Unset):  Default: 0.
         search (str | Unset):
-        include (list[ListProjectsIncludeItem] | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -266,7 +239,6 @@ cursor=cursor,
 ending_before=ending_before,
 offset=offset,
 search=search,
-include=include,
 
     )
 
@@ -285,7 +257,6 @@ async def asyncio(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
-    include: list[ListProjectsIncludeItem] | Unset = UNSET,
 
 ) -> Error | PaginatedProjects | None:
     """ List all projects for authenticated user
@@ -296,9 +267,7 @@ async def asyncio(
     `limit`, returns `next_cursor`/`prev_cursor`, and supports a bounded
     `offset` past the cursor anchor. Supplying `limit` without `page`
     selects cursor mode. `search` applies a case-insensitive project-name
-    filter in either mode. `include` optionally expands each returned
-    project with its Git connection and/or aggregate health summary using
-    `git_connection` and `health`. Sending `page` with `cursor` or `ending_before`,
+    filter in either mode. Sending `page` with `cursor` or `ending_before`,
     or sending both cursor directions, returns 400.
 
     Args:
@@ -308,7 +277,6 @@ async def asyncio(
         ending_before (str | Unset):
         offset (int | Unset):  Default: 0.
         search (str | Unset):
-        include (list[ListProjectsIncludeItem] | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -327,6 +295,5 @@ cursor=cursor,
 ending_before=ending_before,
 offset=offset,
 search=search,
-include=include,
 
     )).parsed

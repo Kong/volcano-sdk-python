@@ -1,0 +1,268 @@
+from http import HTTPStatus
+from typing import Any, cast
+from urllib.parse import quote
+
+import httpx
+
+from ...client import AuthenticatedClient, Client
+from ...types import Response, UNSET
+from ... import errors
+
+from ...models.durable_execution import DurableExecution
+from ...models.error import Error
+from typing import cast
+from uuid import UUID
+
+
+
+def _get_kwargs(
+    id: UUID,
+    function_id: str,
+    execution_id: UUID,
+
+) -> dict[str, Any]:
+    
+
+    
+
+    
+
+    _kwargs: dict[str, Any] = {
+        "method": "post",
+        "url": "/projects/{id}/durable-functions/{function_id}/executions/{execution_id}/stop".format(id=quote(str(id), safe=""),function_id=quote(str(function_id), safe=""),execution_id=quote(str(execution_id), safe=""),),
+    }
+
+
+    return _kwargs
+
+
+
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> DurableExecution | Error | None:
+    if response.status_code == 200:
+        response_200 = DurableExecution.from_dict(response.json())
+
+
+
+        return response_200
+
+    if response.status_code == 404:
+        response_404 = Error.from_dict(response.json())
+
+
+
+        return response_404
+
+    if response.status_code == 409:
+        response_409 = Error.from_dict(response.json())
+
+
+
+        return response_409
+
+    if response.status_code == 503:
+        response_503 = Error.from_dict(response.json())
+
+
+
+        return response_503
+
+    if client.raise_on_unexpected_status:
+        raise errors.UnexpectedStatus(response.status_code, response.content)
+    else:
+        return None
+
+
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[DurableExecution | Error]:
+    return Response(
+        status_code=HTTPStatus(response.status_code),
+        content=response.content,
+        headers=response.headers,
+        parsed=_parse_response(client=client, response=response),
+    )
+
+
+def sync_detailed(
+    id: UUID,
+    function_id: str,
+    execution_id: UUID,
+    *,
+    client: AuthenticatedClient,
+
+) -> Response[DurableExecution | Error]:
+    """ Stop a durable execution
+
+     Cancels a running execution. Its completed steps are not undone.
+
+    The call is accepted rather than awaited: cancellation happens behind
+    it, so the response reports the execution as it was read back and may
+    still say `running`. Do not branch on that status — the execution
+    settles into `stopped` shortly after, and polling
+    `GET /projects/{id}/durable-functions/{functionId}/executions/{executionId}`
+    is how you see it get there.
+
+    Stopping an execution that already finished is not an error: the
+    response carries the state it settled in.
+
+    Args:
+        id (UUID):
+        function_id (str):
+        execution_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[DurableExecution | Error]
+     """
+
+
+    kwargs = _get_kwargs(
+        id=id,
+function_id=function_id,
+execution_id=execution_id,
+
+    )
+
+    response = client.get_httpx_client().request(
+        **kwargs,
+    )
+
+    return _build_response(client=client, response=response)
+
+def sync(
+    id: UUID,
+    function_id: str,
+    execution_id: UUID,
+    *,
+    client: AuthenticatedClient,
+
+) -> DurableExecution | Error | None:
+    """ Stop a durable execution
+
+     Cancels a running execution. Its completed steps are not undone.
+
+    The call is accepted rather than awaited: cancellation happens behind
+    it, so the response reports the execution as it was read back and may
+    still say `running`. Do not branch on that status — the execution
+    settles into `stopped` shortly after, and polling
+    `GET /projects/{id}/durable-functions/{functionId}/executions/{executionId}`
+    is how you see it get there.
+
+    Stopping an execution that already finished is not an error: the
+    response carries the state it settled in.
+
+    Args:
+        id (UUID):
+        function_id (str):
+        execution_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        DurableExecution | Error
+     """
+
+
+    return sync_detailed(
+        id=id,
+function_id=function_id,
+execution_id=execution_id,
+client=client,
+
+    ).parsed
+
+async def asyncio_detailed(
+    id: UUID,
+    function_id: str,
+    execution_id: UUID,
+    *,
+    client: AuthenticatedClient,
+
+) -> Response[DurableExecution | Error]:
+    """ Stop a durable execution
+
+     Cancels a running execution. Its completed steps are not undone.
+
+    The call is accepted rather than awaited: cancellation happens behind
+    it, so the response reports the execution as it was read back and may
+    still say `running`. Do not branch on that status — the execution
+    settles into `stopped` shortly after, and polling
+    `GET /projects/{id}/durable-functions/{functionId}/executions/{executionId}`
+    is how you see it get there.
+
+    Stopping an execution that already finished is not an error: the
+    response carries the state it settled in.
+
+    Args:
+        id (UUID):
+        function_id (str):
+        execution_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[DurableExecution | Error]
+     """
+
+
+    kwargs = _get_kwargs(
+        id=id,
+function_id=function_id,
+execution_id=execution_id,
+
+    )
+
+    response = await client.get_async_httpx_client().request(
+        **kwargs
+    )
+
+    return _build_response(client=client, response=response)
+
+async def asyncio(
+    id: UUID,
+    function_id: str,
+    execution_id: UUID,
+    *,
+    client: AuthenticatedClient,
+
+) -> DurableExecution | Error | None:
+    """ Stop a durable execution
+
+     Cancels a running execution. Its completed steps are not undone.
+
+    The call is accepted rather than awaited: cancellation happens behind
+    it, so the response reports the execution as it was read back and may
+    still say `running`. Do not branch on that status — the execution
+    settles into `stopped` shortly after, and polling
+    `GET /projects/{id}/durable-functions/{functionId}/executions/{executionId}`
+    is how you see it get there.
+
+    Stopping an execution that already finished is not an error: the
+    response carries the state it settled in.
+
+    Args:
+        id (UUID):
+        function_id (str):
+        execution_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        DurableExecution | Error
+     """
+
+
+    return (await asyncio_detailed(
+        id=id,
+function_id=function_id,
+execution_id=execution_id,
+client=client,
+
+    )).parsed

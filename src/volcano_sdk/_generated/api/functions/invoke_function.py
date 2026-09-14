@@ -156,6 +156,12 @@ def sync_detailed(
     - `http_auth_mode: none` applies only to public HTTP-mode DNS ingress; this
       direct operation always requires a Volcano credential.
 
+    **Durable functions are not invocable here.** A durable function's id
+    answers 404, whatever its visibility, because a synchronous call would
+    run it with no execution record, no idempotency and no concurrency
+    accounting. Start one with
+    `POST /durable-functions/{functionId}/executions`.
+
     Args:
         function_id (UUID):
         body (FunctionInvocationRequest):
@@ -227,6 +233,12 @@ def sync(
     - `http_auth_mode: none` applies only to public HTTP-mode DNS ingress; this
       direct operation always requires a Volcano credential.
 
+    **Durable functions are not invocable here.** A durable function's id
+    answers 404, whatever its visibility, because a synchronous call would
+    run it with no execution record, no idempotency and no concurrency
+    accounting. Start one with
+    `POST /durable-functions/{functionId}/executions`.
+
     Args:
         function_id (UUID):
         body (FunctionInvocationRequest):
@@ -292,6 +304,12 @@ async def asyncio_detailed(
       preflight advertises `GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS`.
     - `http_auth_mode: none` applies only to public HTTP-mode DNS ingress; this
       direct operation always requires a Volcano credential.
+
+    **Durable functions are not invocable here.** A durable function's id
+    answers 404, whatever its visibility, because a synchronous call would
+    run it with no execution record, no idempotency and no concurrency
+    accounting. Start one with
+    `POST /durable-functions/{functionId}/executions`.
 
     Args:
         function_id (UUID):
@@ -363,6 +381,12 @@ async def asyncio(
       preflight advertises `GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS`.
     - `http_auth_mode: none` applies only to public HTTP-mode DNS ingress; this
       direct operation always requires a Volcano credential.
+
+    **Durable functions are not invocable here.** A durable function's id
+    answers 404, whatever its visibility, because a synchronous call would
+    run it with no execution record, no idempotency and no concurrency
+    accounting. Start one with
+    `POST /durable-functions/{functionId}/executions`.
 
     Args:
         function_id (UUID):

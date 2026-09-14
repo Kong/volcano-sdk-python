@@ -8,6 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.error import Error
 from ...models.function_scheduler import FunctionScheduler
 from typing import cast
 from uuid import UUID
@@ -36,7 +37,7 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> FunctionScheduler | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Error | FunctionScheduler | None:
     if response.status_code == 200:
         response_200 = FunctionScheduler.from_dict(response.json())
 
@@ -44,13 +45,20 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_200
 
+    if response.status_code == 404:
+        response_404 = Error.from_dict(response.json())
+
+
+
+        return response_404
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[FunctionScheduler]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | FunctionScheduler]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -66,7 +74,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[FunctionScheduler]:
+) -> Response[Error | FunctionScheduler]:
     """ Get a function scheduler
 
     Args:
@@ -79,7 +87,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[FunctionScheduler]
+        Response[Error | FunctionScheduler]
      """
 
 
@@ -103,7 +111,7 @@ def sync(
     *,
     client: AuthenticatedClient,
 
-) -> FunctionScheduler | None:
+) -> Error | FunctionScheduler | None:
     """ Get a function scheduler
 
     Args:
@@ -116,7 +124,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        FunctionScheduler
+        Error | FunctionScheduler
      """
 
 
@@ -135,7 +143,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[FunctionScheduler]:
+) -> Response[Error | FunctionScheduler]:
     """ Get a function scheduler
 
     Args:
@@ -148,7 +156,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[FunctionScheduler]
+        Response[Error | FunctionScheduler]
      """
 
 
@@ -172,7 +180,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
 
-) -> FunctionScheduler | None:
+) -> Error | FunctionScheduler | None:
     """ Get a function scheduler
 
     Args:
@@ -185,7 +193,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        FunctionScheduler
+        Error | FunctionScheduler
      """
 
 

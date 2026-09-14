@@ -68,6 +68,8 @@ def sync_detailed(
     """ List platform-supported regions for database provisioning
 
      Returns the regions enabled for database provisioning in this platform environment.
+    These are the same regions offered for function deployment, and the only values
+    the `region` field of a database accepts.
     This is a public endpoint that doesn't require authentication.
 
     Raises:
@@ -97,6 +99,8 @@ def sync(
     """ List platform-supported regions for database provisioning
 
      Returns the regions enabled for database provisioning in this platform environment.
+    These are the same regions offered for function deployment, and the only values
+    the `region` field of a database accepts.
     This is a public endpoint that doesn't require authentication.
 
     Raises:
@@ -121,6 +125,8 @@ async def asyncio_detailed(
     """ List platform-supported regions for database provisioning
 
      Returns the regions enabled for database provisioning in this platform environment.
+    These are the same regions offered for function deployment, and the only values
+    the `region` field of a database accepts.
     This is a public endpoint that doesn't require authentication.
 
     Raises:
@@ -150,6 +156,8 @@ async def asyncio(
     """ List platform-supported regions for database provisioning
 
      Returns the regions enabled for database provisioning in this platform environment.
+    These are the same regions offered for function deployment, and the only values
+    the `region` field of a database accepts.
     This is a public endpoint that doesn't require authentication.
 
     Raises:
