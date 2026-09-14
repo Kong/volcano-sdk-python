@@ -269,6 +269,7 @@ from .list_email_templates_response_200 import ListEmailTemplatesResponse200
 from .list_o_auth_configs_response_200 import ListOAuthConfigsResponse200
 from .list_postgres_versions_response_200_item import ListPostgresVersionsResponse200Item
 from .list_project_deployments_resource_type import ListProjectDeploymentsResourceType
+from .list_projects_include_item import ListProjectsIncludeItem
 from .list_storage_objects_admin_response_200 import ListStorageObjectsAdminResponse200
 from .list_user_sessions_response_200 import ListUserSessionsResponse200
 from .list_user_sessions_sort import ListUserSessionsSort
@@ -381,6 +382,7 @@ from .project_deployment_summary import ProjectDeploymentSummary
 from .project_frontend_custom_domain import ProjectFrontendCustomDomain
 from .project_frontend_custom_domain_frontend import ProjectFrontendCustomDomainFrontend
 from .project_git_connection import ProjectGitConnection
+from .project_git_connection_summary import ProjectGitConnectionSummary
 from .project_git_deploy_settings import ProjectGitDeploySettings
 from .project_health_category import ProjectHealthCategory
 from .project_health_check import ProjectHealthCheck
@@ -391,6 +393,7 @@ from .project_health_resource_type import ProjectHealthResourceType
 from .project_health_response import ProjectHealthResponse
 from .project_health_scope import ProjectHealthScope
 from .project_health_status import ProjectHealthStatus
+from .project_health_summary import ProjectHealthSummary
 from .project_import_action import ProjectImportAction
 from .project_import_action_code import ProjectImportActionCode
 from .project_import_destination import ProjectImportDestination
@@ -767,6 +770,7 @@ __all__ = (
     "ListOAuthConfigsResponse200",
     "ListPostgresVersionsResponse200Item",
     "ListProjectDeploymentsResourceType",
+    "ListProjectsIncludeItem",
     "ListStorageObjectsAdminResponse200",
     "ListUserSessionsResponse200",
     "ListUserSessionsSort",
@@ -879,6 +883,7 @@ __all__ = (
     "ProjectFrontendCustomDomain",
     "ProjectFrontendCustomDomainFrontend",
     "ProjectGitConnection",
+    "ProjectGitConnectionSummary",
     "ProjectGitDeploySettings",
     "ProjectHealthCategory",
     "ProjectHealthCheck",
@@ -889,6 +894,7 @@ __all__ = (
     "ProjectHealthResponse",
     "ProjectHealthScope",
     "ProjectHealthStatus",
+    "ProjectHealthSummary",
     "ProjectImportAction",
     "ProjectImportActionCode",
     "ProjectImportDestination",
