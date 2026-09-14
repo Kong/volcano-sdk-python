@@ -126,12 +126,36 @@ class Functions:
     ) -> FunctionResolution:
         """Return the function's identity, reusing a live cached resolution."""
         api_url = self._client._api_base_url()
-        cached = _function_resolution.lookup(api_url, authorization, name)
+        cached = self._cached(api_url, authorization, name)
         if cached is not None:
-            if cached.resolution is None:
-                raise NotFoundError(_UNKNOWN_FUNCTION, status=_HTTP_NOT_FOUND)
-            return cached.resolution
+            return cached
 
+        # Hold the name's lock across the round trip so concurrent callers wait
+        # for one resolve instead of each opening their own.
+        with _function_resolution.resolve_lock(api_url, authorization, name):
+            cached = self._cached(api_url, authorization, name)
+            if cached is not None:
+                return cached
+            return self._resolve_uncached(transport, api_url, authorization, name)
+
+    @staticmethod
+    def _cached(
+        api_url: str, authorization: str, name: str
+    ) -> FunctionResolution | None:
+        cached = _function_resolution.lookup(api_url, authorization, name)
+        if cached is None:
+            return None
+        if cached.resolution is None:
+            raise NotFoundError(_UNKNOWN_FUNCTION, status=_HTTP_NOT_FOUND)
+        return cached.resolution
+
+    def _resolve_uncached(
+        self,
+        transport: FunctionsTransport,
+        api_url: str,
+        authorization: str,
+        name: str,
+    ) -> FunctionResolution:
         resolved = invoke(
             transport.resolve_function_for_invocation,
             authorization=authorization,
@@ -140,14 +164,14 @@ class Functions:
         if int(resolved.status_code) == _HTTP_NOT_FOUND:
             _function_resolution.store_missing(api_url, authorization, name)
         payload = response_payload(resolved, _HTTP_SUCCESS_MIN)
-        resolution = self._resolution(payload)
+        resolution = self._resolution(payload, api_url)
         _function_resolution.store(
             api_url, authorization, name, resolution, self._cache_ttl(payload)
         )
         return resolution
 
     @staticmethod
-    def _resolution(payload: object) -> FunctionResolution:
+    def _resolution(payload: object, api_url: str) -> FunctionResolution:
         if not isinstance(payload, Mapping):
             raise TypeError(_INVALID_FUNCTION_RESPONSE)
         values = cast("Mapping[str, object]", payload)
@@ -158,7 +182,9 @@ class Functions:
         # local development; the function is reached through the API instead.
         return FunctionResolution(
             function_id=function_id,
-            invoke_url=_function_resolution.valid_invoke_url(values.get("invoke_url")),
+            invoke_url=_function_resolution.valid_invoke_url(
+                values.get("invoke_url"), api_url
+            ),
         )
 
     @staticmethod

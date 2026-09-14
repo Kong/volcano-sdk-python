@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -83,7 +84,13 @@ class _Server:
             def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
                 """Keep the test output free of per-request server logging."""
 
-        self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        class Server(ThreadingHTTPServer):
+            # The default backlog of 5 resets connections when a test opens
+            # several at once, which reads as a transport failure in the SDK.
+            request_queue_size = 128
+            daemon_threads = True
+
+        self._httpd = Server(("127.0.0.1", 0), Handler)
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
         self._thread.start()
 
@@ -111,9 +118,16 @@ def function_server() -> Iterator[tuple[_Server, Recorder]]:
         server.close()
 
 
-def _api_server(recorder: Recorder, resolve_payload: Any, status: int = 200) -> _Server:
+def _api_server(
+    recorder: Recorder,
+    resolve_payload: Any,
+    status: int = 200,
+    resolve_delay: float = 0.0,
+) -> _Server:
     def respond(path: str) -> tuple[int, Any]:
         if path.startswith("/functions/resolve"):
+            if resolve_delay:
+                time.sleep(resolve_delay)
             return status, resolve_payload
         return 200, {"ok": "via-api"}
 
@@ -192,5 +206,76 @@ def test_an_unknown_name_is_not_re_resolved_on_every_attempt() -> None:
                 client.functions.invoke("missing-function")
 
         assert api_requests.paths() == ["/functions/resolve?name=missing-function"]
+    finally:
+        api.close()
+
+
+def test_concurrent_first_invocations_share_one_resolve(function_server: Any) -> None:
+    """A cold cache must not let every caller open its own resolve."""
+    functions, function_requests = function_server
+    api_requests = Recorder()
+    api = _api_server(
+        api_requests,
+        {
+            "name": "send-welcome",
+            "function_id": FUNCTION_ID,
+            "invoke_url": f"{functions.url}/",
+            "cache_ttl_seconds": 300,
+        },
+        resolve_delay=0.2,
+    )
+    try:
+        client = _client(api.url)
+        failures: list[BaseException] = []
+
+        def invoke() -> None:
+            try:
+                assert client.functions.invoke("send-welcome").status == 200
+            except BaseException as error:  # noqa: BLE001 - reported below
+                failures.append(error)
+
+        threads = [threading.Thread(target=invoke) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=30)
+
+        assert failures == []
+        assert api_requests.paths() == ["/functions/resolve?name=send-welcome"]
+        assert len(function_requests.paths()) == 8
+    finally:
+        api.close()
+
+
+def test_a_recreated_function_is_resolved_again_after_a_platform_404() -> None:
+    api_requests = Recorder()
+    invoked: list[str] = []
+
+    def respond(path: str) -> tuple[int, Any]:
+        if path.startswith("/functions/resolve"):
+            return 200, {
+                "name": "send-welcome",
+                "function_id": FUNCTION_ID,
+                "cache_ttl_seconds": 300,
+            }
+        invoked.append(path)
+        # The first invocation finds the cached identity gone.
+        return (
+            (404, {"error": "function not found"})
+            if len(invoked) == 1
+            else (200, {"ok": True})
+        )
+
+    api = _Server(respond, api_requests)
+    try:
+        result = _client(api.url).functions.invoke("send-welcome")
+
+        assert result.status == 200
+        assert api_requests.paths() == [
+            "/functions/resolve?name=send-welcome",
+            f"/functions/{FUNCTION_ID}/invoke",
+            "/functions/resolve?name=send-welcome",
+            f"/functions/{FUNCTION_ID}/invoke",
+        ]
     finally:
         api.close()

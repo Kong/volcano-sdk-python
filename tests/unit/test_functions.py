@@ -283,7 +283,8 @@ def test_functions_falls_back_to_the_api_path_without_an_invoke_url() -> None:
 
 
 @pytest.mark.parametrize(
-    "invoke_url", ["", "not-a-url", "ftp://example.test/", "/relative"]
+    "invoke_url",
+    ["", "not-a-url", "ftp://example.test/", "/relative", "https:///nohost"],
 )
 def test_functions_ignores_an_unusable_invoke_url(invoke_url: str) -> None:
     transport = FakeFunctionsTransport(invoke_url=invoke_url)
@@ -291,6 +292,29 @@ def test_functions_ignores_an_unusable_invoke_url(invoke_url: str) -> None:
     functions_client(transport).functions.invoke("send-welcome")
 
     assert transport.calls[1][0] == "invokeFunction"
+
+
+def test_functions_refuses_to_send_the_token_to_a_plaintext_endpoint() -> None:
+    """An https API must not be downgraded to http by a resolve response."""
+    transport = FakeFunctionsTransport(invoke_url="http://functions.test.run/")
+
+    functions_client(transport).functions.invoke("send-welcome")
+
+    assert transport.calls[1][0] == "invokeFunction"
+
+
+def test_functions_allows_a_plaintext_endpoint_for_a_plaintext_api() -> None:
+    transport = FakeFunctionsTransport(invoke_url="http://127.0.0.1:9/")
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        api_url="http://127.0.0.1:8000",
+        _transport=cast("Transport", transport),
+    )
+
+    client.functions.invoke("send-welcome")
+
+    assert transport.calls[1][0] == "invokeFunctionUrl"
 
 
 def test_functions_resolves_a_name_once_for_repeated_invocations() -> None:

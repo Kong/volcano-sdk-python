@@ -17,7 +17,10 @@ from urllib.parse import urlsplit
 MAX_ENTRIES = 1024
 NEGATIVE_TTL_SECONDS = 30.0
 
-_ALLOWED_SCHEMES = frozenset({"http", "https"})
+# Concurrent misses for one name serialize on a shared lock rather than each
+# opening its own resolve. Striping keeps that bounded: a per-key lock table
+# would grow with every name ever invoked.
+_LOCK_STRIPES = 64
 
 
 def _now() -> float:
@@ -48,20 +51,32 @@ class _Entry:
 
 _lock = threading.Lock()
 _entries: dict[tuple[str, str, str], _Entry] = {}
+_stripes = [threading.Lock() for _ in range(_LOCK_STRIPES)]
 
 
-def valid_invoke_url(value: object) -> str | None:
-    """Return an absolute HTTP(S) invocation URL, or None when unusable.
+def resolve_lock(api_url: str, authorization: str, name: str) -> threading.Lock:
+    """Return the lock that serializes resolving one name."""
+    return _stripes[hash((api_url, authorization, name)) % _LOCK_STRIPES]
 
-    The URL carries the caller's bearer token, so anything that is not a
-    well-formed absolute HTTP(S) URL is discarded rather than requested.
+
+def valid_invoke_url(value: object, api_url: str) -> str | None:
+    """Return an absolute invocation URL, or None when unusable.
+
+    The URL carries the caller's bearer token. Plaintext is accepted only when
+    the API itself is plaintext, so a resolve response cannot downgrade a
+    credential that is otherwise protected in transit.
     """
     if not isinstance(value, str) or not value:
         return None
     parsed = urlsplit(value)
-    if parsed.scheme.lower() not in _ALLOWED_SCHEMES or not parsed.netloc:
+    scheme = parsed.scheme.lower()
+    if not parsed.netloc:
         return None
-    return value
+    if scheme == "https":
+        return value
+    if scheme == "http" and urlsplit(api_url).scheme.lower() == "http":
+        return value
+    return None
 
 
 def lookup(api_url: str, authorization: str, name: str) -> CachedOutcome | None:
