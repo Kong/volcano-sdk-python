@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
 from .database import Database
+from .durable import Durable
 from .functions import Functions
 from .locks import Locks
 from .logs import Logs
@@ -86,6 +87,7 @@ class VolcanoClient:
         )
         self.auth = Auth(self)
         self.functions = Functions(self)
+        self.durable = Durable(self)
         self.logs = Logs(self)
         self.storage = Storage(self)
         self.locks = Locks(self)

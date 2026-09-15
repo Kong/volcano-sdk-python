@@ -22,12 +22,21 @@ dependencies = [
   "attrs>=26.1.0",
   "centrifuge-python>=0.6.0,<0.7.0",
   "httpx>=0.28.1,<0.29.0",
-  "python-dateutil>=2.9.0.post0,<3.0.0",
-  "typing-extensions>=4.15.0",
 ]
+
+[project.optional-dependencies]
+# What a durable function installs. The runtime the authoring module wraps is
+# not a base dependency: it is large, and only a deployed durable function
+# needs it, so a project that uses the rest of the SDK installs without it.
+durable = ["aws-durable-execution-sdk-python>=2.0.0,<3.0.0"]
 
 [dependency-groups]
 dev = [
+  # The durable extra, so the authoring module's tests run here, plus the local
+  # runner they check replay against. Neither is a base dependency: the SDK has
+  # to install for a project that uses none of it.
+  "volcano-sdk[durable]",
+  "aws-durable-execution-sdk-python-testing>=1.2.1,<2.0.0",
   "behave>=1.3.3,<2.0.0",
   "build>=1.5.0,<2.0.0",
   "mypy>=1.18.0",
@@ -93,6 +102,10 @@ ignore = [
 "src/volcano_sdk/_transport.py" = ["ANN401"]
 "src/volcano_sdk/auth.py" = ["SLF001"]
 "src/volcano_sdk/database.py" = ["SLF001"]
+"src/volcano_sdk/durable.py" = ["SLF001"]
+# The durable engine is an untyped third-party package, so the wrapper's
+# boundary is Any either way.
+"src/volcano_sdk/durable_authoring.py" = ["ANN401"]
 "src/volcano_sdk/functions.py" = ["SLF001"]
 "src/volcano_sdk/logs.py" = ["SLF001"]
 "src/volcano_sdk/locks.py" = ["SLF001"]

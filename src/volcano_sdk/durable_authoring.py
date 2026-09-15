@@ -1,0 +1,733 @@
+"""Durable function authoring API.
+
+A durable function checkpoints its progress as it runs, so one execution can
+span many invocations and run for hours. This module is what the function
+itself is written against; starting an execution and reading its result are
+done through `client.durable`, the CLI, or the dashboard.
+
+    from volcano_sdk.durable_authoring import durable
+
+    @durable
+    def handler(event, ctx):
+        charge = ctx.step("charge", lambda scope: charge_card(event["order_id"]))
+        ctx.wait("settle", "30s")
+        return {"charged": charge["id"]}
+
+Every context operation is checkpointed: what finished is recorded, and a
+resumed execution replays those recorded outcomes instead of doing the work
+again. That is also the one rule the handler has to respect -- the code between
+the operations runs again on every resume, so it has to reach the same
+operations in the same order.
+
+Authoring a durable function needs a durable-capable runtime: python3.13 or
+python3.14.
+"""
+
+from __future__ import annotations
+
+import importlib
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, cast, overload
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+T = TypeVar("T")
+# A duration: "30s", "5m", "2h", "1d", a compound string like "1m30s", a whole
+# number of seconds, or the mapping form.
+Duration: TypeAlias = "str | int | dict[str, int]"
+# What a durable function is written as, and what the platform invokes it as.
+# The second argument differs: the handler is given a durable context, and the
+# wrapper is given the invocation's own context.
+DurableHandler: TypeAlias = "Callable[[Any, DurableContext], Any]"
+FunctionHandler: TypeAlias = "Callable[[Any, Any], Any]"
+
+# The extra that installs the runtime, rather than the runtime's own name: it
+# is what the docs tell a reader to install, so it is what the error should ask
+# for when the install is missing.
+_ENGINE_EXTRA = "volcano-sdk[durable]"
+_ENGINE_MODULE = "aws_durable_execution_sdk_python"
+_DURATION_FIELDS = ("days", "hours", "minutes", "seconds")
+# No milliseconds: a durable duration is held by the platform between
+# invocations and its wire form carries whole seconds, so a millisecond value
+# could only be rounded -- and a rounded "400ms" is no wait at all.
+_DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+_FIELD_UNITS = {"days": 86400, "hours": 3600, "minutes": 60, "seconds": 1}
+_REQUIRES_HANDLER = "durable(handler) requires a callable"
+_REQUIRES_UNTIL = "wait_until() requires an `until` predicate"
+_REQUIRES_INITIAL_STATE = (
+    "wait_until() requires an `initial_state`, which is what `until` is given "
+    "until the state changes"
+)
+# A condition is bounded by how many times it is checked, not by a deadline:
+# the platform holds the wait between checks and has no clock to compare
+# against when it resumes. Refused rather than ignored, because a wait meant to
+# give up after an hour would otherwise poll to the execution's own ceiling.
+_NO_TIMEOUT = (
+    "wait_until() has no `timeout`: bound the wait with `max_attempts`, "
+    "`interval` and `max_interval`"
+)
+_INVALID_RETRY = "retry must be False, a callable, or a RetryOptions"
+_INVALID_BRANCH = "a parallel branch is a callable, or a ParallelBranch"
+_INVALID_ITEMS = "map() requires a sequence of items"
+_INVALID_WAIT_ARGS = "wait() takes a name and a duration, or a duration alone"
+# Distinguishes an omitted initial_state from an explicit None, which is a
+# legitimate state for a condition to start from.
+_UNSET: Any = object()
+
+
+class DurableRuntimeMissingError(Exception):
+    """Raised when the durable runtime is not installed.
+
+    This is also what happens when the handler runs somewhere durable
+    execution does not exist: a standard function, or a local script.
+    """
+
+    def __init__(self, cause: BaseException | None = None) -> None:
+        """Explain how to install the runtime and deploy as durable."""
+        super().__init__(
+            f"Durable functions need the durable runtime: install it with "
+            f"`pip install '{_ENGINE_EXTRA}'`, declare it in the function's "
+            f"requirements.txt, and deploy the function as durable "
+            f"(`volcano cloud durable deploy`, or `kind: durable` in "
+            f"volcano-config.yaml). Durable execution is a cloud capability "
+            f"and does not run locally."
+        )
+        self.__cause__ = cause
+
+
+class _Engine:
+    """The durable protocol, from the AWS durable execution SDK.
+
+    Resolved on first use rather than imported at module scope, because the
+    Volcano SDK also runs in standard functions and scripts where the runtime
+    is absent, and a missing engine is worth a real error message instead of
+    an ImportError from an unfamiliar package.
+    """
+
+    _loaded: _Engine | None = None
+
+    def __init__(self) -> None:
+        """Resolve the engine's public surface."""
+        try:
+            config = importlib.import_module(f"{_ENGINE_MODULE}.config")
+            retries = importlib.import_module(f"{_ENGINE_MODULE}.retries")
+            waits = importlib.import_module(f"{_ENGINE_MODULE}.waits")
+            root = importlib.import_module(_ENGINE_MODULE)
+        except ImportError as error:
+            raise DurableRuntimeMissingError(error) from error
+        self.durable_execution = root.durable_execution
+        self.duration = config.Duration
+        self.step_config = config.StepConfig
+        self.step_semantics = config.StepSemantics
+        self.map_config = config.MapConfig
+        self.parallel_config = config.ParallelConfig
+        self.completion_config = config.CompletionConfig
+        self.parallel_branch = config.ParallelBranch
+        self.create_retry_strategy = retries.create_retry_strategy
+        self.retry_strategy_config = retries.RetryStrategyConfig
+        self.retry_decision = retries.RetryDecision
+        self.create_wait_strategy = waits.create_wait_strategy
+        self.wait_strategy_config = waits.WaitStrategyConfig
+        self.wait_for_condition_config = waits.WaitForConditionConfig
+
+    @classmethod
+    def load(cls) -> _Engine:
+        """Return the process-wide engine, resolving it once."""
+        if cls._loaded is None:
+            cls._loaded = cls()
+        return cls._loaded
+
+
+@dataclass(frozen=True, slots=True)
+class RetryOptions:
+    """How a step retries after a failed attempt.
+
+    What is left unset keeps the platform's default: 6 attempts, 5 seconds
+    apart doubling to a minute, with the delays jittered.
+    """
+
+    # Total attempts, including the first.
+    attempts: int | None = None
+    initial_delay: Duration | None = None
+    max_delay: Duration | None = None
+    backoff_rate: float | None = None
+    # Retry only errors whose message matches one of these.
+    retry_on: Sequence[str] | None = None
+    retry_on_types: Sequence[type[Exception]] | None = None
+
+
+Retry: TypeAlias = "bool | RetryOptions | Callable[[Exception, int], Any] | None"
+
+
+@dataclass(frozen=True, slots=True)
+class WaitUntilOptions:
+    """How `wait_until` polls, and what it polls for."""
+
+    # Stop waiting once this returns true for the state the check returned.
+    until: Callable[[Any], bool]
+    # The state a check receives. Required, and distinguished from an explicit
+    # None: the wait starts by asking `until` about it. Treat it as the state
+    # every check starts from rather than an accumulator -- a check should
+    # decide from what it observes now, because the platform does not promise
+    # to carry a previous check's return into the next one.
+    initial_state: Any = _UNSET
+    # Delay before the second check, then multiplied by backoff_rate up to
+    # max_interval.
+    interval: Duration | None = None
+    max_interval: Duration | None = None
+    backoff_rate: float | None = None
+    # How many times to check before giving up. Running out fails the
+    # execution rather than returning the last state.
+    max_attempts: int | None = None
+    # Refused rather than honoured; see _NO_TIMEOUT.
+    timeout: Duration | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class BatchOptions:
+    """How many items of a `map` or `parallel` run at once, and when to stop."""
+
+    # How many items or branches run at once. Unlimited by default.
+    concurrency: int | None = None
+    # Finish as soon as this many items have succeeded.
+    min_succeeded: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ParallelBranch(Generic[T]):
+    """A branch of `ctx.parallel`, named for the execution history."""
+
+    run: Callable[[DurableContext], T]
+    name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StepScope:
+    """What a step's function is given: logging, and which attempt it is on.
+
+    A step gets a scope rather than a context on purpose: it is one atomic
+    operation and cannot contain durable operations of its own. Grouping
+    belongs in `ctx.child`, and handing something context-shaped to a step
+    would invite exactly the mistake the engine then rejects.
+    """
+
+    log: Any
+    # 1 on the first attempt.
+    attempt: int
+
+
+@dataclass(frozen=True, slots=True)
+class BatchItem(Generic[T]):
+    """One item's outcome in a `map` or `parallel` batch."""
+
+    index: int
+    status: str
+    result: T | None = None
+    error: BaseException | None = None
+
+
+class BatchResult(Generic[T]):
+    """The outcome of a `map` or `parallel` batch.
+
+    Reduced to plain data from the engine's own result, which carries methods
+    and enum-valued statuses: a batch is usually inspected, logged, and
+    returned from the handler, so a JSON-serializable shape is worth more here
+    than the engine's convenience methods.
+    """
+
+    __slots__ = (
+        "_batch",
+        "errors",
+        "failed",
+        "items",
+        "results",
+        "succeeded",
+        "total",
+    )
+
+    def __init__(self, batch: Any) -> None:
+        """Flatten an engine batch result."""
+        self._batch = batch
+        self.items: tuple[BatchItem[T], ...] = tuple(
+            BatchItem(
+                index=item.index,
+                status=str(getattr(item.status, "value", item.status)).lower(),
+                result=getattr(item, "result", None),
+                error=getattr(item, "error", None),
+            )
+            for item in _batch_items(batch)
+        )
+        # Only the items that succeeded, so not aligned with the input when
+        # some failed.
+        self.results: tuple[T, ...] = tuple(batch.get_results())
+        self.errors: tuple[BaseException, ...] = tuple(batch.get_errors())
+        self.succeeded: int = batch.success_count
+        self.failed: int = batch.failure_count
+        self.total: int = batch.total_count
+
+    def throw_if_failed(self) -> None:
+        """Raise the first failure, if there was one."""
+        self._batch.throw_if_error()
+
+
+def _batch_items(batch: Any) -> list[Any]:
+    items = [*batch.succeeded(), *batch.failed(), *batch.started()]
+    return sorted(items, key=lambda item: item.index)
+
+
+class DurableContext:
+    """The durable context.
+
+    Every method on it is checkpointed: a resumed execution replays what
+    already finished instead of running it again.
+
+    This is a facade rather than a re-export. It keeps the authoring surface to
+    the operations Volcano supports, in Volcano's vocabulary, and lets
+    durations be written as `"30s"` rather than `Duration.from_seconds(30)`.
+
+    Callbacks are the deliberate omission. The engine can suspend on one, but
+    completing it is an AWS API call, and nothing in Volcano -- not the
+    function's own role, not the API -- can make it. Wait on your own state
+    with `wait_until` instead.
+    """
+
+    __slots__ = ("_context", "_engine", "log")
+
+    def __init__(self, context: Any, engine: _Engine) -> None:
+        """Wrap an engine context."""
+        self._context = context
+        self._engine = engine
+        # Logs, suppressed while an operation is being replayed.
+        self.log = context.logger
+
+    def step(
+        self,
+        name: str | Callable[[StepScope], T],
+        func: Callable[[StepScope], T] | None = None,
+        *,
+        retry: Retry = None,
+        at_most_once: bool = False,
+    ) -> T:
+        """Run one atomic operation and record its result.
+
+        A step cannot contain durable operations; use `child` to group those.
+        Both forms work -- a name is what the step is recorded under and is
+        worth giving, but a single obvious operation reads better without one.
+
+        `at_most_once` checkpoints before running rather than after, so an
+        attempt interrupted mid-flight is not repeated on replay. Use it for
+        work that must not run twice within an attempt, and pair it with
+        `retry=False` to make that hold across attempts too.
+        """
+        step_name, step_func = _named(name, func, "step")
+
+        def run(scope: Any) -> Any:
+            return step_func(StepScope(scope.logger, scope.attempt))
+
+        # The engine hands back whatever the step returned, untyped. T is the
+        # wrapper's own contract with the caller.
+        return cast(
+            "T",
+            self._context.step(
+                run,
+                step_name,
+                self._step_config(retry=retry, at_most_once=at_most_once),
+            ),
+        )
+
+    def wait(self, name: str | Duration, duration: Duration | None = None) -> None:
+        """Suspend the execution for a duration.
+
+        The execution is not running, and not billed, while it waits.
+
+        One argument is always the duration: a name and a duration can both be
+        strings, so `wait("30s")` would otherwise be ambiguous.
+        """
+        if duration is None:
+            self._context.wait(self._duration(name, "wait"))
+            return
+        if not isinstance(name, str):
+            raise TypeError(_INVALID_WAIT_ARGS)
+        self._context.wait(self._duration(duration, "wait"), name)
+
+    def child(
+        self,
+        name: str | Callable[[DurableContext], T],
+        func: Callable[[DurableContext], T] | None = None,
+    ) -> T:
+        """Group operations under one recorded context, with its own replay scope."""
+        child_name, child_func = _named(name, func, "child")
+        engine = self._engine
+
+        def run(context: Any) -> Any:
+            return child_func(DurableContext(context, engine))
+
+        return cast("T", self._context.run_in_child_context(run, child_name))
+
+    def wait_until(
+        self,
+        check: Callable[[Any, StepScope], Any],
+        options: WaitUntilOptions,
+        name: str | None = None,
+    ) -> Any:
+        """Poll until a condition holds, suspending between checks.
+
+        The check reports the current state and `options.until` decides
+        whether that is good enough; what `until` accepts is what the wait
+        returns. Have the check read the state it cares about each time rather
+        than build on its own previous return.
+
+        Running out of `options.max_attempts` fails the execution rather than
+        returning the last state.
+        """
+        check_func = _callable(check, "wait_until")
+        if not callable(options.until):
+            raise TypeError(_REQUIRES_UNTIL)
+        if options.timeout is not None:
+            raise TypeError(_NO_TIMEOUT)
+        if options.initial_state is _UNSET:
+            raise TypeError(_REQUIRES_INITIAL_STATE)
+        engine = self._engine
+        until = options.until
+
+        def keep_polling(state: Any) -> bool:
+            return not until(state)
+
+        def check_state(state: Any, scope: Any) -> Any:
+            return check_func(state, StepScope(scope.logger, scope.attempt))
+
+        strategy = engine.wait_strategy_config(
+            **_engine_kwargs(
+                should_continue_polling=keep_polling,
+                max_attempts=options.max_attempts,
+                initial_delay=self._optional_duration(options.interval, "interval"),
+                max_delay=self._optional_duration(options.max_interval, "max_interval"),
+                backoff_rate=options.backoff_rate,
+            )
+        )
+        return self._context.wait_for_condition(
+            check_state,
+            engine.wait_for_condition_config(
+                wait_strategy=engine.create_wait_strategy(strategy),
+                initial_state=options.initial_state,
+            ),
+            name,
+        )
+
+    def map(
+        self,
+        items: Sequence[Any],
+        func: Callable[[Any, DurableContext, int], T],
+        name: str | None = None,
+        options: BatchOptions | None = None,
+    ) -> BatchResult[T]:
+        """Run the same work over every item, each in its own child context."""
+        map_func = _callable(func, "map")
+        # A string is a sequence, so mapping over one would silently run the
+        # work per character rather than refuse.
+        if isinstance(items, str):
+            raise TypeError(_INVALID_ITEMS)
+        engine = self._engine
+
+        def run(context: Any, item: Any, index: int, _all: Any) -> Any:
+            return map_func(item, DurableContext(context, engine), index)
+
+        return BatchResult(
+            self._context.map(
+                list(items),
+                run,
+                name,
+                engine.map_config(**self._batch_config(options)),
+            )
+        )
+
+    def parallel(
+        self,
+        branches: Sequence[Callable[[DurableContext], T] | ParallelBranch[T]],
+        name: str | None = None,
+        options: BatchOptions | None = None,
+    ) -> BatchResult[T]:
+        """Run different branches at the same time, each in its own child context."""
+        engine = self._engine
+        return BatchResult(
+            self._context.parallel(
+                [self._branch(branch) for branch in branches],
+                name,
+                engine.parallel_config(**self._batch_config(options)),
+            )
+        )
+
+    def _branch(self, branch: Callable[[DurableContext], T] | ParallelBranch[T]) -> Any:
+        """Adapt one branch to the engine.
+
+        The branch's own result type is not carried through: what goes to the
+        engine is an untyped callable either way, and `parallel` keeps the
+        type on its own signature.
+        """
+        engine = self._engine
+        if isinstance(branch, ParallelBranch):
+            # isinstance cannot carry the branch's type argument, so its
+            # function is read at the erased type the engine takes anyway.
+            named = cast("Callable[[DurableContext], Any]", branch.run)
+
+            def run_named(context: Any) -> Any:
+                return named(DurableContext(context, engine))
+
+            return engine.parallel_branch(func=run_named, name=branch.name)
+        if not callable(branch):
+            raise TypeError(_INVALID_BRANCH)
+        bare = branch
+
+        def run_bare(context: Any) -> Any:
+            return bare(DurableContext(context, engine))
+
+        return run_bare
+
+    def _batch_config(self, options: BatchOptions | None) -> dict[str, Any]:
+        resolved = BatchOptions() if options is None else options
+        config = _engine_kwargs(max_concurrency=resolved.concurrency)
+        if resolved.min_succeeded is not None:
+            config["completion_config"] = self._engine.completion_config(
+                min_successful=resolved.min_succeeded
+            )
+        return config
+
+    def _step_config(self, *, retry: Retry, at_most_once: bool) -> Any:
+        engine = self._engine
+        config: dict[str, Any] = {}
+        if at_most_once:
+            config["step_semantics"] = engine.step_semantics.AT_MOST_ONCE_PER_RETRY
+        strategy = self._retry_strategy(retry)
+        if strategy is not None:
+            config["retry_strategy"] = strategy
+        return engine.step_config(**config)
+
+    def _retry_strategy(self, retry: Retry) -> Any:
+        engine = self._engine
+        if retry is None or retry is True:
+            return None
+        # retry=False means "fail on the first error", which is not the same as
+        # leaving retry unset: the platform retries by default, and a step that
+        # is not safe to repeat wants the opposite.
+        if retry is False:
+            no_delay = engine.duration.from_seconds(0)
+
+            def never_retry(_error: Any, _attempt: Any) -> Any:
+                return engine.retry_decision(should_retry=False, delay=no_delay)
+
+            return never_retry
+        if isinstance(retry, RetryOptions):
+            return engine.create_retry_strategy(
+                engine.retry_strategy_config(**self._retry_kwargs(retry))
+            )
+        if callable(retry):
+            return retry
+        raise TypeError(_INVALID_RETRY)
+
+    def _retry_kwargs(self, retry: RetryOptions) -> dict[str, Any]:
+        return _engine_kwargs(
+            max_attempts=retry.attempts,
+            initial_delay=self._optional_duration(retry.initial_delay, "initial_delay"),
+            max_delay=self._optional_duration(retry.max_delay, "max_delay"),
+            backoff_rate=retry.backoff_rate,
+            retryable_errors=(None if retry.retry_on is None else list(retry.retry_on)),
+            retryable_error_types=(
+                None if retry.retry_on_types is None else list(retry.retry_on_types)
+            ),
+        )
+
+    def _optional_duration(self, value: Duration | None, field_name: str) -> Any:
+        return None if value is None else self._duration(value, field_name)
+
+    def _duration(self, value: object, field_name: str) -> Any:
+        return self._engine.duration.from_seconds(_to_seconds(value, field_name))
+
+
+@overload
+def durable(handler: DurableHandler, *, logger: Any = ...) -> FunctionHandler: ...
+
+
+@overload
+def durable(
+    handler: None = ..., *, logger: Any = ...
+) -> Callable[[DurableHandler], FunctionHandler]: ...
+
+
+def durable(
+    handler: DurableHandler | None = None,
+    *,
+    logger: Any = None,
+) -> FunctionHandler | Callable[[DurableHandler], FunctionHandler]:
+    """Wrap a handler so Volcano runs it as a durable execution.
+
+    Usable bare or with options::
+
+        @durable
+        def handler(event, ctx): ...
+
+        @durable(logger=my_logger)
+        def handler(event, ctx): ...
+
+    The handler is called with the execution's input and a durable context, in
+    that order, matching a standard function's `(event, context)`.
+    """
+    if handler is None:
+
+        def decorate(func: Callable[[Any, DurableContext], Any]) -> Any:
+            return durable(func, logger=logger)
+
+        return decorate
+    if not callable(handler):
+        raise TypeError(_REQUIRES_HANDLER)
+
+    # Wrapped on the first invocation, not here: resolving the engine is what
+    # fails when the runtime is absent, and a decorator that raises at import
+    # time would break a module that merely mentions a durable handler.
+    wrapped: list[Any] = []
+
+    def invoke(event: Any, function_context: Any) -> Any:
+        if not wrapped:
+            engine = _Engine.load()
+
+            def run(input_value: Any, context: Any) -> Any:
+                if logger is not None:
+                    context.set_logger(logger)
+                return handler(input_value, DurableContext(context, engine))
+
+            wrapped.append(engine.durable_execution(run))
+        return wrapped[0](event, function_context)
+
+    invoke.__name__ = getattr(handler, "__name__", "handler")
+    invoke.__doc__ = handler.__doc__
+    return invoke
+
+
+def _named(
+    name: str | Callable[..., Any],
+    func: Callable[..., Any] | None,
+    operation: str,
+) -> tuple[str | None, Callable[..., Any]]:
+    """Accept both the named and unnamed form of an operation.
+
+    The name is what the operation is recorded under, so it is worth
+    encouraging, but a single obvious operation reads better without one.
+    """
+    if isinstance(name, str) or name is None:
+        return name, _callable(func, operation)
+    return None, _callable(name, operation)
+
+
+def _callable(func: object, operation: str) -> Callable[..., Any]:
+    if not callable(func):
+        message = f"{operation}() requires a function to run"
+        raise TypeError(message)
+    return func
+
+
+def _engine_kwargs(**entries: Any) -> dict[str, Any]:
+    """Drop what the caller left out.
+
+    The engine's configs are dataclasses with real defaults, so passing None
+    for an absent option would override the default with a value that is then
+    read for a unit it does not have.
+    """
+    return {key: value for key, value in entries.items() if value is not None}
+
+
+def _to_seconds(value: object, field_name: str) -> int:
+    """Read a duration as whole seconds.
+
+    Accepts `"30s"`, `"1m30s"`, a whole number of seconds, or a mapping of
+    days/hours/minutes/seconds.
+    """
+    if isinstance(value, bool):
+        raise TypeError(_duration_type_error(field_name))
+    if isinstance(value, int):
+        if value < 0:
+            message = f"{field_name} must be a non-negative whole number of seconds"
+            raise ValueError(message)
+        return value
+    if isinstance(value, float):
+        # Whole seconds only: a fraction would silently become a different
+        # wait than the one asked for.
+        message = f"{field_name} must be a whole number of seconds, not a fraction"
+        raise TypeError(message)
+    if isinstance(value, dict):
+        return _mapping_seconds(cast("dict[str, object]", value), field_name)
+    if not isinstance(value, str):
+        raise TypeError(_duration_type_error(field_name))
+    return _parse_duration(value.strip(), field_name)
+
+
+def _duration_type_error(field_name: str) -> str:
+    return (
+        f"{field_name} must be a duration string, a whole number of seconds, "
+        f"or a mapping of {', '.join(_DURATION_FIELDS)}"
+    )
+
+
+def _mapping_seconds(value: dict[str, object], field_name: str) -> int:
+    """Read the mapping form, refusing keys it does not have.
+
+    Unknown keys are the reason this checks rather than forwards: a
+    `{"milliseconds": 500}` would otherwise be a duration of nothing.
+    """
+    unknown = sorted(key for key in value if key not in _DURATION_FIELDS)
+    if unknown:
+        message = (
+            f"{field_name} duration takes {', '.join(_DURATION_FIELDS)} "
+            f"(got {', '.join(unknown)})"
+        )
+        raise TypeError(message)
+    if not any(value.get(key) is not None for key in _DURATION_FIELDS):
+        message = f"{field_name} duration needs one of {', '.join(_DURATION_FIELDS)}"
+        raise TypeError(message)
+    seconds = 0
+    for key in _DURATION_FIELDS:
+        part = value.get(key)
+        if part is None:
+            continue
+        if isinstance(part, bool) or not isinstance(part, int) or part < 0:
+            message = f"{field_name} duration {key} must be a non-negative whole number"
+            raise ValueError(message)
+        seconds += part * _FIELD_UNITS[key]
+    return seconds
+
+
+def _parse_duration(text: str, field_name: str) -> int:
+    """Scan a whole number and a unit, repeated.
+
+    Scanned rather than matched because every pattern for this grammar is
+    either unreadable or the kind with adjacent quantifiers that backtracks on
+    a hostile string. Whole numbers only -- "90m" says what "1.5h" would.
+    """
+    seconds = 0
+    segments = 0
+    at = 0
+    while at < len(text):
+        if text[at] == " ":
+            at += 1
+            continue
+        number_end = _scan(text, at, str.isdigit)
+        unit_end = _scan(text, number_end, str.islower)
+        unit = text[number_end:unit_end]
+        if number_end == at or unit not in _DURATION_UNITS:
+            break
+        seconds += int(text[at:number_end]) * _DURATION_UNITS[unit]
+        segments += 1
+        at = unit_end
+    if segments == 0 or at != len(text):
+        message = (
+            f"{field_name} must be a duration in whole seconds, such as '30s', "
+            f"'5m', '2h', '1d' or '1m30s' (got {text!r})"
+        )
+        raise ValueError(message)
+    return seconds
+
+
+def _scan(text: str, start: int, accept: Callable[[str], bool]) -> int:
+    at = start
+    while at < len(text) and accept(text[at]):
+        at += 1
+    return at

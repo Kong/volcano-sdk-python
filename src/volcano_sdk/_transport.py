@@ -79,6 +79,12 @@ from ._generated.api.database_queries.query_database_update import (
 from ._generated.api.database_queries.query_database_update import (
     _get_kwargs as database_update_kwargs,
 )
+from ._generated.api.durable_functions import (
+    get_durable_execution,
+    list_durable_executions,
+    start_durable_execution_from_application,
+    stop_durable_execution,
+)
 from ._generated.api.functions import resolve_function_for_invocation
 from ._generated.api.functions.invoke_function import (
     _get_kwargs as invoke_function_kwargs,
@@ -288,6 +294,15 @@ class _RawHTTPResponse(Protocol):
 
     @property
     def headers(self) -> Mapping[str, str]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class DurableExecutionListRequest:
+    """Filters and paging for a durable execution listing."""
+
+    status: str | None = None
+    page: int | None = None
+    limit: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1740,5 +1755,79 @@ class GeneratedTransport:
                 client=client,
                 x_volcano_lock_token=cast("UUID", token),
                 x_volcano_request_id=cast("UUID", str(uuid4())),
+            )
+        return self._response(response)
+
+    def start_durable_execution_from_application(
+        self,
+        *,
+        authorization: str,
+        function_id: str,
+        payload: JSONValue,
+        execution_name: str | None = None,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = start_durable_execution_from_application.sync_detailed(
+                function_id,
+                client=client,
+                body=_plain_json(payload),
+                x_volcano_execution_name=(
+                    UNSET if execution_name is None else execution_name
+                ),
+            )
+        return self._response(response)
+
+    def get_durable_execution(
+        self,
+        *,
+        authorization: str,
+        project_id: str,
+        function_id: str,
+        execution_id: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = get_durable_execution.sync_detailed(
+                UUID(project_id),
+                function_id,
+                UUID(execution_id),
+                client=client,
+            )
+        return self._response(response)
+
+    def list_durable_executions(
+        self,
+        *,
+        authorization: str,
+        project_id: str,
+        function_id: str,
+        request: DurableExecutionListRequest,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = list_durable_executions.sync_detailed(
+                UUID(project_id),
+                function_id,
+                client=client,
+                status=(
+                    UNSET if request.status is None else cast("Any", request.status)
+                ),
+                page=UNSET if request.page is None else request.page,
+                limit=UNSET if request.limit is None else request.limit,
+            )
+        return self._response(response)
+
+    def stop_durable_execution(
+        self,
+        *,
+        authorization: str,
+        project_id: str,
+        function_id: str,
+        execution_id: str,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = stop_durable_execution.sync_detailed(
+                UUID(project_id),
+                function_id,
+                UUID(execution_id),
+                client=client,
             )
         return self._response(response)
