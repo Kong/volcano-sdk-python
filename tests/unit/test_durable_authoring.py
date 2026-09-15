@@ -34,6 +34,16 @@ from volcano_sdk.durable_authoring import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterator
 
+# The local runner's scheduler calls asyncio.iscoroutinefunction, which Python
+# 3.14 deprecates, and the suite turns warnings into errors. It comes from the
+# runner rather than from the durable runtime a deployed function uses, so it
+# says nothing about 3.14 as a durable runtime, and there is no release of the
+# runner that avoids it. Scoped to this module so every other test still fails
+# on a deprecation, and narrowed to the one call so a real one here still would.
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning"
+)
+
 _EXPECTED_FAILURE = "expected the execution to fail"
 
 
