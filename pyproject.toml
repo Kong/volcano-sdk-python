@@ -25,9 +25,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# What a durable function installs. The runtime the authoring module wraps is
-# not a base dependency: it is large, and only a deployed durable function
-# needs it, so a project that uses the rest of the SDK installs without it.
+# The runtime the authoring module wraps. Not a base dependency: it is large,
+# and a deployed durable function gets it from the build, so a project using the
+# rest of the SDK installs without it. Take the extra to run a durable handler
+# in your own tests, or to pin the version the build would otherwise choose.
 durable = ["aws-durable-execution-sdk-python>=2.0.0,<3.0.0"]
 
 [dependency-groups]
