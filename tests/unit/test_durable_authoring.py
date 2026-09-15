@@ -626,7 +626,7 @@ def test_a_missing_runtime_is_reported_on_invocation() -> None:
 
 
 @pytest.mark.usefixtures("without_engine")
-def test_the_missing_runtime_error_names_the_install() -> None:
+def test_the_missing_runtime_error_says_to_deploy_as_durable() -> None:
     @durable
     def handler(_event: Any, _ctx: DurableContext) -> Any:
         return None
@@ -634,7 +634,15 @@ def test_the_missing_runtime_error_names_the_install() -> None:
     with pytest.raises(DurableRuntimeMissingError) as raised:
         handler({}, None)
 
-    # The extra, not the runtime's own distribution name: what the error asks
-    # for has to be what the docs tell the reader to install.
-    assert "pip install 'volcano-sdk[durable]'" in str(raised.value)
-    assert "does not run locally" in str(raised.value)
+    message = str(raised.value)
+    # Volcano installs the runtime when it builds a durable function, so the
+    # fix is a deploy rather than an install. A function's requirements.txt
+    # never names the runtime, and the error must not send a reader to add it.
+    assert "deploy this one that way" in message
+    assert "kind: durable" in message
+    assert "does not run locally" in message
+    assert "requirements.txt" not in message
+    assert "aws-durable-execution-sdk-python" not in message
+
+    # The extra is still the answer for one case, and only that one.
+    assert "in your own tests, install `volcano-sdk[durable]`" in message

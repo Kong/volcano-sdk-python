@@ -46,6 +46,9 @@ FEATURE_SHA256 = {
     "database.feature": (
         "4685b29357a621068b25984ff0de29cd4c504eebe5cfb597f0b999e29878a668"
     ),
+    "durable.feature": (
+        "416f7dfe1347086bf08af6f15c31467c58e21e14b278e3fd7482f7042dda06d7"
+    ),
     "locks.feature": "76fa31f9a7c203e33b367e5ca1467b2334e7c85c960de8d5cab8638920137411",
     "realtime.feature": (
         "e65862e27656cdd0afa8e552cb5a628d9831568e3299711e572ccd4f6b750696"
@@ -104,6 +107,22 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
             "and then resumes with the same handler"
         ),
         "a service-role client",
+        "a project-owner client",
+        "the client starts the contract durable function",
+        (
+            "the client starts the contract durable function twice "
+            "under one execution name"
+        ),
+        (
+            "the started execution carries its id, function, name, region, "
+            "and creation time"
+        ),
+        "the started execution is not terminal and carries no result",
+        "both starts return the same execution",
+        "the owner reads the execution until it is terminal",
+        "the execution succeeded carrying the function's result",
+        "the owner lists the durable function's executions",
+        "the listed executions include the started execution",
         "a fresh client adopts the current session",
         "a fresh client tries to refresh the signed-out session",
         "an authenticated client",

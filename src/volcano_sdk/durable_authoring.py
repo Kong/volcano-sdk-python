@@ -42,9 +42,9 @@ Duration: TypeAlias = "str | int | dict[str, int]"
 DurableHandler: TypeAlias = "Callable[[Any, DurableContext], Any]"
 FunctionHandler: TypeAlias = "Callable[[Any, Any], Any]"
 
-# The extra that installs the runtime, rather than the runtime's own name: it
-# is what the docs tell a reader to install, so it is what the error should ask
-# for when the install is missing.
+# A deployed durable function gets the runtime from the build and needs no
+# extra. This is for running a handler in your own tests, which is the one place
+# a reader still installs it themselves.
 _ENGINE_EXTRA = "volcano-sdk[durable]"
 _ENGINE_MODULE = "aws_durable_execution_sdk_python"
 _DURATION_FIELDS = ("days", "hours", "minutes", "seconds")
@@ -77,21 +77,23 @@ _UNSET: Any = object()
 
 
 class DurableRuntimeMissingError(Exception):
-    """Raised when the durable runtime is not installed.
+    """Raised when the durable runtime is not available.
 
-    This is also what happens when the handler runs somewhere durable
-    execution does not exist: a standard function, or a local script.
+    Volcano installs the runtime when it builds a function deployed as
+    durable, so this means the handler is running somewhere durable execution
+    does not exist: a function that was not deployed as durable, or a local
+    script.
     """
 
     def __init__(self, cause: BaseException | None = None) -> None:
-        """Explain how to install the runtime and deploy as durable."""
+        """Explain that durable execution is not available here."""
         super().__init__(
-            f"Durable functions need the durable runtime: install it with "
-            f"`pip install '{_ENGINE_EXTRA}'`, declare it in the function's "
-            f"requirements.txt, and deploy the function as durable "
-            f"(`volcano cloud durable deploy`, or `kind: durable` in "
-            f"volcano-config.yaml). Durable execution is a cloud capability "
-            f"and does not run locally."
+            "Durable execution is not available here. Volcano provides the "
+            "durable runtime when it builds a function deployed as durable, so "
+            "deploy this one that way (`volcano cloud durable deploy`, or "
+            "`kind: durable` in volcano-config.yaml). Durable execution is a "
+            f"cloud capability and does not run locally; to exercise a handler "
+            f"in your own tests, install `{_ENGINE_EXTRA}`."
         )
         self.__cause__ = cause
 

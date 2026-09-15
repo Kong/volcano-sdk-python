@@ -221,10 +221,13 @@ awaited: what it returns is the execution read back after asking, often still
 
 `volcano_sdk.durable_authoring` is what the durable function itself is written
 against. It needs a durable-capable runtime — `python3.13` or `python3.14` — and
-`volcano-sdk[durable]` in the function's `requirements.txt`, which pulls in the
-durable runtime the module wraps. A plain `volcano-sdk` leaves it out, so a
-standard function or a script that merely imports this module still installs
-and runs.
+`volcano-sdk` in the function's `requirements.txt`. Nothing else: the runtime
+that does the checkpointing is installed by Volcano when it builds a function
+deployed as durable.
+
+Importing this module never requires that runtime, so a standard function or a
+script that imports it still installs and runs; the handler fails only when it
+is actually invoked somewhere durable execution does not exist.
 
 ```python
 from volcano_sdk.durable_authoring import durable
@@ -809,15 +812,17 @@ dependencies:
 | [`attrs`](https://pypi.org/project/attrs/)                         | The generated client's models              |
 | [`centrifuge-python`](https://pypi.org/project/centrifuge-python/) | The realtime protocol client               |
 
-The `durable` extra adds one more, for a durable function you deploy:
+A durable function you deploy needs one more, and you do not install it:
+Volcano adds it when it builds the function.
 
-| Package                                                                                              | Why                                                                     |
-| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| [`aws-durable-execution-sdk-python`](https://pypi.org/project/aws-durable-execution-sdk-python/)     | Checkpointing. `volcano_sdk.durable_authoring` is written on top of it   |
+| Package                                                                                          | Why                                                                   |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| [`aws-durable-execution-sdk-python`](https://pypi.org/project/aws-durable-execution-sdk-python/) | Checkpointing. `volcano_sdk.durable_authoring` is written on top of it |
 
-It is not a base dependency, so `pip install volcano-sdk` leaves it out and the
-rest of the SDK installs without it. Install `volcano-sdk[durable]` in the
-function that needs it.
+The `durable` extra installs it if you want it yourself — to run a durable
+handler in your own tests, or to pin a version, since the build leaves a
+function that pins the runtime exactly as it is. A function's `requirements.txt`
+does not need it otherwise.
 
 ## Compatibility
 
