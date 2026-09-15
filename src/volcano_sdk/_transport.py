@@ -1634,6 +1634,29 @@ class GeneratedTransport:
             )
         return self._raw_response(response)
 
+    def invoke_function_url(
+        self,
+        *,
+        authorization: str,
+        invoke_url: str,
+        payload: Mapping[str, JSONValue],
+    ) -> TransportResponse:
+        # The resolved endpoint is absolute and off the API host, so it cannot
+        # go through the generated client's base URL. The body still uses the
+        # invoke contract's { payload } envelope.
+        plain_payload = cast("dict[str, JSONValue]", _plain_json(payload))
+        with self._client(authorization) as client:
+            response = client.get_httpx_client().request(
+                method="POST",
+                url=invoke_url,
+                json={"payload": plain_payload},
+                headers={
+                    "Authorization": f"Bearer {authorization}",
+                    "Content-Type": "application/json",
+                },
+            )
+        return self._raw_response(response)
+
     def search_project_logs(
         self,
         *,

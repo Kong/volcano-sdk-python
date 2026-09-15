@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/Kong/volcano-sdk-python/compare/v0.5.0...v0.6.0) (2026-09-15)
+
+
+### Features
+
+* **functions:** cache name resolution and invoke the resolved endpoint ([#132](https://github.com/Kong/volcano-sdk-python/issues/132)) ([ef83895](https://github.com/Kong/volcano-sdk-python/commit/ef838955c4f59472e05b68fc0cc0258b370fe8c4))
+
 ## [0.5.0](https://github.com/Kong/volcano-sdk-python/compare/v0.4.0...v0.5.0) (2026-09-14)
 
 
