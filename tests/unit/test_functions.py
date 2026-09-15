@@ -409,8 +409,14 @@ def test_functions_reresolves_once_when_the_cached_identity_is_gone() -> None:
     """A recreated function gets a new id, so the cached one answers 404."""
     transport = FakeFunctionsTransport()
     transport.invoke_responses = [
-        FakeResponse(404, {"error": "function not found"}, {}),
-        FakeResponse(200, {"ok": True}, {"X-Volcano-Version": "v1"}),
+        # A platform 404 still carries the version stamp — every response does.
+        # Only the dispatch marker is missing.
+        FakeResponse(404, {"error": "function not found"}, {"X-Volcano-Version": "v1"}),
+        FakeResponse(
+            200,
+            {"ok": True},
+            {"X-Volcano-Version": "v1", "X-Volcano-Function-Invoked": "true"},
+        ),
     ]
     client = functions_client(transport)
 
@@ -427,8 +433,12 @@ def test_functions_reresolves_once_when_the_cached_identity_is_gone() -> None:
 
 def test_functions_returns_a_function_owned_404_without_invoking_twice() -> None:
     transport = FakeFunctionsTransport()
+    # What the server sends once the function has run: the dispatch marker
+    # alongside the version stamp every response carries.
     transport.invoke_response = FakeResponse(
-        404, {"error": "no such route"}, {"X-Volcano-Version": "v1"}
+        404,
+        {"error": "no such route"},
+        {"X-Volcano-Version": "v1", "X-Volcano-Function-Invoked": "true"},
     )
     client = functions_client(transport)
 

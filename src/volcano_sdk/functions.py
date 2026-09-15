@@ -27,6 +27,8 @@ _UNKNOWN_FUNCTION = "Function was not found"
 _HTTP_SUCCESS_MIN = 200
 _HTTP_SUCCESS_MAX = 300
 _HTTP_NOT_FOUND = 404
+# Present only once the platform has dispatched to the function.
+_FUNCTION_INVOKED_HEADER = "X-Volcano-Function-Invoked"
 
 
 class FunctionsTransport(Protocol):
@@ -213,13 +215,15 @@ class Functions:
 def _stale_mapping(response: TransportResponse) -> bool:
     """Report a platform 404, which means the cached function identity is gone.
 
-    A function that answers 404 itself carries the version header, and its
-    response must be returned rather than retried: invoking twice would run
-    the caller's side effects twice.
+    A function that answers 404 itself must be returned rather than retried:
+    invoking twice would run the caller's side effects twice. The platform sets
+    X-Volcano-Function-Invoked only after dispatch, so its absence is what
+    separates the two. X-Volcano-Version cannot: the server stamps it on every
+    response, including errors raised before the function is reached.
     """
     return (
         int(response.status_code) == _HTTP_NOT_FOUND
-        and _header(response.headers, "X-Volcano-Version") is None
+        and _header(response.headers, _FUNCTION_INVOKED_HEADER) is None
     )
 
 
