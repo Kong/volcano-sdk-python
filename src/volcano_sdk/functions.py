@@ -7,7 +7,10 @@ import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Protocol, cast
 
+from . import _function_resolution
+from ._function_resolution import FunctionResolution
 from ._transport import TransportResponse, invoke, response_payload
+from .errors import NotFoundError
 from .models import FunctionResponse, JSONValue
 
 if TYPE_CHECKING:
@@ -20,8 +23,10 @@ _INVALID_FUNCTION_NAME = (
 )
 _INVALID_FUNCTION_RESPONSE = "Expected a complete function response"
 _INVALID_FUNCTION_PAYLOAD = "Function payload must be a mapping"
+_UNKNOWN_FUNCTION = "Function was not found"
 _HTTP_SUCCESS_MIN = 200
 _HTTP_SUCCESS_MAX = 300
+_HTTP_NOT_FOUND = 404
 
 
 class FunctionsTransport(Protocol):
@@ -46,6 +51,16 @@ class FunctionsTransport(Protocol):
         """Invoke a resolved function identifier."""
         ...
 
+    def invoke_function_url(
+        self,
+        *,
+        authorization: str,
+        invoke_url: str,
+        payload: Mapping[str, JSONValue],
+    ) -> TransportResponse:
+        """Invoke a function at its resolved endpoint."""
+        ...
+
 
 class Functions:
     """Invoke deployed Volcano functions by name."""
@@ -64,29 +79,121 @@ class Functions:
         request_payload = _function_payload(payload)
         authorization = self._client._function_token()
         transport = cast("FunctionsTransport", self._client._transport)
+        resolution = self._resolve(transport, authorization, name)
+        response = self._invoke_resolved(
+            transport, authorization, resolution, request_payload
+        )
+        if _stale_mapping(response):
+            # The function was deleted and recreated, so the cached identity no
+            # longer exists. Resolve again before giving up.
+            _function_resolution.forget(
+                self._client._api_base_url(), authorization, name
+            )
+            resolution = self._resolve(transport, authorization, name)
+            response = self._invoke_resolved(
+                transport, authorization, resolution, request_payload
+            )
+        return self._response(response)
+
+    @staticmethod
+    def _invoke_resolved(
+        transport: FunctionsTransport,
+        authorization: str,
+        resolution: FunctionResolution,
+        payload: Mapping[str, JSONValue],
+    ) -> TransportResponse:
+        if resolution.invoke_url is None:
+            response = invoke(
+                transport.invoke_function,
+                authorization=authorization,
+                function_id=resolution.function_id,
+                payload=payload,
+            )
+        else:
+            response = invoke(
+                transport.invoke_function_url,
+                authorization=authorization,
+                invoke_url=resolution.invoke_url,
+                payload=payload,
+            )
+        return cast("TransportResponse", response)
+
+    def _resolve(
+        self,
+        transport: FunctionsTransport,
+        authorization: str,
+        name: str,
+    ) -> FunctionResolution:
+        """Return the function's identity, reusing a live cached resolution."""
+        api_url = self._client._api_base_url()
+        cached = self._cached(api_url, authorization, name)
+        if cached is not None:
+            return cached
+
+        # Hold the name's lock across the round trip so concurrent callers wait
+        # for one resolve instead of each opening their own.
+        with _function_resolution.resolve_lock(api_url, authorization, name):
+            cached = self._cached(api_url, authorization, name)
+            if cached is not None:
+                return cached
+            return self._resolve_uncached(transport, api_url, authorization, name)
+
+    @staticmethod
+    def _cached(
+        api_url: str, authorization: str, name: str
+    ) -> FunctionResolution | None:
+        cached = _function_resolution.lookup(api_url, authorization, name)
+        if cached is None:
+            return None
+        if cached.resolution is None:
+            raise NotFoundError(_UNKNOWN_FUNCTION, status=_HTTP_NOT_FOUND)
+        return cached.resolution
+
+    def _resolve_uncached(
+        self,
+        transport: FunctionsTransport,
+        api_url: str,
+        authorization: str,
+        name: str,
+    ) -> FunctionResolution:
         resolved = invoke(
             transport.resolve_function_for_invocation,
             authorization=authorization,
             name=name,
         )
-        function_id = self._function_id(response_payload(resolved, _HTTP_SUCCESS_MIN))
-        response = invoke(
-            transport.invoke_function,
-            authorization=authorization,
-            function_id=function_id,
-            payload=request_payload,
+        if int(resolved.status_code) == _HTTP_NOT_FOUND:
+            _function_resolution.store_missing(api_url, authorization, name)
+        payload = response_payload(resolved, _HTTP_SUCCESS_MIN)
+        resolution = self._resolution(payload, api_url)
+        _function_resolution.store(
+            api_url, authorization, name, resolution, self._cache_ttl(payload)
         )
-        return self._response(response)
+        return resolution
 
     @staticmethod
-    def _function_id(payload: object) -> str:
+    def _resolution(payload: object, api_url: str) -> FunctionResolution:
         if not isinstance(payload, Mapping):
             raise TypeError(_INVALID_FUNCTION_RESPONSE)
         values = cast("Mapping[str, object]", payload)
         function_id = values.get("function_id")
         if not isinstance(function_id, str) or not function_id:
             raise TypeError(_INVALID_FUNCTION_RESPONSE)
-        return function_id
+        # Absent when the deployment serves no public invocation domain, as in
+        # local development; the function is reached through the API instead.
+        return FunctionResolution(
+            function_id=function_id,
+            invoke_url=_function_resolution.valid_invoke_url(
+                values.get("invoke_url"), api_url
+            ),
+        )
+
+    @staticmethod
+    def _cache_ttl(payload: object) -> float:
+        values = cast("Mapping[str, object]", payload)
+        ttl = values.get("cache_ttl_seconds")
+        if not isinstance(ttl, int) or isinstance(ttl, bool) or ttl <= 0:
+            raise TypeError(_INVALID_FUNCTION_RESPONSE)
+        return float(ttl)
 
     @staticmethod
     def _response(response: TransportResponse) -> FunctionResponse:
@@ -101,6 +208,19 @@ class Functions:
             headers=headers,
             version=version,
         )
+
+
+def _stale_mapping(response: TransportResponse) -> bool:
+    """Report a platform 404, which means the cached function identity is gone.
+
+    A function that answers 404 itself carries the version header, and its
+    response must be returned rather than retried: invoking twice would run
+    the caller's side effects twice.
+    """
+    return (
+        int(response.status_code) == _HTTP_NOT_FOUND
+        and _header(response.headers, "X-Volcano-Version") is None
+    )
 
 
 def _function_data(response: TransportResponse) -> JSONValue:

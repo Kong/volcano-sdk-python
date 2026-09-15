@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 import httpx
 import pytest
 
-from volcano_sdk import ServerError, VolcanoClient
+from volcano_sdk import NotFoundError, ServerError, VolcanoClient, _function_resolution
 from volcano_sdk._transport import GeneratedTransport
 
 if TYPE_CHECKING:
@@ -23,8 +23,12 @@ class FakeResponse:
 
 
 class FakeFunctionsTransport:
-    def __init__(self) -> None:
+    def __init__(self, *, invoke_url: str | None = None) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.invoke_url = invoke_url
+        self.cache_ttl_seconds: Any = 60
+        self.resolve_response: FakeResponse | None = None
+        self.invoke_responses: list[FakeResponse] = []
         self.invoke_response = FakeResponse(
             200,
             {"message": "hello", "items": [1, 2]},
@@ -33,19 +37,37 @@ class FakeFunctionsTransport:
 
     def resolve_function_for_invocation(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("resolveFunctionForInvocation", kwargs))
-        return FakeResponse(
-            200,
-            {
-                "name": kwargs["name"],
-                "function_id": "00000000-0000-4000-8000-000000000040",
-                "cache_ttl_seconds": 60,
-            },
-            {},
-        )
+        if self.resolve_response is not None:
+            return self.resolve_response
+        payload: dict[str, Any] = {
+            "name": kwargs["name"],
+            "function_id": "00000000-0000-4000-8000-000000000040",
+            "cache_ttl_seconds": self.cache_ttl_seconds,
+        }
+        if self.invoke_url is not None:
+            payload["invoke_url"] = self.invoke_url
+        return FakeResponse(200, payload, {})
 
     def invoke_function(self, **kwargs: Any) -> FakeResponse:
         self.calls.append(("invokeFunction", kwargs))
+        return self._next_invoke_response()
+
+    def invoke_function_url(self, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("invokeFunctionUrl", kwargs))
+        return self._next_invoke_response()
+
+    def _next_invoke_response(self) -> FakeResponse:
+        if self.invoke_responses:
+            return self.invoke_responses.pop(0)
         return self.invoke_response
+
+    @property
+    def resolve_calls(self) -> int:
+        return sum(
+            1
+            for operation, _ in self.calls
+            if operation == "resolveFunctionForInvocation"
+        )
 
 
 def functions_client(
@@ -230,3 +252,198 @@ def test_functions_uses_the_local_anon_key_without_a_session_or_service_key() ->
 
     assert transport.calls[0][1]["authorization"] == anon_key
     assert transport.calls[1][1]["authorization"] == anon_key
+
+
+def test_functions_invokes_the_resolved_url_rather_than_the_api_path() -> None:
+    invoke_url = "https://00000000-0000-4000-8000-000000000040.functions.test.run/"
+    transport = FakeFunctionsTransport(invoke_url=invoke_url)
+
+    functions_client(transport).functions.invoke("send-welcome", {"user_id": "u-1"})
+
+    assert [operation for operation, _ in transport.calls] == [
+        "resolveFunctionForInvocation",
+        "invokeFunctionUrl",
+    ]
+    assert transport.calls[1][1] == {
+        "authorization": "service-key",
+        "invoke_url": invoke_url,
+        "payload": {"user_id": "u-1"},
+    }
+
+
+def test_functions_falls_back_to_the_api_path_without_an_invoke_url() -> None:
+    transport = FakeFunctionsTransport(invoke_url=None)
+
+    functions_client(transport).functions.invoke("send-welcome")
+
+    assert [operation for operation, _ in transport.calls] == [
+        "resolveFunctionForInvocation",
+        "invokeFunction",
+    ]
+
+
+@pytest.mark.parametrize(
+    "invoke_url",
+    [
+        "",
+        "not-a-url",
+        "ftp://example.test/",
+        "/relative",
+        "https:///nohost",
+        # Malformed authorities. urlsplit raises on some of these rather than
+        # reporting them, and the fallback still has to hold.
+        "https://[",
+        "https://[::1",
+        "https://example.test:99999/",
+        "https://exa mple.test/",
+    ],
+)
+def test_functions_ignores_an_unusable_invoke_url(invoke_url: str) -> None:
+    transport = FakeFunctionsTransport(invoke_url=invoke_url)
+
+    functions_client(transport).functions.invoke("send-welcome")
+
+    assert transport.calls[1][0] == "invokeFunction"
+
+
+def test_functions_refuses_to_send_the_token_to_a_plaintext_endpoint() -> None:
+    """An https API must not be downgraded to http by a resolve response."""
+    transport = FakeFunctionsTransport(invoke_url="http://functions.test.run/")
+
+    functions_client(transport).functions.invoke("send-welcome")
+
+    assert transport.calls[1][0] == "invokeFunction"
+
+
+def test_functions_allows_a_plaintext_endpoint_for_a_plaintext_api() -> None:
+    transport = FakeFunctionsTransport(invoke_url="http://127.0.0.1:9/")
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key="service-key",
+        api_url="http://127.0.0.1:8000",
+        _transport=cast("Transport", transport),
+    )
+
+    client.functions.invoke("send-welcome")
+
+    assert transport.calls[1][0] == "invokeFunctionUrl"
+
+
+def test_functions_resolves_a_name_once_for_repeated_invocations() -> None:
+    transport = FakeFunctionsTransport(
+        invoke_url="https://00000000-0000-4000-8000-000000000040.functions.test.run/"
+    )
+    client = functions_client(transport)
+
+    for _ in range(3):
+        client.functions.invoke("send-welcome")
+
+    assert transport.resolve_calls == 1
+    operations = [operation for operation, _ in transport.calls]
+    assert operations.count("invokeFunctionUrl") == 3
+
+
+def test_functions_resolves_again_once_the_advertised_lifetime_expires(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _FakeClock()
+    monkeypatch.setattr(_function_resolution, "_now", clock)
+    transport = FakeFunctionsTransport()
+    transport.cache_ttl_seconds = 60
+    client = functions_client(transport)
+
+    client.functions.invoke("send-welcome")
+    clock.advance(59)
+    client.functions.invoke("send-welcome")
+    assert transport.resolve_calls == 1
+
+    clock.advance(2)
+    client.functions.invoke("send-welcome")
+    assert transport.resolve_calls == 2
+
+
+def test_functions_does_not_share_a_resolution_across_credentials() -> None:
+    transport = FakeFunctionsTransport()
+
+    first = functions_client(transport, service_key="service-key")
+    second = functions_client(transport, service_key="other-key")
+    first.functions.invoke("send-welcome")
+    second.functions.invoke("send-welcome")
+
+    assert transport.resolve_calls == 2
+
+
+def test_functions_shares_a_resolution_across_clients_with_one_credential() -> None:
+    transport = FakeFunctionsTransport()
+
+    functions_client(transport).functions.invoke("send-welcome")
+    functions_client(transport).functions.invoke("send-welcome")
+
+    assert transport.resolve_calls == 1
+
+
+@pytest.mark.parametrize("cache_ttl_seconds", [0, -1, None, "60", 1.5])
+def test_functions_rejects_a_resolve_without_a_usable_lifetime(
+    cache_ttl_seconds: Any,
+) -> None:
+    transport = FakeFunctionsTransport()
+    transport.cache_ttl_seconds = cache_ttl_seconds
+
+    with pytest.raises(TypeError, match="complete function response"):
+        functions_client(transport).functions.invoke("send-welcome")
+
+
+def test_functions_remembers_an_unknown_name_briefly() -> None:
+    transport = FakeFunctionsTransport()
+    transport.resolve_response = FakeResponse(404, {"error": "function not found"}, {})
+    client = functions_client(transport)
+
+    for _ in range(3):
+        with pytest.raises(NotFoundError):
+            client.functions.invoke("missing-function")
+
+    assert transport.resolve_calls == 1
+
+
+def test_functions_reresolves_once_when_the_cached_identity_is_gone() -> None:
+    """A recreated function gets a new id, so the cached one answers 404."""
+    transport = FakeFunctionsTransport()
+    transport.invoke_responses = [
+        FakeResponse(404, {"error": "function not found"}, {}),
+        FakeResponse(200, {"ok": True}, {"X-Volcano-Version": "v1"}),
+    ]
+    client = functions_client(transport)
+
+    result = client.functions.invoke("send-welcome")
+
+    assert result.status == 200
+    assert [operation for operation, _ in transport.calls] == [
+        "resolveFunctionForInvocation",
+        "invokeFunction",
+        "resolveFunctionForInvocation",
+        "invokeFunction",
+    ]
+
+
+def test_functions_returns_a_function_owned_404_without_invoking_twice() -> None:
+    transport = FakeFunctionsTransport()
+    transport.invoke_response = FakeResponse(
+        404, {"error": "no such route"}, {"X-Volcano-Version": "v1"}
+    )
+    client = functions_client(transport)
+
+    result = client.functions.invoke("send-welcome")
+
+    assert result.status == 404
+    assert [operation for operation, _ in transport.calls].count("invokeFunction") == 1
+
+
+class _FakeClock:
+    def __init__(self) -> None:
+        self._now = 1000.0
+
+    def __call__(self) -> float:
+        return self._now
+
+    def advance(self, seconds: float) -> None:
+        self._now += seconds
