@@ -284,7 +284,19 @@ def test_functions_falls_back_to_the_api_path_without_an_invoke_url() -> None:
 
 @pytest.mark.parametrize(
     "invoke_url",
-    ["", "not-a-url", "ftp://example.test/", "/relative", "https:///nohost"],
+    [
+        "",
+        "not-a-url",
+        "ftp://example.test/",
+        "/relative",
+        "https:///nohost",
+        # Malformed authorities. urlsplit raises on some of these rather than
+        # reporting them, and the fallback still has to hold.
+        "https://[",
+        "https://[::1",
+        "https://example.test:99999/",
+        "https://exa mple.test/",
+    ],
 )
 def test_functions_ignores_an_unusable_invoke_url(invoke_url: str) -> None:
     transport = FakeFunctionsTransport(invoke_url=invoke_url)

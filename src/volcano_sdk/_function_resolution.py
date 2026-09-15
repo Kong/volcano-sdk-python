@@ -65,18 +65,36 @@ def valid_invoke_url(value: object, api_url: str) -> str | None:
     The URL carries the caller's bearer token. Plaintext is accepted only when
     the API itself is plaintext, so a resolve response cannot downgrade a
     credential that is otherwise protected in transit.
+
+    Anything unusable yields None so the caller falls back to the API path. A
+    malformed server response must not raise out of invoke().
     """
-    if not isinstance(value, str) or not value:
+    if not isinstance(value, str):
         return None
-    parsed = urlsplit(value)
-    scheme = parsed.scheme.lower()
-    if not parsed.netloc:
-        return None
+    scheme = _absolute_url_scheme(value)
     if scheme == "https":
         return value
-    if scheme == "http" and urlsplit(api_url).scheme.lower() == "http":
+    if scheme == "http" and _absolute_url_scheme(api_url) == "http":
         return value
     return None
+
+
+def _absolute_url_scheme(value: str) -> str:
+    """Return the lowercase scheme of an absolute URL, or "" when there is none.
+
+    Unparseable input yields "" rather than raising, so a malformed URL reads
+    as unusable to every caller.
+    """
+    if not value or any(character.isspace() for character in value):
+        return ""
+    try:
+        parsed = urlsplit(value)
+        # Reading the authority is the validation: an unclosed IPv6 literal or
+        # a port out of range raises here rather than at request time.
+        host, _port = parsed.hostname, parsed.port
+    except ValueError:
+        return ""
+    return parsed.scheme.lower() if host else ""
 
 
 def lookup(api_url: str, authorization: str, name: str) -> CachedOutcome | None:
