@@ -589,6 +589,80 @@ def test_realtime_disconnect_settles_pending_native_presence_query(
     asyncio.run(scenario())
 
 
+def test_realtime_cancelled_pause_keeps_native_subscription_resumable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        client, channel, factory, presence = await start_native_presence_refresh(
+            monkeypatch
+        )
+        subscription = factory.client.get_subscription(channel.name)
+        pausing = asyncio.create_task(channel.unsubscribe())
+        await asyncio.sleep(0)
+        pausing.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pausing
+        await factory.reply(presence, presence={"presence": {}})
+        assert subscription.state.value == "unsubscribed"
+        assert not channel._subscribed
+
+        resuming = asyncio.create_task(channel.subscribe())
+        try:
+            command = await factory.command()
+            assert "subscribe" in command
+            await factory.reply(command, subscribe={})
+            command = await factory.command()
+            await factory.reply(command, presence={"presence": {}})
+            await resuming
+            await channel._wait_presence_sync()
+            assert channel._subscribed
+            assert factory.client.get_subscription(channel.name) is subscription
+        finally:
+            await client.realtime.disconnect()
+            await asyncio.gather(resuming, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+def test_realtime_repeated_pause_retains_presence_clear_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        client, channel, factory, presence = await start_native_presence_refresh(
+            monkeypatch
+        )
+        entered, release = asyncio.Event(), asyncio.Event()
+        snapshots: list[Any] = []
+
+        async def receive(state: Any) -> None:
+            snapshots.append(state)
+            if state:
+                entered.set()
+                await release.wait()
+
+        channel.on_presence_sync(receive)
+        await factory.reply(
+            presence,
+            presence={"presence": {"peer": {"client": "peer", "user": "peer"}}},
+        )
+        await asyncio.wait_for(entered.wait(), timeout=0.2)
+        try:
+            pausing = asyncio.create_task(channel.unsubscribe())
+            command = await factory.command()
+            await factory.reply(command, unsubscribe={})
+            await pausing
+            await channel.unsubscribe()
+            release.set()
+            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            assert snapshots[-1] == {}
+            assert channel.get_presence_state() == {}
+        finally:
+            release.set()
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_channel_exposes_its_canonical_name() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
 
@@ -2195,6 +2269,236 @@ def test_realtime_broadcast_resubscribe_retains_recoverable_subscription() -> No
             ("subscribe", None),
         ]
         await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("channel_type", ["broadcast", "presence"])
+def test_realtime_paused_channel_ignores_wire_publications(
+    channel_type: realtime_module.ChannelType,
+) -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        received: list[Any] = []
+        channel = client.realtime.channel("room", channel_type=channel_type)
+        channel.on("message", received.append)
+        await channel.subscribe()
+        await channel.unsubscribe()
+        try:
+            await official.emit_wire_publication(
+                f"project-id:{channel.name}", {"value": "paused"}
+            )
+            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            assert received == []
+            await channel.subscribe()
+            await official.emit_wire_publication(
+                f"project-id:{channel.name}", {"value": "resumed"}
+            )
+            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            assert received == [{"value": "resumed"}]
+        finally:
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("resume", [False, True])
+def test_realtime_discards_queued_messages_when_delivery_is_paused(
+    *, resume: bool
+) -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        received: list[Any] = []
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def receive(message: Any) -> None:
+            received.append(message)
+            entered.set()
+            await release.wait()
+
+        channel = client.realtime.channel("room")
+        channel.on("message", receive)
+        await channel.subscribe()
+        try:
+            await official.emit_wire_publication(channel.name, "active")
+            await asyncio.wait_for(entered.wait(), timeout=0.2)
+            await official.emit_wire_publication(channel.name, "queued")
+            await channel.unsubscribe()
+            if resume:
+                await channel.subscribe()
+            release.set()
+            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            assert received == ["active"]
+        finally:
+            release.set()
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("resume", [False, True])
+def test_realtime_discards_queued_presence_events_on_pause(*, resume: bool) -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        entered, release = asyncio.Event(), asyncio.Event()
+        received: list[Any] = []
+        snapshots: list[Any] = []
+
+        async def block(_message: Any) -> None:
+            entered.set()
+            await release.wait()
+
+        channel = client.realtime.channel("lobby", channel_type="presence")
+        channel.on("message", block)
+        channel.on("join", received.append).on("leave", received.append)
+        channel.on_presence_sync(snapshots.append)
+        await channel.subscribe()
+        await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+        snapshots.clear()
+        assert official.subscription is not None
+        try:
+            await official.subscription.emit("active")
+            await asyncio.wait_for(entered.wait(), timeout=0.2)
+            info = SimpleNamespace(client="peer", user="user", conn_info={})
+            await official.subscription.emit_join(info)
+            await official.subscription.emit_leave(info)
+            await channel.unsubscribe()
+            if resume:
+                await channel.subscribe()
+            release.set()
+            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            assert received == []
+            assert snapshots
+            assert all(state == {} for state in snapshots)
+        finally:
+            release.set()
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_explicit_pause_frees_queue_capacity_for_recovered_messages() -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    async def scenario() -> None:
+        entered, release = asyncio.Event(), asyncio.Event()
+        received: list[Any] = []
+
+        async def receive(message: Any) -> None:
+            received.append(message)
+            entered.set()
+            await release.wait()
+
+        channel = client.realtime.channel("room").on("message", receive)
+        await channel.subscribe()
+        assert official.subscription is not None
+        try:
+            await official.subscription.emit("active")
+            await asyncio.wait_for(entered.wait(), timeout=0.2)
+            for _ in range(channel._callback_queue.maxsize):
+                await official.subscription.emit("obsolete")
+            await channel.unsubscribe()
+            await channel.subscribe()
+            await official.subscription.emit("recovered")
+            release.set()
+            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            assert received == ["active", "recovered"]
+        finally:
+            release.set()
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("channel_type", ["broadcast", "presence"])
+def test_realtime_reconnect_preserves_messages_already_accepted_by_centrifuge(
+    monkeypatch: pytest.MonkeyPatch,
+    channel_type: realtime_module.ChannelType,
+) -> None:
+    async def scenario() -> None:
+        factory = ControlledCentrifugeFactory(monkeypatch)
+        official = factory.client
+        client = VolcanoClient(
+            anon_key="anon-key",
+            _transport=AuthTransport(),
+            _realtime_client_factory=factory,
+        )
+        client.auth.sign_in(email="user@example.com", password="secret")
+        entered, release = asyncio.Event(), asyncio.Event()
+        received: list[Any] = []
+
+        async def receive(message: Any) -> None:
+            received.append(message)
+            entered.set()
+            await release.wait()
+
+        channel = client.realtime.channel("room", channel_type=channel_type).on(
+            "message", receive
+        )
+        subscribing = asyncio.create_task(channel.subscribe())
+        command = await factory.command()
+        await factory.reply(
+            command, subscribe={"recoverable": True, "offset": 0, "epoch": "stream"}
+        )
+        if channel_type == "presence":
+            presence = await factory.command()
+            await factory.reply(presence, presence={"presence": {}})
+        await asyncio.wait_for(subscribing, timeout=0.2)
+        subscription = official.get_subscription(channel.name)
+        try:
+            await subscription._process_publication({"offset": 1, "data": 1})
+            await asyncio.wait_for(entered.wait(), timeout=0.2)
+            await subscription._process_publication({"offset": 2, "data": 2})
+            await subscription._move_subscribing(1, "transport closed")
+            command = await factory.command()
+            assert command["subscribe"]["offset"] == 2
+            await factory.reply(
+                command,
+                subscribe={
+                    "recoverable": True,
+                    "epoch": "stream",
+                    "offset": 3,
+                    "was_recovering": True,
+                    "recovered": True,
+                    "publications": [{"offset": 3, "data": 3}],
+                },
+            )
+            if channel_type == "presence":
+                presence = await factory.command()
+                await factory.reply(presence, presence={"presence": {}})
+            release.set()
+            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            assert received == [1, 2, 3]
+        finally:
+            release.set()
+            await client.realtime.disconnect()
 
     asyncio.run(scenario())
 

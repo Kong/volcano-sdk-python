@@ -220,6 +220,7 @@ class _CallbackDelivery:
     event: str
     data: Any
     postgres_identity: _PostgresDeliveryIdentity | None = None
+    delivery_epoch: int | None = None
 
 
 def _postgres_change(data: Any) -> PostgresChange | None:
@@ -447,7 +448,16 @@ class _ChannelEvents:
     def __init__(self, channel: Channel) -> None:
         self._channel = channel
 
+    def _is_current(self) -> bool:
+        return self._channel._subscription_events is self
+
     async def on_publication(self, ctx: PublicationContext) -> None:
+        if (
+            not self._is_current()
+            or self._channel._paused
+            or not self._channel._subscribed
+        ):
+            return
         if self._channel._type == "postgres":
             await self._channel._receive_postgres_change(ctx.pub.data)
             return
@@ -455,12 +465,13 @@ class _ChannelEvents:
 
     async def on_subscribing(self, ctx: Any) -> None:
         del ctx
-        self._channel._subscribed = False
-        await self._channel._end_postgres_epoch()
-        await self._channel._presence_unsubscribed()
+        if self._is_current():
+            await self._channel._transport_lost()
 
     async def on_subscribed(self, ctx: Any) -> None:
         del ctx
+        if not self._is_current() or self._channel._paused:
+            return
         self._channel._subscribed = True
         await self._channel._begin_postgres_epoch()
         if self._channel._type == "presence":
@@ -468,15 +479,16 @@ class _ChannelEvents:
 
     async def on_unsubscribed(self, ctx: Any) -> None:
         del ctx
-        self._channel._subscribed = False
-        await self._channel._end_postgres_epoch()
-        await self._channel._presence_unsubscribed()
+        if self._is_current():
+            await self._channel._transport_lost()
 
     async def on_join(self, ctx: Any) -> None:
-        await self._channel._presence_join(getattr(ctx, "info", None))
+        if self._is_current():
+            await self._channel._presence_join(getattr(ctx, "info", None))
 
     async def on_leave(self, ctx: Any) -> None:
-        await self._channel._presence_leave(getattr(ctx, "info", None))
+        if self._is_current():
+            await self._channel._presence_leave(getattr(ctx, "info", None))
 
     async def on_error(self, ctx: Any) -> None:
         del ctx
@@ -556,7 +568,11 @@ class Channel:
         self._presence_syncing = False
         self._tracked_state: Mapping[str, JSONValue] = MappingProxyType({})
         self._subscription: CentrifugeSubscription | None = None
+        self._subscription_events: _ChannelEvents | None = None
         self._subscribed = False
+        self._paused = True
+        self._delivery_epoch = 0
+        self._presence_epoch = 0
         self._presence_lock = asyncio.Lock()
         self._presence_sync_task: asyncio.Task[None] | None = None
         self._presence_sync_pending = False
@@ -834,7 +850,12 @@ class Channel:
             self._callback_stop = None
         try:
             self._callback_queue.put_nowait(
-                _CallbackDelivery(event, data, postgres_identity)
+                _CallbackDelivery(
+                    event,
+                    data,
+                    postgres_identity,
+                    self._callback_epoch(event) if postgres_identity is None else None,
+                )
             )
         except asyncio.QueueFull:
             if event == "presence_sync":
@@ -890,15 +911,28 @@ class Channel:
                 self._enqueue_pending_presence_sync()
 
     def _callback_delivery_is_current(self, delivery: _CallbackDelivery) -> bool:
+        if delivery.delivery_epoch is not None:
+            return (
+                not self._paused or delivery.event == "presence_sync"
+            ) and delivery.delivery_epoch == self._callback_epoch(delivery.event)
         identity = delivery.postgres_identity
         return identity is None or self._postgres_delivery_is_current(identity)
+
+    def _callback_epoch(self, event: str) -> int:
+        if event in {"join", "leave", "presence_sync"}:
+            return self._presence_epoch
+        return self._delivery_epoch
 
     def _enqueue_pending_presence_sync(self) -> None:
         pending = self._pending_presence_sync
         if pending is NO_PENDING_CALLBACK or self._callback_queue.full():
             return
         self._pending_presence_sync = NO_PENDING_CALLBACK
-        self._callback_queue.put_nowait(_CallbackDelivery("presence_sync", pending))
+        self._callback_queue.put_nowait(
+            _CallbackDelivery(
+                "presence_sync", pending, delivery_epoch=self._presence_epoch
+            )
+        )
 
     async def _run_callback(
         self,
@@ -1065,7 +1099,34 @@ class Channel:
 
     def _invalidate(self) -> None:
         self._subscription = None
+        self._subscription_events = None
+        self._pause_delivery()
+
+    def _pause_delivery(self) -> None:
+        self._paused = True
         self._subscribed = False
+        self._discard_callbacks()
+
+    def _discard_callbacks(self, *, presence_only: bool = False) -> None:
+        self._presence_epoch += 1
+        if not presence_only:
+            self._delivery_epoch += 1
+        # Free capacity before recovered publications arrive behind a slow callback.
+        for _ in range(self._callback_queue.qsize()):
+            delivery = self._callback_queue.get_nowait()
+            if presence_only and delivery.event == "message":
+                # Requeue before task_done so queue.join cannot finish prematurely.
+                self._callback_queue.put_nowait(delivery)
+            self._callback_queue.task_done()
+        self._pending_presence_sync = NO_PENDING_CALLBACK
+
+    async def _transport_lost(self) -> None:
+        self._subscribed = False
+        # Recoverable channels already include queued messages in their offsets.
+        if not self._paused and self._type != "broadcast":
+            self._discard_callbacks(presence_only=self._type == "presence")
+        await self._end_postgres_epoch()
+        await self._presence_unsubscribed()
 
 
 class Realtime:
@@ -1383,12 +1444,14 @@ class Realtime:
                 raise RuntimeError(CHANNEL_NOT_MANAGED)
             connection = await self._connect_locked()
             if channel._subscription is None:
+                channel._subscription_events = _ChannelEvents(channel)
                 channel._subscription = connection.new_subscription(
                     channel._name,
-                    events=_ChannelEvents(channel),
+                    events=channel._subscription_events,
                     join_leave=channel._type == "presence",
                     recoverable=channel._type != "postgres",
                 )
+            channel._paused = False
             await channel._subscription.subscribe()
             if channel._type == "presence":
                 await channel._wait_presence_sync()
@@ -1436,6 +1499,8 @@ class Realtime:
 
     async def _unsubscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
+            if not channel._paused:
+                channel._pause_delivery()
             if channel._subscription is not None:
                 await channel._subscription.unsubscribe()
 
