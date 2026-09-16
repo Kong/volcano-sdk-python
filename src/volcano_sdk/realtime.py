@@ -572,6 +572,7 @@ class Channel:
         self._presence_syncing = False
         self._tracked_state: Mapping[str, JSONValue] = MappingProxyType({})
         self._subscribe_lock = asyncio.Lock()
+        self._readiness_task: asyncio.Task[None] | None = None
         self._subscription: CentrifugeSubscription | None = None
         self._subscription_events: _ChannelEvents | None = None
         self._subscribed = False
@@ -1092,6 +1093,8 @@ class Channel:
         self._subscribed = False
 
     def _invalidate(self) -> None:
+        if self._readiness_task is not None:
+            self._readiness_task.cancel()
         self._subscription = None
         self._subscription_events = None
         self._pause_delivery()
@@ -1361,10 +1364,12 @@ class Realtime:
         subscription = channel._subscription
         channel._subscription_events = None
         channel._pause_delivery()
-        if subscription is not None:
-            # Native state must change before any cancellable local cleanup.
-            await subscription.unsubscribe()
-        await channel._transport_lost()
+        try:
+            if subscription is not None:
+                # Native state must change before any cancellable local cleanup.
+                await subscription.unsubscribe()
+        finally:
+            await channel._transport_lost()
         if subscription is not None and self._connection is not None:
             self._connection.remove_subscription(subscription)
         channel._subscription = None
@@ -1449,7 +1454,13 @@ class Realtime:
                     subscription = await self._prepare_subscription(channel)
                     channel._paused = False
                     await subscription.subscribe()
-                await self._wait_subscription(channel, subscription)
+                channel._readiness_task = asyncio.create_task(
+                    self._wait_subscription(channel, subscription)
+                )
+                try:
+                    await channel._readiness_task
+                finally:
+                    channel._readiness_task = None
             except BaseException as error:
                 if (
                     subscription is None

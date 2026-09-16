@@ -633,6 +633,7 @@ stop_connect()
 Presence channels also wait for the initial roster refresh. If subscription fails
 or the call is cancelled, the attempt is stopped and a later call can retry.
 Other channels and shutdown operations can proceed while acknowledgement is pending.
+Disconnect cancels pending subscription waits so callers can immediately resubscribe.
 
 Broadcast channels use Centrifuge's native stream recovery when server history
 is available. `await channel.unsubscribe()` pauses delivery while retaining the
