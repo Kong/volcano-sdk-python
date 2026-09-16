@@ -572,6 +572,7 @@ class Channel:
         self._presence_syncing = False
         self._tracked_state: Mapping[str, JSONValue] = MappingProxyType({})
         self._subscribe_lock = asyncio.Lock()
+        self._subscribe_generation = 0
         self._readiness_task: asyncio.Task[None] | None = None
         self._subscription: CentrifugeSubscription | None = None
         self._subscription_events: _ChannelEvents | None = None
@@ -1100,6 +1101,8 @@ class Channel:
         self._pause_delivery()
 
     def _pause_delivery(self) -> None:
+        # Stop also invalidates subscribe calls queued before this intent.
+        self._subscribe_generation += 1
         self._paused = True
         self._subscribed = False
         self._discard_callbacks()
@@ -1447,11 +1450,14 @@ class Realtime:
         return connection
 
     async def _subscribe(self, channel: Channel) -> None:
+        generation = channel._subscribe_generation
         async with channel._subscribe_lock:
             subscription = None
             try:
                 async with self._connection_lock:
-                    subscription = await self._prepare_subscription(channel)
+                    subscription = await self._prepare_subscription(channel, generation)
+                    if channel._subscribed:
+                        return
                     channel._paused = False
                     await subscription.subscribe()
                 channel._readiness_task = asyncio.create_task(
@@ -1479,7 +1485,11 @@ class Realtime:
                     error.add_note("Failed to clean up the realtime subscription")
                 raise
 
-    async def _prepare_subscription(self, channel: Channel) -> CentrifugeSubscription:
+    async def _prepare_subscription(
+        self, channel: Channel, generation: int
+    ) -> CentrifugeSubscription:
+        if generation != channel._subscribe_generation:
+            raise asyncio.CancelledError
         if self._channels.get(channel._name) is not channel:
             raise RuntimeError(CHANNEL_NOT_MANAGED)
         connection = await self._connect_locked()

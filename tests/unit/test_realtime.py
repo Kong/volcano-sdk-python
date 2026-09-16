@@ -4184,3 +4184,90 @@ def test_realtime_cancelled_local_removal_clears_presence(*, remove_all: bool) -
             await asyncio.gather(removing, return_exceptions=True)
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("channel_type", ["broadcast", "presence", "postgres"])
+def test_realtime_repeated_subscribe_does_not_stop_active_delivery(
+    monkeypatch: pytest.MonkeyPatch, channel_type: realtime_module.ChannelType
+) -> None:
+    async def scenario() -> None:
+        factory = ControlledCentrifugeFactory(monkeypatch)
+        client = VolcanoClient(
+            anon_key="anon-key",
+            _transport=AuthTransport(),
+            _realtime_client_factory=factory,
+        )
+        client.auth.sign_in(email="user@example.com", password="secret")
+        channel = client.realtime.channel("room", channel_type=channel_type)
+        subscribing = asyncio.create_task(channel.subscribe())
+        await factory.reply(await factory.command(), subscribe={})
+        if channel_type == "presence":
+            await factory.reply(await factory.command(), presence={"presence": {}})
+        await subscribing
+        subscribing = asyncio.create_task(channel.subscribe())
+        try:
+            await asyncio.sleep(0)
+            assert subscribing.done()
+            assert not subscribing.cancel()
+            await subscribing
+            assert factory.commands.empty()
+            assert channel._subscribed
+        finally:
+            await client.realtime.disconnect()
+            await asyncio.gather(subscribing, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("disconnect", [False, True])
+def test_realtime_stop_invalidates_queued_subscribe_calls(
+    monkeypatch: pytest.MonkeyPatch, *, disconnect: bool
+) -> None:
+    async def scenario() -> None:
+        first = ControlledCentrifugeFactory(monkeypatch)
+        second = ControlledCentrifugeFactory(monkeypatch)
+        factories = iter((first, second))
+
+        def factory(*args: Any, **kwargs: Any) -> Any:
+            return next(factories)(*args, **kwargs)
+
+        client = VolcanoClient(
+            anon_key="anon-key",
+            _transport=AuthTransport(),
+            _realtime_client_factory=factory,
+        )
+        client.auth.sign_in(email="user@example.com", password="secret")
+        channel = client.realtime.channel("room")
+        subscribing = asyncio.create_task(channel.subscribe())
+        await first.command()
+        queued = asyncio.create_task(channel.subscribe())
+        await asyncio.sleep(0)
+        assert not queued.done()
+        stopping = asyncio.create_task(
+            client.realtime.disconnect() if disconnect else channel.unsubscribe()
+        )
+        retrying: asyncio.Task[None] | None = None
+        try:
+            if not disconnect:
+                await first.reply(await first.command(), unsubscribe={})
+            await stopping
+            done, _ = await asyncio.wait({subscribing, queued}, timeout=0.2)
+            assert done == {subscribing, queued}
+            with pytest.raises(asyncio.CancelledError):
+                await queued
+            assert not channel._subscribed
+            assert first.commands.empty()
+            assert second.commands.empty()
+            retrying = asyncio.create_task(channel.subscribe())
+            current = second if disconnect else first
+            await current.reply(await current.command(), subscribe={})
+            await asyncio.wait_for(retrying, timeout=0.2)
+            assert channel._subscribed
+        finally:
+            for task in (subscribing, queued, stopping, retrying):
+                if task is not None:
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())
