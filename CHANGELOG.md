@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/Kong/volcano-sdk-python/compare/v0.6.0...v0.6.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* **realtime:** drain presence replies after cancellation ([#139](https://github.com/Kong/volcano-sdk-python/issues/139)) ([4fe0746](https://github.com/Kong/volcano-sdk-python/commit/4fe074695e398a85a0880569d6c1a99bada0964e))
+
 ## [0.6.0](https://github.com/Kong/volcano-sdk-python/compare/v0.5.0...v0.6.0) (2026-09-15)
 
 
