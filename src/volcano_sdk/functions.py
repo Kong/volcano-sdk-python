@@ -201,7 +201,13 @@ class Functions:
     def _response(response: TransportResponse) -> FunctionResponse:
         status = int(response.status_code)
         version = _header(response.headers, "X-Volcano-Version")
-        if not _HTTP_SUCCESS_MIN <= status < _HTTP_SUCCESS_MAX and version is None:
+        # A non-2xx the platform produced never reached the function, so it is
+        # an SDK error rather than the function's answer. That turns on the
+        # dispatch marker, not on the version stamp, which every response
+        # carries — keying on the stamp would classify every platform failure
+        # as though the function had returned it.
+        dispatched = _header(response.headers, _FUNCTION_INVOKED_HEADER) is not None
+        if not _HTTP_SUCCESS_MIN <= status < _HTTP_SUCCESS_MAX and not dispatched:
             response_payload(response, _HTTP_SUCCESS_MIN)
         headers = {} if response.headers is None else dict(response.headers)
         return FunctionResponse(

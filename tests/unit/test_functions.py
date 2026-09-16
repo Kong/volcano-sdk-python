@@ -7,7 +7,13 @@ from typing import TYPE_CHECKING, Any, cast
 import httpx
 import pytest
 
-from volcano_sdk import NotFoundError, ServerError, VolcanoClient, _function_resolution
+from volcano_sdk import (
+    NotFoundError,
+    ServerError,
+    VolcanoClient,
+    VolcanoError,
+    _function_resolution,
+)
 from volcano_sdk._transport import GeneratedTransport
 
 if TYPE_CHECKING:
@@ -112,10 +118,12 @@ def test_functions_resolves_and_invokes_by_name() -> None:
 
 def test_functions_returns_a_function_owned_error_response() -> None:
     transport = FakeFunctionsTransport()
+    # The dispatch marker is what makes this the function's answer rather than
+    # a platform refusal; the version stamp is on every response either way.
     transport.invoke_response = FakeResponse(
         422,
         {"error": "invalid order"},
-        {"x-volcano-version": "v2"},
+        {"x-volcano-version": "v2", "x-volcano-function-invoked": "true"},
     )
 
     result = functions_client(transport).functions.invoke("validate-order")
@@ -123,6 +131,26 @@ def test_functions_returns_a_function_owned_error_response() -> None:
     assert result.status == 422
     assert result.data == {"error": "invalid order"}
     assert result.version == "v2"
+
+
+def test_functions_raise_when_the_platform_refuses_the_invocation() -> None:
+    """A refusal before dispatch is an SDK error, not the function's answer.
+
+    The version stamp is present here because the server puts it on every
+    response. Classifying on it would hand this back as though the function had
+    replied, which is what happened before the dispatch marker existed.
+    """
+    transport = FakeFunctionsTransport()
+    transport.invoke_response = FakeResponse(
+        400,
+        {"error": "function cannot be invoked (status: failed)"},
+        {"x-volcano-version": "v2"},
+    )
+
+    with pytest.raises(VolcanoError) as caught:
+        functions_client(transport).functions.invoke("validate-order")
+
+    assert "function cannot be invoked" in str(caught.value)
 
 
 @pytest.mark.parametrize("version", [None, "v2"])
@@ -192,7 +220,13 @@ def test_functions_preserve_json_values_and_text(
         return httpx.Response(
             status,
             content=content,
-            headers={"Content-Type": content_type, "X-Volcano-Version": "v2"},
+            headers={
+                "Content-Type": content_type,
+                "X-Volcano-Version": "v2",
+                # The function ran and chose this status, including the 422.
+                # Without the marker the platform would own the failure.
+                "X-Volcano-Function-Invoked": "true",
+            },
         )
 
     transport = GeneratedTransport(
