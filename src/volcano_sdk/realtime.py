@@ -309,6 +309,25 @@ class CentrifugeSubscription(Protocol):
         ...
 
 
+async def _unsubscribe_native(subscription: CentrifugeSubscription) -> None:
+    # Finish the native stop before releasing the connection lock on cancellation.
+    task = asyncio.create_task(subscription.unsubscribe())
+    cancelled: asyncio.CancelledError | None = None
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as error:
+            cancelled = error
+        except CENTRIFUGE_ERROR:
+            if cancelled is None:
+                raise
+    if cancelled is not None:
+        if not task.cancelled():
+            task.exception()
+        raise cancelled
+    task.result()
+
+
 class CentrifugeConnection(Protocol):
     """Centrifuge connection operations used by the SDK."""
 
@@ -1369,7 +1388,7 @@ class Realtime:
         try:
             if subscription is not None:
                 # Native state must change before any cancellable local cleanup.
-                await subscription.unsubscribe()
+                await _unsubscribe_native(subscription)
         finally:
             await channel._transport_lost()
         if subscription is not None and self._connection is not None:
@@ -1563,7 +1582,7 @@ class Realtime:
             if not channel._paused:
                 channel._pause_delivery()
             if channel._subscription is not None:
-                await channel._subscription.unsubscribe()
+                await _unsubscribe_native(channel._subscription)
 
     async def disconnect(self) -> None:
         """Disconnect and reset every channel managed by this facade."""
