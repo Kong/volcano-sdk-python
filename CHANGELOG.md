@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.4](https://github.com/Kong/volcano-sdk-python/compare/v0.6.3...v0.6.4) (2026-09-16)
+
+
+### Bug Fixes
+
+* **realtime:** await subscription readiness outside the connection lock ([#138](https://github.com/Kong/volcano-sdk-python/issues/138)) ([a6bae76](https://github.com/Kong/volcano-sdk-python/commit/a6bae763aa050c33f4d1f8be280ebc5a6abe6ab8))
+
 ## [0.6.3](https://github.com/Kong/volcano-sdk-python/compare/v0.6.2...v0.6.3) (2026-09-16)
 
 
