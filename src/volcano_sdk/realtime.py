@@ -292,6 +292,10 @@ class CentrifugeSubscription(Protocol):
         """Subscribe to the remote channel."""
         ...
 
+    async def ready(self) -> None:
+        """Wait for acknowledgement using the client request timeout."""
+        ...
+
     async def publish(self, data: Any) -> Any:
         """Publish a payload to the remote channel."""
         ...
@@ -567,6 +571,9 @@ class Channel:
         self._presence_events: list[tuple[str, RealtimePresenceInfo]] = []
         self._presence_syncing = False
         self._tracked_state: Mapping[str, JSONValue] = MappingProxyType({})
+        self._subscribe_lock = asyncio.Lock()
+        self._subscribe_generation = 0
+        self._readiness_task: asyncio.Task[None] | None = None
         self._subscription: CentrifugeSubscription | None = None
         self._subscription_events: _ChannelEvents | None = None
         self._subscribed = False
@@ -816,7 +823,7 @@ class Channel:
             )
 
     async def subscribe(self) -> None:
-        """Subscribe to this channel."""
+        """Wait until this channel is subscribed and ready for use."""
         await self._realtime._subscribe(self)
 
     async def send(self, data: Any) -> None:
@@ -1087,6 +1094,8 @@ class Channel:
         self._subscribed = False
 
     def _invalidate(self) -> None:
+        if self._readiness_task is not None:
+            self._readiness_task.cancel()
         self._subscription = None
         self._subscription_events = None
         self._pause_delivery()
@@ -1349,12 +1358,23 @@ class Realtime:
                 raise first_error
 
     async def _remove_channel(self, channel: Channel) -> None:
-        subscription = channel._subscription
-        if subscription is not None:
-            await subscription.unsubscribe()
-            if self._connection is not None:
-                self._connection.remove_subscription(subscription)
+        channel._subscribe_generation += 1
+        await self._discard_subscription(channel)
         await channel._reset()
+
+    async def _discard_subscription(self, channel: Channel) -> None:
+        subscription = channel._subscription
+        channel._subscription_events = None
+        channel._pause_delivery()
+        try:
+            if subscription is not None:
+                # Native state must change before any cancellable local cleanup.
+                await subscription.unsubscribe()
+        finally:
+            await channel._transport_lost()
+        if subscription is not None and self._connection is not None:
+            self._connection.remove_subscription(subscription)
+        channel._subscription = None
 
     async def _token(self) -> str:
         lineage = self._connection_lineage()
@@ -1429,22 +1449,72 @@ class Realtime:
         return connection
 
     async def _subscribe(self, channel: Channel) -> None:
-        async with self._connection_lock:
-            if self._channels.get(channel._name) is not channel:
-                raise RuntimeError(CHANNEL_NOT_MANAGED)
-            connection = await self._connect_locked()
-            if channel._subscription is None:
-                channel._subscription_events = _ChannelEvents(channel)
-                channel._subscription = connection.new_subscription(
-                    channel._name,
-                    events=channel._subscription_events,
-                    join_leave=channel._type == "presence",
-                    recoverable=channel._type != "postgres",
+        # A later stop supersedes this request, including time spent waiting for locks.
+        generation = channel._subscribe_generation
+        async with channel._subscribe_lock:
+            subscription = None
+            try:
+                async with self._connection_lock:
+                    subscription = await self._prepare_subscription(channel, generation)
+                    if channel._subscribed:
+                        return
+                    channel._paused = False
+                    await subscription.subscribe()
+                channel._readiness_task = asyncio.create_task(
+                    self._wait_subscription(channel, subscription)
                 )
-            channel._paused = False
-            await channel._subscription.subscribe()
-            if channel._type == "presence":
-                await channel._wait_presence_sync()
+                try:
+                    await channel._readiness_task
+                finally:
+                    channel._readiness_task = None
+            except BaseException as error:
+                if (
+                    subscription is None
+                    or channel._subscription is not subscription
+                    or channel._paused
+                ):
+                    # An explicit pause or removal owns the newer subscription intent.
+                    raise
+                channel._subscribe_generation += 1
+                channel._subscription_events = None
+                channel._pause_delivery()
+                try:
+                    async with self._connection_lock:
+                        if channel._subscription is subscription:
+                            await self._discard_subscription(channel)
+                except CENTRIFUGE_ERROR:
+                    error.add_note("Failed to clean up the realtime subscription")
+                raise
+
+    async def _prepare_subscription(
+        self, channel: Channel, generation: int
+    ) -> CentrifugeSubscription:
+        if generation != channel._subscribe_generation:
+            raise asyncio.CancelledError
+        if self._channels.get(channel._name) is not channel:
+            raise RuntimeError(CHANNEL_NOT_MANAGED)
+        connection = await self._connect_locked()
+        if channel._subscription is not None and channel._subscription_events is None:
+            await self._discard_subscription(channel)
+        if channel._subscription is None:
+            channel._subscription_events = _ChannelEvents(channel)
+            channel._subscription = connection.new_subscription(
+                channel._name,
+                events=channel._subscription_events,
+                join_leave=channel._type == "presence",
+                recoverable=channel._type != "postgres",
+            )
+        return channel._subscription
+
+    async def _wait_subscription(
+        self, channel: Channel, subscription: CentrifugeSubscription
+    ) -> None:
+        await subscription.ready()
+        if channel._type == "presence":
+            await channel._wait_presence_sync()
+        if channel._subscription is not subscription or not channel._subscribed:
+            message = "realtime subscription was interrupted"
+            raise RuntimeError(message)
 
     async def _sync_presence(self, channel: Channel) -> None:
         if channel._subscription is None:
@@ -1489,6 +1559,7 @@ class Realtime:
 
     async def _unsubscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
+            channel._subscribe_generation += 1
             if not channel._paused:
                 channel._pause_delivery()
             if channel._subscription is not None:
@@ -1501,6 +1572,7 @@ class Realtime:
             self._connection = None
             channels = tuple(self._channels.values())
             for channel in channels:
+                channel._subscribe_generation += 1
                 channel._invalidate()
             cancelled: asyncio.CancelledError | None = None
             try:

@@ -629,6 +629,14 @@ assert not client.realtime.is_connected
 stop_connect()
 ```
 
+`await channel.subscribe()` returns after the server acknowledges the subscription.
+Presence channels also wait for the initial roster refresh. If subscription fails
+or the call is cancelled, the attempt is stopped and a later call can retry.
+Other channels and shutdown operations can proceed while acknowledgement is pending.
+Calling subscribe on an active channel returns immediately.
+Pausing, removal, and disconnect invalidate earlier queued subscribe calls;
+disconnect also cancels the active readiness wait. Call subscribe again to restart.
+
 Broadcast channels use Centrifuge's native stream recovery when server history
 is available. `await channel.unsubscribe()` pauses delivery while retaining the
 in-memory recovery position; a later `await channel.subscribe()` resumes the
