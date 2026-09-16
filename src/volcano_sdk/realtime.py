@@ -70,6 +70,11 @@ def _empty_presence_data() -> Mapping[str, JSONValue]:
     return MappingProxyType({})
 
 
+def _consume_presence_result(task: asyncio.Task[Any]) -> None:
+    if not task.cancelled():
+        task.exception()
+
+
 def _validate_channel_type(channel_type: str) -> ChannelType:
     if channel_type not in SUPPORTED_CHANNEL_TYPES:
         message = f"unsupported realtime channel type: {channel_type}"
@@ -1394,7 +1399,10 @@ class Realtime:
         await channel._begin_presence_sync()
         query_succeeded = False
         try:
-            result = await channel._subscription.presence()
+            # Native replies must settle even after the roster refresh is cancelled.
+            query = asyncio.create_task(channel._subscription.presence())
+            query.add_done_callback(_consume_presence_result)
+            result = await asyncio.shield(query)
             query_succeeded = True
         except CENTRIFUGE_ERROR as error:
             await channel._fail_presence_sync()

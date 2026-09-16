@@ -457,6 +457,138 @@ class FakeCentrifugeFactory:
         return self.client
 
 
+class ControlledCentrifugeFactory:
+    """Run native subscription logic with commands acknowledged by the test."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        centrifuge = importlib.import_module("centrifuge")
+        self.client = centrifuge.Client(
+            "ws://localhost/realtime/v1/websocket",
+            loop=asyncio.get_running_loop(),
+        )
+        self.commands: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+        async def connect() -> None:
+            self.client.state = centrifuge.ClientState.CONNECTED
+            self.client._connected_future.set_result(True)
+
+        async def send_commands(commands: list[dict[str, Any]]) -> None:
+            for command in commands:
+                self.commands.put_nowait(command)
+
+        monkeypatch.setattr(self.client, "connect", connect)
+        monkeypatch.setattr(self.client, "_send_commands", send_commands)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        del args
+        self.client.events = kwargs["events"]
+        return self.client
+
+    async def command(self) -> dict[str, Any]:
+        return await asyncio.wait_for(self.commands.get(), timeout=0.2)
+
+    async def reply(self, command: dict[str, Any], **result: Any) -> None:
+        await self.client._process_reply({"id": command["id"], **result})
+
+
+async def start_native_presence_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[
+    VolcanoClient,
+    realtime_module.Channel,
+    ControlledCentrifugeFactory,
+    dict[str, Any],
+]:
+    factory = ControlledCentrifugeFactory(monkeypatch)
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=factory,
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    channel = client.realtime.channel("lobby", channel_type="presence")
+    subscribing = asyncio.create_task(channel.subscribe())
+    command = await factory.command()
+    await factory.reply(command, subscribe={})
+    command = await factory.command()
+    await factory.reply(command, presence={"presence": {}})
+    await subscribing
+    await channel._wait_presence_sync()
+    subscription = factory.client.get_subscription(channel.name)
+    await subscription._move_subscribing(1, "transport closed")
+    command = await factory.command()
+    await factory.reply(command, subscribe={})
+    command = await factory.command()
+    assert "presence" in command
+    return client, channel, factory, command
+
+
+@pytest.mark.parametrize("remove", [False, True])
+@pytest.mark.parametrize("failed_reply", [False, True])
+def test_realtime_stopped_presence_query_accepts_late_native_reply(
+    monkeypatch: pytest.MonkeyPatch, *, remove: bool, failed_reply: bool
+) -> None:
+    async def scenario() -> None:
+        client, channel, factory, presence = await start_native_presence_refresh(
+            monkeypatch
+        )
+        healthy = client.realtime.channel("healthy")
+        received = asyncio.Event()
+        healthy.on("message", lambda _message: received.set())
+        subscribing = asyncio.create_task(healthy.subscribe())
+        command = await factory.command()
+        await factory.reply(command, subscribe={})
+        await subscribing
+        stopping = asyncio.create_task(
+            client.realtime.remove_channel("lobby", channel_type="presence")
+            if remove
+            else channel.unsubscribe()
+        )
+        command = await factory.command()
+        assert "unsubscribe" in command
+        try:
+            if failed_reply:
+                await factory.reply(
+                    presence, error={"code": 100, "message": "presence unavailable"}
+                )
+            else:
+                await factory.reply(
+                    presence,
+                    presence={
+                        "presence": {"stale": {"client": "stale", "user": "peer"}}
+                    },
+                )
+            await factory.reply(command, unsubscribe={})
+            await stopping
+            assert channel.get_presence_state() == {}
+            await factory.client._process_reply(
+                {"push": {"channel": healthy.name, "pub": {"data": "healthy"}}}
+            )
+            await asyncio.wait_for(received.wait(), timeout=0.2)
+        finally:
+            # Let a failed assertion finish the unsubscribe before closing the client.
+            if not stopping.done():
+                await factory.reply(command, unsubscribe={})
+            await asyncio.gather(stopping, return_exceptions=True)
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_disconnect_settles_pending_native_presence_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        client, channel, factory, _presence = await start_native_presence_refresh(
+            monkeypatch
+        )
+        await client.realtime.disconnect()
+        assert channel.get_presence_state() == {}
+        assert not factory.client._inflight_commands
+
+    asyncio.run(scenario())
+
+
 def test_realtime_channel_exposes_its_canonical_name() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
 
@@ -1600,7 +1732,7 @@ def test_realtime_presence_resyncs_after_resubscription() -> None:
 
         await official.subscription.emit_subscribed()
         await official.subscription.presence_entered.wait()
-        await asyncio.sleep(0)
+        await asyncio.wait_for(channel._wait_presence_sync(), timeout=0.2)
 
         assert set(channel.get_presence_state()) == {"carol-client"}
         await client.realtime.disconnect()
@@ -1663,11 +1795,9 @@ def test_realtime_presence_replays_a_resync_requested_during_a_query() -> None:
             )
         }
         official.subscription.presence_release.set()
-        for _ in range(100):
-            if official.subscription.calls.count(("presence", None)) == 3:
-                break
-            await asyncio.sleep(0)
+        await asyncio.wait_for(channel._wait_presence_sync(), timeout=0.2)
 
+        assert official.subscription.calls.count(("presence", None)) == 3
         assert set(channel.get_presence_state()) == {"carol-client"}
         await client.realtime.disconnect()
 
