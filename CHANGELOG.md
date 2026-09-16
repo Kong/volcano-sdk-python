@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/Kong/volcano-sdk-python/compare/v0.6.2...v0.6.3) (2026-09-16)
+
+
+### Bug Fixes
+
+* **realtime:** separate callback work from transport shutdown ([#143](https://github.com/Kong/volcano-sdk-python/issues/143)) ([3de5985](https://github.com/Kong/volcano-sdk-python/commit/3de5985b8f480c40b00b0216b9d11292a793b58e))
+
 ## [0.6.2](https://github.com/Kong/volcano-sdk-python/compare/v0.6.1...v0.6.2) (2026-09-16)
 
 
