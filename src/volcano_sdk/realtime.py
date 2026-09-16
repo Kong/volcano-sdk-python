@@ -572,6 +572,7 @@ class Channel:
         self._subscribed = False
         self._paused = True
         self._delivery_epoch = 0
+        self._presence_epoch = 0
         self._presence_lock = asyncio.Lock()
         self._presence_sync_task: asyncio.Task[None] | None = None
         self._presence_sync_pending = False
@@ -853,7 +854,7 @@ class Channel:
                     event,
                     data,
                     postgres_identity,
-                    self._delivery_epoch if postgres_identity is None else None,
+                    self._callback_epoch(event) if postgres_identity is None else None,
                 )
             )
         except asyncio.QueueFull:
@@ -913,9 +914,14 @@ class Channel:
         if delivery.delivery_epoch is not None:
             return (
                 not self._paused or delivery.event == "presence_sync"
-            ) and delivery.delivery_epoch == self._delivery_epoch
+            ) and delivery.delivery_epoch == self._callback_epoch(delivery.event)
         identity = delivery.postgres_identity
         return identity is None or self._postgres_delivery_is_current(identity)
+
+    def _callback_epoch(self, event: str) -> int:
+        if event in {"join", "leave", "presence_sync"}:
+            return self._presence_epoch
+        return self._delivery_epoch
 
     def _enqueue_pending_presence_sync(self) -> None:
         pending = self._pending_presence_sync
@@ -924,7 +930,7 @@ class Channel:
         self._pending_presence_sync = NO_PENDING_CALLBACK
         self._callback_queue.put_nowait(
             _CallbackDelivery(
-                "presence_sync", pending, delivery_epoch=self._delivery_epoch
+                "presence_sync", pending, delivery_epoch=self._presence_epoch
             )
         )
 
@@ -1101,19 +1107,24 @@ class Channel:
         self._subscribed = False
         self._discard_callbacks()
 
-    def _discard_callbacks(self) -> None:
-        self._delivery_epoch += 1
+    def _discard_callbacks(self, *, presence_only: bool = False) -> None:
+        self._presence_epoch += 1
+        if not presence_only:
+            self._delivery_epoch += 1
         # Free capacity before recovered publications arrive behind a slow callback.
-        while not self._callback_queue.empty():
-            self._callback_queue.get_nowait()
+        for _ in range(self._callback_queue.qsize()):
+            delivery = self._callback_queue.get_nowait()
+            if presence_only and delivery.event == "message":
+                # Requeue before task_done so queue.join cannot finish prematurely.
+                self._callback_queue.put_nowait(delivery)
             self._callback_queue.task_done()
         self._pending_presence_sync = NO_PENDING_CALLBACK
 
     async def _transport_lost(self) -> None:
         self._subscribed = False
-        # Broadcast recovery offsets already include queued callbacks.
+        # Recoverable channels already include queued messages in their offsets.
         if not self._paused and self._type != "broadcast":
-            self._discard_callbacks()
+            self._discard_callbacks(presence_only=self._type == "presence")
         await self._end_postgres_epoch()
         await self._presence_unsubscribed()
 
@@ -1488,7 +1499,8 @@ class Realtime:
 
     async def _unsubscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
-            channel._pause_delivery()
+            if not channel._paused:
+                channel._pause_delivery()
             if channel._subscription is not None:
                 await channel._subscription.unsubscribe()
 

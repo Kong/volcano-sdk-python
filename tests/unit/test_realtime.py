@@ -624,6 +624,45 @@ def test_realtime_cancelled_pause_keeps_native_subscription_resumable(
     asyncio.run(scenario())
 
 
+def test_realtime_repeated_pause_retains_presence_clear_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        client, channel, factory, presence = await start_native_presence_refresh(
+            monkeypatch
+        )
+        entered, release = asyncio.Event(), asyncio.Event()
+        snapshots: list[Any] = []
+
+        async def receive(state: Any) -> None:
+            snapshots.append(state)
+            if state:
+                entered.set()
+                await release.wait()
+
+        channel.on_presence_sync(receive)
+        await factory.reply(
+            presence,
+            presence={"presence": {"peer": {"client": "peer", "user": "peer"}}},
+        )
+        await asyncio.wait_for(entered.wait(), timeout=0.2)
+        try:
+            pausing = asyncio.create_task(channel.unsubscribe())
+            command = await factory.command()
+            await factory.reply(command, unsubscribe={})
+            await pausing
+            await channel.unsubscribe()
+            release.set()
+            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            assert snapshots[-1] == {}
+            assert channel.get_presence_state() == {}
+        finally:
+            release.set()
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 def test_realtime_channel_exposes_its_canonical_name() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
 
@@ -2398,8 +2437,10 @@ def test_realtime_explicit_pause_frees_queue_capacity_for_recovered_messages() -
     asyncio.run(scenario())
 
 
-def test_realtime_reconnect_preserves_broadcasts_already_accepted_by_centrifuge(
+@pytest.mark.parametrize("channel_type", ["broadcast", "presence"])
+def test_realtime_reconnect_preserves_messages_already_accepted_by_centrifuge(
     monkeypatch: pytest.MonkeyPatch,
+    channel_type: realtime_module.ChannelType,
 ) -> None:
     async def scenario() -> None:
         factory = ControlledCentrifugeFactory(monkeypatch)
@@ -2418,12 +2459,17 @@ def test_realtime_reconnect_preserves_broadcasts_already_accepted_by_centrifuge(
             entered.set()
             await release.wait()
 
-        channel = client.realtime.channel("room").on("message", receive)
+        channel = client.realtime.channel("room", channel_type=channel_type).on(
+            "message", receive
+        )
         subscribing = asyncio.create_task(channel.subscribe())
         command = await factory.command()
         await factory.reply(
             command, subscribe={"recoverable": True, "offset": 0, "epoch": "stream"}
         )
+        if channel_type == "presence":
+            presence = await factory.command()
+            await factory.reply(presence, presence={"presence": {}})
         await asyncio.wait_for(subscribing, timeout=0.2)
         subscription = official.get_subscription(channel.name)
         try:
@@ -2444,6 +2490,9 @@ def test_realtime_reconnect_preserves_broadcasts_already_accepted_by_centrifuge(
                     "publications": [{"offset": 3, "data": 3}],
                 },
             )
+            if channel_type == "presence":
+                presence = await factory.command()
+                await factory.reply(presence, presence={"presence": {}})
             release.set()
             await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
             assert received == [1, 2, 3]

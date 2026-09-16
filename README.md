@@ -639,8 +639,9 @@ Explicitly pausing discards incoming messages and callbacks queued before the pa
 including presence joins, leaves, and snapshots. Pausing frees their queue capacity
 so recovered messages can be delivered after resubscription.
 A callback already running may finish; handlers remain registered for resubscription.
-Automatic reconnects preserve queued broadcasts and use the existing recovery
-position to request missed messages. Presence is refreshed after reconnecting.
+Automatic reconnects preserve queued messages on broadcast and presence channels,
+using the existing recovery position to request missed messages. Presence rosters
+are refreshed after reconnecting.
 
 Presence channels expose server-managed user metadata and join/leave events:
 
