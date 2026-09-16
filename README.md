@@ -669,6 +669,8 @@ the remote identity and metadata from the authenticated user; `track()` stores
 optional local state in `tracked_state` but does not replace that server-managed
 identity. Presence is resynchronized after reconnects. Query failures are
 reported through `realtime.on_error()` and clear the current snapshot.
+Unsubscribing or removing a presence channel discards an in-progress roster
+refresh without interrupting other channels on the shared connection.
 
 Postgres channels deliver immutable, RLS-scoped row changes and filter
 callbacks by event, schema, and table:
