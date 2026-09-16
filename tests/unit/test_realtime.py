@@ -3516,3 +3516,56 @@ def test_realtime_callback_cancellation_does_not_cancel_later_delivery() -> None
             await client.realtime.disconnect()
 
     asyncio.run(scenario())
+
+
+def test_realtime_worker_registration_precedes_callback_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        factory = ControlledCentrifugeFactory(monkeypatch)
+        client = VolcanoClient(
+            anon_key="anon-key",
+            _transport=AuthTransport(),
+            _realtime_client_factory=factory,
+        )
+        client.auth.sign_in(email="user@example.com", password="secret")
+        received: list[str] = []
+        release = asyncio.Event()
+        channel = client.realtime.channel("room", channel_type="presence")
+
+        async def receive(_message: Any) -> None:
+            received.append("message started")
+            await channel.unsubscribe()
+            await release.wait()
+            received.append("message finished")
+
+        channel.on("message", receive)
+        channel.on_presence_sync(lambda _state: received.append("presence"))
+        subscribing = asyncio.create_task(channel.subscribe())
+        await factory.reply(await factory.command(), subscribe={})
+        await factory.reply(await factory.command(), presence={"presence": {}})
+        await subscribing
+        await channel._wait_presence_sync()
+        await channel._callback_queue.join()
+        await asyncio.sleep(0)
+        received.clear()
+        loop = asyncio.get_running_loop()
+        previous_factory = loop.get_task_factory()
+        # Python 3.11 uses deferred tasks; later runtimes also support eager tasks.
+        loop.set_task_factory(getattr(asyncio, "eager_task_factory", None))
+        try:
+            subscription = factory.client.get_subscription(channel.name)
+            await subscription._process_publication({"data": "message"})
+            command = await factory.command()
+            assert "unsubscribe" in command
+            await factory.reply(command, unsubscribe={})
+            assert received == ["message started"]
+            release.set()
+            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            assert received == ["message started", "message finished", "presence"]
+        finally:
+            release.set()
+            loop.set_task_factory(previous_factory)
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())

@@ -883,6 +883,8 @@ class Channel:
 
     async def _dispatch_callbacks(self) -> None:
         try:
+            # Register the worker before user code can re-enter through eager tasks.
+            await asyncio.sleep(0)
             while not self._callback_queue.empty():
                 delivery = self._callback_queue.get_nowait()
                 try:
