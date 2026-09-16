@@ -664,6 +664,12 @@ stop_sync()
 `remove_channel()` unsubscribes and forgets one channel. `remove_all_channels()`
 does the same for every managed channel without disconnecting the shared
 realtime transport, so later calls to `channel()` return fresh facades.
+Removal and `disconnect()` stop SDK delivery and transport work without cancelling
+or waiting for a running application callback. Queued delivery is discarded;
+callbacks already running may finish and may call realtime methods themselves.
+Callbacks run in order on each channel, including across disconnect and resubscribe.
+A slow callback delays subsequent delivery on that channel. Application code owns
+any work it starts and should await that work separately when shutting down.
 Connection callbacks receive immutable contexts, may be synchronous or async,
 and run outside the transport event processor. Each registration returns an
 idempotent function that stops future delivery.
