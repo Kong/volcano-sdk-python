@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/Kong/volcano-sdk-python/compare/v0.6.1...v0.6.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* **realtime:** separate explicit pause from transport recovery ([#141](https://github.com/Kong/volcano-sdk-python/issues/141)) ([3da184f](https://github.com/Kong/volcano-sdk-python/commit/3da184f3a2c6ea7fe14e41de9f387e475c9ad19d))
+
 ## [0.6.1](https://github.com/Kong/volcano-sdk-python/compare/v0.6.0...v0.6.1) (2026-09-16)
 
 
