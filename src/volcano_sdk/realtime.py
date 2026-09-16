@@ -1101,8 +1101,6 @@ class Channel:
         self._pause_delivery()
 
     def _pause_delivery(self) -> None:
-        # Stop also invalidates subscribe calls queued before this intent.
-        self._subscribe_generation += 1
         self._paused = True
         self._subscribed = False
         self._discard_callbacks()
@@ -1360,6 +1358,7 @@ class Realtime:
                 raise first_error
 
     async def _remove_channel(self, channel: Channel) -> None:
+        channel._subscribe_generation += 1
         await self._discard_subscription(channel)
         await channel._reset()
 
@@ -1450,6 +1449,7 @@ class Realtime:
         return connection
 
     async def _subscribe(self, channel: Channel) -> None:
+        # A later stop supersedes this request, including time spent waiting for locks.
         generation = channel._subscribe_generation
         async with channel._subscribe_lock:
             subscription = None
@@ -1475,6 +1475,7 @@ class Realtime:
                 ):
                     # An explicit pause or removal owns the newer subscription intent.
                     raise
+                channel._subscribe_generation += 1
                 channel._subscription_events = None
                 channel._pause_delivery()
                 try:
@@ -1558,6 +1559,7 @@ class Realtime:
 
     async def _unsubscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
+            channel._subscribe_generation += 1
             if not channel._paused:
                 channel._pause_delivery()
             if channel._subscription is not None:
@@ -1570,6 +1572,7 @@ class Realtime:
             self._connection = None
             channels = tuple(self._channels.values())
             for channel in channels:
+                channel._subscribe_generation += 1
                 channel._invalidate()
             cancelled: asyncio.CancelledError | None = None
             try:

@@ -4271,3 +4271,40 @@ def test_realtime_stop_invalidates_queued_subscribe_calls(
             await client.realtime.disconnect()
 
     asyncio.run(scenario())
+
+
+def test_realtime_repeated_pause_invalidates_intervening_subscribe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        factory = ControlledCentrifugeFactory(monkeypatch)
+        client = VolcanoClient(
+            anon_key="anon-key",
+            _transport=AuthTransport(),
+            _realtime_client_factory=factory,
+        )
+        client.auth.sign_in(email="user@example.com", password="secret")
+        channel = client.realtime.channel("room")
+        first = asyncio.create_task(channel.subscribe())
+        await factory.command()
+        pause = asyncio.create_task(channel.unsubscribe())
+        await asyncio.sleep(0)
+        queued = asyncio.create_task(channel.subscribe())
+        last_pause = asyncio.create_task(channel.unsubscribe())
+        try:
+            await factory.reply(await factory.command(), unsubscribe={})
+            await pause
+            await last_pause
+            done, _ = await asyncio.wait({first, queued}, timeout=0.2)
+            assert done == {first, queued}
+            with pytest.raises(asyncio.CancelledError):
+                await queued
+            assert not channel._subscribed
+            assert factory.commands.empty()
+        finally:
+            await client.realtime.disconnect()
+            for task in (first, queued, pause, last_pause):
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+
+    asyncio.run(scenario())
