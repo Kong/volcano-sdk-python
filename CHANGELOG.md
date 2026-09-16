@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.5](https://github.com/Kong/volcano-sdk-python/compare/v0.6.4...v0.6.5) (2026-09-16)
+
+
+### Bug Fixes
+
+* **realtime:** finish native unsubscribe before propagating cancellation ([#146](https://github.com/Kong/volcano-sdk-python/issues/146)) ([e1a7f63](https://github.com/Kong/volcano-sdk-python/commit/e1a7f63b1304cb0c12bd3edcc9dbb6cb8cb11c67))
+
 ## [0.6.4](https://github.com/Kong/volcano-sdk-python/compare/v0.6.3...v0.6.4) (2026-09-16)
 
 
