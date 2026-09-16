@@ -580,8 +580,6 @@ class Channel:
             maxsize=CALLBACK_QUEUE_LIMIT
         )
         self._callback_task: asyncio.Task[None] | None = None
-        self._active_callback_task: asyncio.Task[None] | None = None
-        self._callback_stop: asyncio.Event | None = None
         self._pending_presence_sync: Any = NO_PENDING_CALLBACK
         self._postgres_epoch = 0
         self._postgres_session_lineage = 0
@@ -840,14 +838,6 @@ class Channel:
             return
         if event == "presence_sync":
             self._pending_presence_sync = NO_PENDING_CALLBACK
-        task = self._callback_task
-        if task is None or task.done():
-            self._start_callback_dispatcher()
-        elif self._callback_stop is not None and self._callback_stop.is_set():
-            self._callback_task = asyncio.create_task(
-                self._restart_callback_dispatcher(task)
-            )
-            self._callback_stop = None
         try:
             self._callback_queue.put_nowait(
                 _CallbackDelivery(
@@ -867,48 +857,59 @@ class Channel:
                     "channel": self._name,
                 }
             )
+        task = self._callback_task
+        if task is None or task.done():
+            self._start_callback_dispatcher()
 
     def _start_callback_dispatcher(self) -> None:
-        stop = asyncio.Event()
-        self._callback_stop = stop
-        self._callback_task = asyncio.create_task(self._dispatch_callbacks(stop))
+        task = asyncio.create_task(self._dispatch_callbacks())
+        self._callback_task = task
+        # Retain running application work even if its channel is removed.
+        self._realtime._callback_tasks.add(task)
+        task.add_done_callback(self._callback_dispatcher_finished)
 
-    async def _restart_callback_dispatcher(self, previous: asyncio.Task[None]) -> None:
-        await asyncio.gather(previous, return_exceptions=True)
-        stop = asyncio.Event()
-        self._callback_stop = stop
-        await self._dispatch_callbacks(stop)
+    def _callback_dispatcher_finished(self, task: asyncio.Task[None]) -> None:
+        self._realtime._callback_tasks.discard(task)
+        if self._callback_task is task:
+            self._callback_task = None
+        if not task.cancelled() and (error := task.exception()) is not None:
+            asyncio.get_running_loop().call_exception_handler(
+                {
+                    "message": "Volcano realtime callback dispatcher failed",
+                    "exception": error,
+                    "channel": self._name,
+                }
+            )
 
-    async def _dispatch_callbacks(self, stop: asyncio.Event) -> None:
-        while not stop.is_set():
-            delivery = await self._callback_queue.get()
-            try:
-                if not self._callback_delivery_is_current(delivery):
-                    continue
-                for callback in tuple(self._callbacks.get(delivery.event, [])):
+    async def _dispatch_callbacks(self) -> None:
+        try:
+            while not self._callback_queue.empty():
+                delivery = self._callback_queue.get_nowait()
+                try:
                     if not self._callback_delivery_is_current(delivery):
-                        break
-                    active_task = asyncio.create_task(
-                        self._run_callback(callback, delivery)
-                    )
-                    self._active_callback_task = active_task
-                    try:
+                        continue
+                    for callback in tuple(self._callbacks.get(delivery.event, [])):
+                        if not self._callback_delivery_is_current(delivery):
+                            break
+                        # Isolate a callback's own cancellation from later delivery.
                         (error,) = await asyncio.gather(
-                            active_task, return_exceptions=True
+                            self._run_callback(callback, delivery),
+                            return_exceptions=True,
                         )
-                    finally:
-                        self._active_callback_task = None
-                    if isinstance(error, BaseException):
-                        asyncio.get_running_loop().call_exception_handler(
-                            {
-                                "message": "Volcano realtime callback failed",
-                                "exception": error,
-                                "channel": self._name,
-                            }
-                        )
-            finally:
-                self._callback_queue.task_done()
-                self._enqueue_pending_presence_sync()
+                        if isinstance(error, BaseException):
+                            asyncio.get_running_loop().call_exception_handler(
+                                {
+                                    "message": "Volcano realtime callback failed",
+                                    "exception": error,
+                                    "channel": self._name,
+                                }
+                            )
+                finally:
+                    self._callback_queue.task_done()
+                    self._enqueue_pending_presence_sync()
+        finally:
+            # Event-loop cancellation must not leave queued delivery to restart.
+            self._discard_callbacks()
 
     def _callback_delivery_is_current(self, delivery: _CallbackDelivery) -> bool:
         if delivery.delivery_epoch is not None:
@@ -1078,20 +1079,6 @@ class Channel:
         self._invalidate()
         await self._end_postgres_epoch()
         await self._cancel_presence_sync()
-        task = self._callback_task
-        active_task = self._active_callback_task
-        if self._callback_stop is not None:
-            self._callback_stop.set()
-        current_task = asyncio.current_task()
-        called_from_dispatcher = current_task is task or current_task is active_task
-        if task is not None and not called_from_dispatcher:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
-            self._callback_task = None
-        while not self._callback_queue.empty():
-            self._callback_queue.get_nowait()
-            self._callback_queue.task_done()
-        self._pending_presence_sync = NO_PENDING_CALLBACK
         self._presence_state.clear()
         self._discard_presence_sync()
         self._tracked_state = MappingProxyType({})
@@ -1148,6 +1135,7 @@ class Realtime:
         self._connection_access_token: str | None = None
         self._connection_lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
+        self._callback_tasks: set[asyncio.Task[None]] = set()
         self._removing_channels: set[str] = set()
         self._connection_callbacks: dict[str, dict[int, RealtimeCallback]] = {
             "connect": {},
