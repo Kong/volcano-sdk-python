@@ -18,6 +18,7 @@ from aws_durable_execution_sdk_python_testing import DurableFunctionTestRunner
 
 from volcano_sdk import durable_authoring
 from volcano_sdk.durable_authoring import (
+    BatchFailure,
     BatchOptions,
     DurableContext,
     DurableRuntimeMissingError,
@@ -172,7 +173,8 @@ def test_map_runs_the_work_over_every_item() -> None:
             "results": sorted(batch.results),
             "succeeded": batch.succeeded,
             "failed": batch.failed,
-            "total": batch.total,
+            "completed": batch.completed,
+            "reason": batch.completion_reason,
             "statuses": sorted(item.status for item in batch.items),
         }
 
@@ -180,7 +182,8 @@ def test_map_runs_the_work_over_every_item() -> None:
         "results": [10, 20, 30],
         "succeeded": 3,
         "failed": 0,
-        "total": 3,
+        "completed": 3,
+        "reason": "all_completed",
         "statuses": ["succeeded", "succeeded", "succeeded"],
     }
 
@@ -207,9 +210,9 @@ def test_parallel_runs_named_and_bare_branches() -> None:
             lambda child: child.step(lambda _s: "b"),
         ]
         batch = ctx.parallel(branches, "fan-out")
-        return {"results": sorted(batch.results), "total": batch.total}
+        return {"results": sorted(batch.results), "completed": batch.completed}
 
-    assert run_handler(handler) == {"results": ["a", "b"], "total": 2}
+    assert run_handler(handler) == {"results": ["a", "b"], "completed": 2}
 
 
 def test_a_batch_reports_the_item_that_failed() -> None:
@@ -236,6 +239,83 @@ def test_a_batch_reports_the_item_that_failed() -> None:
         "failed": 1,
         "results": [1, 3],
     }
+
+
+def test_a_failure_is_reported_in_the_facade_s_own_shape() -> None:
+    """A failed item reports the platform's wire object, not an exception.
+
+    The facade reduces it to its own three fields, so a handler reads the same
+    `message`, `type` and `data` here as in the other SDKs and nothing of the
+    runtime's own vocabulary reaches it.
+    """
+
+    @durable
+    def handler(_event: Any, ctx: DurableContext) -> Any:
+        def work(item: int, child: DurableContext, _index: int) -> int:
+            def run(_scope: StepScope) -> int:
+                if item == 2:
+                    message = "item two is bad"
+                    raise ValueError(message)
+                return item
+
+            return child.step(run, retry=False)
+
+        batch = ctx.map([1, 2], work, "one-fails")
+        failure = batch.items[1].error
+        if not isinstance(failure, BatchFailure):
+            message = f"expected a BatchFailure, got {type(failure).__name__}"
+            raise TypeError(message)
+        # The platform's own classification of the failure, which for a step
+        # that raised is its step error rather than the raised type.
+        classification = (failure.type or "").rsplit(".", 1)[-1]
+        return {
+            "message": failure.message,
+            "type": classification,
+            "errors": [error.message for error in batch.errors],
+        }
+
+    assert run_handler(handler) == {
+        "message": "item two is bad",
+        "type": "StepError",
+        "errors": ["item two is bad"],
+    }
+
+
+def test_an_early_completion_reports_only_what_finished() -> None:
+    """`min_succeeded` ends a batch with items still in flight.
+
+    The platform does not promise to reproduce those when the execution
+    resumes, so a handler that saw them could take one path live and another on
+    the replay. The facade reports the finished items, how many finished, and
+    why the batch ended -- all of which are the same both times.
+    """
+
+    @durable
+    def handler(_event: Any, ctx: DurableContext) -> Any:
+        def work(item: int, child: DurableContext, _index: int) -> int:
+            def run(_scope: StepScope) -> int:
+                # The later items outlive the completion threshold, so the batch
+                # finishes while they are still going.
+                if item > 1:
+                    child.wait("1s")
+                return item
+
+            return child.step(run)
+
+        batch = ctx.map([1, 2, 3], work, "quorum", BatchOptions(min_succeeded=1))
+        return {
+            "statuses": sorted(item.status for item in batch.items),
+            "completed": batch.completed,
+            "reason": batch.completion_reason,
+        }
+
+    result = run_handler(handler)
+
+    assert "started" not in result["statuses"], (
+        "an in-flight item is not guaranteed to come back on a replay"
+    )
+    assert result["completed"] == len(result["statuses"])
+    assert result["reason"] == "min_successful_reached"
 
 
 def test_throw_if_failed_surfaces_a_batch_failure() -> None:

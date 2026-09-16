@@ -220,13 +220,31 @@ class StepScope:
 
 
 @dataclass(frozen=True, slots=True)
+class BatchFailure:
+    """Why one item of a batch failed.
+
+    The platform reports a failed item as its own wire object, which this
+    reduces to the three fields worth reading: what went wrong, how the
+    platform classified it, and whatever the failure carried with it. A handler
+    logs or returns those.
+
+    `throw_if_failed` raises the real error, for a handler that would rather
+    propagate the failure than report it.
+    """
+
+    message: str | None
+    type: str | None = None
+    data: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class BatchItem(Generic[T]):
     """One item's outcome in a `map` or `parallel` batch."""
 
     index: int
     status: str
     result: T | None = None
-    error: BaseException | None = None
+    error: BatchFailure | None = None
 
 
 class BatchResult(Generic[T]):
@@ -236,16 +254,26 @@ class BatchResult(Generic[T]):
     and enum-valued statuses: a batch is usually inspected, logged, and
     returned from the handler, so a JSON-serializable shape is worth more here
     than the engine's convenience methods.
+
+    Only the parts that survive a replay are carried over. A batch that
+    finishes early -- `min_succeeded` reached, say -- leaves items still in
+    flight, and the platform does not promise to reproduce those when the
+    execution resumes: the in-flight entries and the total it counted live can
+    both come back different. A handler branching on one would take a different
+    path the second time through, which is the thing durable execution exists
+    to rule out. So `items` holds the items that finished, `completed` counts
+    them, and `completion_reason` says why the batch ended.
     """
 
     __slots__ = (
         "_batch",
+        "completed",
+        "completion_reason",
         "errors",
         "failed",
         "items",
         "results",
         "succeeded",
-        "total",
     )
 
     def __init__(self, batch: Any) -> None:
@@ -256,17 +284,22 @@ class BatchResult(Generic[T]):
                 index=item.index,
                 status=str(getattr(item.status, "value", item.status)).lower(),
                 result=getattr(item, "result", None),
-                error=getattr(item, "error", None),
+                error=_batch_failure(getattr(item, "error", None)),
             )
             for item in _batch_items(batch)
         )
         # Only the items that succeeded, so not aligned with the input when
         # some failed.
         self.results: tuple[T, ...] = tuple(batch.get_results())
-        self.errors: tuple[BaseException, ...] = tuple(batch.get_errors())
+        self.errors: tuple[BatchFailure, ...] = tuple(
+            failure
+            for failure in (_batch_failure(error) for error in batch.get_errors())
+            if failure is not None
+        )
         self.succeeded: int = batch.success_count
         self.failed: int = batch.failure_count
-        self.total: int = batch.total_count
+        self.completed: int = batch.success_count + batch.failure_count
+        self.completion_reason: str | None = _completion_reason(batch)
 
     def throw_if_failed(self) -> None:
         """Raise the first failure, if there was one."""
@@ -274,8 +307,29 @@ class BatchResult(Generic[T]):
 
 
 def _batch_items(batch: Any) -> list[Any]:
-    items = [*batch.succeeded(), *batch.failed(), *batch.started()]
+    """List the items that finished, in input order.
+
+    The in-flight ones are left out on purpose: see `BatchResult`.
+    """
+    items = [*batch.succeeded(), *batch.failed()]
     return sorted(items, key=lambda item: item.index)
+
+
+def _batch_failure(error: Any) -> BatchFailure | None:
+    if error is None:
+        return None
+    return BatchFailure(
+        message=getattr(error, "message", None) or str(error),
+        type=getattr(error, "type", None),
+        data=getattr(error, "data", None),
+    )
+
+
+def _completion_reason(batch: Any) -> str | None:
+    reason = getattr(batch, "completion_reason", None)
+    if reason is None:
+        return None
+    return str(getattr(reason, "value", reason)).lower()
 
 
 class DurableContext:

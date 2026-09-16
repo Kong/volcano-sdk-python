@@ -265,6 +265,15 @@ the clock or a random value.
 | `ctx.child(name, fn)` | Groups operations under one recorded context. |
 | `ctx.log` | The execution's logger, suppressed while an operation is replayed. |
 
+`ctx.map` and `ctx.parallel` both return a batch result: `items` (the items that
+finished, each with `index`, `status`, `result`, `error`), `results`, `errors`,
+`succeeded`, `failed`, `completed`, `completion_reason`, and `throw_if_failed()`.
+`options.min_succeeded` ends the batch while other items are still running, and
+those are not in the result — whether the platform can reproduce an in-flight
+item when the execution resumes is not guaranteed, so a handler that branched on
+one would take a different path on the replay. `completion_reason` is how to tell
+why the batch ended.
+
 Durable operations are synchronous here — there is no `await`, and a step's own
 function is handed a scope carrying `log` and `attempt`. A wait is held by the
 platform rather than by your code, so an execution suspended for an hour costs
