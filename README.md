@@ -635,6 +635,12 @@ in-memory recovery position; a later `await channel.subscribe()` resumes the
 same subscription and requests missed publications. Removing the channel or
 disconnecting the realtime client discards that position. Recovery is not
 persisted across processes and never crosses an auth session lineage.
+Explicitly pausing discards incoming messages and callbacks queued before the pause,
+including presence joins, leaves, and snapshots. Pausing frees their queue capacity
+so recovered messages can be delivered after resubscription.
+A callback already running may finish; handlers remain registered for resubscription.
+Automatic reconnects preserve queued broadcasts and use the existing recovery
+position to request missed messages. Presence is refreshed after reconnecting.
 
 Presence channels expose server-managed user metadata and join/leave events:
 
