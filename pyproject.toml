@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "volcano-sdk"
+name = "volcano-sdk-python"
 version = "0.6.6"
 description = "Official Python SDK for Volcano"
 readme = "README.md"
@@ -25,6 +25,14 @@ dependencies = [
   "python-dateutil>=2.9.0.post0,<3.0.0",
   "typing-extensions>=4.15.0",
 ]
+
+[project.urls]
+Homepage = "https://volcano.dev"
+Repository = "https://github.com/Kong/volcano-sdk-python"
+Changelog = "https://github.com/Kong/volcano-sdk-python/releases"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/volcano_sdk"]
 
 [dependency-groups]
 dev = [

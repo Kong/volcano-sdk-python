@@ -1,7 +1,16 @@
 # Volcano Python SDK
 
-This private proof of concept validates Volcano's Python SDK contract. It is not
-published to PyPI and is not ready for production use.
+Use the Volcano Python SDK to access authentication, databases, storage,
+functions, locks, logs, and realtime events. Requires Python 3.11 or later.
+
+## Install
+
+```shell
+python -m pip install volcano-sdk-python
+```
+
+The [PyPI distribution](https://pypi.org/project/volcano-sdk-python/) is named
+`volcano-sdk-python`; import it as `volcano_sdk`.
 
 ## Try the contract facade
 
@@ -738,7 +747,7 @@ row fetching for every channel.
 
 ## Compatibility
 
-The POC supports Python 3.11 and 3.14. Its public facade is intentionally
+CI tests the SDK on Python 3.11 and 3.14. Its public facade is intentionally
 independent of generated httpx types. The bundled `openapi/openapi.yaml` matches
 the public bundle from [Hosting #991](https://github.com/Kong/volcano-hosting/pull/991)
 at commit `ef03f689e`.
@@ -774,3 +783,24 @@ VOLCANO_SDK_CONTRACT_FIXTURE=/absolute/path/to/fixture.json \
 ```
 
 The fixture must be an absolute path to a mode-`0600` JSON file.
+
+## Release to PyPI
+
+Release Please creates a version and changelog PR from releasable commits.
+After its required checks pass, the existing auto-merge policy merges the PR.
+The Volcano GitHub App creates the stable GitHub release, which automatically
+starts `publish.yml`. The workflow validates the tag, main ancestry, and package
+identity; runs CI; builds and smoke-tests the wheel and source distribution;
+then publishes them to PyPI and adds the version link to the GitHub release.
+
+PyPI trusted publishing must match `Kong/volcano-sdk-python`, workflow
+`publish.yml`, environment `pypi`, and project `volcano-sdk-python`. Only the
+isolated upload job can request an OIDC token; it receives checked artifacts
+and does not check out or execute SDK source. No PyPI API token is required.
+Release runs queue without canceling pending versions.
+
+For a transient failure, rerun the failed jobs on the release workflow. PyPI
+versions cannot be overwritten: if an upload partially succeeded, inspect the
+existing files before recovery. Earlier releases built as `volcano-sdk` are
+not published by this workflow. The Release Please component remains
+`volcano-sdk` to preserve its release branch and history.
