@@ -18,9 +18,6 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).parents[2]
 FEATURE_SHA256 = {
-    "storage-refresh.feature": (
-        "00257b455f9897791db7fd82c4166c7f34c7134b5b9f4ea92f509bba533751a1"
-    ),
     "storage-lifecycle.feature": (
         "08d00ac825bc186929904dea75af28052df964e446e7aeb0e2266711536aa88f"
     ),
@@ -79,6 +76,12 @@ def test_contract_features_match_shared_source() -> None:
     assert {path.name for path in copied.glob("*.feature")} == FEATURE_SHA256.keys()
     for name, expected in FEATURE_SHA256.items():
         assert hashlib.sha256((copied / name).read_bytes()).hexdigest() == expected
+
+
+def test_staged_storage_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "storage-refresh.feature"
+    expected = "00257b455f9897791db7fd82c4166c7f34c7134b5b9f4ea92f509bba533751a1"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
 
 
 def test_every_contract_phrase_is_bound_verbatim() -> None:
