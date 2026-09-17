@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/Kong/volcano-sdk-python/compare/v0.7.0...v0.7.1) (2026-09-17)
+
+
+### Bug Fixes
+
+* **packaging:** expose installed Python type information ([#152](https://github.com/Kong/volcano-sdk-python/issues/152)) ([9ad4044](https://github.com/Kong/volcano-sdk-python/commit/9ad40441d9e27212240e723dbdc1d678343120c4))
+
 ## [0.7.0](https://github.com/Kong/volcano-sdk-python/compare/v0.6.7...v0.7.0) (2026-09-17)
 
 
