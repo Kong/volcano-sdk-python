@@ -23,5 +23,6 @@
   "bucket_name": "dry-run-bucket",
   "storage_path": "dry-run/payload.txt",
   "realtime_channel": "dry-run-channel",
-  "lock_key": "dry-run-lock"
+  "lock_key": "dry-run-lock",
+  "function_name": "dry-run-function"
 }

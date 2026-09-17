@@ -28,6 +28,9 @@ FEATURE_SHA256 = {
         "8a99fab83abf3d73e41ab8557f681b8b1659299a942a1ceb18a2f85009f5af6e"
     ),
     "auth.feature": "c237deb0b3be98d64689699a0ffdcd272e7ef027a2b69439b1768195042ed493",
+    "functions.feature": (
+        "ee6d02540eb8c6216fc18b47f7ef91f5db9a45649749a2ed47d692ae42a1e4e0"
+    ),
     "database-delete.feature": (
         "b328579ee9b33cbb313dd4d13eb899d53f64344c5e5beb00dbfb7eed2098e2c7"
     ),
@@ -104,6 +107,8 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
             "and then resumes with the same handler"
         ),
         "a service-role client",
+        "the client invokes the contract function by name",
+        "the function echoes the payload",
         "a fresh client adopts the current session",
         "a fresh client tries to refresh the signed-out session",
         "an authenticated client",

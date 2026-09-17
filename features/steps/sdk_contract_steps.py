@@ -16,6 +16,7 @@ from contract_support import (
 from volcano_sdk import Session, VolcanoClient
 
 ACCESS_TOKEN_CLOCK_TICK_SECONDS = 1.1
+HTTP_OK = 200
 REJECTED_BEARER = "sdk-contract-rejected-access-token"
 
 
@@ -600,3 +601,27 @@ def subscriber_received_message(context: Any) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value == world.realtime_message
+
+
+@when("the client invokes the contract function by name")
+def invoke_contract_function(context: Any) -> None:
+    world = _world(context)
+
+    def operation() -> Any:
+        return world.service_client.functions.invoke(
+            world.fixture["function_name"], {"value": "contract"}
+        )
+
+    world.record(operation)
+
+
+@then("the function echoes the payload")
+def function_echoed_payload(context: Any) -> None:
+    # The function is reachable only at the endpoint the platform resolved, on a
+    # domain the API URL does not name, so an echo coming back is what proves
+    # the SDK sent the request there rather than somewhere it guessed.
+    world = _world(context)
+    assert world.last_outcome is not None
+    response = world.last_outcome.value
+    assert response.status == HTTP_OK, response
+    assert response.data == {"echoed": "contract"}, response.data
