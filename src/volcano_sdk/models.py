@@ -346,8 +346,14 @@ class StoragePage:
 
 
 @dataclass(frozen=True, slots=True)
-class DurableExecutionError:
-    """Why a failed or timed-out execution ended."""
+class DurableExecutionFailure:
+    """Why a failed or timed-out execution ended.
+
+    A value read off an execution, not an exception. Named for that: every
+    `*Error` this package exports subclasses `VolcanoError`, so a reader who
+    wrote `except DurableExecutionError:` on the wire schema's name would get a
+    `TypeError` about catching a class that is not an exception.
+    """
 
     type: str | None = None
     message: str | None = None
@@ -369,7 +375,7 @@ class DurableExecution:
     # before concluding anything from a missing result.
     result: JSONValue = field(default=None, repr=False, hash=False)
     result_expired: bool | None = None
-    error: DurableExecutionError | None = None
+    error: DurableExecutionFailure | None = None
     completed_at: datetime | None = None
 
     def __post_init__(self) -> None:

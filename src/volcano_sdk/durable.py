@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, cast
+from uuid import UUID
 
 from ._transport import (
     DurableExecutionListRequest,
@@ -14,7 +15,7 @@ from ._transport import (
 )
 from .models import (
     DurableExecution,
-    DurableExecutionError,
+    DurableExecutionFailure,
     DurableExecutionPage,
     DurableExecutionStatus,
     JSONValue,
@@ -30,6 +31,14 @@ _INVALID_IDENTIFIERS = {
     "execution_name": "execution_name must be a non-empty string",
     "project_id": "project_id must be a non-empty string",
     "execution_id": "execution_id must be a non-empty string",
+}
+# The two identifiers the transport converts to a UUID before sending. Checked
+# here so a malformed one is a facade ValidationError rather than a
+# `badly formed hexadecimal UUID string` raised from inside the transport,
+# outside the error hierarchy this package documents.
+_UUID_IDENTIFIERS = {
+    "project_id": "project_id must be a UUID",
+    "execution_id": "execution_id must be a UUID",
 }
 _HTTP_ACCEPTED = 202
 _HTTP_OK = 200
@@ -142,14 +151,12 @@ class Durable:
         identifier = _identifier(function_name, "function_name")
         execution = _identifier(execution_id, "execution_id")
         transport = cast("DurableTransport", self._client._transport)
-        response = self._client.auth._session_request(
-            lambda authorization: invoke(
-                transport.get_durable_execution,
-                authorization=authorization,
-                project_id=project,
-                function_id=identifier,
-                execution_id=execution,
-            )
+        response = invoke(
+            transport.get_durable_execution,
+            authorization=self._client._session_token(),
+            project_id=project,
+            function_id=identifier,
+            execution_id=execution,
         )
         return _durable_execution(response_payload(response, _HTTP_OK))
 
@@ -171,14 +178,12 @@ class Durable:
         identifier = _identifier(function_name, "function_name")
         transport = cast("DurableTransport", self._client._transport)
         request = DurableExecutionListRequest(status=status, page=page, limit=limit)
-        response = self._client.auth._session_request(
-            lambda authorization: invoke(
-                transport.list_durable_executions,
-                authorization=authorization,
-                project_id=project,
-                function_id=identifier,
-                request=request,
-            )
+        response = invoke(
+            transport.list_durable_executions,
+            authorization=self._client._session_token(),
+            project_id=project,
+            function_id=identifier,
+            request=request,
         )
         return _durable_execution_page(response_payload(response, _HTTP_OK))
 
@@ -200,27 +205,31 @@ class Durable:
         identifier = _identifier(function_name, "function_name")
         execution = _identifier(execution_id, "execution_id")
         transport = cast("DurableTransport", self._client._transport)
-        response = self._client.auth._session_request(
-            lambda authorization: invoke(
-                transport.stop_durable_execution,
-                authorization=authorization,
-                project_id=project,
-                function_id=identifier,
-                execution_id=execution,
-            )
+        response = invoke(
+            transport.stop_durable_execution,
+            authorization=self._client._session_token(),
+            project_id=project,
+            function_id=identifier,
+            execution_id=execution,
         )
         return _durable_execution(response_payload(response, _HTTP_OK))
 
 
 def _identifier(value: object, field: str) -> str:
-    """Require a non-empty path segment.
+    """Require a non-empty path segment, and a UUID where one is sent as one.
 
-    An empty one would address the collection instead of the execution, which
-    is a different request rather than a failed one.
+    An empty segment would address the collection instead of the execution,
+    which is a different request rather than a failed one.
     """
     if not isinstance(value, str) or not value.strip():
         raise ValueError(_INVALID_IDENTIFIERS[field])
-    return value.strip()
+    trimmed = value.strip()
+    if field in _UUID_IDENTIFIERS:
+        try:
+            UUID(trimmed)
+        except ValueError as exc:
+            raise ValueError(_UUID_IDENTIFIERS[field]) from exc
+    return trimmed
 
 
 def _durable_execution(payload: object) -> DurableExecution:
@@ -250,7 +259,7 @@ def _durable_execution(payload: object) -> DurableExecution:
     )
 
 
-def _durable_error(payload: object) -> DurableExecutionError | None:
+def _durable_error(payload: object) -> DurableExecutionFailure | None:
     if payload is None:
         return None
     if not isinstance(payload, Mapping):
@@ -258,7 +267,7 @@ def _durable_error(payload: object) -> DurableExecutionError | None:
     values = cast("Mapping[str, object]", payload)
     error_type = values.get("type")
     message = values.get("message")
-    return DurableExecutionError(
+    return DurableExecutionFailure(
         type=None if error_type is None else str(error_type),
         message=None if message is None else str(message),
     )

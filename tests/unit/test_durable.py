@@ -447,6 +447,24 @@ def test_a_malformed_execution_payload_is_refused() -> None:
         durable_client(transport, session=False).durable.start("order-pipeline")
 
 
+def test_owner_scoped_reads_reject_identifiers_that_are_not_uuids() -> None:
+    """The transport sends the project and execution ids as UUIDs.
+
+    Unchecked, a malformed one raised `badly formed hexadecimal UUID string`
+    from inside the transport -- outside this package's error hierarchy and
+    outside the facade's own messages.
+    """
+    transport = FakeDurableTransport()
+    client = durable_client(transport)
+
+    with pytest.raises(ValueError, match="project_id must be a UUID"):
+        client.durable.get("not-a-uuid", "order-pipeline", EXECUTION_ID)
+    with pytest.raises(ValueError, match="execution_id must be a UUID"):
+        client.durable.get(PROJECT_ID, "order-pipeline", "exec-abc")
+
+    assert transport.calls == []
+
+
 def test_an_execution_has_a_stable_hash() -> None:
     execution = durable_client(FakeDurableTransport()).durable.get(
         PROJECT_ID, "order-pipeline", EXECUTION_ID
