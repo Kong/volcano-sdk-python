@@ -1,7 +1,20 @@
 # Volcano Python SDK
 
-This private proof of concept validates Volcano's Python SDK contract. It is not
-published to PyPI and is not ready for production use.
+Use the Volcano Python SDK to access authentication, databases, storage,
+functions, locks, logs, and realtime events. Requires Python 3.11 or later.
+
+Start with the [Python quickstart](https://github.com/Kong/volcano-sdk-python/blob/main/docs/README.md).
+
+## Install
+
+```shell
+python -m pip install volcano-sdk-python
+```
+
+The [PyPI distribution](https://pypi.org/project/volcano-sdk-python/) is named
+`volcano-sdk-python`; import it as `volcano_sdk`.
+The installed package includes inline type information for mypy and other
+PEP 561-compatible type checkers.
 
 ## Try the contract facade
 
@@ -189,6 +202,10 @@ object.
 uploaded parts.
 
 `functions.invoke()` resolves a DNS-safe function name and sends a JSON object.
+The request goes to the function's own domain rather than to `api_url`, so an
+egress rule that allows only the API host will block it; the resolved endpoint
+is cached for the lifetime the platform gives it. Deployments with no public
+function domain invoke through the API host instead.
 It uses the active user session when present, then a configured service key,
 then the anonymous key. An anonymous key can invoke a public function without a
 user session; the function receives no user identity. The immutable result
@@ -286,7 +303,8 @@ events. Pass `next_cursor` back as `cursor` to continue a search. `logs.activity
 returns immutable time buckets using the same resource selector and query syntax.
 Both methods require an active user session.
 
-Database selects, inserts, updates, deletes, and log reads refresh the captured
+Database selects, inserts, updates, deletes, log reads, and authenticated storage
+requests (including upload sessions and parts) refresh the captured
 session after an HTTP 401 and retry the same request once. Concurrent requests reuse a successful
 refresh for that session.
 Replacing or signing out the session before replay, or while replay is in flight,
@@ -384,18 +402,24 @@ including metadata. The snapshot is deeply immutable and available without a
 request. It is cached data, not proof of authentication; use `auth.get_user()`
 to fetch the server-validated profile. Existing three-field `Session` construction
 still works, with `user=None`. An adopted snapshot must have the same user ID.
+Successful `get_user()`, `update_user()`, `convert_anonymous()`, and
+`confirm_email_change()` calls update that local snapshot without changing tokens
+or emitting an auth-state event. Previously returned sessions remain immutable.
+Profile identity checks compare UUID values; the session retains its original
+user ID spelling, including in the cached snapshot.
 
 `get_user()` sends the active access token to Volcano and returns an immutable, server-validated
 profile with the complete public AuthUser fields. Profile timestamps are timezone-aware `datetime`
-values, and nested user and application metadata are immutable. The request does not replace the
-session or cache the profile. If another authentication operation replaces the session while the
-request is in flight, `get_user()` raises `SessionChangedError` instead of returning a profile for
-stale credentials.
+values, and nested user and application metadata are immutable. The request updates the cached
+profile without changing credentials. If another authentication operation replaces the session
+while the request is in flight, `get_user()` raises `SessionChangedError` instead of returning a
+profile for stale credentials.
 
 `update_user()` updates the current user's password, metadata, or both. Metadata is a shallow patch:
 omitted keys remain unchanged, and setting a key to `None` removes it. The method returns the same
-immutable profile type as `get_user()` and does not replace the active session. It also rejects a
-response if another authentication operation replaces the session while the update is in flight.
+immutable profile type as `get_user()` and updates the cached profile without changing credentials.
+It also rejects a response if another authentication operation replaces the session while the
+update is in flight.
 
 Request a password reset email without creating or changing a session:
 
@@ -733,12 +757,30 @@ assert not client.realtime.is_connected
 stop_connect()
 ```
 
+`await channel.subscribe()` returns after the server acknowledges the subscription.
+Presence channels also wait for the initial roster refresh. If subscription fails
+or the call is cancelled, the attempt is stopped and a later call can retry.
+Other channels and shutdown operations can proceed while acknowledgement is pending.
+Calling subscribe on an active channel returns immediately.
+Pausing, removal, and disconnect invalidate earlier queued subscribe calls;
+disconnect also cancels the active readiness wait. Call subscribe again to restart.
+
 Broadcast channels use Centrifuge's native stream recovery when server history
 is available. `await channel.unsubscribe()` pauses delivery while retaining the
 in-memory recovery position; a later `await channel.subscribe()` resumes the
 same subscription and requests missed publications. Removing the channel or
 disconnecting the realtime client discards that position. Recovery is not
 persisted across processes and never crosses an auth session lineage.
+Explicitly pausing discards incoming messages and callbacks queued before the pause,
+including presence joins, leaves, and snapshots. Pausing frees their queue capacity
+so recovered messages can be delivered after resubscription.
+A callback already running may finish; handlers remain registered for resubscription.
+If unsubscribe or removal is cancelled, cancellation propagates after the native
+unsubscribe finishes under its request timeout. This keeps replies valid and
+prevents a subsequent operation from overtaking the stop.
+Automatic reconnects preserve queued messages on broadcast and presence channels,
+using the existing recovery position to request missed messages. Presence rosters
+are refreshed after reconnecting.
 
 Presence channels expose server-managed user metadata and join/leave events:
 
@@ -761,6 +803,12 @@ stop_sync()
 `remove_channel()` unsubscribes and forgets one channel. `remove_all_channels()`
 does the same for every managed channel without disconnecting the shared
 realtime transport, so later calls to `channel()` return fresh facades.
+Removal and `disconnect()` stop SDK delivery and transport work without cancelling
+or waiting for a running application callback. Queued delivery is discarded;
+callbacks already running may finish and may call realtime methods themselves.
+Callbacks run in order on each channel, including across disconnect and resubscribe.
+A slow callback delays subsequent delivery on that channel. Application code owns
+any work it starts and should await that work separately when shutting down.
 Connection callbacks receive immutable contexts, may be synchronous or async,
 and run outside the transport event processor. Each registration returns an
 idempotent function that stops future delivery.
@@ -773,6 +821,8 @@ the remote identity and metadata from the authenticated user; `track()` stores
 optional local state in `tracked_state` but does not replace that server-managed
 identity. Presence is resynchronized after reconnects. Query failures are
 reported through `realtime.on_error()` and clear the current snapshot.
+Unsubscribing or removing a presence channel discards an in-progress roster
+refresh without interrupting other channels on the shared connection.
 
 Postgres channels deliver immutable, RLS-scoped row changes and filter
 callbacks by event, schema, and table:
@@ -835,7 +885,7 @@ does not need it otherwise.
 
 ## Compatibility
 
-The POC supports Python 3.11 and 3.14. Its public facade is intentionally
+CI tests the SDK on Python 3.11 and 3.14. Its public facade is intentionally
 independent of generated httpx types. The bundled `openapi/openapi.yaml` matches
 the public bundle from [Hosting #991](https://github.com/Kong/volcano-hosting/pull/991)
 at commit `ef03f689e`.
@@ -871,3 +921,24 @@ VOLCANO_SDK_CONTRACT_FIXTURE=/absolute/path/to/fixture.json \
 ```
 
 The fixture must be an absolute path to a mode-`0600` JSON file.
+
+## Release to PyPI
+
+Release Please creates a version and changelog PR from releasable commits.
+After its required checks pass, the existing auto-merge policy merges the PR.
+The Volcano GitHub App creates the stable GitHub release, which automatically
+starts `publish.yml`. The workflow validates the tag, main ancestry, and package
+identity; runs CI; builds and smoke-tests the wheel and source distribution;
+then publishes them to PyPI and adds the version link to the GitHub release.
+
+PyPI trusted publishing must match `Kong/volcano-sdk-python`, workflow
+`publish.yml`, environment `pypi`, and project `volcano-sdk-python`. Only the
+isolated upload job can request an OIDC token; it receives checked artifacts
+and does not check out or execute SDK source. No PyPI API token is required.
+Release runs queue without canceling pending versions.
+
+For a transient failure, rerun the failed jobs on the release workflow. PyPI
+versions cannot be overwritten: if an upload partially succeeded, inspect the
+existing files before recovery. Earlier releases built as `volcano-sdk` are
+not published by this workflow. The Release Please component remains
+`volcano-sdk` to preserve its release branch and history.

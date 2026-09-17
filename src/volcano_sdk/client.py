@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import threading
 from collections import deque
+from dataclasses import replace
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
 from .database import Database
 from .durable import Durable
+from .errors import AuthenticationError
 from .functions import Functions
 from .locks import Locks
 from .logs import Logs
@@ -17,17 +20,19 @@ from .models import (
     AuthChangeEvent,
     AuthStateCallback,
     AuthSubscription,
+    JSONValue,
     Session,
 )
 from .realtime import CentrifugeFactory, Realtime
 from .storage import Storage
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from types import TracebackType
 
 _NO_ACTIVE_SESSION = "No active session"
 _NO_SERVICE_KEY = "No service key configured"
+_PROFILE_USER_MISMATCH = "Profile user does not match the active session"
 
 
 class _CallbackOutcome:
@@ -162,6 +167,25 @@ class VolcanoClient:
                 self._session_lineage,
                 self._current_session,
             )
+
+    def _update_session_user_if_current(
+        self, user: Mapping[str, JSONValue], generation: int
+    ) -> bool:
+        with self._session_lock:
+            current = self._current_session
+            if generation != self._session_generation or current is None:
+                return False
+            try:
+                same_user = UUID(str(user["id"])) == UUID(current.user_id)
+            except ValueError:
+                same_user = False
+            if not same_user:
+                raise AuthenticationError(_PROFILE_USER_MISMATCH)
+            # Profile updates do not replace credentials or invalidate other requests.
+            self._current_session = replace(
+                current, user={**user, "id": current.user_id}
+            )
+        return True
 
     def _set_session_if_current(
         self,

@@ -7,6 +7,7 @@ from datetime import datetime
 from threading import Event, Thread
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
+from uuid import UUID
 
 import httpx
 import pytest
@@ -536,6 +537,141 @@ class StateTransport:
     def release_project_lock(self, **kwargs: Any) -> Response:
         self.authorizations.append(("release", kwargs["authorization"]))
         return Response(204)
+
+
+@pytest.mark.parametrize(
+    ("method", "arguments"),
+    [
+        ("get_user", {}),
+        ("update_user", {"metadata": {"name": "updated"}}),
+        ("convert_anonymous", {"email": "user@example.com", "password": "secret"}),
+        ("confirm_email_change", {"token": "confirmation"}),
+    ],
+)
+def test_profile_operations_update_the_local_snapshot(
+    method: str, arguments: dict[str, Any]
+) -> None:
+    client = VolcanoClient(anon_key="anon", _transport=StateTransport())
+    original = client.auth.sign_in(email="user@example.com", password="secret")
+    binding = client._capture_session_binding()
+    events: list[str] = []
+    client.auth.on_auth_state_change(lambda event, _session: events.append(event))
+    events.clear()
+
+    user = getattr(client.auth, method)(**arguments)
+    current = client.auth.get_session()
+
+    assert current is not None
+    assert current.user is not None
+    assert current.user["id"] == current.user_id == user.id
+    assert current.user["email"] == user.email
+    assert current.access_token == original.access_token
+    assert current.refresh_token == original.refresh_token
+    assert client._capture_session_binding()[:2] == binding[:2]
+    assert events == []
+    assert original.user == {"id": original.user_id}
+    mutable_user: Any = current.user
+    with pytest.raises(TypeError):
+        mutable_user["email"] = "changed"
+
+
+@pytest.mark.parametrize(
+    ("method", "arguments"),
+    [
+        ("get_user", {}),
+        ("update_user", {"metadata": {}}),
+        (
+            "convert_anonymous",
+            {"email": "user@example.com", "password": "secret"},
+        ),
+        (
+            "confirm_email_change",
+            {"token": "confirmation"},
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "user_id", ["00000000-0000-4000-8000-000000000099", "invalid-id"]
+)
+def test_profile_operations_reject_a_different_user_without_changing_session(
+    method: str, arguments: dict[str, Any], user_id: str
+) -> None:
+    client = VolcanoClient(anon_key="anon", _transport=StateTransport())
+    original = client.auth.set_session(Session("access", "refresh", user_id))
+    binding = client._capture_session_binding()
+
+    with pytest.raises(AuthenticationError, match="Profile user does not match"):
+        getattr(client.auth, method)(**arguments)
+
+    assert client.auth.get_session() is original
+    assert client._capture_session_binding() == binding
+
+
+@pytest.mark.parametrize(
+    ("method", "arguments"),
+    [
+        ("get_user", {}),
+        ("update_user", {"metadata": {}}),
+        ("convert_anonymous", {"email": "user@example.com", "password": "secret"}),
+        ("confirm_email_change", {"token": "confirmation"}),
+    ],
+)
+@pytest.mark.parametrize("spelling", ["uppercase", "braced", "hex"])
+def test_profile_operations_preserve_equivalent_session_user_ids(
+    method: str, arguments: dict[str, Any], spelling: str
+) -> None:
+    transport = StateTransport()
+    identity = UUID("ab123456-7890-4abc-8def-0123456789ab")
+    for response in (
+        transport.user_response,
+        transport.update_user_response,
+        transport.anonymous_conversion_response,
+        transport.confirm_email_change_response,
+    ):
+        response.payload.user.id = identity
+    identifiers = {
+        "uppercase": str(identity).upper(),
+        "braced": "{" + str(identity) + "}",
+        "hex": identity.hex,
+    }
+    user_id = identifiers[spelling]
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    original = client.auth.set_session(
+        Session("access", "refresh", user_id, user={"id": user_id})
+    )
+    binding = client._capture_session_binding()
+
+    user = getattr(client.auth, method)(**arguments)
+    current = client.auth.get_session()
+
+    assert user.id == str(identity)
+    assert current is not None
+    assert current.user is not None
+    assert current.user_id == current.user["id"] == user_id
+    assert current.user["email"] == user.email
+    assert current.access_token == original.access_token
+    assert current.refresh_token == original.refresh_token
+    assert client._capture_session_binding()[:2] == binding[:2]
+    assert original.user == {"id": user_id}
+    assert client.auth.set_session(current) == current
+
+
+def test_profile_updates_do_not_invalidate_an_overlapping_profile_read() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+
+    def update_profile() -> None:
+        client.auth.update_user(metadata={"name": "new"})
+
+    transport.on_get_user = update_profile
+
+    user = client.auth.get_user()
+    current = client.auth.get_session()
+
+    assert current is not None
+    assert current.user is not None
+    assert current.user["email"] == user.email
 
 
 def test_query_builder_chains_are_immutable() -> None:
@@ -1318,8 +1454,11 @@ def test_sign_in_anonymously_preserves_session_when_disabled() -> None:
     assert client.auth.get_session() is established
 
 
-def test_convert_anonymous_returns_the_user_without_replacing_the_session() -> None:
+def test_convert_anonymous_updates_the_user_without_replacing_credentials() -> None:
     transport = StateTransport()
+    transport.anonymous_signin_response.payload["user"]["id"] = (
+        "00000000-0000-4000-8000-000000000010"
+    )
     client = VolcanoClient(anon_key="anon", _transport=transport)
     established = client.auth.sign_in_anonymously()
 
@@ -1331,7 +1470,11 @@ def test_convert_anonymous_returns_the_user_without_replacing_the_session() -> N
 
     assert user.email == "converted@example.com"
     assert user.email_confirmed is False
-    assert client.auth.get_session() is established
+    current = client.auth.get_session()
+    assert current is not None
+    assert current.user is not None
+    assert current.access_token == established.access_token
+    assert current.user["email"] == user.email
     assert transport.anonymous_conversion_calls == [
         {
             "authorization": "anonymous-access",
@@ -1483,7 +1626,7 @@ def test_cancel_email_change_rejects_a_stale_response() -> None:
     assert client.auth.get_session() == replacement
 
 
-def test_confirm_email_change_returns_user_without_replacing_session() -> None:
+def test_confirm_email_change_updates_user_without_replacing_credentials() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
     established = client.auth.sign_in(email="user@example.com", password="secret")
@@ -1491,7 +1634,11 @@ def test_confirm_email_change_returns_user_without_replacing_session() -> None:
     user = client.auth.confirm_email_change(token="change-token")
 
     assert user.email == "new@example.com"
-    assert client.auth.get_session() is established
+    current = client.auth.get_session()
+    assert current is not None
+    assert current.user is not None
+    assert current.access_token == established.access_token
+    assert current.user["email"] == user.email
     assert transport.confirm_email_change_calls == [
         {"authorization": "access-1", "token": "change-token"}
     ]
@@ -2549,7 +2696,11 @@ def test_get_user_returns_an_immutable_server_validated_profile() -> None:
     assert user.created_at == datetime.fromisoformat("2026-08-30T12:00:00+00:00")
     assert user.updated_at == datetime.fromisoformat("2026-08-31T17:30:00+05:30")
     assert transport.authorizations[-1] == ("get_user", "access-1")
-    assert client.auth.get_session() is established
+    current = client.auth.get_session()
+    assert current is not None
+    assert current.user is not None
+    assert current.access_token == established.access_token
+    assert current.user["user_metadata"] == user.user_metadata
     mutable_user: Any = user
     mutable_metadata: Any = user.user_metadata
     mutable_app_metadata: Any = user.app_metadata
@@ -2712,7 +2863,7 @@ def test_get_user_without_a_session_fails_before_transport() -> None:
     assert transport.authorizations == []
 
 
-def test_get_user_authentication_failure_preserves_the_session() -> None:
+def test_get_user_authentication_failure_preserves_the_refreshed_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
     established = client.auth.sign_in(email="user@example.com", password="secret")
@@ -2721,7 +2872,11 @@ def test_get_user_authentication_failure_preserves_the_session() -> None:
     with pytest.raises(AuthenticationError, match="expired"):
         client.auth.get_user()
 
-    assert client.auth.get_session() is established
+    current = client.auth.get_session()
+    assert current is not None
+    assert current.access_token == "access-2"
+    assert current.refresh_token == "refresh-2"
+    assert current.user_id == established.user_id
 
 
 def test_get_user_rejects_a_profile_loaded_for_a_replaced_session() -> None:
@@ -2745,7 +2900,7 @@ def test_get_user_rejects_a_profile_loaded_for_a_replaced_session() -> None:
     assert client.auth.get_session() == replacement
 
 
-def test_update_user_returns_the_updated_profile_without_replacing_session() -> None:
+def test_update_user_updates_the_profile_without_replacing_credentials() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
     established = client.auth.sign_in(email="user@example.com", password="secret")
@@ -2764,7 +2919,11 @@ def test_update_user_returns_the_updated_profile_without_replacing_session() -> 
             "metadata": {"display_name": "Grace", "avatar": None},
         }
     ]
-    assert client.auth.get_session() is established
+    current = client.auth.get_session()
+    assert current is not None
+    assert current.user is not None
+    assert current.access_token == established.access_token
+    assert current.user["email"] == user.email
 
 
 def test_update_user_without_a_session_fails_before_transport() -> None:
@@ -2777,7 +2936,7 @@ def test_update_user_without_a_session_fails_before_transport() -> None:
     assert transport.update_user_calls == []
 
 
-def test_update_user_authentication_failure_preserves_the_session() -> None:
+def test_update_user_authentication_failure_preserves_the_refreshed_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
     established = client.auth.sign_in(email="user@example.com", password="secret")
@@ -2786,7 +2945,11 @@ def test_update_user_authentication_failure_preserves_the_session() -> None:
     with pytest.raises(AuthenticationError, match="expired"):
         client.auth.update_user(password="new-secret")
 
-    assert client.auth.get_session() is established
+    current = client.auth.get_session()
+    assert current is not None
+    assert current.access_token == "access-2"
+    assert current.refresh_token == "refresh-2"
+    assert current.user_id == established.user_id
 
 
 def test_update_user_rejects_a_profile_for_a_replaced_session() -> None:

@@ -9,6 +9,7 @@ import secrets
 import threading
 from collections.abc import Mapping
 from contextlib import suppress
+from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime
 from http import HTTPStatus
@@ -262,7 +263,7 @@ def _email_change_result_from_payload(payload: object) -> EmailChangeResult:
     )
 
 
-def _user_from_payload(payload: object) -> User:
+def _user_from_payload(payload: object) -> tuple[User, Mapping[str, JSONValue]]:
     if not isinstance(
         payload,
         (
@@ -277,7 +278,7 @@ def _user_from_payload(payload: object) -> User:
     project_id = _none_if_unset(user.project_id)
     user_metadata = _none_if_unset(user.user_metadata)
     app_metadata = _none_if_unset(user.app_metadata)
-    return User(
+    profile = User(
         id=str(user.id),
         email=user.email,
         status=user.status,
@@ -299,6 +300,7 @@ def _user_from_payload(payload: object) -> User:
         created_at=_none_if_unset(user.created_at),
         updated_at=_none_if_unset(user.updated_at),
     )
+    return profile, cast("Mapping[str, JSONValue]", user.to_dict())
 
 
 def _none_if_unset(value: _T | Unset) -> _T | None:
@@ -468,6 +470,10 @@ class AuthContext(Protocol):
 
     def _capture_session_binding(self) -> tuple[int, int, Session | None]: ...
 
+    def _update_session_user_if_current(
+        self, user: Mapping[str, JSONValue], generation: int
+    ) -> bool: ...
+
     def _set_session_if_current(
         self,
         session: Session,
@@ -569,21 +575,22 @@ class Auth:
         metadata: Mapping[str, object] | None = None,
     ) -> User:
         """Attach email credentials to the current anonymous account."""
-        generation, current = self._client._capture_session()
-        if current is None:
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast("AuthConvertAnonymousTransport", self._client._transport)
-        response = invoke(
-            transport.auth_convert_anonymous,
-            authorization=current.access_token,
-            email=email,
-            password=password,
-            metadata=dict(metadata or {}),
+        request_metadata = deepcopy(dict(metadata or {}))
+        response = self._session_request(
+            lambda access_token: invoke(
+                transport.auth_convert_anonymous,
+                authorization=access_token,
+                email=email,
+                password=password,
+                metadata=request_metadata,
+            ),
+            binding=binding,
         )
-        user = _user_from_payload(response_payload(response, 200))
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
-        return user
+        return self._update_current_user(response_payload(response, 200), binding)
 
     def reset_password_for_email(self, *, email: str) -> None:
         """Request a reset email without revealing whether the account exists."""
@@ -627,19 +634,19 @@ class Auth:
 
     def confirm_email_change(self, *, token: str) -> User:
         """Confirm a pending email change and return the updated user."""
-        generation, current = self._client._capture_session()
-        if current is None:
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast("AuthConfirmEmailChangeTransport", self._client._transport)
-        response = invoke(
-            transport.auth_confirm_email_change,
-            authorization=current.access_token,
-            token=token,
+        response = self._session_request(
+            lambda access_token: invoke(
+                transport.auth_confirm_email_change,
+                authorization=access_token,
+                token=token,
+            ),
+            binding=binding,
         )
-        user = _user_from_payload(response_payload(response, 200))
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
-        return user
+        return self._update_current_user(response_payload(response, 200), binding)
 
     def delete_all_other_sessions(self) -> None:
         """Delete every other session while preserving the current session."""
@@ -945,17 +952,28 @@ class Auth:
         )
         response_payload(response, 200)
 
-    def get_user(self) -> User:
-        """Load a server-validated profile for the current session."""
-        generation, current = self._client._capture_session()
-        if current is None:
-            raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast("AuthGetUserTransport", self._client._transport)
-        response = invoke(transport.auth_get_user, authorization=current.access_token)
-        user = _user_from_payload(response_payload(response, 200))
-        if self._client._capture_session()[0] != generation:
+    def _update_current_user(
+        self, payload: object, binding: tuple[int, int, Session | None]
+    ) -> User:
+        generation = self._owned_refresh_session(binding)[0]
+        user, snapshot = _user_from_payload(payload)
+        if not self._client._update_session_user_if_current(snapshot, generation):
             raise SessionChangedError
         return user
+
+    def get_user(self) -> User:
+        """Load a server-validated profile for the current session."""
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
+            raise AuthenticationError(_NO_ACTIVE_SESSION)
+        transport = cast("AuthGetUserTransport", self._client._transport)
+        response = self._session_request(
+            lambda access_token: invoke(
+                transport.auth_get_user, authorization=access_token
+            ),
+            binding=binding,
+        )
+        return self._update_current_user(response_payload(response, 200), binding)
 
     def update_user(
         self,
@@ -964,20 +982,21 @@ class Auth:
         metadata: Mapping[str, object] | None = None,
     ) -> User:
         """Update and return the current user's server-validated profile."""
-        generation, current = self._client._capture_session()
-        if current is None:
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast("AuthUpdateUserTransport", self._client._transport)
-        response = invoke(
-            transport.auth_update_user,
-            authorization=current.access_token,
-            password=password,
-            metadata=None if metadata is None else dict(metadata),
+        request_metadata = None if metadata is None else deepcopy(dict(metadata))
+        response = self._session_request(
+            lambda access_token: invoke(
+                transport.auth_update_user,
+                authorization=access_token,
+                password=password,
+                metadata=request_metadata,
+            ),
+            binding=binding,
         )
-        user = _user_from_payload(response_payload(response, 200))
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
-        return user
+        return self._update_current_user(response_payload(response, 200), binding)
 
     def sign_in(self, *, email: str, password: str) -> Session:
         """Sign in a user and store the returned session."""
@@ -1008,12 +1027,20 @@ class Auth:
         )
 
     def _session_request(
-        self, operation: Callable[[str], TransportResponse]
+        self,
+        operation: Callable[[str], TransportResponse],
+        *,
+        binding: tuple[int, int, Session | None] | None = None,
     ) -> TransportResponse:
-        binding = self._client._capture_session_binding()
+        if binding is None:
+            binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise RuntimeError(_NO_ACTIVE_SESSION)
-        response = operation(binding[2].access_token)
+        binding = self._owned_refresh_session(binding)
+        current = binding[2]
+        if current is None:
+            raise SessionChangedError
+        response = operation(current.access_token)
         if response.status_code != HTTPStatus.UNAUTHORIZED:
             return response
         try:

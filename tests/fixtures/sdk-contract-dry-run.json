@@ -25,5 +25,6 @@
   "storage_path": "dry-run/payload.txt",
   "realtime_channel": "dry-run-channel",
   "lock_key": "dry-run-lock",
+  "function_name": "dry-run-function",
   "durable_function_name": "dry-run-durable"
 }

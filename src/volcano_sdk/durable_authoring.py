@@ -45,7 +45,7 @@ FunctionHandler: TypeAlias = "Callable[[Any, Any], Any]"
 # A deployed durable function gets the runtime from the build and needs no
 # extra. This is for running a handler in your own tests, which is the one place
 # a reader still installs it themselves.
-_ENGINE_EXTRA = "volcano-sdk[durable]"
+_ENGINE_EXTRA = "volcano-sdk-python[durable]"
 _ENGINE_MODULE = "aws_durable_execution_sdk_python"
 _DURATION_FIELDS = ("days", "hours", "minutes", "seconds")
 # No milliseconds: a durable duration is held by the platform between

@@ -28,6 +28,9 @@ FEATURE_SHA256 = {
         "8a99fab83abf3d73e41ab8557f681b8b1659299a942a1ceb18a2f85009f5af6e"
     ),
     "auth.feature": "c237deb0b3be98d64689699a0ffdcd272e7ef027a2b69439b1768195042ed493",
+    "functions.feature": (
+        "ee6d02540eb8c6216fc18b47f7ef91f5db9a45649749a2ed47d692ae42a1e4e0"
+    ),
     "database-delete.feature": (
         "b328579ee9b33cbb313dd4d13eb899d53f64344c5e5beb00dbfb7eed2098e2c7"
     ),
@@ -78,6 +81,18 @@ def test_contract_features_match_shared_source() -> None:
         assert hashlib.sha256((copied / name).read_bytes()).hexdigest() == expected
 
 
+def test_staged_storage_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "storage-refresh.feature"
+    expected = "00257b455f9897791db7fd82c4166c7f34c7134b5b9f4ea92f509bba533751a1"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
+def test_staged_profile_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "auth-profile-refresh.feature"
+    expected = "df46f1c374fcbdeb790cde0781ff14f580e56c44ac9aa6445d97469a385f6f51"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
 def test_every_contract_phrase_is_bound_verbatim() -> None:
     registry.clear()
     _load_module(
@@ -102,6 +117,10 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the uploaded and listed object content types are text/plain",
         "the client replaces its access token with a rejected token",
         "the database read replaces the rejected token for the same user",
+        "the storage operation replaces the rejected token for the same user",
+        "the profile read replaces the rejected token for the same user",
+        "the client loads its server-validated profile",
+        "the returned and cached profiles belong to the contract user",
         (
             "one client pauses delivery for 1 second "
             "and then resumes with the same handler"
@@ -123,6 +142,8 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the execution succeeded carrying the function's result",
         "the owner lists the durable function's executions",
         "the listed executions include the started execution",
+        "the client invokes the contract function by name",
+        "the function echoes the payload",
         "a fresh client adopts the current session",
         "a fresh client tries to refresh the signed-out session",
         "an authenticated client",

@@ -22,7 +22,8 @@ from volcano_sdk import NotFoundError, VolcanoClient
 
 FUNCTION_ID = "00000000-0000-4000-8000-000000000040"
 
-Responder = Callable[[str], "tuple[int, Any]"]
+# (status, payload) or (status, payload, extra response headers).
+Responder = Callable[[str], "tuple[int, Any] | tuple[int, Any, dict[str, str]]"]
 
 
 @dataclass
@@ -67,11 +68,19 @@ class _Server:
                         authorization=self.headers.get("Authorization"),
                     )
                 )
-                status, payload = respond(self.path)
+                answer = respond(self.path)
+                status, payload = answer[0], answer[1]
+                extra: dict[str, str] = answer[2] if len(answer) > 2 else {}
                 encoded = json.dumps(payload).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(encoded)))
+                # The server stamps this on every response, errors included, so
+                # a test that omits it would accept a client keying the stale
+                # mapping retry off its absence.
+                self.send_header("X-Volcano-Version", "test-build")
+                for name, value in extra.items():
+                    self.send_header(name, value)
                 self.end_headers()
                 self.wfile.write(encoded)
 
@@ -251,7 +260,7 @@ def test_a_recreated_function_is_resolved_again_after_a_platform_404() -> None:
     api_requests = Recorder()
     invoked: list[str] = []
 
-    def respond(path: str) -> tuple[int, Any]:
+    def respond(path: str) -> tuple[int, Any] | tuple[int, Any, dict[str, str]]:
         if path.startswith("/functions/resolve"):
             return 200, {
                 "name": "send-welcome",
@@ -259,12 +268,12 @@ def test_a_recreated_function_is_resolved_again_after_a_platform_404() -> None:
                 "cache_ttl_seconds": 300,
             }
         invoked.append(path)
-        # The first invocation finds the cached identity gone.
-        return (
-            (404, {"error": "function not found"})
-            if len(invoked) == 1
-            else (200, {"ok": True})
-        )
+        # The first invocation finds the cached identity gone. The platform
+        # answers without the dispatch marker, which is the only thing telling
+        # this apart from the function itself returning 404.
+        if len(invoked) == 1:
+            return 404, {"error": "function not found"}
+        return 200, {"ok": True}, {"X-Volcano-Function-Invoked": "true"}
 
     api = _Server(respond, api_requests)
     try:
@@ -274,6 +283,33 @@ def test_a_recreated_function_is_resolved_again_after_a_platform_404() -> None:
         assert api_requests.paths() == [
             "/functions/resolve?name=send-welcome",
             f"/functions/{FUNCTION_ID}/invoke",
+            "/functions/resolve?name=send-welcome",
+            f"/functions/{FUNCTION_ID}/invoke",
+        ]
+    finally:
+        api.close()
+
+
+def test_a_function_authored_404_is_returned_without_invoking_twice() -> None:
+    api_requests = Recorder()
+
+    def respond(path: str) -> tuple[int, Any] | tuple[int, Any, dict[str, str]]:
+        if path.startswith("/functions/resolve"):
+            return 200, {
+                "name": "send-welcome",
+                "function_id": FUNCTION_ID,
+                "cache_ttl_seconds": 300,
+            }
+        # The function ran and chose 404. Retrying would repeat whatever it did
+        # on the way to deciding that.
+        return 404, {"error": "no such record"}, {"X-Volcano-Function-Invoked": "true"}
+
+    api = _Server(respond, api_requests)
+    try:
+        result = _client(api.url).functions.invoke("send-welcome")
+
+        assert result.status == 404
+        assert api_requests.paths() == [
             "/functions/resolve?name=send-welcome",
             f"/functions/{FUNCTION_ID}/invoke",
         ]

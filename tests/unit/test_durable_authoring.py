@@ -735,4 +735,4 @@ def test_the_missing_runtime_error_says_to_deploy_as_durable() -> None:
     assert "aws-durable-execution-sdk-python" not in message
 
     # The extra is still the answer for one case, and only that one.
-    assert "in your own tests, install `volcano-sdk[durable]`" in message
+    assert "in your own tests, install `volcano-sdk-python[durable]`" in message

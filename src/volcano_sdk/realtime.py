@@ -70,6 +70,11 @@ def _empty_presence_data() -> Mapping[str, JSONValue]:
     return MappingProxyType({})
 
 
+def _consume_presence_result(task: asyncio.Task[Any]) -> None:
+    if not task.cancelled():
+        task.exception()
+
+
 def _validate_channel_type(channel_type: str) -> ChannelType:
     if channel_type not in SUPPORTED_CHANNEL_TYPES:
         message = f"unsupported realtime channel type: {channel_type}"
@@ -215,6 +220,7 @@ class _CallbackDelivery:
     event: str
     data: Any
     postgres_identity: _PostgresDeliveryIdentity | None = None
+    delivery_epoch: int | None = None
 
 
 def _postgres_change(data: Any) -> PostgresChange | None:
@@ -286,6 +292,10 @@ class CentrifugeSubscription(Protocol):
         """Subscribe to the remote channel."""
         ...
 
+    async def ready(self) -> None:
+        """Wait for acknowledgement using the client request timeout."""
+        ...
+
     async def publish(self, data: Any) -> Any:
         """Publish a payload to the remote channel."""
         ...
@@ -297,6 +307,25 @@ class CentrifugeSubscription(Protocol):
     async def presence(self) -> Any:
         """Return the clients currently present on the channel."""
         ...
+
+
+async def _unsubscribe_native(subscription: CentrifugeSubscription) -> None:
+    # Finish the native stop before releasing the connection lock on cancellation.
+    task = asyncio.create_task(subscription.unsubscribe())
+    cancelled: asyncio.CancelledError | None = None
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as error:
+            cancelled = error
+        except CENTRIFUGE_ERROR:
+            if cancelled is None:
+                raise
+    if cancelled is not None:
+        if not task.cancelled():
+            task.exception()
+        raise cancelled
+    task.result()
 
 
 class CentrifugeConnection(Protocol):
@@ -442,7 +471,16 @@ class _ChannelEvents:
     def __init__(self, channel: Channel) -> None:
         self._channel = channel
 
+    def _is_current(self) -> bool:
+        return self._channel._subscription_events is self
+
     async def on_publication(self, ctx: PublicationContext) -> None:
+        if (
+            not self._is_current()
+            or self._channel._paused
+            or not self._channel._subscribed
+        ):
+            return
         if self._channel._type == "postgres":
             await self._channel._receive_postgres_change(ctx.pub.data)
             return
@@ -450,12 +488,13 @@ class _ChannelEvents:
 
     async def on_subscribing(self, ctx: Any) -> None:
         del ctx
-        self._channel._subscribed = False
-        await self._channel._end_postgres_epoch()
-        await self._channel._presence_unsubscribed()
+        if self._is_current():
+            await self._channel._transport_lost()
 
     async def on_subscribed(self, ctx: Any) -> None:
         del ctx
+        if not self._is_current() or self._channel._paused:
+            return
         self._channel._subscribed = True
         await self._channel._begin_postgres_epoch()
         if self._channel._type == "presence":
@@ -463,15 +502,16 @@ class _ChannelEvents:
 
     async def on_unsubscribed(self, ctx: Any) -> None:
         del ctx
-        self._channel._subscribed = False
-        await self._channel._end_postgres_epoch()
-        await self._channel._presence_unsubscribed()
+        if self._is_current():
+            await self._channel._transport_lost()
 
     async def on_join(self, ctx: Any) -> None:
-        await self._channel._presence_join(getattr(ctx, "info", None))
+        if self._is_current():
+            await self._channel._presence_join(getattr(ctx, "info", None))
 
     async def on_leave(self, ctx: Any) -> None:
-        await self._channel._presence_leave(getattr(ctx, "info", None))
+        if self._is_current():
+            await self._channel._presence_leave(getattr(ctx, "info", None))
 
     async def on_error(self, ctx: Any) -> None:
         del ctx
@@ -550,8 +590,15 @@ class Channel:
         self._presence_events: list[tuple[str, RealtimePresenceInfo]] = []
         self._presence_syncing = False
         self._tracked_state: Mapping[str, JSONValue] = MappingProxyType({})
+        self._subscribe_lock = asyncio.Lock()
+        self._subscribe_generation = 0
+        self._readiness_task: asyncio.Task[None] | None = None
         self._subscription: CentrifugeSubscription | None = None
+        self._subscription_events: _ChannelEvents | None = None
         self._subscribed = False
+        self._paused = True
+        self._delivery_epoch = 0
+        self._presence_epoch = 0
         self._presence_lock = asyncio.Lock()
         self._presence_sync_task: asyncio.Task[None] | None = None
         self._presence_sync_pending = False
@@ -559,8 +606,6 @@ class Channel:
             maxsize=CALLBACK_QUEUE_LIMIT
         )
         self._callback_task: asyncio.Task[None] | None = None
-        self._active_callback_task: asyncio.Task[None] | None = None
-        self._callback_stop: asyncio.Event | None = None
         self._pending_presence_sync: Any = NO_PENDING_CALLBACK
         self._postgres_epoch = 0
         self._postgres_session_lineage = 0
@@ -797,7 +842,7 @@ class Channel:
             )
 
     async def subscribe(self) -> None:
-        """Subscribe to this channel."""
+        """Wait until this channel is subscribed and ready for use."""
         await self._realtime._subscribe(self)
 
     async def send(self, data: Any) -> None:
@@ -819,17 +864,14 @@ class Channel:
             return
         if event == "presence_sync":
             self._pending_presence_sync = NO_PENDING_CALLBACK
-        task = self._callback_task
-        if task is None or task.done():
-            self._start_callback_dispatcher()
-        elif self._callback_stop is not None and self._callback_stop.is_set():
-            self._callback_task = asyncio.create_task(
-                self._restart_callback_dispatcher(task)
-            )
-            self._callback_stop = None
         try:
             self._callback_queue.put_nowait(
-                _CallbackDelivery(event, data, postgres_identity)
+                _CallbackDelivery(
+                    event,
+                    data,
+                    postgres_identity,
+                    self._callback_epoch(event) if postgres_identity is None else None,
+                )
             )
         except asyncio.QueueFull:
             if event == "presence_sync":
@@ -841,59 +883,85 @@ class Channel:
                     "channel": self._name,
                 }
             )
+        task = self._callback_task
+        if task is None or task.done():
+            self._start_callback_dispatcher()
 
     def _start_callback_dispatcher(self) -> None:
-        stop = asyncio.Event()
-        self._callback_stop = stop
-        self._callback_task = asyncio.create_task(self._dispatch_callbacks(stop))
+        task = asyncio.create_task(self._dispatch_callbacks())
+        self._callback_task = task
+        # Retain running application work even if its channel is removed.
+        self._realtime._callback_tasks.add(task)
+        task.add_done_callback(self._callback_dispatcher_finished)
 
-    async def _restart_callback_dispatcher(self, previous: asyncio.Task[None]) -> None:
-        await asyncio.gather(previous, return_exceptions=True)
-        stop = asyncio.Event()
-        self._callback_stop = stop
-        await self._dispatch_callbacks(stop)
+    def _callback_dispatcher_finished(self, task: asyncio.Task[None]) -> None:
+        self._realtime._callback_tasks.discard(task)
+        if self._callback_task is task:
+            self._callback_task = None
+        if not task.cancelled() and (error := task.exception()) is not None:
+            asyncio.get_running_loop().call_exception_handler(
+                {
+                    "message": "Volcano realtime callback dispatcher failed",
+                    "exception": error,
+                    "channel": self._name,
+                }
+            )
 
-    async def _dispatch_callbacks(self, stop: asyncio.Event) -> None:
-        while not stop.is_set():
-            delivery = await self._callback_queue.get()
-            try:
-                if not self._callback_delivery_is_current(delivery):
-                    continue
-                for callback in tuple(self._callbacks.get(delivery.event, [])):
+    async def _dispatch_callbacks(self) -> None:
+        try:
+            # Register the worker before user code can re-enter through eager tasks.
+            await asyncio.sleep(0)
+            while not self._callback_queue.empty():
+                delivery = self._callback_queue.get_nowait()
+                try:
                     if not self._callback_delivery_is_current(delivery):
-                        break
-                    active_task = asyncio.create_task(
-                        self._run_callback(callback, delivery)
-                    )
-                    self._active_callback_task = active_task
-                    try:
+                        continue
+                    for callback in tuple(self._callbacks.get(delivery.event, [])):
+                        if not self._callback_delivery_is_current(delivery):
+                            break
+                        # Isolate a callback's own cancellation from later delivery.
                         (error,) = await asyncio.gather(
-                            active_task, return_exceptions=True
+                            self._run_callback(callback, delivery),
+                            return_exceptions=True,
                         )
-                    finally:
-                        self._active_callback_task = None
-                    if isinstance(error, BaseException):
-                        asyncio.get_running_loop().call_exception_handler(
-                            {
-                                "message": "Volcano realtime callback failed",
-                                "exception": error,
-                                "channel": self._name,
-                            }
-                        )
-            finally:
-                self._callback_queue.task_done()
-                self._enqueue_pending_presence_sync()
+                        if isinstance(error, BaseException):
+                            asyncio.get_running_loop().call_exception_handler(
+                                {
+                                    "message": "Volcano realtime callback failed",
+                                    "exception": error,
+                                    "channel": self._name,
+                                }
+                            )
+                finally:
+                    self._callback_queue.task_done()
+                    self._enqueue_pending_presence_sync()
+        finally:
+            # Event-loop cancellation must not leave queued delivery to restart.
+            self._discard_callbacks()
 
     def _callback_delivery_is_current(self, delivery: _CallbackDelivery) -> bool:
+        if delivery.delivery_epoch is not None:
+            return (
+                not self._paused or delivery.event == "presence_sync"
+            ) and delivery.delivery_epoch == self._callback_epoch(delivery.event)
         identity = delivery.postgres_identity
         return identity is None or self._postgres_delivery_is_current(identity)
+
+    def _callback_epoch(self, event: str) -> int:
+        if event in {"join", "leave", "presence_sync"}:
+            return self._presence_epoch
+        return self._delivery_epoch
 
     def _enqueue_pending_presence_sync(self) -> None:
         pending = self._pending_presence_sync
         if pending is NO_PENDING_CALLBACK or self._callback_queue.full():
             return
         self._pending_presence_sync = NO_PENDING_CALLBACK
-        self._callback_queue.put_nowait(_CallbackDelivery("presence_sync", pending))
+        self._callback_queue.put_nowait(
+            _CallbackDelivery(
+                "presence_sync", pending, delivery_epoch=self._presence_epoch
+            )
+        )
 
     async def _run_callback(
         self,
@@ -1039,28 +1107,43 @@ class Channel:
         self._invalidate()
         await self._end_postgres_epoch()
         await self._cancel_presence_sync()
-        task = self._callback_task
-        active_task = self._active_callback_task
-        if self._callback_stop is not None:
-            self._callback_stop.set()
-        current_task = asyncio.current_task()
-        called_from_dispatcher = current_task is task or current_task is active_task
-        if task is not None and not called_from_dispatcher:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
-            self._callback_task = None
-        while not self._callback_queue.empty():
-            self._callback_queue.get_nowait()
-            self._callback_queue.task_done()
-        self._pending_presence_sync = NO_PENDING_CALLBACK
         self._presence_state.clear()
         self._discard_presence_sync()
         self._tracked_state = MappingProxyType({})
         self._subscribed = False
 
     def _invalidate(self) -> None:
+        if self._readiness_task is not None:
+            self._readiness_task.cancel()
         self._subscription = None
+        self._subscription_events = None
+        self._pause_delivery()
+
+    def _pause_delivery(self) -> None:
+        self._paused = True
         self._subscribed = False
+        self._discard_callbacks()
+
+    def _discard_callbacks(self, *, presence_only: bool = False) -> None:
+        self._presence_epoch += 1
+        if not presence_only:
+            self._delivery_epoch += 1
+        # Free capacity before recovered publications arrive behind a slow callback.
+        for _ in range(self._callback_queue.qsize()):
+            delivery = self._callback_queue.get_nowait()
+            if presence_only and delivery.event == "message":
+                # Requeue before task_done so queue.join cannot finish prematurely.
+                self._callback_queue.put_nowait(delivery)
+            self._callback_queue.task_done()
+        self._pending_presence_sync = NO_PENDING_CALLBACK
+
+    async def _transport_lost(self) -> None:
+        self._subscribed = False
+        # Recoverable channels already include queued messages in their offsets.
+        if not self._paused and self._type != "broadcast":
+            self._discard_callbacks(presence_only=self._type == "presence")
+        await self._end_postgres_epoch()
+        await self._presence_unsubscribed()
 
 
 class Realtime:
@@ -1082,6 +1165,7 @@ class Realtime:
         self._connection_access_token: str | None = None
         self._connection_lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
+        self._callback_tasks: set[asyncio.Task[None]] = set()
         self._removing_channels: set[str] = set()
         self._connection_callbacks: dict[str, dict[int, RealtimeCallback]] = {
             "connect": {},
@@ -1293,12 +1377,23 @@ class Realtime:
                 raise first_error
 
     async def _remove_channel(self, channel: Channel) -> None:
-        subscription = channel._subscription
-        if subscription is not None:
-            await subscription.unsubscribe()
-            if self._connection is not None:
-                self._connection.remove_subscription(subscription)
+        channel._subscribe_generation += 1
+        await self._discard_subscription(channel)
         await channel._reset()
+
+    async def _discard_subscription(self, channel: Channel) -> None:
+        subscription = channel._subscription
+        channel._subscription_events = None
+        channel._pause_delivery()
+        try:
+            if subscription is not None:
+                # Native state must change before any cancellable local cleanup.
+                await _unsubscribe_native(subscription)
+        finally:
+            await channel._transport_lost()
+        if subscription is not None and self._connection is not None:
+            self._connection.remove_subscription(subscription)
+        channel._subscription = None
 
     async def _token(self) -> str:
         lineage = self._connection_lineage()
@@ -1373,20 +1468,72 @@ class Realtime:
         return connection
 
     async def _subscribe(self, channel: Channel) -> None:
-        async with self._connection_lock:
-            if self._channels.get(channel._name) is not channel:
-                raise RuntimeError(CHANNEL_NOT_MANAGED)
-            connection = await self._connect_locked()
-            if channel._subscription is None:
-                channel._subscription = connection.new_subscription(
-                    channel._name,
-                    events=_ChannelEvents(channel),
-                    join_leave=channel._type == "presence",
-                    recoverable=channel._type != "postgres",
+        # A later stop supersedes this request, including time spent waiting for locks.
+        generation = channel._subscribe_generation
+        async with channel._subscribe_lock:
+            subscription = None
+            try:
+                async with self._connection_lock:
+                    subscription = await self._prepare_subscription(channel, generation)
+                    if channel._subscribed:
+                        return
+                    channel._paused = False
+                    await subscription.subscribe()
+                channel._readiness_task = asyncio.create_task(
+                    self._wait_subscription(channel, subscription)
                 )
-            await channel._subscription.subscribe()
-            if channel._type == "presence":
-                await channel._wait_presence_sync()
+                try:
+                    await channel._readiness_task
+                finally:
+                    channel._readiness_task = None
+            except BaseException as error:
+                if (
+                    subscription is None
+                    or channel._subscription is not subscription
+                    or channel._paused
+                ):
+                    # An explicit pause or removal owns the newer subscription intent.
+                    raise
+                channel._subscribe_generation += 1
+                channel._subscription_events = None
+                channel._pause_delivery()
+                try:
+                    async with self._connection_lock:
+                        if channel._subscription is subscription:
+                            await self._discard_subscription(channel)
+                except CENTRIFUGE_ERROR:
+                    error.add_note("Failed to clean up the realtime subscription")
+                raise
+
+    async def _prepare_subscription(
+        self, channel: Channel, generation: int
+    ) -> CentrifugeSubscription:
+        if generation != channel._subscribe_generation:
+            raise asyncio.CancelledError
+        if self._channels.get(channel._name) is not channel:
+            raise RuntimeError(CHANNEL_NOT_MANAGED)
+        connection = await self._connect_locked()
+        if channel._subscription is not None and channel._subscription_events is None:
+            await self._discard_subscription(channel)
+        if channel._subscription is None:
+            channel._subscription_events = _ChannelEvents(channel)
+            channel._subscription = connection.new_subscription(
+                channel._name,
+                events=channel._subscription_events,
+                join_leave=channel._type == "presence",
+                recoverable=channel._type != "postgres",
+            )
+        return channel._subscription
+
+    async def _wait_subscription(
+        self, channel: Channel, subscription: CentrifugeSubscription
+    ) -> None:
+        await subscription.ready()
+        if channel._type == "presence":
+            await channel._wait_presence_sync()
+        if channel._subscription is not subscription or not channel._subscribed:
+            message = "realtime subscription was interrupted"
+            raise RuntimeError(message)
 
     async def _sync_presence(self, channel: Channel) -> None:
         if channel._subscription is None:
@@ -1394,7 +1541,10 @@ class Realtime:
         await channel._begin_presence_sync()
         query_succeeded = False
         try:
-            result = await channel._subscription.presence()
+            # Native replies must settle even after the roster refresh is cancelled.
+            query = asyncio.create_task(channel._subscription.presence())
+            query.add_done_callback(_consume_presence_result)
+            result = await asyncio.shield(query)
             query_succeeded = True
         except CENTRIFUGE_ERROR as error:
             await channel._fail_presence_sync()
@@ -1428,8 +1578,11 @@ class Realtime:
 
     async def _unsubscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
+            channel._subscribe_generation += 1
+            if not channel._paused:
+                channel._pause_delivery()
             if channel._subscription is not None:
-                await channel._subscription.unsubscribe()
+                await _unsubscribe_native(channel._subscription)
 
     async def disconnect(self) -> None:
         """Disconnect and reset every channel managed by this facade."""
@@ -1438,6 +1591,7 @@ class Realtime:
             self._connection = None
             channels = tuple(self._channels.values())
             for channel in channels:
+                channel._subscribe_generation += 1
                 channel._invalidate()
             cancelled: asyncio.CancelledError | None = None
             try:

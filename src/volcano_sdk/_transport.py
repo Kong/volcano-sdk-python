@@ -13,20 +13,28 @@ from uuid import UUID, uuid4
 import httpx
 
 from ._generated.api.authentication import (
-    auth_confirm_email_change,
-    auth_convert_anonymous,
-    auth_get_user,
     auth_logout,
     auth_refresh,
     auth_signin,
     auth_signup,
-    auth_update_user,
 )
 from ._generated.api.authentication.auth_cancel_email_change import (
     _get_kwargs as cancel_email_change_kwargs,
 )
 from ._generated.api.authentication.auth_confirm_email import (
     _get_kwargs as confirm_email_kwargs,
+)
+from ._generated.api.authentication.auth_confirm_email_change import (
+    _build_response as build_auth_confirm_email_change_response,
+)
+from ._generated.api.authentication.auth_confirm_email_change import (
+    _get_kwargs as auth_confirm_email_change_kwargs,
+)
+from ._generated.api.authentication.auth_convert_anonymous import (
+    _build_response as build_auth_convert_anonymous_response,
+)
+from ._generated.api.authentication.auth_convert_anonymous import (
+    _get_kwargs as auth_convert_anonymous_kwargs,
 )
 from ._generated.api.authentication.auth_delete_all_my_sessions import (
     _get_kwargs as delete_all_my_sessions_kwargs,
@@ -40,6 +48,12 @@ from ._generated.api.authentication.auth_forgot_password import (
 from ._generated.api.authentication.auth_get_my_sessions import (
     _get_kwargs as get_my_sessions_kwargs,
 )
+from ._generated.api.authentication.auth_get_user import (
+    _build_response as build_auth_get_user_response,
+)
+from ._generated.api.authentication.auth_get_user import (
+    _get_kwargs as auth_get_user_kwargs,
+)
 from ._generated.api.authentication.auth_request_email_change import (
     _get_kwargs as request_email_change_kwargs,
 )
@@ -51,6 +65,12 @@ from ._generated.api.authentication.auth_reset_password import (
 )
 from ._generated.api.authentication.auth_signup_anonymous import (
     _get_kwargs as signup_anonymous_kwargs,
+)
+from ._generated.api.authentication.auth_update_user import (
+    _build_response as build_auth_update_user_response,
+)
+from ._generated.api.authentication.auth_update_user import (
+    _get_kwargs as auth_update_user_kwargs,
 )
 from ._generated.api.database_queries import (
     query_database_select,
@@ -844,9 +864,13 @@ class GeneratedTransport:
         )
         try:
             with self._client(authorization) as client:
-                response = auth_convert_anonymous.sync_detailed(
-                    client=client,
-                    body=body,
+                raw_response = client.get_httpx_client().request(
+                    **auth_convert_anonymous_kwargs(body=body)
+                )
+                if raw_response.status_code == HTTP_UNAUTHORIZED:
+                    return self._raw_response(raw_response)
+                response = build_auth_convert_anonymous_response(
+                    client=client, response=raw_response
                 )
         except (
             AttributeError,
@@ -943,9 +967,13 @@ class GeneratedTransport:
         body = AuthConfirmEmailChangeBody(email_change_token=token)
         try:
             with self._client(authorization) as client:
-                response = auth_confirm_email_change.sync_detailed(
-                    client=client,
-                    body=body,
+                raw_response = client.get_httpx_client().request(
+                    **auth_confirm_email_change_kwargs(body=body)
+                )
+                if raw_response.status_code == HTTP_UNAUTHORIZED:
+                    return self._raw_response(raw_response)
+                response = build_auth_confirm_email_change_response(
+                    client=client, response=raw_response
                 )
         except (
             AttributeError,
@@ -1219,7 +1247,14 @@ class GeneratedTransport:
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
         try:
             with self._client(authorization) as client:
-                response = auth_get_user.sync_detailed(client=client)
+                raw_response = client.get_httpx_client().request(
+                    **auth_get_user_kwargs()
+                )
+                if raw_response.status_code == HTTP_UNAUTHORIZED:
+                    return self._raw_response(raw_response)
+                response = build_auth_get_user_response(
+                    client=client, response=raw_response
+                )
         except (
             AttributeError,
             KeyError,
@@ -1254,7 +1289,14 @@ class GeneratedTransport:
         )
         try:
             with self._client(authorization) as client:
-                response = auth_update_user.sync_detailed(client=client, body=body)
+                raw_response = client.get_httpx_client().request(
+                    **auth_update_user_kwargs(body=body)
+                )
+                if raw_response.status_code == HTTP_UNAUTHORIZED:
+                    return self._raw_response(raw_response)
+                response = build_auth_update_user_response(
+                    client=client, response=raw_response
+                )
         except (
             AttributeError,
             KeyError,

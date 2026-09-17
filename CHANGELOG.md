@@ -1,5 +1,82 @@
 # Changelog
 
+## [0.7.3](https://github.com/Kong/volcano-sdk-python/compare/v0.7.2...v0.7.3) (2026-09-17)
+
+
+### Bug Fixes
+
+* **auth:** refresh rejected profile requests within their session ([#157](https://github.com/Kong/volcano-sdk-python/issues/157)) ([534e5e2](https://github.com/Kong/volcano-sdk-python/commit/534e5e270c94cad758779d98714b217263537dc0))
+
+## [0.7.2](https://github.com/Kong/volcano-sdk-python/compare/v0.7.1...v0.7.2) (2026-09-17)
+
+
+### Bug Fixes
+
+* **storage:** refresh rejected sessions and replay bounded requests ([#154](https://github.com/Kong/volcano-sdk-python/issues/154)) ([5b1f93f](https://github.com/Kong/volcano-sdk-python/commit/5b1f93fa59fda0a5cd5b06c6e9cc2da3f372ab8a))
+
+## [0.7.1](https://github.com/Kong/volcano-sdk-python/compare/v0.7.0...v0.7.1) (2026-09-17)
+
+
+### Bug Fixes
+
+* **packaging:** expose installed Python type information ([#152](https://github.com/Kong/volcano-sdk-python/issues/152)) ([9ad4044](https://github.com/Kong/volcano-sdk-python/commit/9ad40441d9e27212240e723dbdc1d678343120c4))
+
+## [0.7.0](https://github.com/Kong/volcano-sdk-python/compare/v0.6.7...v0.7.0) (2026-09-17)
+
+
+### Features
+
+* **auth:** synchronize the local user after profile operations ([#130](https://github.com/Kong/volcano-sdk-python/issues/130)) ([e73ee4b](https://github.com/Kong/volcano-sdk-python/commit/e73ee4b4fba33ff04df08fb13c6faca838cc24cb))
+
+## [0.6.7](https://github.com/Kong/volcano-sdk-python/compare/v0.6.6...v0.6.7) (2026-09-17)
+
+
+### Bug Fixes
+
+* **packaging:** publish Python releases as volcano-sdk-python ([#149](https://github.com/Kong/volcano-sdk-python/issues/149)) ([b6084d7](https://github.com/Kong/volcano-sdk-python/commit/b6084d7bcccf4947d032b236b82f7f4c90f8a27f))
+
+## [0.6.6](https://github.com/Kong/volcano-sdk-python/compare/v0.6.5...v0.6.6) (2026-09-17)
+
+
+### Bug Fixes
+
+* **functions:** retry a stale mapping on the dispatch signal ([#136](https://github.com/Kong/volcano-sdk-python/issues/136)) ([d5f7c23](https://github.com/Kong/volcano-sdk-python/commit/d5f7c23be519ac8ae8007d0c63391a7ed2458983))
+
+## [0.6.5](https://github.com/Kong/volcano-sdk-python/compare/v0.6.4...v0.6.5) (2026-09-16)
+
+
+### Bug Fixes
+
+* **realtime:** finish native unsubscribe before propagating cancellation ([#146](https://github.com/Kong/volcano-sdk-python/issues/146)) ([e1a7f63](https://github.com/Kong/volcano-sdk-python/commit/e1a7f63b1304cb0c12bd3edcc9dbb6cb8cb11c67))
+
+## [0.6.4](https://github.com/Kong/volcano-sdk-python/compare/v0.6.3...v0.6.4) (2026-09-16)
+
+
+### Bug Fixes
+
+* **realtime:** await subscription readiness outside the connection lock ([#138](https://github.com/Kong/volcano-sdk-python/issues/138)) ([a6bae76](https://github.com/Kong/volcano-sdk-python/commit/a6bae763aa050c33f4d1f8be280ebc5a6abe6ab8))
+
+## [0.6.3](https://github.com/Kong/volcano-sdk-python/compare/v0.6.2...v0.6.3) (2026-09-16)
+
+
+### Bug Fixes
+
+* **realtime:** separate callback work from transport shutdown ([#143](https://github.com/Kong/volcano-sdk-python/issues/143)) ([3de5985](https://github.com/Kong/volcano-sdk-python/commit/3de5985b8f480c40b00b0216b9d11292a793b58e))
+
+## [0.6.2](https://github.com/Kong/volcano-sdk-python/compare/v0.6.1...v0.6.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* **realtime:** separate explicit pause from transport recovery ([#141](https://github.com/Kong/volcano-sdk-python/issues/141)) ([3da184f](https://github.com/Kong/volcano-sdk-python/commit/3da184f3a2c6ea7fe14e41de9f387e475c9ad19d))
+
+## [0.6.1](https://github.com/Kong/volcano-sdk-python/compare/v0.6.0...v0.6.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* **realtime:** drain presence replies after cancellation ([#139](https://github.com/Kong/volcano-sdk-python/issues/139)) ([4fe0746](https://github.com/Kong/volcano-sdk-python/commit/4fe074695e398a85a0880569d6c1a99bada0964e))
+
 ## [0.6.0](https://github.com/Kong/volcano-sdk-python/compare/v0.5.0...v0.6.0) (2026-09-15)
 
 
