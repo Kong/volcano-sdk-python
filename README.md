@@ -197,7 +197,8 @@ events. Pass `next_cursor` back as `cursor` to continue a search. `logs.activity
 returns immutable time buckets using the same resource selector and query syntax.
 Both methods require an active user session.
 
-Database selects, inserts, updates, deletes, and log reads refresh the captured
+Database selects, inserts, updates, deletes, log reads, and authenticated storage
+requests (including upload sessions and parts) refresh the captured
 session after an HTTP 401 and retry the same request once. Concurrent requests reuse a successful
 refresh for that session.
 Replacing or signing out the session before replay, or while replay is in flight,

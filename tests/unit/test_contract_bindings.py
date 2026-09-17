@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).parents[2]
 FEATURE_SHA256 = {
+    "storage-refresh.feature": (
+        "00257b455f9897791db7fd82c4166c7f34c7134b5b9f4ea92f509bba533751a1"
+    ),
     "storage-lifecycle.feature": (
         "08d00ac825bc186929904dea75af28052df964e446e7aeb0e2266711536aa88f"
     ),
@@ -102,6 +105,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the uploaded and listed object content types are text/plain",
         "the client replaces its access token with a rejected token",
         "the database read replaces the rejected token for the same user",
+        "the storage operation replaces the rejected token for the same user",
         (
             "one client pauses delivery for 1 second "
             "and then resumes with the same handler"

@@ -1007,12 +1007,19 @@ class Auth:
         )
 
     def _session_request(
-        self, operation: Callable[[str], TransportResponse]
+        self,
+        operation: Callable[[str], TransportResponse],
+        *,
+        binding: tuple[int, int, Session | None] | None = None,
     ) -> TransportResponse:
-        binding = self._client._capture_session_binding()
+        if binding is None:
+            binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise RuntimeError(_NO_ACTIVE_SESSION)
-        response = operation(binding[2].access_token)
+        current = self._owned_refresh_session(binding)[2]
+        if current is None:
+            raise SessionChangedError
+        response = operation(current.access_token)
         if response.status_code != HTTPStatus.UNAUTHORIZED:
             return response
         try:
