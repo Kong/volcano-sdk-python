@@ -117,6 +117,7 @@ _OAUTH_STATE_MISMATCH = "OAuth state mismatch"
 _MAX_OAUTH_STATE_LENGTH = 255
 _JWT_PARTS = 3
 _NO_ACTIVE_SESSION = "No active session"
+_REFRESH_UNAVAILABLE = "No refresh token"
 _T = TypeVar("_T")
 _OAUTH_PROVIDERS: frozenset[str] = frozenset({"apple", "github", "google", "microsoft"})
 _OAUTH_API_METHODS: frozenset[str] = frozenset({"GET", "POST"})
@@ -1104,8 +1105,10 @@ class Auth:
         notifications: list[Callable[[], None]],
     ) -> None:
         generation, lineage, _ = binding
+        if current.refresh_token is None:
+            raise AuthenticationError(_REFRESH_UNAVAILABLE)
         try:
-            refreshed = self._request_refreshed_session(current)
+            refreshed = self._request_refreshed_session(current.refresh_token)
         except AuthenticationError:
             if not self._client._clear_session_if_current(
                 generation, notifications=notifications
@@ -1121,13 +1124,13 @@ class Auth:
         ):
             raise SessionChangedError
 
-    def _request_refreshed_session(self, current: Session) -> Session:
+    def _request_refreshed_session(self, refresh_token: str) -> Session:
         transport = cast("AuthRefreshTransport", self._client._transport)
         try:
             response = invoke(
                 transport.auth_refresh,
                 authorization=self._client._anon_token(),
-                refresh_token=current.refresh_token,
+                refresh_token=refresh_token,
             )
             return _session_from_payload(response_payload(response, 200))
         except (KeyError, TypeError, ValueError) as error:
@@ -1137,6 +1140,10 @@ class Auth:
         """Revoke and clear the current session."""
         generation, current = self._client._capture_session()
         if current is None:
+            return
+        if current.refresh_token is None:
+            if not self._client._clear_session_if_current(generation):
+                raise SessionChangedError
             return
         transport = cast("AuthLogoutTransport", self._client._transport)
         error: VolcanoError | None = None

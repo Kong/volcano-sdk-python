@@ -1,0 +1,156 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import httpx
+import pytest
+
+from volcano_sdk import AuthenticationError, Session, SessionChangedError, VolcanoClient
+from volcano_sdk._transport import GeneratedTransport
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+USER_ID = "00000000-0000-4000-8000-000000000001"
+PROFILE = {"id": USER_ID, "email": "user@example.com", "status": "active"}
+
+
+def token_client(
+    handler: Callable[[httpx.Request], httpx.Response],
+    *,
+    refresh_token: str | None = None,
+) -> VolcanoClient:
+    return VolcanoClient(
+        anon_key="anon",
+        access_token="supplied-access",
+        refresh_token=refresh_token,
+        _transport=GeneratedTransport(
+            api_url="https://api.test.volcano.dev",
+            httpx_transport=httpx.MockTransport(handler),
+        ),
+    )
+
+
+def test_token_bootstrap_is_local_until_profile_validation() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"user": PROFILE})
+
+    client = token_client(handle)
+    initial = client.auth.get_session()
+    assert initial is not None
+    assert initial.access_token == "supplied-access"
+    assert initial.refresh_token is None
+    assert initial.user_id is None
+    assert initial.user is None
+    assert not requests
+    assert client.auth.get_user().id == USER_ID
+    current = client.current_session
+    assert current is not None
+    assert current.user_id == USER_ID
+    assert current.user == PROFILE
+    assert current.access_token == initial.access_token
+    assert current.refresh_token is None
+    assert initial.user_id is None
+    assert requests[0].headers["authorization"] == "Bearer supplied-access"
+
+
+def test_token_bootstrap_never_refreshes_or_revokes_without_a_refresh_token() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(401, json={"error": "expired supplied token"})
+
+    client = token_client(handle)
+    initial = client.current_session
+    with pytest.raises(AuthenticationError, match="expired supplied token"):
+        client.auth.get_user()
+    with pytest.raises(AuthenticationError, match="No refresh token"):
+        client.auth.refresh_session()
+    assert client.current_session is initial
+    assert len(requests) == 1
+    client.auth.sign_out()
+    assert client.current_session is None
+    assert len(requests) == 1
+
+
+def test_token_bootstrap_can_refresh_when_a_refresh_token_was_supplied() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/refresh":
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "refreshed-access",
+                    "refresh_token": "rotated-refresh",
+                    "token_type": "bearer",
+                    "expires_in": 3600,
+                    "user": PROFILE,
+                },
+            )
+        if request.headers["authorization"] == "Bearer supplied-access":
+            return httpx.Response(401, json={"error": "expired"})
+        return httpx.Response(200, json={"user": PROFILE})
+
+    client = token_client(handle, refresh_token="supplied-refresh")
+    assert client.auth.get_user().id == USER_ID
+    current = client.current_session
+    assert current is not None
+    assert current.refresh_token == "rotated-refresh"
+    assert [request.headers["authorization"] for request in requests] == [
+        "Bearer supplied-access",
+        "Bearer anon",
+        "Bearer refreshed-access",
+    ]
+
+
+def test_bootstrap_profile_cannot_overwrite_a_replacement_session() -> None:
+    replacement = Session("replacement", "refresh", USER_ID)
+
+    def handle(_request: httpx.Request) -> httpx.Response:
+        client.auth.set_session(replacement)
+        return httpx.Response(200, json={"user": PROFILE})
+
+    client = token_client(handle)
+    with pytest.raises(SessionChangedError):
+        client.auth.get_user()
+    assert client.current_session == replacement
+
+
+def test_bootstrap_cannot_change_identity_after_profile_validation() -> None:
+    responses = iter(
+        [PROFILE, {**PROFILE, "id": "00000000-0000-4000-8000-000000000002"}]
+    )
+    client = token_client(
+        lambda _request: httpx.Response(200, json={"user": next(responses)})
+    )
+    client.auth.get_user()
+    with pytest.raises(AuthenticationError, match="does not match"):
+        client.auth.get_user()
+    assert client.current_session is not None
+    assert client.current_session.user_id == USER_ID
+
+
+def test_bootstrap_does_not_relax_complete_session_adoption() -> None:
+    client = token_client(lambda _request: httpx.Response(500))
+    initial = client.current_session
+    assert initial is not None
+    with pytest.raises(ValueError, match="complete Session"):
+        client.auth.set_session(initial)
+    assert client.current_session is initial
+
+
+@pytest.mark.parametrize("access_token", ["", " "])
+def test_bootstrap_rejects_empty_access_tokens(access_token: str) -> None:
+    with pytest.raises(ValueError, match="access_token"):
+        VolcanoClient(anon_key="anon", access_token=access_token)
+
+
+def test_bootstrap_rejects_refresh_without_access_token() -> None:
+    with pytest.raises(ValueError, match="access_token"):
+        VolcanoClient(anon_key="anon", refresh_token="refresh")

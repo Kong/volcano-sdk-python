@@ -78,6 +78,39 @@ def refresh_current_session(context: Any) -> None:
     world.record(world.client.auth.refresh_session)
 
 
+@when("a fresh client starts with only the current access token")
+def bootstrap_access_token(context: Any) -> None:
+    world = _world(context)
+    source = world.client
+    world.previous_session = source.auth.get_session()
+    assert world.previous_session is not None
+    world.cleanup_callbacks.append(source.auth.sign_out)
+    world.client = VolcanoClient(
+        api_url=world.fixture["api_url"],
+        anon_key=world.fixture["anon_key"],
+        access_token=world.previous_session.access_token,
+    )
+    world.record(world.client.auth.get_session)
+
+
+@then("the token-only session has no cached user")
+def token_session_has_no_user(context: Any) -> None:
+    session = _world(context).client.current_session
+    assert session is not None
+    assert session.user_id is None
+    assert session.user is None
+
+
+@then("the session retains only the supplied access token")
+def token_session_retains_access(context: Any) -> None:
+    world = _world(context)
+    session = world.client.current_session
+    assert session is not None
+    assert world.previous_session is not None
+    assert session.access_token == world.previous_session.access_token
+    assert session.refresh_token is None
+
+
 @then("the refreshed session becomes current")
 def refreshed_session_becomes_current(context: Any) -> None:
     world = _world(context)

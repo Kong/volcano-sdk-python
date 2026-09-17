@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from collections import deque
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict, Unpack
 from uuid import UUID
 
 from ._transport import GeneratedTransport, Transport
@@ -32,6 +32,39 @@ if TYPE_CHECKING:
 _NO_ACTIVE_SESSION = "No active session"
 _NO_SERVICE_KEY = "No service key configured"
 _PROFILE_USER_MISMATCH = "Profile user does not match the active session"
+_BOOTSTRAP_ACCESS_REQUIRED = "refresh_token requires access_token"
+
+
+class _BootstrapCredentials(TypedDict, total=False):
+    access_token: str | None
+    refresh_token: str | None
+
+
+def _validate_bootstrap_credential(name: str, token: object) -> None:
+    if token is not None and (not isinstance(token, str) or not token.strip()):
+        message = f"{name} must be a non-empty string"
+        raise ValueError(message)
+
+
+def _bootstrap_session(
+    credentials: _BootstrapCredentials,
+) -> Session | None:
+    unknown = credentials.keys() - {"access_token", "refresh_token"}
+    if unknown:
+        message = f"Unexpected keyword argument: {next(iter(unknown))}"
+        raise TypeError(message)
+    access_token = credentials.get("access_token")
+    refresh_token = credentials.get("refresh_token")
+    if access_token is None:
+        if refresh_token is not None:
+            raise ValueError(_BOOTSTRAP_ACCESS_REQUIRED)
+        return None
+    for name, token in (
+        ("access_token", access_token),
+        ("refresh_token", refresh_token),
+    ):
+        _validate_bootstrap_credential(name, token)
+    return Session(access_token=access_token, refresh_token=refresh_token)
 
 
 class _CallbackOutcome:
@@ -65,6 +98,7 @@ class VolcanoClient:
         timeout: float = 60.0,
         _transport: Transport | None = None,
         _realtime_client_factory: CentrifugeFactory | None = None,
+        **credentials: Unpack[_BootstrapCredentials],
     ) -> None:
         """Create a client for a Volcano project."""
         self._api_url = api_url.rstrip("/")
@@ -73,7 +107,7 @@ class VolcanoClient:
         self._session_lock = threading.Lock()
         self._session_generation = 0
         self._session_lineage = 0
-        self._current_session: Session | None = None
+        self._current_session = _bootstrap_session(credentials)
         self._auth_callbacks: dict[int, AuthStateCallback] = {}
         self._next_auth_callback_id = 0
         self._auth_notifications: deque[
@@ -173,15 +207,16 @@ class VolcanoClient:
             current = self._current_session
             if generation != self._session_generation or current is None:
                 return False
+            user_id = str(user["id"]) if current.user_id is None else current.user_id
             try:
-                same_user = UUID(str(user["id"])) == UUID(current.user_id)
+                same_user = UUID(str(user["id"])) == UUID(user_id)
             except ValueError:
                 same_user = False
             if not same_user:
                 raise AuthenticationError(_PROFILE_USER_MISMATCH)
             # Profile updates do not replace credentials or invalidate other requests.
             self._current_session = replace(
-                current, user={**user, "id": current.user_id}
+                current, user_id=user_id, user={**user, "id": user_id}
             )
         return True
 

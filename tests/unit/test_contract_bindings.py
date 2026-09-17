@@ -96,6 +96,12 @@ def test_staged_lock_recovery_matches_proposed_shared_source() -> None:
     assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
 
 
+def test_staged_token_bootstrap_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "auth-token-bootstrap.feature"
+    expected = "ec7954819e8accf783e4d9adebf227b8f4b8bcbebc9cfdec0916d21e3b683102"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
 def test_every_contract_phrase_is_bound_verbatim() -> None:
     registry.clear()
     _load_module(
@@ -124,6 +130,9 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the profile read replaces the rejected token for the same user",
         "the client loads its server-validated profile",
         "the returned and cached profiles belong to the contract user",
+        "a fresh client starts with only the current access token",
+        "the token-only session has no cached user",
+        "the session retains only the supplied access token",
         (
             "one client pauses delivery for 1 second "
             "and then resumes with the same handler"
