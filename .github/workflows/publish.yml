@@ -1,4 +1,4 @@
-name: Check release package
+name: Publish SDK
 
 on:
   release:
@@ -8,8 +8,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: check-release-package-${{ github.event.release.tag_name }}
+  group: publish-sdk
   cancel-in-progress: false
+  # Retain pending runs for versions that already have a GitHub release.
+  queue: max
 
 defaults:
   run:
@@ -52,17 +54,49 @@ jobs:
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
       - run: uv sync --frozen
       - run: uv run python -m build
-      - name: Smoke test the wheel
-        run: |
-          uv venv smoke
-          uv pip install --python smoke/bin/python dist/*.whl
-          smoke/bin/python -c 'from volcano_sdk import VolcanoClient; assert VolcanoClient'
-      - name: Check package version against the release
+      - name: Check package identity and release version
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: test "v$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')" = "$RELEASE_TAG"
+        run: bash scripts/check_package.sh "${RELEASE_TAG#v}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-package
           path: dist/*
           if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/volcano-sdk-python/
+    permissions:
+      id-token: write
+    steps:
+      # Publishing receives checked artifacts without executing SDK source.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-package
+          path: dist
+      - name: Publish distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+
+  release-link:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Link the published PyPI version in the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          notes="$(gh release view "$RELEASE_TAG" --json body --jq '.body')"
+          link="[View ${RELEASE_TAG} on PyPI](https://pypi.org/project/volcano-sdk-python/${RELEASE_TAG#v}/)"
+          if [[ "$notes" != *"$link"* ]]; then
+            printf '%s\n\n%s\n' "$notes" "$link" | gh release edit "$RELEASE_TAG" --notes-file -
+          fi
