@@ -84,6 +84,12 @@ def test_staged_storage_feature_matches_proposed_shared_source() -> None:
     assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
 
 
+def test_staged_profile_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "auth-profile-refresh.feature"
+    expected = "df46f1c374fcbdeb790cde0781ff14f580e56c44ac9aa6445d97469a385f6f51"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
 def test_every_contract_phrase_is_bound_verbatim() -> None:
     registry.clear()
     _load_module(
@@ -109,6 +115,9 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the client replaces its access token with a rejected token",
         "the database read replaces the rejected token for the same user",
         "the storage operation replaces the rejected token for the same user",
+        "the profile read replaces the rejected token for the same user",
+        "the client loads its server-validated profile",
+        "the returned and cached profiles belong to the contract user",
         (
             "one client pauses delivery for 1 second "
             "and then resumes with the same handler"
