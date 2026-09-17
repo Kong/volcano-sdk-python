@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/Kong/volcano-sdk-python/compare/v0.6.7...v0.7.0) (2026-09-17)
+
+
+### Features
+
+* **auth:** synchronize the local user after profile operations ([#130](https://github.com/Kong/volcano-sdk-python/issues/130)) ([e73ee4b](https://github.com/Kong/volcano-sdk-python/commit/e73ee4b4fba33ff04df08fb13c6faca838cc24cb))
+
 ## [0.6.7](https://github.com/Kong/volcano-sdk-python/compare/v0.6.6...v0.6.7) (2026-09-17)
 
 
