@@ -101,6 +101,18 @@ def token_session_has_no_user(context: Any) -> None:
     assert session.user is None
 
 
+@when("a fresh client starts with a rejected access token")
+def bootstrap_rejected_token(context: Any) -> None:
+    world = _world(context)
+    world.client = VolcanoClient(
+        api_url=world.fixture["api_url"],
+        anon_key=world.fixture["anon_key"],
+        access_token=REJECTED_BEARER,
+    )
+    world.previous_session = world.client.current_session
+    world.record(world.client.auth.get_session)
+
+
 @then("the session retains only the supplied access token")
 def token_session_retains_access(context: Any) -> None:
     world = _world(context)
@@ -159,6 +171,13 @@ def operation_succeeds(context: Any) -> None:
     outcome = _world(context).last_outcome
     assert outcome is not None
     assert outcome.ok, f"SDK operation failed ({outcome.category}): {outcome.error}"
+
+
+@then("the SDK operation fails")
+def operation_fails(context: Any) -> None:
+    outcome = _world(context).last_outcome
+    assert outcome is not None
+    assert not outcome.ok
 
 
 @then("the current session belongs to the contract user")

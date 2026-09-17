@@ -154,3 +154,48 @@ def test_bootstrap_rejects_empty_access_tokens(access_token: str) -> None:
 def test_bootstrap_rejects_refresh_without_access_token() -> None:
     with pytest.raises(ValueError, match="access_token"):
         VolcanoClient(anon_key="anon", refresh_token="refresh")
+
+
+@pytest.mark.parametrize("enrich_during_refresh", [False, True])
+@pytest.mark.parametrize("operation", ["refresh", "mutation"])
+def test_refresh_cannot_replace_a_validated_bootstrap_identity(
+    *, enrich_during_refresh: bool, operation: str
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/user":
+            return httpx.Response(200, json={"user": PROFILE})
+        if request.url.path == "/auth/refresh":
+            if enrich_during_refresh:
+                client.auth.get_user()
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "other-user-access",
+                    "refresh_token": "other-user-refresh",
+                    "token_type": "bearer",
+                    "expires_in": 3600,
+                    "user": {**PROFILE, "id": "00000000-0000-4000-8000-000000000002"},
+                },
+            )
+        return httpx.Response(401, json={"error": "expired"})
+
+    client = token_client(handle, refresh_token="supplied-refresh")
+    if not enrich_during_refresh:
+        client.auth.get_user()
+    run: Callable[[], object] = (
+        client.auth.refresh_session
+        if operation == "refresh"
+        else client.database("main").from_("items").insert({"name": "example"}).execute
+    )
+    with pytest.raises(AuthenticationError):
+        run()
+    assert client.current_session is not None
+    assert client.current_session.user_id == USER_ID
+    assert client.current_session.access_token == "supplied-access"
+    assert all(
+        request.headers["authorization"] != "Bearer other-user-access"
+        for request in requests
+    )

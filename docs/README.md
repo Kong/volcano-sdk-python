@@ -82,15 +82,20 @@ import os
 
 from volcano_sdk import VolcanoClient
 
-client = VolcanoClient(
-    anon_key=os.environ["VOLCANO_ANON_KEY"],
-    access_token=os.environ["VOLCANO_ACCESS_TOKEN"],
-)
-user = client.auth.get_user()
-print(user.id)
-client.auth.sign_out()
+
+def load_request_user(access_token: str):
+    client = VolcanoClient(
+        anon_key=os.environ["VOLCANO_ANON_KEY"],
+        access_token=access_token,
+    )
+    return client.auth.get_user()
 ```
 
+Call this helper from your request handler with the bearer token from that request.
+For a Volcano function, use the access token in `event["__volcano_auth"]` supplied for that invocation.
+The helper validates the token with Volcano before returning the user.
+
+Once a user identity has been validated, a refresh response for another user is rejected and leaves the current credentials unchanged.
 Construction makes no request and does not persist credentials.
 The initial snapshot has `refresh_token=None`, `user_id=None`, and `user=None`.
 A successful profile read fills in the validated identity and cached user while retaining the supplied access token.

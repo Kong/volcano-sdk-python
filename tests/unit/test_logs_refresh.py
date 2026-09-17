@@ -27,7 +27,9 @@ def make_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCl
             httpx_transport=httpx.MockTransport(handler),
         ),
     )
-    client.auth.set_session(Session("old-access", "old-refresh", "user"))
+    client.auth.set_session(
+        Session("old-access", "old-refresh", "00000000-0000-4000-8000-000000000001")
+    )
     return client
 
 

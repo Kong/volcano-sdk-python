@@ -98,7 +98,7 @@ def test_staged_lock_recovery_matches_proposed_shared_source() -> None:
 
 def test_staged_token_bootstrap_feature_matches_proposed_shared_source() -> None:
     staged = ROOT / "features" / "staged" / "auth-token-bootstrap.feature"
-    expected = "ec7954819e8accf783e4d9adebf227b8f4b8bcbebc9cfdec0916d21e3b683102"
+    expected = "a8074032747b380bd6f2e167d8ae7d85c5148129bacb4e2c19413b0f7666418d"
     assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
 
 
@@ -131,6 +131,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the client loads its server-validated profile",
         "the returned and cached profiles belong to the contract user",
         "a fresh client starts with only the current access token",
+        "a fresh client starts with a rejected access token",
         "the token-only session has no cached user",
         "the session retains only the supplied access token",
         (
@@ -156,6 +157,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the force-released lock is available",
         "the client reacquires the force-released contract lock",
         "the replacement owner receives a higher fencing token",
+        "the SDK operation fails",
         "the client acquires and releases the contract lock",
         "the client deletes its contract row",
         "the client deletes a missing contract row",
