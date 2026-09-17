@@ -2863,7 +2863,7 @@ def test_get_user_without_a_session_fails_before_transport() -> None:
     assert transport.authorizations == []
 
 
-def test_get_user_authentication_failure_preserves_the_session() -> None:
+def test_get_user_authentication_failure_preserves_the_refreshed_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
     established = client.auth.sign_in(email="user@example.com", password="secret")
@@ -2872,7 +2872,11 @@ def test_get_user_authentication_failure_preserves_the_session() -> None:
     with pytest.raises(AuthenticationError, match="expired"):
         client.auth.get_user()
 
-    assert client.auth.get_session() is established
+    current = client.auth.get_session()
+    assert current is not None
+    assert current.access_token == "access-2"
+    assert current.refresh_token == "refresh-2"
+    assert current.user_id == established.user_id
 
 
 def test_get_user_rejects_a_profile_loaded_for_a_replaced_session() -> None:
@@ -2932,7 +2936,7 @@ def test_update_user_without_a_session_fails_before_transport() -> None:
     assert transport.update_user_calls == []
 
 
-def test_update_user_authentication_failure_preserves_the_session() -> None:
+def test_update_user_authentication_failure_preserves_the_refreshed_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
     established = client.auth.sign_in(email="user@example.com", password="secret")
@@ -2941,7 +2945,11 @@ def test_update_user_authentication_failure_preserves_the_session() -> None:
     with pytest.raises(AuthenticationError, match="expired"):
         client.auth.update_user(password="new-secret")
 
-    assert client.auth.get_session() is established
+    current = client.auth.get_session()
+    assert current is not None
+    assert current.access_token == "access-2"
+    assert current.refresh_token == "refresh-2"
+    assert current.user_id == established.user_id
 
 
 def test_update_user_rejects_a_profile_for_a_replaced_session() -> None:
