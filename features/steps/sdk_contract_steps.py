@@ -175,6 +175,7 @@ def replace_access_token(context: Any) -> None:
     )
 
 
+@then("the storage operation replaces the rejected token for the same user")
 @then("the database read replaces the rejected token for the same user")
 def read_replaced_token(context: Any) -> None:
     world = _world(context)

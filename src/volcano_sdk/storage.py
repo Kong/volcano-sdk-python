@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from io import SEEK_END, BytesIO
 from tempfile import TemporaryFile
-from typing import Any, BinaryIO, Protocol, cast
+from typing import TYPE_CHECKING, Any, BinaryIO, Protocol, cast
 from urllib.parse import quote
 
 from ._transport import (
@@ -25,6 +25,7 @@ from ._transport import (
 )
 from .models import (
     JSONValue,
+    Session,
     StorageObject,
     StoragePage,
     UploadPart,
@@ -32,6 +33,9 @@ from .models import (
     UploadSessionState,
     UploadSessionStatus,
 )
+
+if TYPE_CHECKING:
+    from .auth import Auth
 
 _INVALID_STORAGE_PAGE = "Expected a complete storage page"
 _INVALID_CONTENT_TYPE = "content_type must be a non-blank printable ASCII string"
@@ -280,12 +284,15 @@ class StorageContext(Protocol):
     """Client capabilities required by object storage."""
 
     _transport: Transport
+    auth: Auth
 
     def _anon_token(self) -> str: ...
 
     def _api_base_url(self) -> str: ...
 
     def _session_token(self) -> str: ...
+
+    def _capture_session_binding(self) -> tuple[int, int, Session | None]: ...
 
 
 class StorageListTransport(Protocol):
@@ -462,25 +469,33 @@ class StorageBucket:
     ) -> dict[str, Any]:
         """Upload bytes or the remaining contents of a binary stream."""
         mime_type = _upload_content_type(content_type)
-        response = invoke(
-            self._client._transport.upload_storage_object,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            path=path,
-            data=_simple_upload_bytes(data),
-            content_type=mime_type,
+        binding = self._client._capture_session_binding()
+        self._client._session_token()
+        content = _simple_upload_bytes(data)
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                self._client._transport.upload_storage_object,
+                authorization=token,
+                bucket_name=self._name,
+                path=path,
+                data=content,
+                content_type=mime_type,
+            ),
+            binding=binding,
         )
         payload = response_payload(response, 201)
         return dict(payload)
 
     def download(self, path: str, *, byte_range: str | None = None) -> bytes:
         """Download bytes from a path in this bucket."""
-        response = invoke(
-            self._client._transport.download_storage_object,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            path=path,
-            byte_range=byte_range,
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                self._client._transport.download_storage_object,
+                authorization=token,
+                bucket_name=self._name,
+                path=path,
+                byte_range=byte_range,
+            )
         )
         expected_status = (
             _HTTP_PARTIAL_CONTENT
@@ -500,16 +515,18 @@ class StorageBucket:
     ) -> UploadSession:
         """Create server state for a resumable upload."""
         transport = cast("StorageUploadSessionTransport", self._client._transport)
-        response = invoke(
-            transport.create_upload_session,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            request=StorageUploadSessionRequest(
-                path=_storage_path(path),
-                content_type=content_type,
-                total_size=total_size,
-                part_size=part_size,
-            ),
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                transport.create_upload_session,
+                authorization=token,
+                bucket_name=self._name,
+                request=StorageUploadSessionRequest(
+                    path=_storage_path(path),
+                    content_type=content_type,
+                    total_size=total_size,
+                    part_size=part_size,
+                ),
+            )
         )
         return _upload_session(response_payload(response, 201))
 
@@ -523,16 +540,18 @@ class StorageBucket:
     ) -> UploadPart:
         """Upload one part of a resumable upload session."""
         transport = cast("StorageUploadPartTransport", self._client._transport)
-        response = invoke(
-            transport.upload_part,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            request=StorageUploadPartRequest(
-                path=_storage_path(path),
-                session_id=session_id,
-                part_number=part_number,
-                data=data,
-            ),
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                transport.upload_part,
+                authorization=token,
+                bucket_name=self._name,
+                request=StorageUploadPartRequest(
+                    path=_storage_path(path),
+                    session_id=session_id,
+                    part_number=part_number,
+                    data=data,
+                ),
+            )
         )
         return _upload_part(response_payload(response, 200))
 
@@ -544,14 +563,16 @@ class StorageBucket:
     ) -> StorageObject:
         """Complete a resumable upload and return the stored object."""
         transport = cast("StorageCompleteUploadTransport", self._client._transport)
-        response = invoke(
-            transport.complete_upload_session,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            request=StorageUploadSessionReference(
-                path=_storage_path(path),
-                session_id=session_id,
-            ),
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                transport.complete_upload_session,
+                authorization=token,
+                bucket_name=self._name,
+                request=StorageUploadSessionReference(
+                    path=_storage_path(path),
+                    session_id=session_id,
+                ),
+            )
         )
         payload = cast("Mapping[str, object]", response_payload(response, 200))
         return _storage_object(payload["object"])
@@ -564,14 +585,16 @@ class StorageBucket:
     ) -> UploadSessionStatus:
         """Get resumable upload progress and uploaded part metadata."""
         transport = cast("StorageUploadStatusTransport", self._client._transport)
-        response = invoke(
-            transport.get_upload_session,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            request=StorageUploadSessionReference(
-                path=_storage_path(path),
-                session_id=session_id,
-            ),
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                transport.get_upload_session,
+                authorization=token,
+                bucket_name=self._name,
+                request=StorageUploadSessionReference(
+                    path=_storage_path(path),
+                    session_id=session_id,
+                ),
+            )
         )
         return _upload_session_status(response_payload(response, 200))
 
@@ -583,14 +606,16 @@ class StorageBucket:
     ) -> None:
         """Abort a resumable upload and discard its uploaded parts."""
         transport = cast("StorageAbortUploadTransport", self._client._transport)
-        response = invoke(
-            transport.abort_upload_session,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            request=StorageUploadSessionReference(
-                path=_storage_path(path),
-                session_id=session_id,
-            ),
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                transport.abort_upload_session,
+                authorization=token,
+                bucket_name=self._name,
+                request=StorageUploadSessionReference(
+                    path=_storage_path(path),
+                    session_id=session_id,
+                ),
+            )
         )
         response_payload(response, 200)
 
@@ -662,41 +687,51 @@ class StorageBucket:
     ) -> StoragePage:
         """List objects under a prefix and return the next-page cursor."""
         transport = cast("StorageListTransport", self._client._transport)
-        response = invoke(
-            transport.list_storage_objects,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            prefix=prefix,
-            limit=limit,
-            cursor=cursor,
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                transport.list_storage_objects,
+                authorization=token,
+                bucket_name=self._name,
+                prefix=prefix,
+                limit=limit,
+                cursor=cursor,
+            )
         )
         return _storage_page(response_payload(response, 200))
 
     def remove(self, paths: str | Sequence[str]) -> tuple[str, ...]:
         """Delete one or more object paths and return their immutable snapshot."""
         path_list = _storage_paths(paths)
-        transport = cast("StorageDeleteTransport", self._client._transport)
-        authorization = self._client._session_token()
+        binding = self._client._capture_session_binding()
         for path in path_list:
-            response = invoke(
+            self._remove_path(path, binding)
+        return path_list
+
+    def _remove_path(self, path: str, binding: tuple[int, int, Session | None]) -> None:
+        transport = cast("StorageDeleteTransport", self._client._transport)
+        response = self._client.auth._session_request(
+            lambda token: invoke(
                 transport.delete_storage_object,
-                authorization=authorization,
+                authorization=token,
                 bucket_name=self._name,
                 path=path,
-            )
-            response_payload(response, 200)
-        return path_list
+            ),
+            binding=binding,
+        )
+        response_payload(response, 200)
 
     def move(self, from_path: str, to_path: str) -> StorageObject:
         """Move or rename an object within this bucket."""
         source, destination = _storage_paths((from_path, to_path))
         transport = cast("StorageMoveTransport", self._client._transport)
-        response = invoke(
-            transport.move_storage_object,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            from_path=source,
-            to_path=destination,
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                transport.move_storage_object,
+                authorization=token,
+                bucket_name=self._name,
+                from_path=source,
+                to_path=destination,
+            )
         )
         return _storage_object(response_payload(response, 200))
 
@@ -704,12 +739,14 @@ class StorageBucket:
         """Copy an object to another path within this bucket."""
         source, destination = _storage_paths((from_path, to_path))
         transport = cast("StorageCopyTransport", self._client._transport)
-        response = invoke(
-            transport.copy_storage_object,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            from_path=source,
-            to_path=destination,
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                transport.copy_storage_object,
+                authorization=token,
+                bucket_name=self._name,
+                from_path=source,
+                to_path=destination,
+            )
         )
         return _storage_object(response_payload(response, 201))
 
@@ -718,12 +755,14 @@ class StorageBucket:
         object_path = _storage_paths(path)[0]
         visibility = _storage_visibility(is_public)
         transport = cast("StorageVisibilityTransport", self._client._transport)
-        response = invoke(
-            transport.update_storage_object_visibility,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            path=object_path,
-            is_public=visibility,
+        response = self._client.auth._session_request(
+            lambda token: invoke(
+                transport.update_storage_object_visibility,
+                authorization=token,
+                bucket_name=self._name,
+                path=object_path,
+                is_public=visibility,
+            )
         )
         return _storage_object(response_payload(response, 200))
 

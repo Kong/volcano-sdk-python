@@ -78,6 +78,12 @@ def test_contract_features_match_shared_source() -> None:
         assert hashlib.sha256((copied / name).read_bytes()).hexdigest() == expected
 
 
+def test_staged_storage_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "storage-refresh.feature"
+    expected = "00257b455f9897791db7fd82c4166c7f34c7134b5b9f4ea92f509bba533751a1"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
 def test_every_contract_phrase_is_bound_verbatim() -> None:
     registry.clear()
     _load_module(
@@ -102,6 +108,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the uploaded and listed object content types are text/plain",
         "the client replaces its access token with a rejected token",
         "the database read replaces the rejected token for the same user",
+        "the storage operation replaces the rejected token for the same user",
         (
             "one client pauses delivery for 1 second "
             "and then resumes with the same handler"
