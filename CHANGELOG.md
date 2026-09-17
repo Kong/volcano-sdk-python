@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.3](https://github.com/Kong/volcano-sdk-python/compare/v0.7.2...v0.7.3) (2026-09-17)
+
+
+### Bug Fixes
+
+* **auth:** refresh rejected profile requests within their session ([#157](https://github.com/Kong/volcano-sdk-python/issues/157)) ([534e5e2](https://github.com/Kong/volcano-sdk-python/commit/534e5e270c94cad758779d98714b217263537dc0))
+
 ## [0.7.2](https://github.com/Kong/volcano-sdk-python/compare/v0.7.1...v0.7.2) (2026-09-17)
 
 
