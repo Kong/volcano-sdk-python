@@ -1016,7 +1016,8 @@ class Auth:
             binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise RuntimeError(_NO_ACTIVE_SESSION)
-        current = self._owned_refresh_session(binding)[2]
+        binding = self._owned_refresh_session(binding)
+        current = binding[2]
         if current is None:
             raise SessionChangedError
         response = operation(current.access_token)

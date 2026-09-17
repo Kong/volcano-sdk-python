@@ -284,3 +284,59 @@ def test_remove_stops_when_a_different_session_is_adopted_between_paths() -> Non
         client.storage.from_("assets").remove(["first", "second"])
     assert client.current_session == replacement
     assert len(requests) == 1
+
+
+def test_upload_retains_the_session_that_owned_the_source_before_reading() -> None:
+    requests: list[httpx.Request] = []
+    replacement = Session("replacement", "replacement-refresh", "other")
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return success_response("upload")
+
+    client = make_client(handle)
+
+    class ReplacingStream(BytesIO):
+        def read(self, size: int | None = -1) -> bytes:
+            client.auth.set_session(replacement)
+            return super().read(size)
+
+    with pytest.raises(SessionChangedError):
+        client.storage.from_("assets").upload("file.bin", ReplacingStream(b"private"))
+    assert client.current_session == replacement
+    assert requests == []
+
+
+def test_remove_refreshes_each_rejected_path_from_its_current_generation() -> None:
+    requests: list[httpx.Request] = []
+    attempted: set[str] = set()
+    refresh_count = 0
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        nonlocal refresh_count
+        requests.append(request)
+        if request.url.path == "/auth/refresh":
+            refresh_count += 1
+            payload = refresh_response().json()
+            payload["access_token"] = f"access-{refresh_count}"
+            payload["refresh_token"] = f"refresh-{refresh_count}"
+            return httpx.Response(200, json=payload)
+        if request.url.path not in attempted:
+            attempted.add(request.url.path)
+            return httpx.Response(401, json={"error": "expired"})
+        return success_response("remove")
+
+    client = make_client(handle)
+    assert client.storage.from_("assets").remove(["first", "second"]) == (
+        "first",
+        "second",
+    )
+    assert [request.headers["authorization"] for request in requests] == [
+        "Bearer old-access",
+        "Bearer anon",
+        "Bearer access-1",
+        "Bearer access-1",
+        "Bearer anon",
+        "Bearer access-2",
+    ]
+    assert refresh_count == 2

@@ -469,6 +469,7 @@ class StorageBucket:
     ) -> dict[str, Any]:
         """Upload bytes or the remaining contents of a binary stream."""
         mime_type = _upload_content_type(content_type)
+        binding = self._client._capture_session_binding()
         self._client._session_token()
         content = _simple_upload_bytes(data)
         response = self._client.auth._session_request(
@@ -479,7 +480,8 @@ class StorageBucket:
                 path=path,
                 data=content,
                 content_type=mime_type,
-            )
+            ),
+            binding=binding,
         )
         payload = response_payload(response, 201)
         return dict(payload)
