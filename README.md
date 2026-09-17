@@ -3,6 +3,8 @@
 Use the Volcano Python SDK to access authentication, databases, storage,
 functions, locks, logs, and realtime events. Requires Python 3.11 or later.
 
+Start with the [Python quickstart](docs/README.md).
+
 ## Install
 
 ```shell
