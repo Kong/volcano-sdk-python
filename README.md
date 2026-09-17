@@ -11,6 +11,8 @@ python -m pip install volcano-sdk-python
 
 The [PyPI distribution](https://pypi.org/project/volcano-sdk-python/) is named
 `volcano-sdk-python`; import it as `volcano_sdk`.
+The installed package includes inline type information for mypy and other
+PEP 561-compatible type checkers.
 
 ## Try the contract facade
 
