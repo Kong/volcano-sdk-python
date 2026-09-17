@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/Kong/volcano-sdk-python/compare/v0.7.1...v0.7.2) (2026-09-17)
+
+
+### Bug Fixes
+
+* **storage:** refresh rejected sessions and replay bounded requests ([#154](https://github.com/Kong/volcano-sdk-python/issues/154)) ([5b1f93f](https://github.com/Kong/volcano-sdk-python/commit/5b1f93fa59fda0a5cd5b06c6e9cc2da3f372ab8a))
+
 ## [0.7.1](https://github.com/Kong/volcano-sdk-python/compare/v0.7.0...v0.7.1) (2026-09-17)
 
 
