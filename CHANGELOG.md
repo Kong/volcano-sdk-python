@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.6](https://github.com/Kong/volcano-sdk-python/compare/v0.6.5...v0.6.6) (2026-09-17)
+
+
+### Bug Fixes
+
+* **functions:** retry a stale mapping on the dispatch signal ([#136](https://github.com/Kong/volcano-sdk-python/issues/136)) ([d5f7c23](https://github.com/Kong/volcano-sdk-python/commit/d5f7c23be519ac8ae8007d0c63391a7ed2458983))
+
 ## [0.6.5](https://github.com/Kong/volcano-sdk-python/compare/v0.6.4...v0.6.5) (2026-09-16)
 
 
