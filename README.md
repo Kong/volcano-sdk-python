@@ -334,13 +334,15 @@ user ID spelling, including in the cached snapshot.
 `get_user()` sends the active access token to Volcano and returns an immutable, server-validated
 profile with the complete public AuthUser fields. Profile timestamps are timezone-aware `datetime`
 values, and nested user and application metadata are immutable. The request updates the cached
-profile without changing credentials. If another authentication operation replaces the session
+profile without changing credentials unless HTTP 401 recovery requires a refresh.
+Successful recovery rotates credentials and emits `TOKEN_REFRESHED`. If another authentication operation replaces the session
 while the request is in flight, `get_user()` raises `SessionChangedError` instead of returning a
 profile for stale credentials.
 
 `update_user()` updates the current user's password, metadata, or both. Metadata is a shallow patch:
 omitted keys remain unchanged, and setting a key to `None` removes it. The method returns the same
-immutable profile type as `get_user()` and updates the cached profile without changing credentials.
+immutable profile type as `get_user()` and updates the cached profile without changing credentials unless HTTP 401 recovery requires a refresh.
+Successful recovery rotates credentials and emits `TOKEN_REFRESHED`.
 It also rejects a response if another authentication operation replaces the session while the
 update is in flight.
 
@@ -569,12 +571,12 @@ session = client.auth.sign_in_anonymously(metadata={"device": "mobile"})
 Anonymous sign-ins must be enabled for the project. Convert the account before signing out if the
 user needs to recover it later.
 
-Attach email credentials without changing the anonymous user's ID or current session:
+Attach email credentials while preserving the anonymous user's ID:
 
 ```python
 user = client.auth.convert_anonymous(
     email="user@example.com",
-    password="secure-password",
+    password="a-long-example-password-2026",
     metadata={"display_name": "Ada"},
 )
 ```
@@ -597,9 +599,11 @@ when the reset flow completes.
 To start with only a supplied user access token, pass `access_token` to
 `VolcanoClient`. Construction makes no request and leaves `refresh_token`,
 `user_id`, and `user` as `None` until supplied or validated by the server.
-`get_user()` validates and caches the profile without changing credentials.
+`get_user()` validates and caches the profile without changing credentials unless HTTP 401 recovery requires a refresh.
+Successful recovery rotates credentials and emits `TOKEN_REFRESHED`.
 Without a refresh token, `refresh_session()` raises `AuthenticationError` and
-`sign_out()` revokes the server session using the access token and clears local state.
+`sign_out()` clears local state and revokes the server session when the access JWT
+contains a readable UUID `session_id`.
 Supply `refresh_token` with `access_token` to enable refresh. See the [token bootstrap example](https://github.com/Kong/volcano-sdk-python/blob/main/docs/README.md#use-a-supplied-access-token).
 
 Copy a complete native session into another client's memory:
@@ -661,8 +665,10 @@ assert client.auth.get_session() is None
 ```
 
 Sign-out uses the refresh token directly when the SDK received both credentials together from
-sign-in or a validated refresh. Supplied credentials use the access-token session; on HTTP 401,
-the SDK can refresh once and revoke that same session without adopting the renewed credentials.
+sign-in or a validated refresh. Supplied credentials use the access-token session when its JWT
+contains a readable UUID `session_id`; on HTTP 401, the SDK can refresh once and revoke that
+same session without adopting the renewed credentials. Without that identifier, sign-out uses
+the supplied refresh token, or only clears local state if no refresh token is available.
 Calling `sign_out()` without a session succeeds without a request. A revocation failure is raised
 after the captured local session is cleared. Sign-out waits for an already-running refresh and uses its validated credentials.
 Later refresh attempts raise `SessionChangedError` without a request. Concurrent sign-out calls
