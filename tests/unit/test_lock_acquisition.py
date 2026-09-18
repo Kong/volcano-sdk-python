@@ -9,13 +9,15 @@ import httpx
 import pytest
 
 from volcano_sdk import LockLease, VolcanoClient, VolcanoError
+from volcano_sdk import _lock_guard as guard_module
+from volcano_sdk import locks as locks_module
 from volcano_sdk._transport import GeneratedTransport
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-OWNER_TOKEN = "00000000-0000-4000-8000-000000000001"
-REQUEST_ID = "00000000-0000-4000-8000-000000000002"
+OWNER_TOKEN = "ABCDEFAB-1234-4567-89AB-ABCDEFABCDEF"
+REQUEST_ID = "BBCDEFAB-1234-4567-89AB-ABCDEFABCDEF"
 LEASE = {"expires_at": "2026-09-18T18:00:00Z", "fencing_token": 7}
 
 
@@ -30,7 +32,7 @@ def make_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCl
     )
 
 
-@pytest.mark.parametrize("failure", ["transport", "503"])
+@pytest.mark.parametrize("failure", ["transport", "503", "empty", "html", "malformed"])
 @pytest.mark.parametrize("supplied", [False, True])
 def test_acquire_retries_once_with_the_same_owner_and_request(
     failure: str, *, supplied: bool
@@ -43,6 +45,9 @@ def test_acquire_retries_once_with_the_same_owner_and_request(
             if failure == "transport":
                 message = "response lost after acquiring"
                 raise httpx.ReadError(message, request=request)
+            bodies = {"empty": b"", "html": b"<h1>Unavailable</h1>", "malformed": b"{"}
+            if failure in bodies:
+                return httpx.Response(503, content=bodies[failure])
             return httpx.Response(503, json={"error": "acquire outcome unknown"})
         return httpx.Response(201, json=LEASE)
 
@@ -184,3 +189,50 @@ def test_with_lock_forwards_acquisition_ids_but_release_gets_a_new_request_id() 
     assert requests[0].headers["x-volcano-request-id"] == REQUEST_ID
     assert requests[1].headers["x-volcano-request-id"] != REQUEST_ID
     assert requests[1].headers["x-volcano-lock-token"] == OWNER_TOKEN
+
+
+@pytest.mark.parametrize("retry_duration", [1.0, 31.0])
+def test_guard_uses_successful_attempt_start_without_extending_a_slow_retry(
+    monkeypatch: pytest.MonkeyPatch, retry_duration: float
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr(locks_module, "_lease_now", lambda: clock[0])
+    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if len(requests) == 1:
+            clock[0] += 40
+            message = "first response stalled past the TTL"
+            raise httpx.ReadError(message, request=request)
+        if request.method == "POST":
+            clock[0] += retry_duration
+        if request.method == "DELETE":
+            return httpx.Response(204)
+        return httpx.Response(201 if request.method == "POST" else 200, json=LEASE)
+
+    client = make_client(handle)
+    if retry_duration > 30:
+        with pytest.raises(TimeoutError), client.locks.with_lock("build", ttl=30):
+            pytest.fail("an expired retry must not enter the critical section")
+    else:
+        with client.locks.with_lock("build", ttl=30) as guard:
+            assert not guard.lost
+            assert guard._remaining_seconds() == 29
+        assert [request.method for request in requests] == ["POST", "POST", "DELETE"]
+
+
+@pytest.mark.parametrize("body", [b"", b"<h1>Unavailable</h1>", b"{"])
+def test_repeated_unparseable_503_preserves_status_and_retry_bound(body: bytes) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(503, content=body)
+
+    with pytest.raises(VolcanoError) as caught:
+        make_client(handle).locks.acquire("build", ttl=30)
+    assert caught.value.status == 503
+    assert len(requests) == 2
+    assert requests[0].headers == requests[1].headers

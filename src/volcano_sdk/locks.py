@@ -93,10 +93,11 @@ def _request_uuid(value: str | None, name: str) -> str:
     if value is None:
         return str(uuid4())
     try:
-        return str(UUID(value))
+        UUID(value)
     except (AttributeError, ValueError) as error:
         message = f"{name} must be a UUID string"
         raise ValueError(message) from error
+    return value
 
 
 class Locks:
@@ -131,22 +132,38 @@ class Locks:
         request_id: str | None = None,
     ) -> LockLease:
         """Acquire with one bounded retry using the same ownership token."""
+        lease, _ = self._acquire_with_start(
+            key, ttl=ttl, token=token, request_id=request_id
+        )
+        return lease
+
+    def _acquire_with_start(
+        self,
+        key: str,
+        *,
+        ttl: int,
+        token: str | None,
+        request_id: str | None,
+    ) -> tuple[LockLease, float]:
         _validate_ttl(ttl)
         token = _request_uuid(token, "token")
         request_id = _request_uuid(request_id, "request_id")
         authorization = self._client._service_token()
+        started_at = _lease_now()
         try:
             payload = self._acquire_payload(key, ttl, token, request_id, authorization)
         except (TransportError, ServerError) as error:
             if error.status not in (None, 503):
                 raise
+            started_at = _lease_now()
             payload = self._acquire_payload(key, ttl, token, request_id, authorization)
-        return LockLease(
+        lease = LockLease(
             key=key,
             token=token,
             expires_at=_parse_datetime(payload.get("expires_at")),
             fencing_token=cast("int | None", payload.get("fencing_token")),
         )
+        return lease, started_at
 
     def _acquire_payload(
         self, key: str, ttl: int, token: str, request_id: str, authorization: str
@@ -219,10 +236,11 @@ class Locks:
         """Hold and automatically renew a lock for the context's lifetime."""
         _validate_ttl(ttl)
         started_at = _lease_now()
+        lease, lease_started_at = self._acquire_with_start(
+            key, ttl=ttl, token=token, request_id=request_id
+        )
         guard = LockGuard(
-            self.acquire(key, ttl=ttl, token=token, request_id=request_id),
-            ttl=ttl,
-            started_at=started_at,
+            lease, ttl=ttl, started_at=started_at, lease_started_at=lease_started_at
         )
         renewer = LockRenewer(self, key, guard, ttl=ttl)
         renewer_started = False

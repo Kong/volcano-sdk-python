@@ -104,11 +104,16 @@ from ._generated.api.functions.invoke_function import (
     _get_kwargs as invoke_function_kwargs,
 )
 from ._generated.api.locks import (
-    acquire_project_lock,
     force_release_project_lock,
     get_project_lock,
     release_project_lock,
     renew_project_lock,
+)
+from ._generated.api.locks.acquire_project_lock import (
+    _build_response as build_lock_acquire_response,
+)
+from ._generated.api.locks.acquire_project_lock import (
+    _get_kwargs as lock_acquire_kwargs,
 )
 from ._generated.api.logs.get_project_log_activity import (
     _build_response as build_log_activity_response,
@@ -253,6 +258,7 @@ if TYPE_CHECKING:
     )
     from .models import JSONValue
 
+HTTP_CREATED = 201
 HTTP_UNAUTHORIZED = 401
 HTTP_NOT_FOUND = 404
 HTTP_CONFLICT = 409
@@ -1740,13 +1746,16 @@ class GeneratedTransport:
         request_id: str | None = None,
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = acquire_project_lock.sync_detailed(
+            request_kwargs = lock_acquire_kwargs(
                 key,
-                client=client,
                 body=ProjectLockLeaseRequest(ttl_seconds=ttl),
                 x_volcano_lock_token=cast("UUID", token),
                 x_volcano_request_id=cast("UUID", request_id or str(uuid4())),
             )
+            raw_response = client.get_httpx_client().request(**request_kwargs)
+            if raw_response.status_code != HTTP_CREATED:
+                return self._raw_response(raw_response)
+            response = build_lock_acquire_response(client=client, response=raw_response)
         return self._response(response)
 
     def get_project_lock(
