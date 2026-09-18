@@ -80,3 +80,5 @@ Realtime uses an asynchronous lifecycle; follow those examples to connect and di
 
 See [release notes](https://github.com/Kong/volcano-sdk-python/releases) for version changes and [GitHub issues](https://github.com/Kong/volcano-sdk-python/issues) to report a problem.
 Include the package version, Python version, and a minimal reproduction without credentials.
+
+See [Distributed locks](./locks.md) for acquisition recovery, renewal, and fencing.

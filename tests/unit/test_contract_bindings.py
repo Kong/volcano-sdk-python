@@ -90,6 +90,12 @@ def test_staged_profile_feature_matches_proposed_shared_source() -> None:
     assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
 
 
+def test_staged_lock_recovery_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "locks-recovery.feature"
+    expected = "d90215deafa9a66c8a0f41dc5f7416e062a4b2e7e97dcd5063868aa7f1b77b90"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
 def test_every_contract_phrase_is_bound_verbatim() -> None:
     registry.clear()
     _load_module(
@@ -135,6 +141,10 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "one client subscribes and the other publishes the contract message",
         "the auth-state listener observes the signed-in contract user",
         "the SDK operation succeeds",
+        "the client recovers the contract lock with caller-owned tokens",
+        "recovery and renewal preserve the held lease until release",
+        "the client acquires and force releases the contract lock",
+        "the force-released lock is available",
         "the client acquires and releases the contract lock",
         "the client deletes its contract row",
         "the client deletes a missing contract row",

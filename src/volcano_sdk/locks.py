@@ -5,11 +5,12 @@ from __future__ import annotations
 from contextlib import contextmanager, suppress
 from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from ._lock_guard import LockGuard, _lease_now
 from ._lock_worker import LockRenewer
 from ._transport import Transport, invoke, response_payload
+from .errors import ServerError, TransportError
 from .models import LockLease, LockState
 
 if TYPE_CHECKING:
@@ -37,6 +38,7 @@ class LockGetTransport(Protocol):
         *,
         authorization: str,
         key: str,
+        request_id: str | None = None,
     ) -> object:
         """Get one project-scoped lock."""
         ...
@@ -52,6 +54,7 @@ class LockRenewTransport(Protocol):
         key: str,
         ttl: int,
         token: str,
+        request_id: str | None = None,
     ) -> object:
         """Renew one project-scoped lock."""
         ...
@@ -65,6 +68,7 @@ class LockForceReleaseTransport(Protocol):
         *,
         authorization: str,
         key: str,
+        request_id: str | None = None,
     ) -> object:
         """Force release one project-scoped lock."""
         ...
@@ -85,6 +89,16 @@ def _validate_ttl(ttl: object) -> None:
         raise ValueError(_INVALID_LOCK_TTL)
 
 
+def _request_uuid(value: str | None, name: str) -> str:
+    if value is None:
+        return str(uuid4())
+    try:
+        return str(UUID(value))
+    except (AttributeError, ValueError) as error:
+        message = f"{name} must be a UUID string"
+        raise ValueError(message) from error
+
+
 class Locks:
     """Acquire and release project-scoped distributed locks."""
 
@@ -92,13 +106,14 @@ class Locks:
         """Create a lock facade backed by a client."""
         self._client = client
 
-    def get(self, key: str) -> LockState:
+    def get(self, key: str, *, request_id: str | None = None) -> LockState:
         """Return the current state of a project-scoped lock."""
         transport = cast("LockGetTransport", self._client._transport)
         response = invoke(
             transport.get_project_lock,
             authorization=self._client._service_token(),
             key=key,
+            request_id=_request_uuid(request_id, "request_id"),
         )
         payload = response_payload(response, 200)
         return LockState(
@@ -107,26 +122,48 @@ class Locks:
             fencing_token=payload.get("fencing_token"),
         )
 
-    def acquire(self, key: str, *, ttl: int) -> LockLease:
-        """Acquire a lock lease for the requested number of seconds."""
+    def acquire(
+        self,
+        key: str,
+        *,
+        ttl: int,
+        token: str | None = None,
+        request_id: str | None = None,
+    ) -> LockLease:
+        """Acquire with one bounded retry using the same ownership token."""
         _validate_ttl(ttl)
-        token = str(uuid4())
-        response = invoke(
-            self._client._transport.acquire_project_lock,
-            authorization=self._client._service_token(),
-            key=key,
-            ttl=ttl,
-            token=token,
-        )
-        payload = response_payload(response, 201)
+        token = _request_uuid(token, "token")
+        request_id = _request_uuid(request_id, "request_id")
+        authorization = self._client._service_token()
+        try:
+            payload = self._acquire_payload(key, ttl, token, request_id, authorization)
+        except (TransportError, ServerError) as error:
+            if error.status not in (None, 503):
+                raise
+            payload = self._acquire_payload(key, ttl, token, request_id, authorization)
         return LockLease(
             key=key,
             token=token,
             expires_at=_parse_datetime(payload.get("expires_at")),
-            fencing_token=payload.get("fencing_token"),
+            fencing_token=cast("int | None", payload.get("fencing_token")),
         )
 
-    def renew(self, key: str, lease: LockLease, *, ttl: int) -> LockLease:
+    def _acquire_payload(
+        self, key: str, ttl: int, token: str, request_id: str, authorization: str
+    ) -> dict[str, object]:
+        response = invoke(
+            self._client._transport.acquire_project_lock,
+            authorization=authorization,
+            key=key,
+            ttl=ttl,
+            token=token,
+            request_id=request_id,
+        )
+        return cast("dict[str, object]", response_payload(response, 201))
+
+    def renew(
+        self, key: str, lease: LockLease, *, ttl: int, request_id: str | None = None
+    ) -> LockLease:
         """Renew a lock lease and return its immutable replacement."""
         _validate_ttl(ttl)
         transport = cast("LockRenewTransport", self._client._transport)
@@ -134,6 +171,7 @@ class Locks:
             transport.renew_project_lock,
             authorization=self._client._service_token(),
             key=key,
+            request_id=_request_uuid(request_id, "request_id"),
             ttl=ttl,
             token=lease.token,
         )
@@ -145,33 +183,44 @@ class Locks:
             fencing_token=payload.get("fencing_token"),
         )
 
-    def release(self, key: str, lease: LockLease) -> None:
+    def release(
+        self, key: str, lease: LockLease, *, request_id: str | None = None
+    ) -> None:
         """Release a lock lease."""
         response = invoke(
             self._client._transport.release_project_lock,
             authorization=self._client._service_token(),
             key=key,
+            request_id=_request_uuid(request_id, "request_id"),
             token=lease.token,
         )
         response_payload(response, 204)
 
-    def force_release(self, key: str) -> None:
+    def force_release(self, key: str, *, request_id: str | None = None) -> None:
         """Release a lock regardless of which token owns it."""
         transport = cast("LockForceReleaseTransport", self._client._transport)
         response = invoke(
             transport.force_release_project_lock,
             authorization=self._client._service_token(),
             key=key,
+            request_id=_request_uuid(request_id, "request_id"),
         )
         response_payload(response, 204)
 
     @contextmanager
-    def with_lock(self, key: str, *, ttl: int) -> Generator[LockGuard, None, None]:
+    def with_lock(
+        self,
+        key: str,
+        *,
+        ttl: int,
+        token: str | None = None,
+        request_id: str | None = None,
+    ) -> Generator[LockGuard, None, None]:
         """Hold and automatically renew a lock for the context's lifetime."""
         _validate_ttl(ttl)
         started_at = _lease_now()
         guard = LockGuard(
-            self.acquire(key, ttl=ttl),
+            self.acquire(key, ttl=ttl, token=token, request_id=request_id),
             ttl=ttl,
             started_at=started_at,
         )

@@ -643,6 +643,7 @@ class Transport(Protocol):
         key: str,
         ttl: int,
         token: str,
+        request_id: str | None = None,
     ) -> TransportResponse: ...
 
     def release_project_lock(
@@ -651,6 +652,7 @@ class Transport(Protocol):
         authorization: str,
         key: str,
         token: str,
+        request_id: str | None = None,
     ) -> TransportResponse: ...
 
 
@@ -1735,6 +1737,7 @@ class GeneratedTransport:
         key: str,
         ttl: int,
         token: str,
+        request_id: str | None = None,
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = acquire_project_lock.sync_detailed(
@@ -1742,7 +1745,7 @@ class GeneratedTransport:
                 client=client,
                 body=ProjectLockLeaseRequest(ttl_seconds=ttl),
                 x_volcano_lock_token=cast("UUID", token),
-                x_volcano_request_id=cast("UUID", str(uuid4())),
+                x_volcano_request_id=cast("UUID", request_id or str(uuid4())),
             )
         return self._response(response)
 
@@ -1751,12 +1754,13 @@ class GeneratedTransport:
         *,
         authorization: str,
         key: str,
+        request_id: str | None = None,
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = get_project_lock.sync_detailed(
                 key,
                 client=client,
-                x_volcano_request_id=cast("UUID", str(uuid4())),
+                x_volcano_request_id=cast("UUID", request_id or str(uuid4())),
             )
         return self._response(response)
 
@@ -1765,12 +1769,13 @@ class GeneratedTransport:
         *,
         authorization: str,
         key: str,
+        request_id: str | None = None,
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = force_release_project_lock.sync_detailed(
                 key,
                 client=client,
-                x_volcano_request_id=cast("UUID", str(uuid4())),
+                x_volcano_request_id=cast("UUID", request_id or str(uuid4())),
             )
         return self._response(response)
 
@@ -1781,6 +1786,7 @@ class GeneratedTransport:
         key: str,
         ttl: int,
         token: str,
+        request_id: str | None = None,
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = renew_project_lock.sync_detailed(
@@ -1788,7 +1794,7 @@ class GeneratedTransport:
                 client=client,
                 body=ProjectLockLeaseRequest(ttl_seconds=ttl),
                 x_volcano_lock_token=cast("UUID", token),
-                x_volcano_request_id=cast("UUID", str(uuid4())),
+                x_volcano_request_id=cast("UUID", request_id or str(uuid4())),
             )
         return self._response(response)
 
@@ -1798,12 +1804,13 @@ class GeneratedTransport:
         authorization: str,
         key: str,
         token: str,
+        request_id: str | None = None,
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = release_project_lock.sync_detailed(
                 key,
                 client=client,
                 x_volcano_lock_token=cast("UUID", token),
-                x_volcano_request_id=cast("UUID", str(uuid4())),
+                x_volcano_request_id=cast("UUID", request_id or str(uuid4())),
             )
         return self._response(response)

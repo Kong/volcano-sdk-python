@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from typing import Any
+from uuid import uuid4
 
 from behave import given, then, when
 from broadcast_pause import verify_broadcast_pause
@@ -549,6 +550,71 @@ def released_lease_not_held(context: Any) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value["released"] is True
+
+
+@when("the client recovers the contract lock with caller-owned tokens")
+def recover_lock(context: Any) -> None:
+    world = _world(context)
+
+    def operation() -> dict[str, Any]:
+        locks, key = world.service_client.locks, world.lock_key
+        token, request_id = str(uuid4()), str(uuid4())
+        lease = locks.acquire(key, ttl=30, token=token, request_id=request_id)
+        cleanup = world.register_lock_cleanup(key, lease)
+        recovered = locks.acquire(key, ttl=30, token=token, request_id=request_id)
+        held = locks.get(key, request_id=str(uuid4()))
+        renewed = locks.renew(key, recovered, ttl=60, request_id=str(uuid4()))
+        locks.release(key, renewed, request_id=str(uuid4()))
+        world.cleanup_callbacks.remove(cleanup)
+        available = locks.get(key, request_id=str(uuid4()))
+        return {
+            "lease": lease,
+            "recovered": recovered,
+            "held": held,
+            "renewed": renewed,
+            "available": available,
+        }
+
+    world.record(operation)
+
+
+@then("recovery and renewal preserve the held lease until release")
+def recovered_lock_lifecycle(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    value = world.last_outcome.value
+    assert value["held"].held is True
+    assert value["available"].held is False
+    assert value["lease"].token == value["recovered"].token == value["renewed"].token
+    assert value["lease"].fencing_token is not None
+    assert (
+        value["lease"].fencing_token
+        == value["recovered"].fencing_token
+        == value["held"].fencing_token
+        == value["renewed"].fencing_token
+    )
+
+
+@when("the client acquires and force releases the contract lock")
+def force_release_lock(context: Any) -> None:
+    world = _world(context)
+
+    def operation() -> object:
+        locks, key = world.service_client.locks, world.lock_key
+        lease = locks.acquire(key, ttl=30)
+        cleanup = world.register_lock_cleanup(key, lease)
+        locks.force_release(key, request_id=str(uuid4()))
+        world.cleanup_callbacks.remove(cleanup)
+        return locks.get(key)
+
+    world.record(operation)
+
+
+@then("the force-released lock is available")
+def force_released_lock_available(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.last_outcome.value.held is False
 
 
 @given("two authenticated realtime clients")
