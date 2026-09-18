@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/Kong/volcano-sdk-python/compare/v0.9.1...v0.9.2) (2026-09-18)
+
+
+### Bug Fixes
+
+* **realtime:** fetch rows from custom Postgres schemas ([#171](https://github.com/Kong/volcano-sdk-python/issues/171)) ([2a54e95](https://github.com/Kong/volcano-sdk-python/commit/2a54e957975792a6a092121786992f0a917d4aa5))
+
 ## [0.9.1](https://github.com/Kong/volcano-sdk-python/compare/v0.9.0...v0.9.1) (2026-09-18)
 
 
