@@ -611,9 +611,7 @@ class DurableContext:
             message = f"wait must be at least {_MIN_WAIT_SECONDS} second"
             raise TypeError(message)
         if seconds > _MAX_WAIT_SECONDS:
-            message = (
-                f"wait must be at most {_MAX_WAIT_SECONDS} seconds (366 days)"
-            )
+            message = f"wait must be at most {_MAX_WAIT_SECONDS} seconds (366 days)"
             raise TypeError(message)
         return self._engine.duration.from_seconds(seconds)
 
