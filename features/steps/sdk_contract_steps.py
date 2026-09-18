@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import replace
 from typing import Any
 from uuid import uuid4
 
@@ -78,6 +79,65 @@ def refresh_current_session(context: Any) -> None:
     world.record(world.client.auth.refresh_session)
 
 
+@when("a fresh client tries to refresh a supplied profile without a session identifier")
+def refresh_supplied_profile_without_sid(context: Any) -> None:
+    world = _world(context)
+    source = world.client.auth.get_session()
+    assert source is not None
+    target = VolcanoClient(
+        api_url=world.fixture["api_url"], anon_key=world.fixture["anon_key"]
+    )
+    supplied = target.auth.set_session(replace(source, access_token=REJECTED_BEARER))
+    world.record(target.auth.refresh_session)
+    assert target.auth.get_session() == supplied
+
+
+@when("a fresh client starts with only the current access token")
+def bootstrap_access_token(context: Any) -> None:
+    world = _world(context)
+    source = world.client
+    world.previous_session = source.auth.get_session()
+    assert world.previous_session is not None
+    world.bootstrap_cleanup = source.auth.sign_out
+    world.cleanup_callbacks.append(world.bootstrap_cleanup)
+    world.client = VolcanoClient(
+        api_url=world.fixture["api_url"],
+        anon_key=world.fixture["anon_key"],
+        access_token=world.previous_session.access_token,
+    )
+    world.record(world.client.auth.get_session)
+
+
+@then("the token-only session has no cached user")
+def token_session_has_no_user(context: Any) -> None:
+    session = _world(context).client.current_session
+    assert session is not None
+    assert session.user_id is None
+    assert session.user is None
+
+
+@when("a fresh client starts with a rejected access token")
+def bootstrap_rejected_token(context: Any) -> None:
+    world = _world(context)
+    world.client = VolcanoClient(
+        api_url=world.fixture["api_url"],
+        anon_key=world.fixture["anon_key"],
+        access_token=REJECTED_BEARER,
+    )
+    world.previous_session = world.client.current_session
+    world.record(world.client.auth.get_session)
+
+
+@then("the session retains only the supplied access token")
+def token_session_retains_access(context: Any) -> None:
+    world = _world(context)
+    session = world.client.current_session
+    assert session is not None
+    assert world.previous_session is not None
+    assert session.access_token == world.previous_session.access_token
+    assert session.refresh_token is None
+
+
 @then("the refreshed session becomes current")
 def refreshed_session_becomes_current(context: Any) -> None:
     world = _world(context)
@@ -92,12 +152,27 @@ def sign_out(context: Any) -> None:
     world = _world(context)
     world.signed_out_session = world.client.auth.get_session()
     assert world.signed_out_session is not None
-    world.record(world.client.auth.sign_out)
+    outcome = world.record(world.client.auth.sign_out)
+    if outcome.ok and world.bootstrap_cleanup is not None:
+        world.cleanup_callbacks.remove(world.bootstrap_cleanup)
+        world.bootstrap_cleanup = None
 
 
 @then("the current session is empty")
 def current_session_is_empty(context: Any) -> None:
     assert _world(context).client.auth.get_session() is None
+
+
+@when("a fresh client loads a profile with the signed-out access token")
+def load_signed_out_profile(context: Any) -> None:
+    world = _world(context)
+    assert world.signed_out_session is not None
+    target = VolcanoClient(
+        api_url=world.fixture["api_url"],
+        anon_key=world.fixture["anon_key"],
+        access_token=world.signed_out_session.access_token,
+    )
+    world.record(target.auth.get_user)
 
 
 @when("a fresh client tries to refresh the signed-out session")
@@ -126,6 +201,13 @@ def operation_succeeds(context: Any) -> None:
     outcome = _world(context).last_outcome
     assert outcome is not None
     assert outcome.ok, f"SDK operation failed ({outcome.category}): {outcome.error}"
+
+
+@then("the SDK operation fails")
+def operation_fails(context: Any) -> None:
+    outcome = _world(context).last_outcome
+    assert outcome is not None
+    assert not outcome.ok
 
 
 @then("the current session belongs to the contract user")
@@ -164,12 +246,14 @@ def authenticated_client(context: Any) -> None:
 
 @given("the client replaces its access token with a rejected token")
 def replace_access_token(context: Any) -> None:
-    client = _world(context).client
+    world = _world(context)
+    client = world.client
     session = client.auth.get_session()
     assert session is not None
-    client.auth.set_session(
+    header, payload, _signature = session.access_token.split(".")
+    world.previous_session = client.auth.set_session(
         Session(
-            access_token=REJECTED_BEARER,
+            access_token=f"{header}.{payload}.sdk-contract-rejected-signature",
             refresh_token=session.refresh_token,
             user_id=session.user_id,
         )
@@ -184,7 +268,8 @@ def read_replaced_token(context: Any) -> None:
     session = world.client.auth.get_session()
     assert session is not None
     assert session.access_token
-    assert session.access_token != REJECTED_BEARER
+    assert world.previous_session is not None
+    assert session.access_token != world.previous_session.access_token
     assert session.refresh_token
     assert session.user_id == world.fixture["user_id"]
 

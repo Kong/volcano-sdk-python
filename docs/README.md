@@ -51,7 +51,7 @@ finally:
 ```
 
 Run it with `python quickstart.py`.
-It signs in, fetches the server-validated profile, prints the user's email, revokes its refresh token, and clears the local session.
+It signs in, fetches the server-validated profile, prints the user's email, revokes its server session, and clears the local session.
 An invalid email or password raises `AuthenticationError`; failed network requests raise `TransportError`.
 Both inherit from `VolcanoError` and are exported from `volcano_sdk`.
 
@@ -72,6 +72,41 @@ The SDK does not persist tokens for you.
 
 For operations that require a [service key](/platform/authentication/security/service-keys), pass `service_key` to the constructor in trusted server code.
 Keep service keys and user credentials out of source control and client applications.
+
+## Use a supplied access token
+
+For a server request that already carries a user's access token, create a client for that request:
+
+```python
+import os
+
+from volcano_sdk import VolcanoClient
+
+
+def load_request_user(access_token: str):
+    client = VolcanoClient(
+        anon_key=os.environ["VOLCANO_ANON_KEY"],
+        access_token=access_token,
+    )
+    return client.auth.get_user()
+```
+
+Call this helper from your request handler with the bearer token from that request.
+For a Volcano function, use the access token in `event["__volcano_auth"]["access_token"]` supplied for that invocation.
+The helper validates the token with Volcano before returning the user.
+
+Once a user identity has been validated, a refresh response for another user is rejected and leaves the current credentials unchanged.
+Construction makes no request and does not persist credentials.
+The initial snapshot has `refresh_token=None`, `user_id=None`, and `user=None`.
+A successful profile read fills in the validated identity and cached user while retaining the supplied access token.
+Without a refresh token, an HTTP 401 remains an authentication error, `refresh_session()` raises `AuthenticationError`, and `sign_out()` revokes the server session identified by the access token before clearing local state.
+Refresh must preserve the server session identified by the access JWT, even before a profile is loaded. A different session is rejected, including another session for the same user. Supplied credentials need a readable session identifier to refresh, even when you provide a user profile or load it from the server. Profile data does not prove that access and refresh tokens belong together.
+For supplied credentials, sign-out revokes the access-token session. On HTTP 401, it can refresh once and revoke that same session without adopting the renewed credentials locally.
+When the SDK received both credentials together from sign-in or a validated refresh, it uses the refresh token directly, even if access has expired.
+Sign-out joins an existing refresh and prevents later refresh attempts for that session. Concurrent sign-outs share one result; a separate sign-in or adoption remains current.
+Pass `refresh_token` alongside `access_token` when the client should refresh that session.
+A revocation failure is reported after local clearing; it does not prove that copied tokens are invalid.
+Adopting a session with `set_session()` still requires complete credentials and identity.
 
 ## Use the rest of the API
 

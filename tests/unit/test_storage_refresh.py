@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+from session_fixtures import access_token
 
 from volcano_sdk import (
     AuthenticationError,
@@ -45,7 +46,7 @@ def make_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCl
             httpx_transport=httpx.MockTransport(handler),
         ),
     )
-    client.auth.set_session(Session("old-access", "old-refresh", USER_ID))
+    client.auth.set_session(Session(access_token("old"), "old-refresh", USER_ID))
     return client
 
 
@@ -77,7 +78,7 @@ def refresh_response() -> httpx.Response:
     return httpx.Response(
         200,
         json={
-            "access_token": "new-access",
+            "access_token": access_token("new"),
             "refresh_token": "new-refresh",
             "token_type": "bearer",
             "expires_in": 3600,
@@ -139,7 +140,7 @@ def test_storage_refreshes_once_and_replays_the_request(
         requests.append(request)
         if request.url.path == "/auth/refresh":
             return refresh_response()
-        if request.headers["authorization"] == "Bearer old-access":
+        if request.headers["authorization"] == f"Bearer {access_token('old')}":
             return httpx.Response(401, content=rejection)
         return success_response(operation)
 
@@ -147,9 +148,9 @@ def test_storage_refreshes_once_and_replays_the_request(
     storage_operation(client, operation)
 
     assert [request.headers["authorization"] for request in requests] == [
-        "Bearer old-access",
+        f"Bearer {access_token('old')}",
         "Bearer anon",
-        "Bearer new-access",
+        f"Bearer {access_token('new')}",
     ]
     assert requests[0].url == requests[2].url
     assert requests[0].method == requests[2].method
@@ -248,7 +249,7 @@ def test_remove_refreshes_only_the_rejected_path_and_reuses_rotated_credentials(
             return refresh_response()
         if (
             request.url.path.endswith("/second")
-            and request.headers["authorization"] == "Bearer old-access"
+            and request.headers["authorization"] == f"Bearer {access_token('old')}"
         ):
             return httpx.Response(401, json={"error": "expired"})
         return success_response("remove")
@@ -262,11 +263,11 @@ def test_remove_refreshes_only_the_rejected_path_and_reuses_rotated_credentials(
     assert [
         (request.url.path, request.headers["authorization"]) for request in requests
     ] == [
-        ("/storage/assets/first", "Bearer old-access"),
-        ("/storage/assets/second", "Bearer old-access"),
+        ("/storage/assets/first", f"Bearer {access_token('old')}"),
+        ("/storage/assets/second", f"Bearer {access_token('old')}"),
         ("/auth/refresh", "Bearer anon"),
-        ("/storage/assets/second", "Bearer new-access"),
-        ("/storage/assets/third", "Bearer new-access"),
+        ("/storage/assets/second", f"Bearer {access_token('new')}"),
+        ("/storage/assets/third", f"Bearer {access_token('new')}"),
     ]
 
 
@@ -318,7 +319,7 @@ def test_remove_refreshes_each_rejected_path_from_its_current_generation() -> No
         if request.url.path == "/auth/refresh":
             refresh_count += 1
             payload = refresh_response().json()
-            payload["access_token"] = f"access-{refresh_count}"
+            payload["access_token"] = access_token(str(refresh_count))
             payload["refresh_token"] = f"refresh-{refresh_count}"
             return httpx.Response(200, json=payload)
         if request.url.path not in attempted:
@@ -332,11 +333,11 @@ def test_remove_refreshes_each_rejected_path_from_its_current_generation() -> No
         "second",
     )
     assert [request.headers["authorization"] for request in requests] == [
-        "Bearer old-access",
+        f"Bearer {access_token('old')}",
         "Bearer anon",
-        "Bearer access-1",
-        "Bearer access-1",
+        f"Bearer {access_token('1')}",
+        f"Bearer {access_token('1')}",
         "Bearer anon",
-        "Bearer access-2",
+        f"Bearer {access_token('2')}",
     ]
     assert refresh_count == 2

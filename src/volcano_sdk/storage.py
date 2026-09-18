@@ -35,6 +35,7 @@ from .models import (
 )
 
 if TYPE_CHECKING:
+    from ._session_operations import SessionOperations
     from .auth import Auth
 
 _INVALID_STORAGE_PAGE = "Expected a complete storage page"
@@ -292,7 +293,9 @@ class StorageContext(Protocol):
 
     def _session_token(self) -> str: ...
 
-    def _capture_session_binding(self) -> tuple[int, int, Session | None]: ...
+    def _capture_session_binding(
+        self,
+    ) -> tuple[int, SessionOperations, Session | None]: ...
 
 
 class StorageListTransport(Protocol):
@@ -707,7 +710,9 @@ class StorageBucket:
             self._remove_path(path, binding)
         return path_list
 
-    def _remove_path(self, path: str, binding: tuple[int, int, Session | None]) -> None:
+    def _remove_path(
+        self, path: str, binding: tuple[int, SessionOperations, Session | None]
+    ) -> None:
         transport = cast("StorageDeleteTransport", self._client._transport)
         response = self._client.auth._session_request(
             lambda token: invoke(

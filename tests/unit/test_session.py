@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, cast
 
 import httpx
 import pytest
+from session_fixtures import access_token
 
 from volcano_sdk import Session, VolcanoClient
 from volcano_sdk._transport import GeneratedTransport
@@ -27,7 +28,7 @@ def test_authentication_retains_the_local_user_snapshot(operation: str) -> None:
         return httpx.Response(
             201 if request.url.path == "/auth/signup-anonymous" else 200,
             json={
-                "access_token": "access",
+                "access_token": access_token(),
                 "refresh_token": "refresh",
                 "user": user,
                 "token_type": "bearer",
@@ -42,7 +43,9 @@ def test_authentication_retains_the_local_user_snapshot(operation: str) -> None:
             httpx_transport=httpx.MockTransport(handle),
         ),
     )
-    client.auth.set_session(Session("old", "old-refresh", str(user["id"])))
+    client.auth.set_session(
+        Session(access_token("old"), "old-refresh", str(user["id"]))
+    )
     operations = {
         "signin": lambda: client.auth.sign_in(
             email="user@example.com", password="secret"

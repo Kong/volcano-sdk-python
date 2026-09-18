@@ -10,8 +10,13 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock, call
 
+import httpx
 import pytest
 from behave.step_registry import registry
+from session_fixtures import access_token
+
+from volcano_sdk import Session, VolcanoClient
+from volcano_sdk._transport import GeneratedTransport
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -96,6 +101,12 @@ def test_staged_lock_recovery_matches_proposed_shared_source() -> None:
     assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
 
 
+def test_staged_token_bootstrap_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "auth-token-bootstrap.feature"
+    expected = "7f2cef1489ce2cb5a9f3ba230d7f411197415a0f4a3c14f38361c5ce0522e0ac"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
 def test_every_contract_phrase_is_bound_verbatim() -> None:
     registry.clear()
     _load_module(
@@ -125,6 +136,14 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the client loads its server-validated profile",
         "the returned and cached profiles belong to the contract user",
         (
+            "a fresh client tries to refresh a supplied profile "
+            "without a session identifier"
+        ),
+        "a fresh client starts with only the current access token",
+        "a fresh client starts with a rejected access token",
+        "the token-only session has no cached user",
+        "the session retains only the supplied access token",
+        (
             "one client pauses delivery for 1 second "
             "and then resumes with the same handler"
         ),
@@ -133,6 +152,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the function echoes the payload",
         "a fresh client adopts the current session",
         "a fresh client tries to refresh the signed-out session",
+        "a fresh client loads a profile with the signed-out access token",
         "an authenticated client",
         "exactly the deleted contract row is returned",
         "exactly the fixture row is returned",
@@ -147,6 +167,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the force-released lock is available",
         "the client reacquires the force-released contract lock",
         "the replacement owner receives a higher fencing token",
+        "the SDK operation fails",
         "the client acquires and releases the contract lock",
         "the client deletes its contract row",
         "the client deletes a missing contract row",
@@ -259,3 +280,76 @@ def test_fixture_loader_requires_absolute_private_file(tmp_path: Path) -> None:
             environment.load_fixture(Path("fixture.json"))
     finally:
         os.chdir(previous)
+
+
+@pytest.mark.parametrize("revoked", [False, True])
+def test_bootstrap_cleanup_is_disarmed_only_after_successful_revocation(
+    monkeypatch: pytest.MonkeyPatch, *, revoked: bool
+) -> None:
+    registry.clear()
+    steps = _load_module(
+        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
+    )
+    source = Mock()
+    source.auth.get_session.return_value = SimpleNamespace(
+        access_token="captured-access"
+    )
+    target = Mock()
+    world = SimpleNamespace(
+        client=source,
+        fixture={"api_url": "https://api.test", "anon_key": "anon"},
+        cleanup_callbacks=[],
+        realtime_clients=[],
+        loop=Mock(),
+        bootstrap_cleanup=None,
+        record=Mock(return_value=SimpleNamespace(ok=revoked)),
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(steps, "VolcanoClient", Mock(return_value=target))
+        steps.bootstrap_access_token(SimpleNamespace(contract=world))
+        steps.sign_out(SimpleNamespace(contract=world))
+        steps.ContractWorld.cleanup(world)
+    assert source.auth.sign_out.call_count == (0 if revoked else 1)
+
+
+def test_rejected_token_binding_preserves_refreshable_session_identity() -> None:
+    registry.clear()
+    steps = _load_module(
+        "contract_steps", ROOT / "features/steps/sdk_contract_steps.py"
+    )
+    user = "00000000-0000-4000-8000-000000000001"
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "access_token": access_token("renewed"),
+                "refresh_token": "rotated",
+                "token_type": "bearer",
+                "expires_in": 3600,
+                "user": {"id": user, "email": "u@example.com", "status": "active"},
+            },
+        )
+
+    client = VolcanoClient(
+        anon_key="anon",
+        _transport=GeneratedTransport(
+            api_url="https://api.test", httpx_transport=httpx.MockTransport(handle)
+        ),
+    )
+    client.auth.set_session(Session(access_token(), "refresh", user))
+    world = SimpleNamespace(client=client, fixture={"user_id": user})
+    context = SimpleNamespace(contract=world)
+    steps.replace_access_token(context)
+    assert client.current_session is not None
+    assert client.current_session.access_token != access_token()
+    assert (
+        client.current_session.access_token.split(".")[:2]
+        == access_token().split(".")[:2]
+    )
+    client.auth.refresh_session()
+    steps.read_replaced_token(context)
+    assert len(requests) == 1
+    assert requests[0].url.path == "/auth/refresh"

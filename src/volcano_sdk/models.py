@@ -84,11 +84,11 @@ class User:
 
 @dataclass(frozen=True, slots=True)
 class Session:
-    """Authenticated user session."""
+    """Local credentials with optional refresh credentials and user identity."""
 
     access_token: str
-    refresh_token: str
-    user_id: str
+    refresh_token: str | None = None
+    user_id: str | None = None
     user: Mapping[str, JSONValue] | None = field(default=None, repr=False, hash=False)
 
     def __post_init__(self) -> None:
