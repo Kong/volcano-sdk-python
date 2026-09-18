@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import importlib
+import json
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
@@ -18,9 +20,6 @@ from volcano_sdk import (
     VolcanoClient,
 )
 from volcano_sdk import realtime as realtime_module
-from volcano_sdk._generated.models.auth_get_user_response_200 import (
-    AuthGetUserResponse200,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -4405,29 +4404,22 @@ def test_realtime_cancelled_unsubscribe_settles_on_native_timeout(
     asyncio.run(scenario())
 
 
-def test_realtime_pins_bootstrap_identity_before_connecting() -> None:
-    user_id = "00000000-0000-4000-8000-000000000001"
+@pytest.mark.parametrize("same_session", [False, True])
+def test_realtime_binds_bootstrap_refresh_without_profile(
+    *, same_session: bool
+) -> None:
+    def token(session_id: str) -> str:
+        payload = base64.urlsafe_b64encode(
+            json.dumps({"session_id": session_id}).encode()
+        ).decode()
+        return f"header.{payload}.signature"
 
     class BootstrapTransport(AuthTransport):
-        def auth_get_user(self, **_arguments: Any) -> Response:
-            return Response(
-                200,
-                AuthGetUserResponse200.from_dict(
-                    {
-                        "user": {
-                            "id": user_id,
-                            "email": "u@example.com",
-                            "status": "active",
-                        }
-                    }
-                ),
-            )
-
         def auth_refresh(self, **_arguments: Any) -> Response:
             return Response(
                 200,
                 {
-                    "access_token": "other-access",
+                    "access_token": token("session-a" if same_session else "session-b"),
                     "refresh_token": "other-refresh",
                     "user": {"id": "00000000-0000-4000-8000-000000000002"},
                 },
@@ -4437,7 +4429,7 @@ def test_realtime_pins_bootstrap_identity_before_connecting() -> None:
         official = FakeCentrifugeClient()
         client = VolcanoClient(
             anon_key="anon",
-            access_token="access-token",
+            access_token=token("session-a"),
             refresh_token="other-refresh",
             _transport=BootstrapTransport(),
             _realtime_client_factory=FakeCentrifugeFactory(official),
@@ -4445,10 +4437,16 @@ def test_realtime_pins_bootstrap_identity_before_connecting() -> None:
         try:
             await client.realtime.channel("contract").subscribe()
             assert client.current_session is not None
-            assert client.current_session.user_id == user_id
-            with pytest.raises(AuthenticationError, match="different user"):
+            assert client.current_session.user_id is None
+            if same_session:
                 client.auth.refresh_session()
-            assert client.current_session.access_token == "access-token"
+                await client.realtime.channel("another").subscribe()
+            else:
+                with pytest.raises(
+                    AuthenticationError, match="different server session"
+                ):
+                    client.auth.refresh_session()
+            assert client.current_session.access_token == token("session-a")
         finally:
             await client.realtime.disconnect()
 

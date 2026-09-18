@@ -25,7 +25,6 @@ from ._transport import (
 from .models import JSONValue, _freeze_json
 
 if TYPE_CHECKING:
-    from .auth import Auth
     from .models import Session
 
 MessageCallback = Callable[[Any], Any]
@@ -278,7 +277,6 @@ class RealtimeContext(Protocol):
     """Client capabilities required by realtime connections."""
 
     _transport: Transport
-    auth: Auth
 
     def _anon_token(self) -> str: ...
 
@@ -1440,10 +1438,6 @@ class Realtime:
         _generation, lineage, session = self._client_context._capture_session_binding()
         if session is None:
             raise RuntimeError(NO_ACTIVE_SESSION)
-        if session.user_id is None:
-            # Pin identity before a socket can outlive the bootstrap credentials.
-            await asyncio.to_thread(self._client_context.auth.get_user)
-            session = self._session_for_lineage(lineage)
         connection = _VolcanoCentrifugeConnection(
             self._client_factory(
                 self._address(),

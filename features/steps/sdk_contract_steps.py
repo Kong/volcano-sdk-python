@@ -84,7 +84,8 @@ def bootstrap_access_token(context: Any) -> None:
     source = world.client
     world.previous_session = source.auth.get_session()
     assert world.previous_session is not None
-    world.cleanup_callbacks.append(source.auth.sign_out)
+    world.bootstrap_cleanup = source.auth.sign_out
+    world.cleanup_callbacks.append(world.bootstrap_cleanup)
     world.client = VolcanoClient(
         api_url=world.fixture["api_url"],
         anon_key=world.fixture["anon_key"],
@@ -137,7 +138,10 @@ def sign_out(context: Any) -> None:
     world = _world(context)
     world.signed_out_session = world.client.auth.get_session()
     assert world.signed_out_session is not None
-    world.record(world.client.auth.sign_out)
+    outcome = world.record(world.client.auth.sign_out)
+    if outcome.ok and world.bootstrap_cleanup is not None:
+        world.cleanup_callbacks.remove(world.bootstrap_cleanup)
+        world.bootstrap_cleanup = None
 
 
 @then("the current session is empty")

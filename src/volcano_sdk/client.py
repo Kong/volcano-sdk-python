@@ -8,6 +8,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, TypedDict, Unpack
 from uuid import UUID
 
+from ._session import validate_refresh_identity
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
 from .database import Database
@@ -33,20 +34,6 @@ _NO_ACTIVE_SESSION = "No active session"
 _NO_SERVICE_KEY = "No service key configured"
 _PROFILE_USER_MISMATCH = "Profile user does not match the active session"
 _BOOTSTRAP_ACCESS_REQUIRED = "refresh_token requires access_token"
-_REFRESH_USER_MISMATCH = "Refreshed session belongs to a different user"
-
-
-def _validate_refresh_identity(current: Session | None, refreshed: Session) -> None:
-    if current is None or current.user_id is None:
-        return
-    if current.user_id == refreshed.user_id:
-        return
-    try:
-        matches = UUID(current.user_id) == UUID(str(refreshed.user_id))
-    except ValueError:
-        matches = False
-    if not matches:
-        raise AuthenticationError(_REFRESH_USER_MISMATCH)
 
 
 class _BootstrapCredentials(TypedDict, total=False):
@@ -246,7 +233,7 @@ class VolcanoClient:
             if generation != self._session_generation:
                 return False
             if event == "TOKEN_REFRESHED":
-                _validate_refresh_identity(self._current_session, session)
+                validate_refresh_identity(self._current_session, session)
             self._current_session = session
             self._session_generation += 1
             if event != "TOKEN_REFRESHED":
@@ -261,11 +248,15 @@ class VolcanoClient:
         self,
         generation: int,
         *,
+        lineage: int | None = None,
         event: AuthChangeEvent = "SIGNED_OUT",
         notifications: list[Callable[[], None]] | None = None,
     ) -> bool:
         with self._session_lock:
-            if generation != self._session_generation:
+            if lineage is not None:
+                if lineage != self._session_lineage:
+                    return False
+            elif generation != self._session_generation:
                 return False
             self._current_session = None
             self._session_generation += 1

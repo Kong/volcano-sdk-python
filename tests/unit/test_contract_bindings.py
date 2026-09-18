@@ -271,3 +271,33 @@ def test_fixture_loader_requires_absolute_private_file(tmp_path: Path) -> None:
             environment.load_fixture(Path("fixture.json"))
     finally:
         os.chdir(previous)
+
+
+@pytest.mark.parametrize("revoked", [False, True])
+def test_bootstrap_cleanup_is_disarmed_only_after_successful_revocation(
+    monkeypatch: pytest.MonkeyPatch, *, revoked: bool
+) -> None:
+    registry.clear()
+    steps = _load_module(
+        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
+    )
+    source = Mock()
+    source.auth.get_session.return_value = SimpleNamespace(
+        access_token="captured-access"
+    )
+    target = Mock()
+    world = SimpleNamespace(
+        client=source,
+        fixture={"api_url": "https://api.test", "anon_key": "anon"},
+        cleanup_callbacks=[],
+        realtime_clients=[],
+        loop=Mock(),
+        bootstrap_cleanup=None,
+        record=Mock(return_value=SimpleNamespace(ok=revoked)),
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(steps, "VolcanoClient", Mock(return_value=target))
+        steps.bootstrap_access_token(SimpleNamespace(contract=world))
+        steps.sign_out(SimpleNamespace(contract=world))
+        steps.ContractWorld.cleanup(world)
+    assert source.auth.sign_out.call_count == (0 if revoked else 1)

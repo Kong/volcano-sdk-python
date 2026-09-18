@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import base64
-import binascii
-import json
 import secrets
 import threading
 from collections.abc import Mapping
@@ -43,6 +40,11 @@ from ._generated.models.refresh_o_auth_provider_token_response_200 import (
     RefreshOAuthProviderTokenResponse200,
 )
 from ._generated.types import Unset
+from ._session import (
+    session_id_from_access_token,
+    validate_refresh_identity,
+    validate_refresh_source,
+)
 from ._transport import (
     AuthCallOAuthAPITransport,
     AuthCancelEmailChangeTransport,
@@ -115,7 +117,6 @@ _INVALID_OAUTH_PARAMETER = "OAuth parameters must be non-empty strings"
 _INVALID_OAUTH_STATE = "OAuth state must not exceed 255 characters"
 _OAUTH_STATE_MISMATCH = "OAuth state mismatch"
 _MAX_OAUTH_STATE_LENGTH = 255
-_JWT_PARTS = 3
 _NO_ACTIVE_SESSION = "No active session"
 _REFRESH_UNAVAILABLE = "No refresh token"
 _T = TypeVar("_T")
@@ -168,26 +169,6 @@ def _validate_oauth_callback_state(state: str, expected_state: str) -> None:
     expected = _oauth_state(expected_state).encode()
     if not secrets.compare_digest(actual, expected):
         raise ValueError(_OAUTH_STATE_MISMATCH)
-
-
-def _session_id_from_access_token(access_token: str) -> str | None:
-    parts = access_token.split(".")
-    if len(parts) != _JWT_PARTS:
-        return None
-    padding = "=" * (-len(parts[1]) % 4)
-    try:
-        payload: object = json.loads(
-            base64.urlsafe_b64decode(parts[1] + padding).decode()
-        )
-    except (binascii.Error, json.JSONDecodeError, UnicodeDecodeError):
-        return None
-    if not isinstance(payload, Mapping):
-        return None
-    values = cast("Mapping[object, object]", payload)
-    session_id = values.get("session_id")
-    if not isinstance(session_id, str) or not session_id.strip():
-        return None
-    return session_id.strip()
 
 
 def _has_complete_values(session: Session) -> bool:
@@ -488,6 +469,7 @@ class AuthContext(Protocol):
         self,
         generation: int,
         *,
+        lineage: int | None = None,
         event: AuthChangeEvent = "SIGNED_OUT",
         notifications: list[Callable[[], None]] | None = None,
     ) -> bool: ...
@@ -896,7 +878,7 @@ class Auth:
         generation, current = self._client._capture_session()
         if current is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        current_session_id = _session_id_from_access_token(current.access_token)
+        current_session_id = session_id_from_access_token(current.access_token)
         deletes_current = (
             current_session_id is not None
             and current_session_id.casefold() == session_id.casefold()
@@ -1107,6 +1089,7 @@ class Auth:
         generation, lineage, _ = binding
         if current.refresh_token is None:
             raise AuthenticationError(_REFRESH_UNAVAILABLE)
+        validate_refresh_source(current)
         try:
             refreshed = self._request_refreshed_session(current.refresh_token)
         except AuthenticationError:
@@ -1138,7 +1121,7 @@ class Auth:
 
     def sign_out(self) -> None:
         """Revoke and clear the current session."""
-        generation, current = self._client._capture_session()
+        generation, lineage, current = self._client._capture_session_binding()
         if current is None:
             return
         error: VolcanoError | None = None
@@ -1146,22 +1129,19 @@ class Auth:
             self._revoke_session(current)
         except VolcanoError as caught:
             error = caught
-        if not self._client._clear_session_if_current(generation):
+        server_session = session_id_from_access_token(current.access_token)
+        if not self._client._clear_session_if_current(
+            generation, lineage=lineage if server_session else None
+        ):
             raise SessionChangedError from error
         if error is not None:
             raise error
 
     def _revoke_session(self, session: Session) -> None:
-        if session_id := _session_id_from_access_token(session.access_token):
-            session_transport = cast(
-                "AuthDeleteMySessionTransport", self._client._transport
-            )
-            response = invoke(
-                session_transport.auth_delete_my_session,
-                authorization=session.access_token,
-                session_id=session_id,
-            )
-        elif session.refresh_token is not None:
+        if session_id := session_id_from_access_token(session.access_token):
+            self._revoke_access_session(session, session_id)
+            return
+        if session.refresh_token is not None:
             transport = cast("AuthLogoutTransport", self._client._transport)
             response = invoke(
                 transport.auth_logout,
@@ -1170,4 +1150,24 @@ class Auth:
             )
         else:
             return
+        response_payload(response, 204)
+
+    def _revoke_access_session(self, session: Session, session_id: str) -> None:
+        transport = cast("AuthDeleteMySessionTransport", self._client._transport)
+        response = invoke(
+            transport.auth_delete_my_session,
+            authorization=session.access_token,
+            session_id=session_id,
+        )
+        if (
+            response.status_code == HTTPStatus.UNAUTHORIZED
+            and session.refresh_token is not None
+        ):
+            refreshed = self._request_refreshed_session(session.refresh_token)
+            validate_refresh_identity(session, refreshed)
+            response = invoke(
+                transport.auth_delete_my_session,
+                authorization=refreshed.access_token,
+                session_id=session_id,
+            )
         response_payload(response, 204)

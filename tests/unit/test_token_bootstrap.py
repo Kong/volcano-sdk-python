@@ -24,6 +24,13 @@ SUPPLIED_ACCESS = "supplied-access"
 PROFILE = {"id": USER_ID, "email": "user@example.com", "status": "active"}
 
 
+def bootstrap_token(*, renewed: bool = False) -> str:
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"session_id": "bootstrap-session", "renewed": renewed}).encode()
+    ).decode()
+    return f"header.{payload}.signature"
+
+
 def token_client(
     handler: Callable[[httpx.Request], httpx.Response],
     *,
@@ -96,26 +103,28 @@ def test_token_bootstrap_can_refresh_when_a_refresh_token_was_supplied() -> None
             return httpx.Response(
                 200,
                 json={
-                    "access_token": "refreshed-access",
+                    "access_token": bootstrap_token(renewed=True),
                     "refresh_token": "rotated-refresh",
                     "token_type": "bearer",
                     "expires_in": 3600,
                     "user": PROFILE,
                 },
             )
-        if request.headers["authorization"] == "Bearer supplied-access":
+        if request.headers["authorization"] == f"Bearer {bootstrap_token()}":
             return httpx.Response(401, json={"error": "expired"})
         return httpx.Response(200, json={"user": PROFILE})
 
-    client = token_client(handle, refresh_token="supplied-refresh")
+    client = token_client(
+        handle, refresh_token="supplied-refresh", access_token=bootstrap_token()
+    )
     assert client.auth.get_user().id == USER_ID
     current = client.current_session
     assert current is not None
     assert current.refresh_token == "rotated-refresh"
     assert [request.headers["authorization"] for request in requests] == [
-        "Bearer supplied-access",
+        f"Bearer {bootstrap_token()}",
         "Bearer anon",
-        "Bearer refreshed-access",
+        f"Bearer {bootstrap_token(renewed=True)}",
     ]
 
 
@@ -192,7 +201,9 @@ def test_refresh_cannot_replace_a_validated_bootstrap_identity(
             )
         return httpx.Response(401, json={"error": "expired"})
 
-    client = token_client(handle, refresh_token="supplied-refresh")
+    client = token_client(
+        handle, refresh_token="supplied-refresh", access_token=bootstrap_token()
+    )
     if not enrich_during_refresh:
         client.auth.get_user()
     run: Callable[[], object] = (
@@ -204,7 +215,7 @@ def test_refresh_cannot_replace_a_validated_bootstrap_identity(
         run()
     assert client.current_session is not None
     assert client.current_session.user_id == USER_ID
-    assert client.current_session.access_token == "supplied-access"
+    assert client.current_session.access_token == bootstrap_token()
     assert all(
         request.headers["authorization"] != "Bearer other-user-access"
         for request in requests
@@ -245,7 +256,10 @@ def test_token_only_sign_out_revokes_the_captured_session(
             client.auth.sign_out()
     else:
         client.auth.sign_out()
-    assert [(r.method, r.url.path, r.headers["authorization"]) for r in requests] == [
-        ("DELETE", f"/auth/user/sessions/{session_id}", f"Bearer {token}")
-    ]
+    expected = [("DELETE", f"/auth/user/sessions/{session_id}", f"Bearer {token}")]
+    if outcome == 401 and refresh_token is not None:
+        expected.append(("POST", "/auth/refresh", "Bearer anon"))
+    assert [
+        (r.method, r.url.path, r.headers["authorization"]) for r in requests
+    ] == expected
     assert client.current_session == (replacement if replace else None)
