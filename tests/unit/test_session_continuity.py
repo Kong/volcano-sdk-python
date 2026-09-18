@@ -502,9 +502,9 @@ def test_sign_out_joins_an_outcome_after_local_clearing(
         assert owner.signing_out is not None
         result = owner.signing_out.result
 
-        def observe_join(timeout: float | None = None) -> None:
+        def observe_join(timeout: float | None = None) -> BaseException | None:
             joined.set()
-            result(timeout)
+            return result(timeout)
 
         monkeypatch.setattr(owner.signing_out, "result", observe_join)
         second = pool.submit(client.auth.sign_out)
@@ -637,3 +637,49 @@ def test_local_clear_before_refresh_claim_prevents_io(
     assert len(requests) == 1
     assert requests[0].url.path == f"/auth/user/sessions/{SESSION_A}"
     assert client.current_session is None
+
+
+@pytest.mark.parametrize("action", ["sign_out", "replace"])
+def test_refresh_rechecks_ownership_after_notifying_subscribers(action: str) -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        return (
+            refreshed(SESSION_A)
+            if request.url.path == "/auth/refresh"
+            else httpx.Response(204)
+        )
+
+    client = client_for(handle)
+    replacement = Session(access_token(SESSION_B), "other-refresh", USER_B)
+
+    def on_change(event: str, _session: Session | None) -> None:
+        if event == "TOKEN_REFRESHED":
+            if action == "sign_out":
+                client.auth.sign_out()
+            else:
+                client.auth.set_session(replacement)
+
+    client.auth.on_auth_state_change(on_change)
+    with pytest.raises(SessionChangedError):
+        client.auth.refresh_session()
+    assert client.current_session == (None if action == "sign_out" else replacement)
+
+
+def test_failed_sign_out_does_not_store_a_credential_bearing_traceback() -> None:
+    def handle(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            503, json={"error": "revocation unavailable", "code": "unavailable"}
+        )
+
+    client = client_for(handle)
+    owner = client._capture_session_binding()[1]
+    with pytest.raises(VolcanoError, match="revocation unavailable") as caught:
+        client.auth.sign_out()
+    assert caught.value.status == 503
+    assert caught.value.code == "unavailable"
+    assert owner.signing_out is not None
+    assert owner.signing_out.exception() is None
+    failure = owner.signing_out.result()
+    assert isinstance(failure, VolcanoError)
+    assert failure.__traceback__ is None
+    assert failure.__context__ is None
+    assert failure.__cause__ is None

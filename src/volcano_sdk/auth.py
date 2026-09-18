@@ -1064,17 +1064,16 @@ class Auth:
                 )
             if owner.signing_out is not None:
                 raise SessionChangedError
-            active = self._owned_refresh_session(binding)[2]
-            if active is None:
-                raise SessionChangedError
         except VolcanoError:
             self._validate_read_failure(binding)
             raise
-        else:
-            return active
         finally:
             for dispatch in notifications:
                 dispatch()
+        active = self._owned_refresh_session(binding)[2]
+        if active is None:
+            raise SessionChangedError
+        return active
 
     def _owned_refresh_session(
         self, binding: tuple[int, SessionOperations, Session | None]

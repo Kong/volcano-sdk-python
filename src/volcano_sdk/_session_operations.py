@@ -6,7 +6,7 @@ from concurrent.futures import Future
 from threading import Lock
 from typing import TYPE_CHECKING, TypeVar
 
-from .errors import SessionChangedError
+from .errors import SessionChangedError, VolcanoError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -16,13 +16,25 @@ if TYPE_CHECKING:
 _T = TypeVar("_T")
 
 
+def _copy_failure(error: BaseException, *, include_cause: bool = True) -> BaseException:
+    """Copy public failure details without retaining request frames or contexts."""
+    copied = type(error).__new__(type(error), *error.args)
+    if isinstance(error, VolcanoError) and isinstance(copied, VolcanoError):
+        copied.status = error.status
+        copied.code = error.code
+        copied.retry_after = error.retry_after
+    if include_cause and isinstance(error.__cause__, VolcanoError):
+        copied.__cause__ = _copy_failure(error.__cause__, include_cause=False)
+    return copied
+
+
 class SessionOperations:
     """Retain only this session's latest refresh and shared sign-out outcome."""
 
     def __init__(self, verified: Session | None = None) -> None:
         self._lock = Lock()
         self.refreshing: Future[Session] | None = None
-        self.signing_out: Future[None] | None = None
+        self.signing_out: Future[BaseException | None] | None = None
         self._locally_cleared = False
         self._verified_pair = (
             (verified.access_token, verified.refresh_token)
@@ -90,17 +102,37 @@ class SessionOperations:
             preceding = self.refreshing
             pending = preceding is not None and not preceding.done()
         if owner:
-            self._complete(
-                future, lambda: self._revoke(operation, preceding, pending=pending)
-            )
-        future.result()
+            self._complete_revocation(future, operation, preceding, pending=pending)
+        self._sign_out_result(future)
 
     def wait_for_sign_out(self) -> None:
         with self._lock:
             future = self.signing_out
             pending = future is not None and not future.done()
         if pending and future is not None:
-            future.result()
+            self._sign_out_result(future)
+
+    @staticmethod
+    def _sign_out_result(future: Future[BaseException | None]) -> None:
+        failure = future.result()
+        if failure is not None:
+            # Raising the retained template would attach credential-bearing frames.
+            raise _copy_failure(failure)
+
+    def _complete_revocation(
+        self,
+        future: Future[BaseException | None],
+        operation: Callable[[Future[Session] | None, bool], None],
+        preceding: Future[Session] | None,
+        *,
+        pending: bool,
+    ) -> None:
+        try:
+            self._revoke(operation, preceding, pending=pending)
+        except BaseException as error:
+            future.set_result(_copy_failure(error))
+            raise
+        future.set_result(None)
 
     def _revoke(
         self,
