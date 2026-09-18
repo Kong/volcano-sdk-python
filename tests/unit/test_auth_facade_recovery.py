@@ -311,3 +311,24 @@ def test_delete_current_session_preserves_explicit_replacement(
     with pytest.raises(SessionChangedError):
         client.auth.delete_session(session_id=SESSION)
     assert client.current_session == replacement
+
+
+@pytest.mark.parametrize("clearing", ["sign_out", "rejected_refresh"])
+def test_delete_other_session_rejects_completion_after_local_clear(
+    clearing: str,
+) -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/refresh":
+            return httpx.Response(401, json={"error": "expired refresh"})
+        if request.url.path.endswith(SESSION):
+            if clearing == "sign_out":
+                client.auth.sign_out()
+            else:
+                with pytest.raises(VolcanoError, match="expired refresh"):
+                    client.auth.refresh_session()
+        return httpx.Response(204)
+
+    client = client_for(handle)
+    with pytest.raises(SessionChangedError):
+        client.auth.delete_session(session_id=SESSION)
+    assert client.current_session is None

@@ -926,13 +926,12 @@ class Auth:
                 raise SessionChangedError from error
             raise
         if deletes_current:
-            current_unchanged = self._client._clear_session_if_current(
-                generation, lineage=lineage
-            )
+            if not self._client._clear_session_if_current(generation, lineage=lineage):
+                raise SessionChangedError
         else:
-            current_unchanged = self._client._capture_session_binding()[1] == lineage
-        if not current_unchanged:
-            raise SessionChangedError
+            _, active_lineage, active_session = self._client._capture_session_binding()
+            if active_lineage is not lineage or active_session is None:
+                raise SessionChangedError
 
     def confirm_email(self, *, token: str) -> None:
         """Confirm an email with its token without changing local state."""
