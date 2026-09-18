@@ -12,9 +12,13 @@ import pytest
 
 from volcano_sdk import AuthenticationError, Session, SessionChangedError, VolcanoClient
 from volcano_sdk._transport import GeneratedTransport
+from volcano_sdk.errors import VolcanoError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from concurrent.futures import Future
+
+    from volcano_sdk._session_operations import SessionOperations
 
 SESSION_A = "00000000-0000-4000-8000-000000000001"
 SESSION_B = "00000000-0000-4000-8000-000000000002"
@@ -146,20 +150,21 @@ def test_sign_out_renews_expired_access_only_for_the_same_captured_session(
     assert client.current_session == (replacement if replace else None)
 
 
-def test_sign_out_clears_a_refresh_of_the_same_server_session() -> None:
+def test_sign_out_prevents_a_new_refresh_of_the_same_server_session() -> None:
     requests: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         if request.url.path == "/auth/refresh":
             return refreshed(SESSION_A)
-        client.auth.refresh_session()
+        with pytest.raises(SessionChangedError):
+            client.auth.refresh_session()
         return httpx.Response(204)
 
     client = client_for(handle)
     client.auth.sign_out()
     assert client.current_session is None
-    assert [r.method for r in requests] == ["DELETE", "POST"]
+    assert [r.method for r in requests] == ["DELETE"]
 
 
 @pytest.mark.parametrize("token", ["a.é.c", "a.☃.c", "a.!!!!.c"])
@@ -189,8 +194,11 @@ def test_expired_sign_out_never_revokes_a_mismatched_refresh_session(
     assert [r.method for r in requests] == ["DELETE", "POST"]
 
 
+@pytest.mark.parametrize("replace_session", [False, True])
 def test_sign_out_joins_a_refresh_that_already_owns_the_rotating_token(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    replace_session: bool,
 ) -> None:
     refresh_entered, finish_refresh, sign_out_captured = Event(), Event(), Event()
     requests: list[httpx.Request] = []
@@ -210,7 +218,7 @@ def test_sign_out_joins_a_refresh_that_already_owns_the_rotating_token(
     client = client_for(handle)
     capture = client._capture_session_binding
 
-    def capture_and_signal() -> tuple[int, int, Session | None]:
+    def capture_and_signal() -> tuple[int, SessionOperations, Session | None]:
         binding = capture()
         if current_thread().name.startswith("logout"):
             sign_out_captured.set()
@@ -227,17 +235,27 @@ def test_sign_out_joins_a_refresh_that_already_owns_the_rotating_token(
         try:
             assert sign_out_captured.wait(2)
             assert not signing_out.done()
+            if replace_session:
+                client.auth.set_session(
+                    Session("replacement", "replacement-refresh", USER_B)
+                )
         finally:
             finish_refresh.set()
         # Logout may clear the lineage before the refresh caller reads it.
         with suppress(SessionChangedError):
             refreshing.result(timeout=2)
-        signing_out.result(timeout=2)
-    assert client.current_session is None
-    assert [r.method for r in requests] == ["POST", "DELETE"]
-    assert requests[-1].headers["authorization"] == (
-        f"Bearer {access_token(SESSION_A, renewed=True)}"
+        if replace_session:
+            with pytest.raises(SessionChangedError):
+                signing_out.result(timeout=2)
+        else:
+            signing_out.result(timeout=2)
+    assert client.current_session == (
+        Session("replacement", "replacement-refresh", USER_B)
+        if replace_session
+        else None
     )
+    assert [r.url.path for r in requests] == ["/auth/refresh", "/auth/logout"]
+    assert json.loads(requests[-1].content) == {"refresh_token": "rotated-refresh"}
 
 
 @pytest.mark.parametrize("identifier", ["not-a-uuid", "../other-session", "", "  "])
@@ -254,4 +272,166 @@ def test_sign_out_uses_refresh_logout_for_an_invalid_session_claim(
     client._current_session = Session(access_token(identifier), "refresh", None)
     client.auth.sign_out()
     assert [r.url.path for r in requests] == ["/auth/logout"]
+    assert client.current_session is None
+
+
+@pytest.mark.parametrize("status", [401, 403, 429, 503])
+def test_sign_out_surfaces_the_refresh_it_joined_without_claiming_replacement(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    entered, release, claimed = Event(), Event(), Event()
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/refresh":
+            entered.set()
+            assert release.wait(2)
+            return httpx.Response(status, json={"error": "refresh rejected"})
+        return httpx.Response(401, json={"error": "expired access"})
+
+    client = client_for(handle)
+    original = client.auth._sign_out_captured
+
+    def notify_claim(
+        binding: tuple[int, SessionOperations, Session | None],
+        preceding: Future[Session] | None,
+        notifications: list[Callable[[], None]],
+        *,
+        pending: bool,
+    ) -> None:
+        claimed.set()
+        original(binding, preceding, notifications, pending=pending)
+
+    monkeypatch.setattr(client.auth, "_sign_out_captured", notify_claim)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        refreshing = pool.submit(client.auth.refresh_session)
+        assert entered.wait(2)
+        signing_out = pool.submit(client.auth.sign_out)
+        try:
+            assert claimed.wait(2)
+        finally:
+            release.set()
+        with suppress(VolcanoError):
+            refreshing.result(timeout=2)
+        with pytest.raises(VolcanoError) as caught:
+            signing_out.result(timeout=2)
+    assert not isinstance(caught.value, SessionChangedError)
+    assert caught.value.status == status
+    assert [r.method for r in requests] == ["POST", "DELETE"]
+    assert client.current_session is None
+
+
+def test_rejection_between_logout_capture_and_claim_is_not_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entered, release, finished = Event(), Event(), Event()
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/refresh" and not entered.is_set():
+            entered.set()
+            assert release.wait(2)
+        return httpx.Response(401, json={"error": "rejected"})
+
+    client = client_for(handle)
+    capture = client._capture_session_binding
+
+    def capture_before_rejection() -> tuple[int, SessionOperations, Session | None]:
+        binding = capture()
+        if current_thread().name == "MainThread":
+            release.set()
+            assert finished.wait(2)
+        return binding
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        refreshing = pool.submit(client.auth.refresh_session)
+        refreshing.add_done_callback(lambda _: finished.set())
+        assert entered.wait(2)
+        monkeypatch.setattr(
+            client, "_capture_session_binding", capture_before_rejection
+        )
+        with pytest.raises(VolcanoError) as caught:
+            client.auth.sign_out()
+    assert not isinstance(caught.value, SessionChangedError)
+    assert client.current_session is None
+
+
+def test_sign_out_revokes_a_server_issued_pair_without_access_renewal() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/signin":
+            return refreshed(SESSION_A)
+        if request.url.path == "/auth/logout":
+            return httpx.Response(204)
+        if request.url.path == "/auth/refresh":
+            return httpx.Response(429, json={"error": "rate limited"})
+        return httpx.Response(401, json={"error": "expired"})
+
+    client = client_for(handle)
+    client.auth.sign_in(email="user@example.com", password="synthetic")
+    client.auth.sign_out()
+    assert [r.url.path for r in requests] == ["/auth/signin", "/auth/logout"]
+
+
+def test_explicit_adoption_does_not_inherit_server_pair_provenance() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/signin":
+            return refreshed(SESSION_A)
+        return httpx.Response(204)
+
+    client = client_for(handle)
+    original = client.auth.sign_in(email="user@example.com", password="synthetic")
+    client.auth.set_session(
+        Session(access_token(SESSION_B), original.refresh_token, USER_B)
+    )
+    client.auth.sign_out()
+    assert [r.url.path for r in requests] == [
+        "/auth/signin",
+        f"/auth/user/sessions/{SESSION_B}",
+    ]
+
+
+@pytest.mark.parametrize("status", [204, 503])
+def test_concurrent_sign_out_shares_revocation_outcome(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    entered, release, captured = Event(), Event(), Event()
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        entered.set()
+        assert release.wait(2)
+        return httpx.Response(status, json={"error": "unavailable"})
+
+    client = client_for(handle)
+    capture = client._capture_session_binding
+
+    def notify_capture() -> tuple[int, SessionOperations, Session | None]:
+        binding = capture()
+        captured.set()
+        return binding
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(client.auth.sign_out)
+        assert entered.wait(2)
+        monkeypatch.setattr(client, "_capture_session_binding", notify_capture)
+        second = pool.submit(client.auth.sign_out)
+        try:
+            assert captured.wait(2)
+        finally:
+            release.set()
+        for operation in (first, second):
+            if status == 204:
+                assert operation.result(timeout=2) is None
+            else:
+                with pytest.raises(VolcanoError) as caught:
+                    operation.result(timeout=2)
+                assert caught.value.status == status
+    assert len(requests) == 1
     assert client.current_session is None

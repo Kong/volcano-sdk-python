@@ -636,9 +636,13 @@ client.auth.sign_out()
 assert client.auth.get_session() is None
 ```
 
-Sign-out uses the access-token session when available, even if a refresh token was supplied.
+Sign-out uses the refresh token directly when the SDK received both credentials together from
+sign-in or a validated refresh. Supplied credentials use the access-token session; on HTTP 401,
+the SDK can refresh once and revoke that same session without adopting the renewed credentials.
 Calling `sign_out()` without a session succeeds without a request. A revocation failure is raised
-after the captured local session is cleared. A concurrent refresh of the same session is cleared; a separate sign-in or adoption remains current.
+after the captured local session is cleared. Sign-out waits for an already-running refresh and uses its validated credentials.
+Later refresh attempts raise `SessionChangedError` without a request. Concurrent sign-out calls
+share one result. A separate sign-in or adoption remains current.
 
 Realtime is async. Channels wrap `centrifuge-python`; the underlying client and
 subscription objects are not part of the public API.

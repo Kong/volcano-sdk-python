@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import secrets
-import threading
 from collections.abc import Mapping
 from contextlib import suppress
 from copy import deepcopy
@@ -126,11 +125,13 @@ _HOSTED_AUTH_ACTIONS: frozenset[str] = frozenset({"login", "signup", "forgot-pas
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from concurrent.futures import Future
 
     from ._generated.models import (
         AuthListOAuthProvidersResponse200ProvidersItem,
     )
     from ._generated.models.auth_session import AuthSession as GeneratedAuthSession
+    from ._session_operations import SessionOperations
     from ._transport import TransportResponse
 
 
@@ -450,7 +451,9 @@ class AuthContext(Protocol):
 
     def _capture_session(self) -> tuple[int, Session | None]: ...
 
-    def _capture_session_binding(self) -> tuple[int, int, Session | None]: ...
+    def _capture_session_binding(
+        self,
+    ) -> tuple[int, SessionOperations, Session | None]: ...
 
     def _update_session_user_if_current(
         self, user: Mapping[str, JSONValue], generation: int
@@ -469,7 +472,7 @@ class AuthContext(Protocol):
         self,
         generation: int,
         *,
-        lineage: int | None = None,
+        lineage: SessionOperations | None = None,
         event: AuthChangeEvent = "SIGNED_OUT",
         notifications: list[Callable[[], None]] | None = None,
     ) -> bool: ...
@@ -486,8 +489,7 @@ class Auth:
     def __init__(self, client: AuthContext) -> None:
         """Create an authentication facade backed by a client."""
         self._client = client
-        self._refresh_lock = threading.RLock()
-        self._rejected_refresh: tuple[int, int] | None = None
+        self._rejected_refresh: tuple[int, SessionOperations] | None = None
 
     def get_session(self) -> Session | None:
         """Return the immutable locally held session without validating it."""
@@ -936,7 +938,7 @@ class Auth:
         response_payload(response, 200)
 
     def _update_current_user(
-        self, payload: object, binding: tuple[int, int, Session | None]
+        self, payload: object, binding: tuple[int, SessionOperations, Session | None]
     ) -> User:
         generation = self._owned_refresh_session(binding)[0]
         user, snapshot = _user_from_payload(payload)
@@ -1013,7 +1015,7 @@ class Auth:
         self,
         operation: Callable[[str], TransportResponse],
         *,
-        binding: tuple[int, int, Session | None] | None = None,
+        binding: tuple[int, SessionOperations, Session | None] | None = None,
     ) -> TransportResponse:
         if binding is None:
             binding = self._client._capture_session_binding()
@@ -1040,40 +1042,48 @@ class Auth:
         self._owned_refresh_session(binding)
         return response
 
-    def _validate_read_failure(self, binding: tuple[int, int, Session | None]) -> None:
+    def _validate_read_failure(
+        self, binding: tuple[int, SessionOperations, Session | None]
+    ) -> None:
         with suppress(AuthenticationError):
             self._owned_refresh_session(binding)
 
     def _refresh_session_for_binding(
-        self, binding: tuple[int, int, Session | None]
+        self, binding: tuple[int, SessionOperations, Session | None]
     ) -> Session:
-        generation, _, current = binding
+        generation, owner, current = binding
         if current is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         notifications: list[Callable[[], None]] = []
         try:
-            with self._refresh_lock:
-                active_generation, _, _ = self._owned_refresh_session(binding)
-                if active_generation == generation:
-                    self._perform_refresh(binding, current, notifications)
+            active_generation, _, _ = self._owned_refresh_session(binding)
+            if active_generation == generation:
+                owner.refresh(
+                    lambda: self._perform_refresh(binding, current, notifications)
+                )
+            if owner.signing_out is not None:
+                raise SessionChangedError
+            active = self._owned_refresh_session(binding)[2]
+            if active is None:
+                raise SessionChangedError
+        except VolcanoError:
+            self._validate_read_failure(binding)
+            raise
+        else:
+            return active
         finally:
-            # Only the dispatcher owner drains, after refresh coordination is released.
             for dispatch in notifications:
                 dispatch()
-        active = self._owned_refresh_session(binding)[2]
-        if active is None:
-            raise SessionChangedError
-        return active
 
     def _owned_refresh_session(
-        self, binding: tuple[int, int, Session | None]
-    ) -> tuple[int, int, Session | None]:
+        self, binding: tuple[int, SessionOperations, Session | None]
+    ) -> tuple[int, SessionOperations, Session | None]:
         generation, lineage, _ = binding
         active = self._client._capture_session_binding()
-        if self._rejected_refresh == (generation, lineage) and active == (
-            generation + 1,
-            lineage + 1,
-            None,
+        if (
+            self._rejected_refresh == (generation, lineage)
+            and active[0] == generation + 1
+            and active[2] is None
         ):
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         if active[1] != lineage or active[2] is None:
@@ -1082,30 +1092,36 @@ class Auth:
 
     def _perform_refresh(
         self,
-        binding: tuple[int, int, Session | None],
+        binding: tuple[int, SessionOperations, Session | None],
         current: Session,
         notifications: list[Callable[[], None]],
-    ) -> None:
-        generation, lineage, _ = binding
+    ) -> Session:
+        generation, owner, _ = binding
+        active_generation, _, active = self._owned_refresh_session(binding)
+        if active_generation != generation and active is not None:
+            return active
         if current.refresh_token is None:
             raise AuthenticationError(_REFRESH_UNAVAILABLE)
         validate_refresh_source(current)
+        owner.verify_pair(None)
         try:
             refreshed = self._request_refreshed_session(current.refresh_token)
         except AuthenticationError:
-            if not self._client._clear_session_if_current(
+            if owner.signing_out is None and self._client._clear_session_if_current(
                 generation, notifications=notifications
             ):
-                raise SessionChangedError from None
-            self._rejected_refresh = (generation, lineage)
+                self._rejected_refresh = (generation, owner)
             raise
-        except VolcanoError:
-            self._owned_refresh_session(binding)
-            raise
-        if not self._client._set_session_if_current(
-            refreshed, generation, event="TOKEN_REFRESHED", notifications=notifications
-        ):
-            raise SessionChangedError
+        validate_refresh_identity(current, refreshed)
+        owner.verify_pair(refreshed)
+        if owner.signing_out is None:
+            self._client._set_session_if_current(
+                refreshed,
+                generation,
+                event="TOKEN_REFRESHED",
+                notifications=notifications,
+            )
+        return refreshed
 
     def _request_refreshed_session(self, refresh_token: str) -> Session:
         transport = cast("AuthRefreshTransport", self._client._transport)
@@ -1126,44 +1142,62 @@ class Auth:
             return
         notifications: list[Callable[[], None]] = []
         try:
-            with self._refresh_lock:
-                self._sign_out_captured(binding, notifications)
+            binding[1].sign_out(
+                lambda preceding, pending: self._sign_out_captured(
+                    binding, preceding, notifications, pending=pending
+                )
+            )
         finally:
             for dispatch in notifications:
                 dispatch()
 
     def _sign_out_captured(
         self,
-        binding: tuple[int, int, Session | None],
+        binding: tuple[int, SessionOperations, Session | None],
+        preceding: Future[Session] | None,
         notifications: list[Callable[[], None]],
+        *,
+        pending: bool,
     ) -> None:
-        generation, lineage, current = binding
-        active_generation, active_lineage, active = (
-            self._client._capture_session_binding()
-        )
-        if active_lineage == lineage and active is not None:
-            generation, current = active_generation, active
+        generation, owner, current = binding
+        refresh_error: VolcanoError | None = None
+        if preceding is not None:
+            try:
+                current = preceding.result()
+            except VolcanoError as caught:
+                refresh_error = caught
         if current is None:
             return
         error: VolcanoError | None = None
         try:
-            self._revoke_session(current)
+            self._revoke_session(
+                current, owner, refresh_error if pending else None, joined=pending
+            )
         except VolcanoError as caught:
             error = caught
-        server_session = session_id_from_access_token(current.access_token)
         if not self._client._clear_session_if_current(
-            generation,
-            lineage=lineage if server_session else None,
-            notifications=notifications,
+            generation, lineage=owner, notifications=notifications
         ):
             raise SessionChangedError from error
         if error is not None:
             raise error
 
-    def _revoke_session(self, session: Session) -> None:
-        if session_id := session_id_from_access_token(session.access_token):
-            self._revoke_access_session(session, session_id)
+    def _revoke_session(
+        self,
+        session: Session,
+        owner: SessionOperations,
+        refresh_error: VolcanoError | None,
+        *,
+        joined: bool,
+    ) -> None:
+        session_id = session_id_from_access_token(session.access_token)
+        if session_id is not None and not owner.has_verified_pair(session):
+            self._revoke_access_session(
+                session, session_id, refresh_error, joined=joined
+            )
             return
+        if refresh_error is not None:
+            raise refresh_error
         if session.refresh_token is not None:
             transport = cast("AuthLogoutTransport", self._client._transport)
             response = invoke(
@@ -1175,7 +1209,14 @@ class Auth:
             return
         response_payload(response, 204)
 
-    def _revoke_access_session(self, session: Session, session_id: str) -> None:
+    def _revoke_access_session(
+        self,
+        session: Session,
+        session_id: str,
+        refresh_error: VolcanoError | None,
+        *,
+        joined: bool,
+    ) -> None:
         transport = cast("AuthDeleteMySessionTransport", self._client._transport)
         response = invoke(
             transport.auth_delete_my_session,
@@ -1186,6 +1227,11 @@ class Auth:
             response.status_code == HTTPStatus.UNAUTHORIZED
             and session.refresh_token is not None
         ):
+            if refresh_error is not None:
+                raise refresh_error
+            if joined:
+                response_payload(response, 204)
+                return
             refreshed = self._request_refreshed_session(session.refresh_token)
             validate_refresh_identity(session, refreshed)
             response = invoke(

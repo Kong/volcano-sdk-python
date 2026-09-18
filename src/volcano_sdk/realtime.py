@@ -25,6 +25,7 @@ from ._transport import (
 from .models import JSONValue, _freeze_json
 
 if TYPE_CHECKING:
+    from ._session_operations import SessionOperations
     from .models import Session
 
 MessageCallback = Callable[[Any], Any]
@@ -205,7 +206,7 @@ def _postgres_fetch_config(
 
 @dataclass(frozen=True, slots=True)
 class _PostgresDeliveryIdentity:
-    session_lineage: int
+    session_lineage: SessionOperations | None
     subscription_epoch: int
 
 
@@ -282,7 +283,9 @@ class RealtimeContext(Protocol):
 
     def _session_token(self) -> str: ...
 
-    def _capture_session_binding(self) -> tuple[int, int, Session | None]: ...
+    def _capture_session_binding(
+        self,
+    ) -> tuple[int, SessionOperations, Session | None]: ...
 
 
 class CentrifugeSubscription(Protocol):
@@ -608,7 +611,7 @@ class Channel:
         self._callback_task: asyncio.Task[None] | None = None
         self._pending_presence_sync: Any = NO_PENDING_CALLBACK
         self._postgres_epoch = 0
-        self._postgres_session_lineage = 0
+        self._postgres_session_lineage: SessionOperations | None = None
         self._postgres_lock = asyncio.Lock()
         self._postgres_worker: PostgresFetchWorker[_PostgresDelivery] | None = None
         self._postgres_filters: dict[
@@ -732,11 +735,12 @@ class Channel:
         self,
         identity: _PostgresDeliveryIdentity,
     ) -> bool:
-        _generation, lineage, _session = (
+        _generation, lineage, session = (
             self._realtime._client_context._capture_session_binding()
         )
         return (
             self._subscribed
+            and session is not None
             and identity.subscription_epoch == self._postgres_epoch
             and identity.session_lineage == lineage
         )
@@ -1161,7 +1165,7 @@ class Realtime:
         self._api_url = api_url
         self._client_factory = client_factory
         self._connection: _VolcanoCentrifugeConnection | None = None
-        self._connection_session_lineage: int | None = None
+        self._connection_session_lineage: SessionOperations | None = None
         self._connection_access_token: str | None = None
         self._connection_lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
@@ -1401,7 +1405,7 @@ class Realtime:
         self._connection_access_token = session.access_token
         return session.access_token
 
-    def _session_for_lineage(self, expected_lineage: int) -> Session:
+    def _session_for_lineage(self, expected_lineage: SessionOperations) -> Session:
         _generation, lineage, session = self._client_context._capture_session_binding()
         if session is None:
             raise RuntimeError(NO_ACTIVE_SESSION)
@@ -1409,7 +1413,7 @@ class Realtime:
             raise RuntimeError(CONNECTION_SESSION_CHANGED)
         return session
 
-    def _connection_lineage(self) -> int:
+    def _connection_lineage(self) -> SessionOperations:
         lineage = self._connection_session_lineage
         if lineage is None:
             raise RuntimeError(CONNECTION_SESSION_UNAVAILABLE)

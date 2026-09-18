@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, TypedDict, Unpack
 from uuid import UUID
 
 from ._session import validate_refresh_identity
+from ._session_operations import SessionOperations
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
 from .database import Database
@@ -107,7 +108,7 @@ class VolcanoClient:
         self._service_key = service_key
         self._session_lock = threading.Lock()
         self._session_generation = 0
-        self._session_lineage = 0
+        self._session_lineage = SessionOperations()
         self._current_session = _bootstrap_session(credentials)
         self._auth_callbacks: dict[int, AuthStateCallback] = {}
         self._next_auth_callback_id = 0
@@ -181,7 +182,9 @@ class VolcanoClient:
         with self._session_lock:
             self._current_session = session
             self._session_generation += 1
-            self._session_lineage += 1
+            self._session_lineage = SessionOperations(
+                session if event is not None else None
+            )
             if event is None:
                 return
             callback_ids = tuple(self._auth_callbacks)
@@ -193,7 +196,7 @@ class VolcanoClient:
         with self._session_lock:
             return self._session_generation, self._current_session
 
-    def _capture_session_binding(self) -> tuple[int, int, Session | None]:
+    def _capture_session_binding(self) -> tuple[int, SessionOperations, Session | None]:
         with self._session_lock:
             return (
                 self._session_generation,
@@ -237,7 +240,7 @@ class VolcanoClient:
             self._current_session = session
             self._session_generation += 1
             if event != "TOKEN_REFRESHED":
-                self._session_lineage += 1
+                self._session_lineage = SessionOperations(session)
             callback_ids = tuple(self._auth_callbacks)
             dispatch = self._enqueue_auth_state_change(callback_ids, event, session)
         if dispatch:
@@ -248,7 +251,7 @@ class VolcanoClient:
         self,
         generation: int,
         *,
-        lineage: int | None = None,
+        lineage: SessionOperations | None = None,
         event: AuthChangeEvent = "SIGNED_OUT",
         notifications: list[Callable[[], None]] | None = None,
     ) -> bool:
@@ -258,9 +261,10 @@ class VolcanoClient:
                     return False
             elif generation != self._session_generation:
                 return False
+            if self._current_session is None:
+                return True
             self._current_session = None
             self._session_generation += 1
-            self._session_lineage += 1
             callback_ids = tuple(self._auth_callbacks)
             dispatch = self._enqueue_auth_state_change(callback_ids, event, None)
         if dispatch:
