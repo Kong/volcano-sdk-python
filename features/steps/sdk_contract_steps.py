@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import time
+from contextlib import suppress
 from dataclasses import replace
 from typing import Any
 from uuid import uuid4
 
+import httpx
 from behave import given, then, when
 from broadcast_pause import verify_broadcast_pause
 from contract_support import (
@@ -15,10 +17,11 @@ from contract_support import (
     classify_error,
 )
 
-from volcano_sdk import Session, VolcanoClient
+from volcano_sdk import NotFoundError, Session, VolcanoClient
 
 ACCESS_TOKEN_CLOCK_TICK_SECONDS = 1.1
 HTTP_OK = 200
+MULTIPART_PART_COUNT = 2
 REJECTED_BEARER = "sdk-contract-rejected-access-token"
 
 
@@ -722,6 +725,171 @@ def removed_path_is_absent(context: Any) -> None:
     assert world.last_outcome is not None
     assert world.last_outcome.value["after_remove"] == [world.storage_path]
     assert world.last_outcome.value["bytes"][3] == world.storage_bytes
+
+
+def _storage_bucket(world: ContractWorld) -> Any:
+    return world.client.storage.from_(world.fixture["bucket_name"])
+
+
+def _clean_storage_object(world: ContractWorld) -> None:
+    bucket = _storage_bucket(world)
+    if any(
+        item.name == world.storage_path
+        for item in bucket.list(world.storage_path).objects
+    ):
+        bucket.remove(world.storage_path)
+
+
+def _partial_upload(world: ContractWorld) -> dict[str, Any]:
+    bucket = _storage_bucket(world)
+    body = b"x" * (5 * 1024 * 1024) + world.storage_bytes
+    session = bucket.create_upload_session(
+        world.storage_path,
+        total_size=len(body),
+        part_size=5 * 1024 * 1024,
+        content_type="application/octet-stream",
+    )
+
+    def abort() -> None:
+        with suppress(NotFoundError):
+            bucket.abort_upload_session(
+                world.storage_path, session_id=session.session_id
+            )
+
+    world.cleanup_callbacks.append(abort)
+    world.cleanup_callbacks.append(lambda: _clean_storage_object(world))
+    part = bucket.upload_part(
+        world.storage_path,
+        session_id=session.session_id,
+        part_number=1,
+        data=body[: session.part_size],
+    )
+    return {"session": session, "part": part, "bytes": body}
+
+
+@when("the client uploads one part and resumes the contract upload")
+def resume_contract_upload(context: Any) -> None:
+    world = _world(context)
+
+    def operation() -> dict[str, Any]:
+        value = _partial_upload(world)
+        bucket = _storage_bucket(world)
+        session = value["session"]
+        value["progress"] = bucket.get_upload_session(
+            world.storage_path, session_id=session.session_id
+        )
+        bucket.upload_part(
+            world.storage_path,
+            session_id=session.session_id,
+            part_number=2,
+            data=value["bytes"][session.part_size :],
+        )
+        value["object"] = bucket.complete_upload_session(
+            world.storage_path, session_id=session.session_id
+        )
+        value["download"] = bucket.download(world.storage_path)
+        return value
+
+    world.record(operation)
+
+
+@then("upload progress describes exactly the first uploaded part")
+def partial_upload_progress(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    value = world.last_outcome.value
+    progress, session, part = value["progress"], value["session"], value["part"]
+    assert progress.session_id == session.session_id
+    assert progress.path == world.storage_path
+    assert progress.content_type == "application/octet-stream"
+    assert progress.status == "uploading"
+    assert progress.total_size == len(value["bytes"])
+    assert progress.part_size == session.part_size == 5 * 1024 * 1024
+    assert progress.total_parts == session.total_parts == MULTIPART_PART_COUNT
+    assert progress.parts_uploaded == 1
+    assert progress.bytes_uploaded == part.size == session.part_size
+    assert part.part_number == 1
+    assert part.etag
+    assert progress.parts == (part,)
+
+
+@then("the completed multipart object preserves its path, type, and bytes")
+def completed_upload_matches(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    value = world.last_outcome.value
+    assert value["object"].name == world.storage_path
+    assert value["object"].mime_type == "application/octet-stream"
+    assert value["object"].size == len(value["bytes"])
+    assert value["download"] == value["bytes"]
+
+
+@when("the client uploads one part and aborts the contract upload")
+def abort_contract_upload(context: Any) -> None:
+    world = _world(context)
+
+    def operation() -> dict[str, str]:
+        value = _partial_upload(world)
+        bucket = _storage_bucket(world)
+        session_id = value["session"].session_id
+        bucket.abort_upload_session(world.storage_path, session_id=session_id)
+        outcomes = {}
+        for name, read in {
+            "session": lambda: bucket.get_upload_session(
+                world.storage_path, session_id=session_id
+            ),
+            "object": lambda: bucket.download(world.storage_path),
+        }.items():
+            try:
+                read()
+            except NotFoundError:
+                outcomes[name] = "not found"
+            else:
+                outcomes[name] = "unexpected success"
+        return outcomes
+
+    world.record(operation)
+
+
+@then("the aborted session and unfinished object are not found")
+def aborted_upload_is_gone(context: Any) -> None:
+    assert _world(context).last_outcome.value == {
+        "session": "not found",
+        "object": "not found",
+    }
+
+
+@when("the client makes the contract object public and private again")
+def change_contract_visibility(context: Any) -> None:
+    world = _world(context)
+
+    def operation() -> dict[str, Any]:
+        bucket = _storage_bucket(world)
+        world.cleanup_callbacks.append(lambda: _clean_storage_object(world))
+        bucket.upload(world.storage_path, world.storage_bytes)
+        url = bucket.get_public_url(world.storage_path)
+        before = httpx.get(url, timeout=10)
+        public = bucket.update_visibility(world.storage_path, is_public=True)
+        visible = httpx.get(url, timeout=10)
+        private = bucket.update_visibility(world.storage_path, is_public=False)
+        after = httpx.get(url, timeout=10)
+        return {
+            "statuses": [before.status_code, visible.status_code, after.status_code],
+            "bytes": visible.content,
+            "visibility": [public.is_public, private.is_public],
+        }
+
+    world.record(operation)
+
+
+@then("anonymous reads return the original bytes only while the object is public")
+def anonymous_visibility_matches(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome.value == {
+        "statuses": [404, 200, 404],
+        "bytes": world.storage_bytes,
+        "visibility": [True, False],
+    }
 
 
 @then("the stored object path equals the contract path")

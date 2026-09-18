@@ -120,3 +120,5 @@ Include the package version, Python version, and a minimal reproduction without 
 See [Distributed locks](./locks.md) for acquisition recovery, renewal, and fencing.
 
 Read the [database guide](./database.md) for projection, filters, ordered pagination, and mutations.
+
+For uploads, visibility, and resumable sessions, see [Storage](./storage.md).

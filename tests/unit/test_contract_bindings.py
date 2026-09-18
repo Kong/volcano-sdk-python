@@ -119,6 +119,12 @@ def test_staged_database_queries_match_proposed_shared_source() -> None:
     assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
 
 
+def test_staged_storage_sessions_match_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "storage-sessions.feature"
+    expected = "037c60a8da27ec4cc5777596ba0c669b8309181a54b27aa61882535ed2f6beb1"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
 def test_every_contract_phrase_is_bound_verbatim() -> None:
     registry.clear()
     _load_module(
@@ -141,6 +147,13 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "each pattern returns exactly the matching query fixture rows",
         "the client selects query fixture rows with null and boolean filters",
         "each identity filter returns exactly the matching query fixture rows",
+        "the client uploads one part and resumes the contract upload",
+        "upload progress describes exactly the first uploaded part",
+        "the completed multipart object preserves its path, type, and bytes",
+        "the client uploads one part and aborts the contract upload",
+        "the aborted session and unfinished object are not found",
+        "the client makes the contract object public and private again",
+        "anonymous reads return the original bytes only while the object is public",
         "the client copies, moves, and removes a copy of the contract object",
         "the original, copied, and moved bytes equal the uploaded bytes",
         "moving the copy leaves only the original and moved paths",
