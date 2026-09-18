@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3](https://github.com/Kong/volcano-sdk-python/compare/v0.9.2...v0.9.3) (2026-09-18)
+
+
+### Bug Fixes
+
+* **functions:** recover rejected user sessions before dispatch ([#173](https://github.com/Kong/volcano-sdk-python/issues/173)) ([ab76b7f](https://github.com/Kong/volcano-sdk-python/commit/ab76b7f6448022fb2101cff5382fdfdac1861c26))
+
 ## [0.9.2](https://github.com/Kong/volcano-sdk-python/compare/v0.9.1...v0.9.2) (2026-09-18)
 
 
