@@ -182,9 +182,7 @@ class VolcanoClient:
         with self._session_lock:
             self._current_session = session
             self._session_generation += 1
-            self._session_lineage = SessionOperations(
-                session if event is not None else None
-            )
+            self._session_lineage = SessionOperations()
             if event is None:
                 return
             callback_ids = tuple(self._auth_callbacks)

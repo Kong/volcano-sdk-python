@@ -375,7 +375,10 @@ def test_sign_out_revokes_a_server_issued_pair_without_access_renewal() -> None:
     assert [r.url.path for r in requests] == ["/auth/signin", "/auth/logout"]
 
 
-def test_explicit_adoption_does_not_inherit_server_pair_provenance() -> None:
+@pytest.mark.parametrize("hosted", [False, True])
+def test_explicit_adoption_does_not_inherit_server_pair_provenance(
+    *, hosted: bool
+) -> None:
     requests: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -386,9 +389,13 @@ def test_explicit_adoption_does_not_inherit_server_pair_provenance() -> None:
 
     client = client_for(handle)
     original = client.auth.sign_in(email="user@example.com", password="synthetic")
-    client.auth.set_session(
-        Session(access_token(SESSION_B), original.refresh_token, USER_B)
-    )
+    supplied = Session(access_token(SESSION_B), original.refresh_token, USER_B)
+    if hosted:
+        client.auth.adopt_hosted_auth_session(
+            supplied, state="nonce", expected_state="nonce"
+        )
+    else:
+        client.auth.set_session(supplied)
     client.auth.sign_out()
     assert [r.url.path for r in requests] == [
         "/auth/signin",
