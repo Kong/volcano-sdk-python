@@ -58,8 +58,8 @@ request. It is cached data, not proof of authentication; use `auth.get_user()`
 to fetch the server-validated profile. Existing three-field `Session` construction
 still works, with `user=None`. An adopted snapshot must have the same user ID.
 Successful `get_user()`, `update_user()`, `convert_anonymous()`, and
-`confirm_email_change()` calls update that local snapshot without changing tokens
-or emitting an auth-state event. Previously returned sessions remain immutable.
+`confirm_email_change()` calls update that local snapshot. Automatic HTTP 401 recovery
+can rotate credentials and emit `TOKEN_REFRESHED`; the profile update itself does not. Previously returned sessions remain immutable.
 Profile identity checks compare UUID values; the session retains its original
 user ID spelling, including in the cached snapshot.
 
@@ -318,9 +318,10 @@ Revoke one session by ID:
 client.auth.delete_session(session_id="00000000-0000-4000-8000-000000000099")
 ```
 
-The request uses the current access token. Deleting that token's own session clears local
-credentials, including when the request outcome is uncertain; deleting another session preserves
-them. If another authentication operation replaces the session before deletion finishes, the method
+The request uses the current access token. When its JWT contains a readable UUID `session_id`,
+deleting that session clears local credentials even if the request outcome is uncertain.
+Without that identifier, the SDK cannot recognize self-deletion. Other deletions retain the
+local session, though automatic HTTP 401 recovery can rotate credentials and emit `TOKEN_REFRESHED`. If another authentication operation replaces the session before deletion finishes, the method
 raises `SessionChangedError` instead of clearing the replacement or acknowledging a stale result.
 
 ## Use anonymous accounts
@@ -371,7 +372,8 @@ Successful recovery rotates credentials and emits `TOKEN_REFRESHED`.
 Without a refresh token, `refresh_session()` raises `AuthenticationError` and
 `sign_out()` clears local state and revokes the server session when the access JWT
 contains a readable UUID `session_id`.
-Supply `refresh_token` with `access_token` to enable refresh. See the [token bootstrap example](./README.md#use-a-supplied-access-token).
+Supplied credentials require both a refresh token and an access JWT with a readable UUID
+`session_id` to enable refresh. See the [token bootstrap example](./README.md#use-a-supplied-access-token).
 
 ## Adopt an existing session
 
@@ -425,8 +427,8 @@ subscription.unsubscribe()
 Registration queues `INITIAL_SESSION`. It normally arrives before registration returns, but an
 existing notification dispatch may deliver it afterward. Successful session creation, refresh, and
 local clearing emit `SIGNED_IN`, `TOKEN_REFRESHED`, and `SIGNED_OUT`. Callbacks are delivered locally
-in transition order after the state lock is released, and callback failures cannot interrupt auth
-operations. Unsubscribing prevents queued and future delivery; a callback already selected for
+in transition order after the state lock is released. Ordinary callback `Exception` failures are
+isolated; exceptions such as `KeyboardInterrupt` propagate after the session transition has committed. Unsubscribing prevents queued and future delivery; a callback already selected for
 delivery may finish after `unsubscribe()` returns. The SDK does not broadcast between processes or
 persist sessions.
 
