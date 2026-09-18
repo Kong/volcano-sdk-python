@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/Kong/volcano-sdk-python/compare/v0.9.0...v0.9.1) (2026-09-18)
+
+
+### Bug Fixes
+
+* **auth:** recover rejected authenticated facade requests ([96bc0c3](https://github.com/Kong/volcano-sdk-python/commit/96bc0c38e3f5887961e13b44b99da0d88243e7d1))
+
 ## [0.9.0](https://github.com/Kong/volcano-sdk-python/compare/v0.8.0...v0.9.0) (2026-09-18)
 
 
