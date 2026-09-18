@@ -261,7 +261,13 @@ def test_a_failure_is_reported_in_the_facade_s_own_shape() -> None:
             return child.step(run, retry=False)
 
         batch = ctx.map([1, 2], work, "one-fails")
-        failure = batch.items[1].error
+        # Found rather than indexed. `items` carries the items that settled,
+        # and a batch can come back the moment the failure does -- leaving the
+        # sibling that was still running out of it -- so the failed item's
+        # position is not something the facade promises.
+        failure = next(
+            (item.error for item in batch.items if item.error is not None), None
+        )
         if not isinstance(failure, BatchFailure):
             message = f"expected a BatchFailure, got {type(failure).__name__}"
             raise TypeError(message)
