@@ -337,6 +337,114 @@ def fixture_row_returned(context: Any) -> None:
     assert world.last_outcome.value == [world.fixture["fixture_row"]]
 
 
+@when("the client selects a projected page of query fixture members")
+def select_projected_query_page(context: Any) -> None:
+    world = _world(context)
+    world.record(
+        lambda: (
+            world.client.database(world.fixture["database_name"])
+            .from_(world.fixture["query_table_name"])
+            .select("slug", "rank")
+            .in_("slug", ["alpha", "beta", "gamma", "delta"])
+            .order("enabled")
+            .order("rank", ascending=False)
+            .offset(1)
+            .limit(2)
+            .execute()
+        )
+    )
+
+
+@then("the projected page contains only beta and gamma in that order")
+def projected_query_page_returned(context: Any) -> None:
+    assert _world(context).last_outcome.value == [
+        {"slug": "beta", "rank": 20},
+        {"slug": "gamma", "rank": 30},
+    ]
+
+
+def _query_filters(world: ContractWorld, filters: list[tuple[str, str, Any]]) -> None:
+    def operation() -> dict[str, list[dict[str, Any]]]:
+        table = world.client.database(world.fixture["database_name"]).from_(
+            world.fixture["query_table_name"]
+        )
+        return {
+            f"{operator}:{value}": getattr(table.select("slug"), operator)(
+                column, value
+            )
+            .order("rank")
+            .execute()
+            for operator, column, value in filters
+        }
+
+    world.record(operation)
+
+
+@when("the client selects query fixture rows with each comparison filter")
+def select_query_comparisons(context: Any) -> None:
+    _query_filters(
+        _world(context),
+        [
+            (op, "rank", value)
+            for op, value in [
+                ("neq", 20),
+                ("gt", 20),
+                ("gte", 20),
+                ("lt", 30),
+                ("lte", 30),
+            ]
+        ],
+    )
+
+
+@then("each comparison returns exactly the matching query fixture rows")
+def comparison_query_rows_returned(context: Any) -> None:
+    expected = {
+        "neq:20": ["alpha", "gamma", "delta", "epsilon"],
+        "gt:20": ["gamma", "delta", "epsilon"],
+        "gte:20": ["beta", "gamma", "delta", "epsilon"],
+        "lt:30": ["alpha", "beta"],
+        "lte:30": ["alpha", "beta", "gamma"],
+    }
+    assert _world(context).last_outcome.value == {
+        key: [{"slug": slug} for slug in slugs] for key, slugs in expected.items()
+    }
+
+
+@when(
+    "the client selects query fixture rows with case-sensitive and insensitive patterns"
+)
+def select_query_patterns(context: Any) -> None:
+    _query_filters(
+        _world(context), [("like", "label", "Case_%"), ("ilike", "label", "case_%")]
+    )
+
+
+@then("each pattern returns exactly the matching query fixture rows")
+def pattern_query_rows_returned(context: Any) -> None:
+    assert _world(context).last_outcome.value == {
+        "like:Case_%": [{"slug": "alpha"}, {"slug": "epsilon"}],
+        "ilike:case_%": [{"slug": "alpha"}, {"slug": "beta"}, {"slug": "epsilon"}],
+    }
+
+
+@when("the client selects query fixture rows with null and boolean filters")
+def select_query_identities(context: Any) -> None:
+    _query_filters(
+        _world(context),
+        [("is_", "label", None), ("is_", "enabled", True), ("is_", "enabled", False)],
+    )
+
+
+@then("each identity filter returns exactly the matching query fixture rows")
+def identity_query_rows_returned(context: Any) -> None:
+    assert _world(context).last_outcome.value == {
+        "is_:None": [{"slug": "gamma"}],
+        "is_:True": [{"slug": "alpha"}, {"slug": "gamma"}, {"slug": "epsilon"}],
+        "is_:False": [{"slug": "beta"}, {"slug": "delta"}],
+    }
+
+
 @when("the client inserts its contract row")
 def insert_contract_row(context: Any) -> None:
     world = _world(context)
