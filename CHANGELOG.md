@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/Kong/volcano-sdk-python/compare/v0.8.0...v0.9.0) (2026-09-18)
+
+
+### Features
+
+* **auth:** add token bootstrap with server session continuity ([#159](https://github.com/Kong/volcano-sdk-python/issues/159)) ([0dd9512](https://github.com/Kong/volcano-sdk-python/commit/0dd9512e543e2713233b3632a16ffae0e8c69d1b))
+
 ## [0.8.0](https://github.com/Kong/volcano-sdk-python/compare/v0.7.3...v0.8.0) (2026-09-18)
 
 
