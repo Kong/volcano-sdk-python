@@ -23,8 +23,12 @@ cat > "$smoke_dir/consumer.py" <<'PY'
 from typing import assert_type
 from volcano_sdk import Session, User, VolcanoClient
 
-client = VolcanoClient(anon_key="example")
+client = VolcanoClient(anon_key="example", access_token="supplied-access")
 assert_type(client.auth.get_session(), Session | None)
+session = client.auth.get_session()
+if session is not None:
+    assert_type(session.refresh_token, str | None)
+    assert_type(session.user_id, str | None)
 assert_type(client.auth.get_user(), User)
 assert_type(client.storage.from_("assets").download("hello.txt"), bytes)
 PY
@@ -49,6 +53,7 @@ PY
     "$typechecker" --no-incremental --python-executable "$smoke_dir/venv/bin/python" consumer.py
     cp consumer.py invalid.py
     echo 'client.auth.sign_in(email=42, password="example")' >> invalid.py
+    echo 'VolcanoClient(anon_key="example", access_token=42)' >> invalid.py
     if "$typechecker" --no-incremental --python-executable "$smoke_dir/venv/bin/python" invalid.py > typing-error.log 2>&1; then
       echo "Installed SDK did not reject an invalid argument type" >&2
       exit 1

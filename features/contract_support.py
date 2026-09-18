@@ -151,6 +151,7 @@ class ContractWorld:
         self.last_outcome: Outcome | None = None
         self.previous_session: Session | None = None
         self.signed_out_session: Session | None = None
+        self.bootstrap_cleanup: Callable[[], None] | None = None
         self.auth_state_events: list[tuple[AuthChangeEvent, Session | None]] = []
         self.subscriber: Channel | None = None
         self.publisher: Channel | None = None

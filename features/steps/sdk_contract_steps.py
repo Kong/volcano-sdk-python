@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import time
+from contextlib import suppress
+from dataclasses import replace
 from typing import Any
 from uuid import uuid4
 
+import httpx
 from behave import given, then, when
 from broadcast_pause import verify_broadcast_pause
 from contract_support import (
@@ -13,11 +16,13 @@ from contract_support import (
     Outcome,
     classify_error,
 )
+from logs_contract import LogContract
 
-from volcano_sdk import Session, VolcanoClient
+from volcano_sdk import NotFoundError, Session, VolcanoClient
 
 ACCESS_TOKEN_CLOCK_TICK_SECONDS = 1.1
 HTTP_OK = 200
+MULTIPART_PART_COUNT = 2
 REJECTED_BEARER = "sdk-contract-rejected-access-token"
 
 
@@ -78,6 +83,65 @@ def refresh_current_session(context: Any) -> None:
     world.record(world.client.auth.refresh_session)
 
 
+@when("a fresh client tries to refresh a supplied profile without a session identifier")
+def refresh_supplied_profile_without_sid(context: Any) -> None:
+    world = _world(context)
+    source = world.client.auth.get_session()
+    assert source is not None
+    target = VolcanoClient(
+        api_url=world.fixture["api_url"], anon_key=world.fixture["anon_key"]
+    )
+    supplied = target.auth.set_session(replace(source, access_token=REJECTED_BEARER))
+    world.record(target.auth.refresh_session)
+    assert target.auth.get_session() == supplied
+
+
+@when("a fresh client starts with only the current access token")
+def bootstrap_access_token(context: Any) -> None:
+    world = _world(context)
+    source = world.client
+    world.previous_session = source.auth.get_session()
+    assert world.previous_session is not None
+    world.bootstrap_cleanup = source.auth.sign_out
+    world.cleanup_callbacks.append(world.bootstrap_cleanup)
+    world.client = VolcanoClient(
+        api_url=world.fixture["api_url"],
+        anon_key=world.fixture["anon_key"],
+        access_token=world.previous_session.access_token,
+    )
+    world.record(world.client.auth.get_session)
+
+
+@then("the token-only session has no cached user")
+def token_session_has_no_user(context: Any) -> None:
+    session = _world(context).client.current_session
+    assert session is not None
+    assert session.user_id is None
+    assert session.user is None
+
+
+@when("a fresh client starts with a rejected access token")
+def bootstrap_rejected_token(context: Any) -> None:
+    world = _world(context)
+    world.client = VolcanoClient(
+        api_url=world.fixture["api_url"],
+        anon_key=world.fixture["anon_key"],
+        access_token=REJECTED_BEARER,
+    )
+    world.previous_session = world.client.current_session
+    world.record(world.client.auth.get_session)
+
+
+@then("the session retains only the supplied access token")
+def token_session_retains_access(context: Any) -> None:
+    world = _world(context)
+    session = world.client.current_session
+    assert session is not None
+    assert world.previous_session is not None
+    assert session.access_token == world.previous_session.access_token
+    assert session.refresh_token is None
+
+
 @then("the refreshed session becomes current")
 def refreshed_session_becomes_current(context: Any) -> None:
     world = _world(context)
@@ -92,12 +156,27 @@ def sign_out(context: Any) -> None:
     world = _world(context)
     world.signed_out_session = world.client.auth.get_session()
     assert world.signed_out_session is not None
-    world.record(world.client.auth.sign_out)
+    outcome = world.record(world.client.auth.sign_out)
+    if outcome.ok and world.bootstrap_cleanup is not None:
+        world.cleanup_callbacks.remove(world.bootstrap_cleanup)
+        world.bootstrap_cleanup = None
 
 
 @then("the current session is empty")
 def current_session_is_empty(context: Any) -> None:
     assert _world(context).client.auth.get_session() is None
+
+
+@when("a fresh client loads a profile with the signed-out access token")
+def load_signed_out_profile(context: Any) -> None:
+    world = _world(context)
+    assert world.signed_out_session is not None
+    target = VolcanoClient(
+        api_url=world.fixture["api_url"],
+        anon_key=world.fixture["anon_key"],
+        access_token=world.signed_out_session.access_token,
+    )
+    world.record(target.auth.get_user)
 
 
 @when("a fresh client tries to refresh the signed-out session")
@@ -126,6 +205,13 @@ def operation_succeeds(context: Any) -> None:
     outcome = _world(context).last_outcome
     assert outcome is not None
     assert outcome.ok, f"SDK operation failed ({outcome.category}): {outcome.error}"
+
+
+@then("the SDK operation fails")
+def operation_fails(context: Any) -> None:
+    outcome = _world(context).last_outcome
+    assert outcome is not None
+    assert not outcome.ok
 
 
 @then("the current session belongs to the contract user")
@@ -164,18 +250,21 @@ def authenticated_client(context: Any) -> None:
 
 @given("the client replaces its access token with a rejected token")
 def replace_access_token(context: Any) -> None:
-    client = _world(context).client
+    world = _world(context)
+    client = world.client
     session = client.auth.get_session()
     assert session is not None
-    client.auth.set_session(
+    header, payload, _signature = session.access_token.split(".")
+    world.previous_session = client.auth.set_session(
         Session(
-            access_token=REJECTED_BEARER,
+            access_token=f"{header}.{payload}.sdk-contract-rejected-signature",
             refresh_token=session.refresh_token,
             user_id=session.user_id,
         )
     )
 
 
+@then("the session list replaces the rejected token for the same user")
 @then("the profile read replaces the rejected token for the same user")
 @then("the storage operation replaces the rejected token for the same user")
 @then("the database read replaces the rejected token for the same user")
@@ -184,9 +273,26 @@ def read_replaced_token(context: Any) -> None:
     session = world.client.auth.get_session()
     assert session is not None
     assert session.access_token
-    assert session.access_token != REJECTED_BEARER
+    assert world.previous_session is not None
+    assert session.access_token != world.previous_session.access_token
     assert session.refresh_token
     assert session.user_id == world.fixture["user_id"]
+
+
+@when("the client lists its server sessions")
+def list_server_sessions(context: Any) -> None:
+    world = _world(context)
+    world.record(lambda: world.client.auth.list_sessions(page=1, limit=100))
+
+
+@then("the session list contains the current session for the contract user")
+def listed_sessions_belong_to_contract_user(context: Any) -> None:
+    world = _world(context)
+    page = world.last_outcome.value
+    assert page.page == 1
+    assert page.total >= len(page.sessions) > 0
+    assert all(session.user_id == world.fixture["user_id"] for session in page.sessions)
+    assert sum(session.is_current for session in page.sessions) == 1
 
 
 @when("the client loads its server-validated profile")
@@ -233,6 +339,114 @@ def fixture_row_returned(context: Any) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value == [world.fixture["fixture_row"]]
+
+
+@when("the client selects a projected page of query fixture members")
+def select_projected_query_page(context: Any) -> None:
+    world = _world(context)
+    world.record(
+        lambda: (
+            world.client.database(world.fixture["database_name"])
+            .from_(world.fixture["query_table_name"])
+            .select("slug", "rank")
+            .in_("slug", ["alpha", "beta", "gamma", "delta"])
+            .order("enabled")
+            .order("rank", ascending=False)
+            .offset(1)
+            .limit(2)
+            .execute()
+        )
+    )
+
+
+@then("the projected page contains only beta and gamma in that order")
+def projected_query_page_returned(context: Any) -> None:
+    assert _world(context).last_outcome.value == [
+        {"slug": "beta", "rank": 20},
+        {"slug": "gamma", "rank": 30},
+    ]
+
+
+def _query_filters(world: ContractWorld, filters: list[tuple[str, str, Any]]) -> None:
+    def operation() -> dict[str, list[dict[str, Any]]]:
+        table = world.client.database(world.fixture["database_name"]).from_(
+            world.fixture["query_table_name"]
+        )
+        return {
+            f"{operator}:{value}": getattr(table.select("slug"), operator)(
+                column, value
+            )
+            .order("rank")
+            .execute()
+            for operator, column, value in filters
+        }
+
+    world.record(operation)
+
+
+@when("the client selects query fixture rows with each comparison filter")
+def select_query_comparisons(context: Any) -> None:
+    _query_filters(
+        _world(context),
+        [
+            (op, "rank", value)
+            for op, value in [
+                ("neq", 20),
+                ("gt", 20),
+                ("gte", 20),
+                ("lt", 30),
+                ("lte", 30),
+            ]
+        ],
+    )
+
+
+@then("each comparison returns exactly the matching query fixture rows")
+def comparison_query_rows_returned(context: Any) -> None:
+    expected = {
+        "neq:20": ["alpha", "gamma", "delta", "epsilon"],
+        "gt:20": ["gamma", "delta", "epsilon"],
+        "gte:20": ["beta", "gamma", "delta", "epsilon"],
+        "lt:30": ["alpha", "beta"],
+        "lte:30": ["alpha", "beta", "gamma"],
+    }
+    assert _world(context).last_outcome.value == {
+        key: [{"slug": slug} for slug in slugs] for key, slugs in expected.items()
+    }
+
+
+@when(
+    "the client selects query fixture rows with case-sensitive and insensitive patterns"
+)
+def select_query_patterns(context: Any) -> None:
+    _query_filters(
+        _world(context), [("like", "label", "Case_%"), ("ilike", "label", "case_%")]
+    )
+
+
+@then("each pattern returns exactly the matching query fixture rows")
+def pattern_query_rows_returned(context: Any) -> None:
+    assert _world(context).last_outcome.value == {
+        "like:Case_%": [{"slug": "alpha"}, {"slug": "epsilon"}],
+        "ilike:case_%": [{"slug": "alpha"}, {"slug": "beta"}, {"slug": "epsilon"}],
+    }
+
+
+@when("the client selects query fixture rows with null and boolean filters")
+def select_query_identities(context: Any) -> None:
+    _query_filters(
+        _world(context),
+        [("is_", "label", None), ("is_", "enabled", True), ("is_", "enabled", False)],
+    )
+
+
+@then("each identity filter returns exactly the matching query fixture rows")
+def identity_query_rows_returned(context: Any) -> None:
+    assert _world(context).last_outcome.value == {
+        "is_:None": [{"slug": "gamma"}],
+        "is_:True": [{"slug": "alpha"}, {"slug": "gamma"}, {"slug": "epsilon"}],
+        "is_:False": [{"slug": "beta"}, {"slug": "delta"}],
+    }
 
 
 @when("the client inserts its contract row")
@@ -512,6 +726,174 @@ def removed_path_is_absent(context: Any) -> None:
     assert world.last_outcome is not None
     assert world.last_outcome.value["after_remove"] == [world.storage_path]
     assert world.last_outcome.value["bytes"][3] == world.storage_bytes
+
+
+def _storage_bucket(world: ContractWorld) -> Any:
+    return world.client.storage.from_(world.fixture["bucket_name"])
+
+
+def _clean_storage_object(world: ContractWorld) -> None:
+    bucket = _storage_bucket(world)
+    if any(
+        item.name == world.storage_path
+        for item in bucket.list(world.storage_path).objects
+    ):
+        bucket.remove(world.storage_path)
+
+
+def _partial_upload(world: ContractWorld) -> dict[str, Any]:
+    bucket = _storage_bucket(world)
+    body = b"x" * (5 * 1024 * 1024) + world.storage_bytes
+    session = bucket.create_upload_session(
+        world.storage_path,
+        total_size=len(body),
+        part_size=5 * 1024 * 1024,
+        content_type="application/octet-stream",
+    )
+
+    def abort() -> None:
+        with suppress(NotFoundError):
+            bucket.abort_upload_session(
+                world.storage_path, session_id=session.session_id
+            )
+
+    world.cleanup_callbacks.append(abort)
+    world.cleanup_callbacks.append(lambda: _clean_storage_object(world))
+    part = bucket.upload_part(
+        world.storage_path,
+        session_id=session.session_id,
+        part_number=1,
+        data=body[: session.part_size],
+    )
+    return {"session": session, "part": part, "bytes": body}
+
+
+@when("the client uploads one part and resumes the contract upload")
+def resume_contract_upload(context: Any) -> None:
+    world = _world(context)
+
+    def operation() -> dict[str, Any]:
+        value = _partial_upload(world)
+        bucket = _storage_bucket(world)
+        session = value["session"]
+        value["progress"] = bucket.get_upload_session(
+            world.storage_path, session_id=session.session_id
+        )
+        bucket.upload_part(
+            world.storage_path,
+            session_id=session.session_id,
+            part_number=2,
+            data=value["bytes"][session.part_size :],
+        )
+        value["object"] = bucket.complete_upload_session(
+            world.storage_path, session_id=session.session_id
+        )
+        value["download"] = bucket.download(world.storage_path)
+        return value
+
+    world.record(operation)
+
+
+@then("upload progress describes exactly the first uploaded part")
+def partial_upload_progress(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    value = world.last_outcome.value
+    progress, session, part = value["progress"], value["session"], value["part"]
+    assert progress.session_id == session.session_id
+    assert progress.path == world.storage_path
+    assert progress.content_type == "application/octet-stream"
+    assert progress.status == "uploading"
+    assert progress.total_size == len(value["bytes"])
+    assert progress.part_size == session.part_size == 5 * 1024 * 1024
+    assert progress.total_parts == session.total_parts == MULTIPART_PART_COUNT
+    assert progress.parts_uploaded == 1
+    assert progress.bytes_uploaded == part.size == session.part_size
+    assert part.part_number == 1
+    assert part.etag
+    assert progress.parts == (part,)
+
+
+@then("the completed multipart object preserves its path, type, and bytes")
+def completed_upload_matches(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    value = world.last_outcome.value
+    assert value["object"].name == world.storage_path
+    assert value["object"].mime_type == "application/octet-stream"
+    assert value["object"].size == len(value["bytes"])
+    assert value["download"] == value["bytes"]
+
+
+@when("the client uploads one part and aborts the contract upload")
+def abort_contract_upload(context: Any) -> None:
+    world = _world(context)
+
+    def operation() -> dict[str, str]:
+        value = _partial_upload(world)
+        bucket = _storage_bucket(world)
+        session_id = value["session"].session_id
+        bucket.abort_upload_session(world.storage_path, session_id=session_id)
+        outcomes = {}
+        for name, read in {
+            "session": lambda: bucket.get_upload_session(
+                world.storage_path, session_id=session_id
+            ),
+            "object": lambda: bucket.download(world.storage_path),
+        }.items():
+            try:
+                read()
+            except NotFoundError:
+                outcomes[name] = "not found"
+            else:
+                outcomes[name] = "unexpected success"
+        return outcomes
+
+    world.record(operation)
+
+
+@then("the aborted session and unfinished object are not found")
+def aborted_upload_is_gone(context: Any) -> None:
+    assert _world(context).last_outcome.value == {
+        "session": "not found",
+        "object": "not found",
+    }
+
+
+@when("the client makes the contract object public and private again")
+def change_contract_visibility(context: Any) -> None:
+    world = _world(context)
+
+    def operation() -> dict[str, Any]:
+        bucket = _storage_bucket(world)
+        world.cleanup_callbacks.append(lambda: _clean_storage_object(world))
+        bucket.upload(world.storage_path, world.storage_bytes)
+        url = bucket.get_public_url(world.storage_path)
+        before = httpx.get(url, timeout=10)
+        public = bucket.update_visibility(world.storage_path, is_public=True)
+        visible = httpx.get(url, timeout=10)
+        private = bucket.update_visibility(world.storage_path, is_public=False)
+        after = httpx.get(url, timeout=10)
+        return {
+            "statuses": [before.status_code, visible.status_code, after.status_code],
+            "bytes": visible.content,
+            "visibility": [public.is_public, private.is_public],
+            "private_bytes": [before.content, after.content],
+        }
+
+    world.record(operation)
+
+
+@then("anonymous reads return the original bytes only while the object is public")
+def anonymous_visibility_matches(context: Any) -> None:
+    world = _world(context)
+    value = world.last_outcome.value
+    assert all(world.storage_bytes not in body for body in value["private_bytes"])
+    assert {key: value[key] for key in ("statuses", "bytes", "visibility")} == {
+        "statuses": [404, 200, 404],
+        "bytes": world.storage_bytes,
+        "visibility": [True, False],
+    }
 
 
 @then("the stored object path equals the contract path")
@@ -823,3 +1205,38 @@ def function_echoed_payload(context: Any) -> None:
     response = world.last_outcome.value
     assert response.status == HTTP_OK, response
     assert response.data == {"echoed": "contract"}, response.data
+
+
+@given("a read-only project logs client")
+def project_logs_client(context: Any) -> None:
+    context.logs_contract = LogContract(_world(context))
+
+
+@when("the contract function emits three unique structured log events")
+def emit_three_logs(context: Any) -> None:
+    context.logs_contract.emit(3)
+
+
+@when("the contract function emits one unique structured log event")
+def emit_one_log(context: Any) -> None:
+    context.logs_contract.emit(1)
+
+
+@when("the client searches and paginates those events within 240 seconds")
+def search_contract_logs(context: Any) -> None:
+    _world(context).record(context.logs_contract.search)
+
+
+@when("the client reads matching log activity within 120 seconds")
+def read_contract_log_activity(context: Any) -> None:
+    _world(context).record(context.logs_contract.activity)
+
+
+@then("all three structured events retain their metadata without duplicates")
+def verify_contract_logs(context: Any) -> None:
+    context.logs_contract.verify_events(_world(context).last_outcome.value)
+
+
+@then("activity counts exactly that event in its function and level buckets")
+def verify_contract_log_activity(context: Any) -> None:
+    context.logs_contract.verify_activity(_world(context).last_outcome.value)

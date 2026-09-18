@@ -1097,7 +1097,7 @@ def test_auth_session_binding_changes_lineage_across_reauthentication() -> None:
     )
 
     assert signed_out_generation != generation
-    assert signed_out_lineage != lineage
+    assert signed_out_lineage == lineage
     assert signed_out is None
 
     client.auth.sign_in(email="user@example.com", password="secret")

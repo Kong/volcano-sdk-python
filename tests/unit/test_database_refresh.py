@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+from session_fixtures import access_token
 
 from volcano_sdk import (
     AuthenticationError,
@@ -27,7 +28,11 @@ def make_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCl
         httpx_transport=httpx.MockTransport(handler),
     )
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.set_session(Session("old-access", "old-refresh", "user"))
+    client.auth.set_session(
+        Session(
+            access_token("old"), "old-refresh", "00000000-0000-4000-8000-000000000001"
+        )
+    )
     return client
 
 
@@ -35,7 +40,7 @@ def refreshed_response() -> httpx.Response:
     return httpx.Response(
         200,
         json={
-            "access_token": "new-access",
+            "access_token": access_token("new"),
             "refresh_token": "new-refresh",
             "token_type": "bearer",
             "expires_in": 3600,
@@ -59,7 +64,7 @@ def test_select_refreshes_once_and_replays_the_same_query() -> None:
         requests.append(request)
         if request.url.path == "/auth/refresh":
             return refreshed_response()
-        if request.headers["authorization"] == "Bearer old-access":
+        if request.headers["authorization"] == f"Bearer {access_token('old')}":
             return httpx.Response(401, json={"error": "expired"})
         return rows_response()
 
@@ -68,9 +73,9 @@ def test_select_refreshes_once_and_replays_the_same_query() -> None:
 
     assert query.execute() == [{"id": 1}]
     assert [request.headers["authorization"] for request in requests] == [
-        "Bearer old-access",
+        f"Bearer {access_token('old')}",
         "Bearer anon",
-        "Bearer new-access",
+        f"Bearer {access_token('new')}",
     ]
     assert requests[0].content == requests[2].content
     assert json.loads(requests[1].content)["refresh_token"] == "old-refresh"
@@ -100,7 +105,7 @@ def test_select_refreshes_on_401_without_a_valid_error_body(body: bytes) -> None
         paths.append(request.url.path)
         if request.url.path == "/auth/refresh":
             return refreshed_response()
-        if request.headers["authorization"] == "Bearer old-access":
+        if request.headers["authorization"] == f"Bearer {access_token('old')}":
             return httpx.Response(401, content=body)
         return rows_response()
 
@@ -165,7 +170,7 @@ def test_concurrent_reads_share_refresh_for_the_captured_session() -> None:
         if request.url.path == "/auth/refresh":
             refresh_requests.append(request)
             return refreshed_response()
-        if request.headers["authorization"] == "Bearer old-access":
+        if request.headers["authorization"] == f"Bearer {access_token('old')}":
             initial_reads.wait()
             return httpx.Response(401, json={"error": "expired"})
         return rows_response()
@@ -231,7 +236,7 @@ def test_read_completes_before_a_queued_refresh_listener_changes_session() -> No
     def handle(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/auth/refresh":
             return refreshed_response()
-        if request.headers["authorization"] == "Bearer old-access":
+        if request.headers["authorization"] == f"Bearer {access_token('old')}":
             return httpx.Response(401, json={"error": "expired"})
         return rows_response()
 
@@ -264,7 +269,7 @@ def test_refresh_listener_can_wait_for_another_refresh_thread() -> None:
     def handle(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/auth/refresh":
             return refreshed_response()
-        if request.headers["authorization"] == "Bearer old-access":
+        if request.headers["authorization"] == f"Bearer {access_token('old')}":
             return httpx.Response(401, json={"error": "expired"})
         return rows_response()
 
@@ -298,7 +303,7 @@ def test_read_rechecks_session_after_replay_or_failure_notification(
             if replace_at == "failed-refresh-listener":
                 return httpx.Response(401, json={"error": "refresh failed"})
             return refreshed_response()
-        if request.headers["authorization"] == "Bearer old-access":
+        if request.headers["authorization"] == f"Bearer {access_token('old')}":
             return httpx.Response(401, json={"error": "read expired"})
         client.auth.set_session(replacement)
         return rows_response()
@@ -355,7 +360,7 @@ def test_mutation_retries_only_an_explicit_401_under_the_same_session(
             message = "timeout"
             raise httpx.ReadTimeout(message, request=request)
         if (
-            request.headers["authorization"] == "Bearer old-access"
+            request.headers["authorization"] == f"Bearer {access_token('old')}"
             or outcome == "denied"
         ):
             return httpx.Response(401, content=rejection)
@@ -383,6 +388,6 @@ def test_mutation_retries_only_an_explicit_401_under_the_same_session(
     assert requests[0].url.path.endswith(f"/{operation}")
     if len(requests) == 3:
         assert requests[0].content == requests[2].content
-        assert requests[2].headers["authorization"] == "Bearer new-access"
+        assert requests[2].headers["authorization"] == f"Bearer {access_token('new')}"
     if outcome == "replaced":
         assert client.auth.get_session() == replacement

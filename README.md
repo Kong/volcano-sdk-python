@@ -78,14 +78,18 @@ client.durable.stop(
     "00000000-0000-4000-8000-000000000001", "order-pipeline", execution.id
 )
 
-logs = client.logs.search(
+# Project logs use a control-plane project token, not this end-user session.
+logs_client = VolcanoClient(
+    anon_key="ak_your_anon_key", access_token="vpat_your_project_token"
+)
+logs = logs_client.logs.search(
     "00000000-0000-4000-8000-000000000001",
     {"resource": {"type": "function"}, "limit": 100},
 )
 for event in logs.data:
     print(event["timestamp"], event["body"])
 
-activity = client.logs.activity(
+activity = logs_client.logs.activity(
     "00000000-0000-4000-8000-000000000001",
     {"resource": {"type": "function"}, "bucket_count": 24},
 )
@@ -310,7 +314,9 @@ unfamiliar package.
 `logs.search()` returns an immutable page of retained runtime or deployment log
 events. Pass `next_cursor` back as `cursor` to continue a search. `logs.activity()`
 returns immutable time buckets using the same resource selector and query syntax.
-Both methods require an active user session.
+Both methods require a platform user token or a project access token.
+A `read_only` project token is sufficient; end-user sessions cannot read project logs.
+See the [logs guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/logs.md).
 
 Database selects, inserts, updates, deletes, log reads, and authenticated storage
 requests (including upload sessions and parts) refresh the captured
@@ -677,6 +683,14 @@ Success returns `None`. The reset revokes the recovered account's existing sessi
 sign it in. The client keeps any unrelated local session unchanged; sign in with the new password
 when the reset flow completes.
 
+To start with only a supplied user access token, pass `access_token` to
+`VolcanoClient`. Construction makes no request and leaves `refresh_token`,
+`user_id`, and `user` as `None` until supplied or validated by the server.
+`get_user()` validates and caches the profile without changing credentials.
+Without a refresh token, `refresh_session()` raises `AuthenticationError` and
+`sign_out()` revokes the server session using the access token and clears local state.
+Supply `refresh_token` with `access_token` to enable refresh. See the [token bootstrap example](https://github.com/Kong/volcano-sdk-python/blob/main/docs/README.md#use-a-supplied-access-token).
+
 Copy a complete native session into another client's memory:
 
 ```python
@@ -734,9 +748,13 @@ client.auth.sign_out()
 assert client.auth.get_session() is None
 ```
 
+Sign-out uses the refresh token directly when the SDK received both credentials together from
+sign-in or a validated refresh. Supplied credentials use the access-token session; on HTTP 401,
+the SDK can refresh once and revoke that same session without adopting the renewed credentials.
 Calling `sign_out()` without a session succeeds without a request. A revocation failure is raised
-after the captured local session is cleared. A newer session established while sign-out is in
-flight remains current.
+after the captured local session is cleared. Sign-out waits for an already-running refresh and uses its validated credentials.
+Later refresh attempts raise `SessionChangedError` without a request. Concurrent sign-out calls
+share one result. A separate sign-in or adoption remains current.
 
 Realtime is async. Channels wrap `centrifuge-python`; the underlying client and
 subscription objects are not part of the public API.

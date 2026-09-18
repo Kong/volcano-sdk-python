@@ -5,13 +5,19 @@ import hashlib
 import importlib.util
 import os
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock, call
 
+import httpx
 import pytest
 from behave.step_registry import registry
+from session_fixtures import access_token
+
+from volcano_sdk import Session, VolcanoClient
+from volcano_sdk._transport import GeneratedTransport
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -99,6 +105,30 @@ def test_staged_lock_recovery_matches_proposed_shared_source() -> None:
     assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
 
 
+def test_staged_token_bootstrap_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "auth-token-bootstrap.feature"
+    expected = "7f2cef1489ce2cb5a9f3ba230d7f411197415a0f4a3c14f38361c5ce0522e0ac"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
+def test_staged_auth_request_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "auth-request-recovery.feature"
+    expected = "9fa6f8d6cb3bca89501d32d950f06b8982ed34b888cce134465e0358b8261e8f"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
+def test_staged_database_queries_match_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "database-queries.feature"
+    expected = "37d7f2e8fd4efb035cbc094c9c91a44a86f15fbcd689627e525e8d04f033a928"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
+def test_staged_storage_sessions_match_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "storage-sessions.feature"
+    expected = "037c60a8da27ec4cc5777596ba0c669b8309181a54b27aa61882535ed2f6beb1"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
 def test_every_contract_phrase_is_bound_verbatim() -> None:
     registry.clear()
     _load_module(
@@ -110,6 +140,24 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         for definition in definitions
     }
     assert bound == {
+        "the client selects a projected page of query fixture members",
+        "the projected page contains only beta and gamma in that order",
+        "the client selects query fixture rows with each comparison filter",
+        "each comparison returns exactly the matching query fixture rows",
+        (
+            "the client selects query fixture rows with "
+            "case-sensitive and insensitive patterns"
+        ),
+        "each pattern returns exactly the matching query fixture rows",
+        "the client selects query fixture rows with null and boolean filters",
+        "each identity filter returns exactly the matching query fixture rows",
+        "the client uploads one part and resumes the contract upload",
+        "upload progress describes exactly the first uploaded part",
+        "the completed multipart object preserves its path, type, and bytes",
+        "the client uploads one part and aborts the contract upload",
+        "the aborted session and unfinished object are not found",
+        "the client makes the contract object public and private again",
+        "anonymous reads return the original bytes only while the object is public",
         "the client copies, moves, and removes a copy of the contract object",
         "the original, copied, and moved bytes equal the uploaded bytes",
         "moving the copy leaves only the original and moved paths",
@@ -125,8 +173,19 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the database read replaces the rejected token for the same user",
         "the storage operation replaces the rejected token for the same user",
         "the profile read replaces the rejected token for the same user",
+        "the session list replaces the rejected token for the same user",
+        "the client lists its server sessions",
+        "the session list contains the current session for the contract user",
         "the client loads its server-validated profile",
         "the returned and cached profiles belong to the contract user",
+        (
+            "a fresh client tries to refresh a supplied profile "
+            "without a session identifier"
+        ),
+        "a fresh client starts with only the current access token",
+        "a fresh client starts with a rejected access token",
+        "the token-only session has no cached user",
+        "the session retains only the supplied access token",
         (
             "one client pauses delivery for 1 second "
             "and then resumes with the same handler"
@@ -152,6 +211,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the function echoes the payload",
         "a fresh client adopts the current session",
         "a fresh client tries to refresh the signed-out session",
+        "a fresh client loads a profile with the signed-out access token",
         "an authenticated client",
         "exactly the deleted contract row is returned",
         "exactly the fixture row is returned",
@@ -166,6 +226,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the force-released lock is available",
         "the client reacquires the force-released contract lock",
         "the replacement owner receives a higher fencing token",
+        "the SDK operation fails",
         "the client acquires and releases the contract lock",
         "the client deletes its contract row",
         "the client deletes a missing contract row",
@@ -192,6 +253,13 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the stored object path equals the contract path",
         "the subscriber receives the contract message within 10 seconds",
         "two authenticated realtime clients",
+        "a read-only project logs client",
+        "the contract function emits three unique structured log events",
+        "the contract function emits one unique structured log event",
+        "the client searches and paginates those events within 240 seconds",
+        "the client reads matching log activity within 120 seconds",
+        "all three structured events retain their metadata without duplicates",
+        "activity counts exactly that event in its function and level buckets",
     }
 
 
@@ -278,3 +346,201 @@ def test_fixture_loader_requires_absolute_private_file(tmp_path: Path) -> None:
             environment.load_fixture(Path("fixture.json"))
     finally:
         os.chdir(previous)
+
+
+@pytest.mark.parametrize("revoked", [False, True])
+def test_bootstrap_cleanup_is_disarmed_only_after_successful_revocation(
+    monkeypatch: pytest.MonkeyPatch, *, revoked: bool
+) -> None:
+    registry.clear()
+    steps = _load_module(
+        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
+    )
+    source = Mock()
+    source.auth.get_session.return_value = SimpleNamespace(
+        access_token="captured-access"
+    )
+    target = Mock()
+    world = SimpleNamespace(
+        client=source,
+        fixture={"api_url": "https://api.test", "anon_key": "anon"},
+        cleanup_callbacks=[],
+        realtime_clients=[],
+        loop=Mock(),
+        bootstrap_cleanup=None,
+        record=Mock(return_value=SimpleNamespace(ok=revoked)),
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(steps, "VolcanoClient", Mock(return_value=target))
+        steps.bootstrap_access_token(SimpleNamespace(contract=world))
+        steps.sign_out(SimpleNamespace(contract=world))
+        steps.ContractWorld.cleanup(world)
+    assert source.auth.sign_out.call_count == (0 if revoked else 1)
+
+
+def test_rejected_token_binding_preserves_refreshable_session_identity() -> None:
+    registry.clear()
+    steps = _load_module(
+        "contract_steps", ROOT / "features/steps/sdk_contract_steps.py"
+    )
+    user = "00000000-0000-4000-8000-000000000001"
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "access_token": access_token("renewed"),
+                "refresh_token": "rotated",
+                "token_type": "bearer",
+                "expires_in": 3600,
+                "user": {"id": user, "email": "u@example.com", "status": "active"},
+            },
+        )
+
+    client = VolcanoClient(
+        anon_key="anon",
+        _transport=GeneratedTransport(
+            api_url="https://api.test", httpx_transport=httpx.MockTransport(handle)
+        ),
+    )
+    client.auth.set_session(Session(access_token(), "refresh", user))
+    world = SimpleNamespace(client=client, fixture={"user_id": user})
+    context = SimpleNamespace(contract=world)
+    steps.replace_access_token(context)
+    assert client.current_session is not None
+    assert client.current_session.access_token != access_token()
+    assert (
+        client.current_session.access_token.split(".")[:2]
+        == access_token().split(".")[:2]
+    )
+    client.auth.refresh_session()
+    steps.read_replaced_token(context)
+    assert len(requests) == 1
+    assert requests[0].url.path == "/auth/refresh"
+
+
+@pytest.mark.parametrize("leaking_response", [None, 0, 1])
+def test_visibility_assertion_rejects_private_payload_leaks(
+    leaking_response: int | None,
+) -> None:
+    registry.clear()
+    steps = _load_module(
+        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
+    )
+    content = b"private contract content"
+    private_bytes = [b"not found", b"not found"]
+    if leaking_response is not None:
+        private_bytes[leaking_response] = b"prefix: " + content
+    world = SimpleNamespace(
+        storage_bytes=content,
+        last_outcome=SimpleNamespace(
+            value={
+                "statuses": [404, 200, 404],
+                "bytes": content,
+                "visibility": [True, False],
+                "private_bytes": private_bytes,
+            }
+        ),
+    )
+    context = SimpleNamespace(contract=world)
+    if leaking_response is None:
+        steps.anonymous_visibility_matches(context)
+    else:
+        with pytest.raises(AssertionError):
+            steps.anonymous_visibility_matches(context)
+
+
+def test_staged_logs_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "logs.feature"
+    expected = "5616e288fe1a68e13fa70416fe0323a5ce830c0edaa885a387efbf9e5bb2a269"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
+def test_log_contract_rejects_duplicate_and_wrong_resource_events() -> None:
+    module = _load_module("logs_contract", ROOT / "features" / "logs_contract.py")
+    world = SimpleNamespace(
+        fixture={
+            "api_url": "https://api.test",
+            "anon_key": "anon",
+            "logs_access_token": "project-token",
+            "function_id": "function-id",
+        }
+    )
+    contract = module.LogContract(world)
+    events = [
+        {
+            "id": f"event-{ordinal}",
+            "timestamp": f"2026-09-18T12:00:0{2 - ordinal}Z",
+            "body": {"marker": contract.marker, "ordinal": ordinal},
+            "resource": {"type": "function", "id": "function-id"},
+            "level": "info",
+        }
+        for ordinal in range(3)
+    ]
+    contract.verify_events(events)
+    with pytest.raises(AssertionError):
+        contract.verify_events([events[0], events[0], events[2]])
+    events[1] = {
+        **events[1],
+        "resource": {"type": "function", "id": "another-function"},
+    }
+    with pytest.raises(AssertionError):
+        contract.verify_events(events)
+
+
+def test_log_activity_contract_rejects_wrong_resource_counts() -> None:
+    module = _load_module("logs_contract", ROOT / "features" / "logs_contract.py")
+    contract = module.LogContract(
+        SimpleNamespace(
+            fixture={
+                "api_url": "https://api.test",
+                "anon_key": "anon",
+                "logs_access_token": "project-token",
+                "function_id": "function-id",
+            }
+        )
+    )
+    response = SimpleNamespace(
+        total=1,
+        data=[
+            {
+                "total": 1,
+                "counts": {"resource_ids": {"function-id": 1}, "levels": {"info": 1}},
+            },
+            {"total": 0, "counts": {"resource_ids": {}, "levels": {}}},
+        ],
+    )
+    contract.verify_activity(response)
+    response.data[0]["counts"]["resource_ids"] = {"another-function": 1}
+    with pytest.raises(AssertionError):
+        contract.verify_activity(response)
+
+
+@pytest.mark.parametrize("server_skew_seconds", [-120, 120])
+def test_log_bounds_allow_server_clock_skew(server_skew_seconds: int) -> None:
+    module = _load_module("logs_contract", ROOT / "features" / "logs_contract.py")
+    world = SimpleNamespace(
+        fixture={
+            "api_url": "https://api.test",
+            "anon_key": "anon",
+            "logs_access_token": "project-token",
+            "function_id": "function-id",
+            "function_name": "function",
+        },
+        service_client=SimpleNamespace(
+            functions=SimpleNamespace(
+                invoke=Mock(
+                    return_value=SimpleNamespace(
+                        status=200, data={"echoed": "contract"}
+                    )
+                ),
+            )
+        ),
+    )
+    contract = module.LogContract(world)
+    server_time = datetime.now(UTC) + timedelta(seconds=server_skew_seconds)
+    contract.emit(1)
+    assert datetime.fromisoformat(contract.request["start_time"]) < server_time
+    assert server_time < datetime.fromisoformat(contract.request["end_time"])
