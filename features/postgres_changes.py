@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 
 
 class ChangeObserver:
-    def __init__(self, channel: Channel, table: str) -> None:
+    def __init__(self, channel: Channel, table: str, row_id: JSONValue) -> None:
+        self.row_id = row_id
         self.events: list[PostgresChange] = []
         self.queue: asyncio.Queue[PostgresChange] = asyncio.Queue()
         self.inserts: list[PostgresChange] = []
@@ -25,17 +26,31 @@ class ChangeObserver:
                 "*", schema="public", table=table, callback=self.record
             ),
             channel.on_postgres_changes(
-                "INSERT", schema="public", table=table, callback=self.inserts.append
+                "INSERT", schema="public", table=table, callback=self.record_insert
             ),
             channel.on_postgres_changes(
                 "*",
                 schema="public",
                 table=table + "_other",
-                callback=self.wrong_table.append,
+                callback=self.record_wrong_table,
             ),
         ]
 
+    def owns(self, change: PostgresChange) -> bool:
+        identity = change.record.get("id") if change.record is not None else change.id
+        return identity == self.row_id
+
+    def record_insert(self, change: PostgresChange) -> None:
+        if self.owns(change):
+            self.inserts.append(change)
+
+    def record_wrong_table(self, change: PostgresChange) -> None:
+        if self.owns(change):
+            self.wrong_table.append(change)
+
     def record(self, change: PostgresChange) -> None:
+        if not self.owns(change):
+            return
         self.events.append(change)
         self.queue.put_nowait(change)
 
@@ -59,6 +74,8 @@ def verify_change(
     datetime.fromisoformat(event.timestamp)
     if automatic:
         assert event.record == row
+        assert event.id is None
+        assert event.mode is None
     else:
         assert event.id == row["id"]
         assert event.mode == "lightweight"
@@ -84,7 +101,7 @@ async def verify_postgres_changes(world: ContractWorld) -> list[str]:
                 auto_fetch=index == 0,
             )
         )
-    observers = [ChangeObserver(channel, table_name) for channel in channels]
+    observers = [ChangeObserver(channel, table_name, row["id"]) for channel in channels]
     try:
         await asyncio.gather(*(channel.subscribe() for channel in channels))
         for index, kind in enumerate(["INSERT", "UPDATE"]):

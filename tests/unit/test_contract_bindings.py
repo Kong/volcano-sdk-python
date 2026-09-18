@@ -568,7 +568,7 @@ def test_staged_postgres_feature_matches_proposed_shared_source() -> None:
 
 @pytest.mark.parametrize(
     ("automatic", "wrong_field"),
-    [(True, "record"), (False, "id"), (True, "table")],
+    [(True, "record"), (False, "id"), (True, "table"), (True, "id"), (True, "mode")],
 )
 def test_postgres_notification_checks_reject_wrong_identity(
     *, automatic: bool, wrong_field: str
@@ -581,10 +581,36 @@ def test_postgres_notification_checks_reject_wrong_identity(
         table="records",
         timestamp="2026-09-18T12:00:00Z",
         record=row if automatic else None,
-        id="row",
-        mode="lightweight",
+        id=None if automatic else "row",
+        mode=None if automatic else "lightweight",
     )
     module.verify_change(event, "INSERT", "records", row, automatic=automatic)
     setattr(event, wrong_field, "wrong-value")
     with pytest.raises(AssertionError):
         module.verify_change(event, "INSERT", "records", row, automatic=automatic)
+
+
+@pytest.mark.parametrize("automatic", [True, False])
+def test_postgres_observer_ignores_other_rows(*, automatic: bool) -> None:
+    module = _load_module("postgres_changes", ROOT / "features" / "postgres_changes.py")
+    channel = Mock()
+    observer = module.ChangeObserver(channel, "records", "row")
+    callbacks = [
+        entry.kwargs["callback"] for entry in channel.on_postgres_changes.call_args_list
+    ]
+    other = SimpleNamespace(
+        record={"id": "other"} if automatic else None, id=None if automatic else "other"
+    )
+    for callback in callbacks:
+        callback(other)
+    assert not observer.events
+    assert not observer.inserts
+    assert not observer.wrong_table
+    own = SimpleNamespace(
+        record={"id": "row"} if automatic else None, id=None if automatic else "row"
+    )
+    callbacks[0](own)
+    callbacks[1](own)
+    assert asyncio.run(observer.next()) is own
+    assert observer.inserts == [own]
+    observer.close()
