@@ -4,6 +4,9 @@ Use the Volcano Python SDK to access authentication, databases, storage,
 functions, locks, logs, and realtime events. Requires Python 3.11 or later.
 
 Start with the [Python quickstart](https://github.com/Kong/volcano-sdk-python/blob/main/docs/README.md).
+See the [functions guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/functions.md) for invocation identity and response handling.
+
+See [Authentication](https://github.com/Kong/volcano-sdk-python/blob/main/docs/authentication.md) for account, session, email, and OAuth workflows.
 
 ## Install
 
@@ -204,7 +207,6 @@ can be a JSON object, array, scalar, or text; an empty body returns `None`.
 JSON arrays become immutable tuples. Invalid JSON is returned as text. A
 function's own non-2xx response is returned when Volcano confirms it ran;
 non-success platform HTTP responses raise typed SDK errors.
-
 
 Function resolution and invocation recover from a platform HTTP 401 before dispatch:
 the SDK refreshes the captured session and retries the rejected request once.
