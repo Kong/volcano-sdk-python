@@ -616,3 +616,29 @@ def test_postgres_observer_ignores_other_rows(*, automatic: bool) -> None:
     assert asyncio.run(observer.next()) is own
     assert observer.inserts == [own]
     observer.close()
+
+
+def test_presence_retains_channel_name_at_platform_length_boundary() -> None:
+    module = _load_module(
+        "presence_membership", ROOT / "features" / "presence_membership.py"
+    )
+    stop = RuntimeError("valid channel")
+
+    def channel(name: str, *, channel_type: str) -> Mock:
+        assert len(name) <= 64
+        assert channel_type == "presence"
+        return Mock(
+            on_presence_sync=Mock(return_value=lambda: None),
+            subscribe=AsyncMock(side_effect=stop),
+            unsubscribe=AsyncMock(),
+        )
+
+    world = SimpleNamespace(
+        realtime_channel="x" * 64,
+        fixture={"user_id": "user"},
+        realtime_clients=[SimpleNamespace(realtime=SimpleNamespace(channel=channel))]
+        * 2,
+    )
+    with pytest.raises(RuntimeError, match="valid channel") as error:
+        asyncio.run(module.verify_presence_membership(world))
+    assert error.value is stop
