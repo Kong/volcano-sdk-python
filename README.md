@@ -202,8 +202,16 @@ user session; the function receives no user identity. The immutable result
 includes the response body, status, headers, and `X-Volcano-Version`. The body
 can be a JSON object, array, scalar, or text; an empty body returns `None`.
 JSON arrays become immutable tuples. Invalid JSON is returned as text. A
-function's own non-2xx response is returned when the version header proves it
-ran; platform failures raise typed SDK errors.
+function's own non-2xx response is returned when Volcano confirms it ran;
+non-success platform HTTP responses raise typed SDK errors.
+
+
+Function resolution and invocation recover from a platform HTTP 401 before dispatch:
+the SDK refreshes the captured session and retries the rejected request once.
+Concurrent calls share successful recovery. Replacing or signing out that session
+prevents replay under another identity. The call preserves its original payload values.
+A function's own response, HTTP 403, or a network failure never triggers this retry.
+Anonymous and service keys do not refresh.
 
 `logs.search()` returns an immutable page of retained runtime or deployment log
 events. Pass `next_cursor` back as `cursor` to continue a search. `logs.activity()`

@@ -137,6 +137,8 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         for definition in definitions
     }
     assert bound == {
+        "the authenticated client invokes the contract function by name",
+        "the function invocation replaces the rejected token for the same user",
         "the client selects a projected page of query fixture members",
         "the projected page contains only beta and gamma in that order",
         "the client selects query fixture rows with each comparison filter",
