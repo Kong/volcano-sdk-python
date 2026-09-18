@@ -262,6 +262,7 @@ class VolcanoClient:
             if self._current_session is None:
                 return True
             self._current_session = None
+            self._session_lineage.clear_local_credentials()
             self._session_generation += 1
             callback_ids = tuple(self._auth_callbacks)
             dispatch = self._enqueue_auth_state_change(callback_ids, event, None)

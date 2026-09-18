@@ -1103,8 +1103,8 @@ class Auth:
             return active
         if current.refresh_token is None:
             raise AuthenticationError(_REFRESH_UNAVAILABLE)
-        validate_refresh_source(current)
         verified = owner.has_verified_pair(current)
+        validate_refresh_source(current, verified=verified)
         owner.verify_pair(None)
         try:
             refreshed = self._request_refreshed_session(current.refresh_token)

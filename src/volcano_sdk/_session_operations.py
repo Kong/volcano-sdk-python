@@ -23,6 +23,7 @@ class SessionOperations:
         self._lock = Lock()
         self.refreshing: Future[Session] | None = None
         self.signing_out: Future[None] | None = None
+        self._locally_cleared = False
         self._verified_pair = (
             (verified.access_token, verified.refresh_token)
             if verified is not None
@@ -31,11 +32,29 @@ class SessionOperations:
 
     def verify_pair(self, session: Session | None) -> None:
         with self._lock:
+            if self._locally_cleared:
+                return
             self._verified_pair = (
                 (session.access_token, session.refresh_token)
                 if session is not None
                 else None
             )
+
+    def clear_local_credentials(self) -> None:
+        """Keep pending revocation joinable; discard credentials after other clears."""
+        with self._lock:
+            if self.signing_out is not None:
+                return
+            self._locally_cleared = True
+            self._verified_pair = None
+            refreshing = self.refreshing
+        if refreshing is not None:
+            refreshing.add_done_callback(self._forget_refresh)
+
+    def _forget_refresh(self, refreshing: Future[Session]) -> None:
+        with self._lock:
+            if self.refreshing is refreshing:
+                self.refreshing = None
 
     def has_verified_pair(self, session: Session) -> bool:
         with self._lock:

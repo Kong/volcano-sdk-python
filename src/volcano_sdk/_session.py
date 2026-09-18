@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 _JWT_PARTS = 3
 _REFRESH_USER_MISMATCH = "Refreshed session belongs to a different user"
 _REFRESH_SESSION_MISMATCH = "Refreshed credentials belong to a different server session"
-_MISSING_SESSION_ID = "Cannot refresh unknown identity without a session identifier"
+_MISSING_SESSION_ID = "Cannot refresh supplied credentials without a session identifier"
 
 
 def session_id_from_access_token(access_token: str) -> str | None:
@@ -43,12 +43,9 @@ def session_id_from_access_token(access_token: str) -> str | None:
         return None
 
 
-def validate_refresh_source(current: Session) -> None:
-    """Require a continuity constraint before refreshing an unknown identity."""
-    if (
-        current.user_id is None
-        and session_id_from_access_token(current.access_token) is None
-    ):
+def validate_refresh_source(current: Session, *, verified: bool = False) -> None:
+    """Require a session constraint for supplied credentials."""
+    if not verified and session_id_from_access_token(current.access_token) is None:
         raise AuthenticationError(_MISSING_SESSION_ID)
 
 
@@ -56,7 +53,6 @@ def validate_refresh_identity(current: Session | None, refreshed: Session) -> No
     """Reject a refresh outside the captured server session or validated user."""
     if current is None:
         return
-    validate_refresh_source(current)
     session_id = session_id_from_access_token(current.access_token)
     if session_id is not None and session_id != session_id_from_access_token(
         refreshed.access_token

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+from session_fixtures import access_token
 
 from volcano_sdk import (
     AuthenticationError,
@@ -28,7 +29,9 @@ def make_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCl
         ),
     )
     client.auth.set_session(
-        Session("old-access", "old-refresh", "00000000-0000-4000-8000-000000000001")
+        Session(
+            access_token("old"), "old-refresh", "00000000-0000-4000-8000-000000000001"
+        )
     )
     return client
 
@@ -46,7 +49,7 @@ def refresh_response() -> httpx.Response:
     return httpx.Response(
         200,
         json={
-            "access_token": "new-access",
+            "access_token": access_token("new"),
             "refresh_token": "new-refresh",
             "token_type": "bearer",
             "expires_in": 3600,
@@ -70,7 +73,7 @@ def test_logs_refresh_and_replay_the_same_request(
         requests.append(request)
         if request.url.path == "/auth/refresh":
             return refresh_response()
-        if request.headers["authorization"] == "Bearer old-access":
+        if request.headers["authorization"] == f"Bearer {access_token('old')}":
             return httpx.Response(401, content=rejection)
         return httpx.Response(
             200, json={"data": [], "limit": 100, "has_more": False, "total": 0}
@@ -79,9 +82,9 @@ def test_logs_refresh_and_replay_the_same_request(
     read_logs(make_client(handle), operation)
 
     assert [request.headers["authorization"] for request in requests] == [
-        "Bearer old-access",
+        f"Bearer {access_token('old')}",
         "Bearer anon",
-        "Bearer new-access",
+        f"Bearer {access_token('new')}",
     ]
     assert requests[0].url == requests[2].url
     assert requests[0].content == requests[2].content

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+from session_fixtures import access_token
 
 from volcano_sdk import (
     AuthenticationError,
@@ -30,7 +31,7 @@ def make_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCl
             httpx_transport=httpx.MockTransport(handler),
         ),
     )
-    client.auth.set_session(Session("old-access", "old-refresh", USER_ID))
+    client.auth.set_session(Session(access_token("old"), "old-refresh", USER_ID))
     return client
 
 
@@ -56,7 +57,7 @@ def refresh_response() -> httpx.Response:
     return httpx.Response(
         200,
         json={
-            "access_token": "new-access",
+            "access_token": access_token("new"),
             "refresh_token": "new-refresh",
             "token_type": "bearer",
             "expires_in": 3600,
@@ -79,7 +80,7 @@ def test_profile_refreshes_once_preserving_request_and_cached_user(
         if request.url.path == "/auth/refresh":
             roles.append("changed while refreshing")
             return refresh_response()
-        if request.headers["authorization"] == "Bearer old-access":
+        if request.headers["authorization"] == f"Bearer {access_token('old')}":
             return httpx.Response(401, content=rejection)
         return httpx.Response(200, json={"user": PROFILE})
 
@@ -88,15 +89,15 @@ def test_profile_refreshes_once_preserving_request_and_cached_user(
     client.auth.on_auth_state_change(lambda event, _session: events.append(event))
     profile_operation(client, operation, metadata)
     assert [r.headers["authorization"] for r in requests] == [
-        "Bearer old-access",
+        f"Bearer {access_token('old')}",
         "Bearer anon",
-        "Bearer new-access",
+        f"Bearer {access_token('new')}",
     ]
     assert requests[0].url == requests[2].url
     assert requests[0].method == requests[2].method
     assert requests[0].content == requests[2].content
     assert client.current_session is not None
-    assert client.current_session.access_token == "new-access"
+    assert client.current_session.access_token == access_token("new")
     assert client.current_session.user is not None
     assert client.current_session.user["email"] == PROFILE["email"]
     assert events == ["INITIAL_SESSION", "TOKEN_REFRESHED"]

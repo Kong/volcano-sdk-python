@@ -520,3 +520,84 @@ def test_sign_out_joins_an_outcome_after_local_clearing(
                     operation.result(timeout=2)
                 assert caught.value.status == status
     client.auth.sign_out()
+
+
+@pytest.mark.parametrize("enriched", [False, True])
+def test_supplied_profile_does_not_authorize_refresh_without_sid(
+    *, enriched: bool
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/user":
+            return httpx.Response(
+                200,
+                json={
+                    "user": {"id": USER_A, "email": "u@example.com", "status": "active"}
+                },
+            )
+        return refreshed(SESSION_B)
+
+    client = client_for(handle)
+    client.auth.set_session(Session("opaque", "foreign-refresh", USER_A))
+    if enriched:
+        client.auth.get_user()
+        requests.clear()
+    with pytest.raises(AuthenticationError, match="session identifier"):
+        client.auth.refresh_session()
+    assert not requests
+    assert client.current_session is not None
+    assert client.current_session.access_token == "opaque"
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_delete_current_session_discards_retained_credentials(*, fails: bool) -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path in {"/auth/signin", "/auth/refresh"}:
+            return refreshed(SESSION_A)
+        if fails:
+            message = "response lost"
+            raise httpx.ReadError(message, request=request)
+        return httpx.Response(204)
+
+    client = client_for(handle)
+    client.auth.sign_in(email="u@example.com", password="synthetic")
+    client.auth.refresh_session()
+    _, owner, session = client._capture_session_binding()
+    assert session is not None
+    if fails:
+        with pytest.raises(VolcanoError, match="response lost"):
+            client.auth.delete_session(session_id=SESSION_A)
+    else:
+        client.auth.delete_session(session_id=SESSION_A)
+    assert client.current_session is None
+    assert not owner.has_verified_pair(session)
+    assert owner.refreshing is None
+    client.auth.sign_out()
+
+
+def test_deletion_does_not_retain_a_later_refresh_result() -> None:
+    entered, release = Event(), Event()
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/refresh":
+            entered.set()
+            assert release.wait(2)
+            return refreshed(SESSION_A)
+        return httpx.Response(204)
+
+    client = client_for(handle)
+    owner = client._capture_session_binding()[1]
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        refreshing = pool.submit(client.auth.refresh_session)
+        try:
+            assert entered.wait(2)
+            client.auth.delete_session(session_id=SESSION_A)
+        finally:
+            release.set()
+        with pytest.raises(SessionChangedError):
+            refreshing.result(2)
+    assert client.current_session is None
+    assert owner.refreshing is None
+    assert owner._verified_pair is None

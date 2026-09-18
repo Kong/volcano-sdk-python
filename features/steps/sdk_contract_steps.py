@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import replace
 from typing import Any
 from uuid import uuid4
 
@@ -76,6 +77,19 @@ def refresh_current_session(context: Any) -> None:
     assert world.previous_session is not None
     time.sleep(ACCESS_TOKEN_CLOCK_TICK_SECONDS)
     world.record(world.client.auth.refresh_session)
+
+
+@when("a fresh client tries to refresh a supplied profile without a session identifier")
+def refresh_supplied_profile_without_sid(context: Any) -> None:
+    world = _world(context)
+    source = world.client.auth.get_session()
+    assert source is not None
+    target = VolcanoClient(
+        api_url=world.fixture["api_url"], anon_key=world.fixture["anon_key"]
+    )
+    supplied = target.auth.set_session(replace(source, access_token=REJECTED_BEARER))
+    world.record(target.auth.refresh_session)
+    assert target.auth.get_session() == supplied
 
 
 @when("a fresh client starts with only the current access token")
