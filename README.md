@@ -4,6 +4,9 @@ Use the Volcano Python SDK to access authentication, databases, storage,
 functions, locks, logs, and realtime events. Requires Python 3.11 or later.
 
 Start with the [Python quickstart](https://github.com/Kong/volcano-sdk-python/blob/main/docs/README.md).
+See the [functions guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/functions.md) for invocation identity and response handling.
+
+See [Authentication](https://github.com/Kong/volcano-sdk-python/blob/main/docs/authentication.md) for account, session, email, and OAuth workflows.
 
 ## Install
 
@@ -32,13 +35,15 @@ client = VolcanoClient(
 
 sign_up = client.auth.sign_up(
     email="new-user@example.com",
-    password="secret",
+    password="correct-horse-battery-staple",
     metadata={"display_name": "New User"},
 )
 if sign_up.confirmation_required:
     print(sign_up.message)
 
-session = client.auth.sign_in(email="user@example.com", password="secret")
+session = client.auth.sign_in(
+    email="user@example.com", password="correct-horse-battery-staple"
+)
 current_session = client.auth.get_session()
 assert current_session == session
 
@@ -46,7 +51,7 @@ user = client.auth.get_user()
 assert user.id == session.user_id
 
 updated_user = client.auth.update_user(
-    password="new-secret",
+    password="new-correct-horse-battery-staple",
     metadata={"display_name": "Grace", "avatar": None},
 )
 assert updated_user.id == session.user_id
@@ -196,7 +201,7 @@ The request goes to the function's own domain rather than to `api_url`, so an
 egress rule that allows only the API host will block it; the resolved endpoint
 is cached for the lifetime the platform gives it. Deployments with no public
 function domain invoke through the API host instead.
-It uses the active user session when present, then a configured service key,
+It uses the current session token, including a supplied `access_token`, then a configured service key,
 then the anonymous key. An anonymous key can invoke a public function without a
 user session; the function receives no user identity. The immutable result
 includes the response body, status, headers, and `X-Volcano-Version`. The body
@@ -204,7 +209,6 @@ can be a JSON object, array, scalar, or text; an empty body returns `None`.
 JSON arrays become immutable tuples. Invalid JSON is returned as text. A
 function's own non-2xx response is returned when Volcano confirms it ran;
 non-success platform HTTP responses raise typed SDK errors.
-
 
 Function resolution and invocation recover from a platform HTTP 401 before dispatch:
 the SDK refreshes the captured session and retries the rejected request once.
@@ -304,7 +308,9 @@ The signup acknowledgement is identical for new and existing email addresses. Pa
 
 ```python
 result = client.auth.sign_up(
-    email="new-user@example.com", password="secret", sign_in_when_allowed=True
+    email="new-user@example.com",
+    password="correct-horse-battery-staple",
+    sign_in_when_allowed=True,
 )
 session = result.session  # None when no follow-up sign-in ran.
 ```
@@ -320,21 +326,23 @@ request. It is cached data, not proof of authentication; use `auth.get_user()`
 to fetch the server-validated profile. Existing three-field `Session` construction
 still works, with `user=None`. An adopted snapshot must have the same user ID.
 Successful `get_user()`, `update_user()`, `convert_anonymous()`, and
-`confirm_email_change()` calls update that local snapshot without changing tokens
-or emitting an auth-state event. Previously returned sessions remain immutable.
+`confirm_email_change()` calls update that local snapshot. Automatic HTTP 401 recovery
+can rotate credentials and emit `TOKEN_REFRESHED`; the profile update itself does not. Previously returned sessions remain immutable.
 Profile identity checks compare UUID values; the session retains its original
 user ID spelling, including in the cached snapshot.
 
 `get_user()` sends the active access token to Volcano and returns an immutable, server-validated
 profile with the complete public AuthUser fields. Profile timestamps are timezone-aware `datetime`
 values, and nested user and application metadata are immutable. The request updates the cached
-profile without changing credentials. If another authentication operation replaces the session
+profile without changing credentials unless HTTP 401 recovery requires a refresh.
+Successful recovery rotates credentials and emits `TOKEN_REFRESHED`. If another authentication operation replaces the session
 while the request is in flight, `get_user()` raises `SessionChangedError` instead of returning a
 profile for stale credentials.
 
 `update_user()` updates the current user's password, metadata, or both. Metadata is a shallow patch:
 omitted keys remain unchanged, and setting a key to `None` removes it. The method returns the same
-immutable profile type as `get_user()` and updates the cached profile without changing credentials.
+immutable profile type as `get_user()` and updates the cached profile without changing credentials unless HTTP 401 recovery requires a refresh.
+Successful recovery rotates credentials and emits `TOKEN_REFRESHED`.
 It also rejects a response if another authentication operation replaces the session while the
 update is in flight.
 
@@ -422,7 +430,9 @@ hosted_url = client.auth.get_hosted_auth_url(
 ```
 
 Store `hosted_state` in the user's signed server-side session before redirecting to `hosted_url`.
-After parsing the returned fragment into a `Session`, validate and adopt it atomically:
+In the callback, atomically fetch and delete the stored state before validation,
+even if validation or adoption fails. Reject a missing or already-consumed state.
+After parsing the returned fragment into a `Session`, validate and adopt it:
 
 ```python
 session = client.auth.adopt_hosted_auth_session(
@@ -451,8 +461,9 @@ authorization_url = client.auth.sign_in_with_oauth(
 ```
 
 Store `oauth_state` in the user's signed server-side session, then redirect the user to the returned
-URL. In the callback, pass the returned and stored states to the SDK so it rejects login CSRF before
-exchanging the one-time code:
+URL. In the callback, atomically fetch and delete the stored nonce as `stored_oauth_state`;
+reject a missing or already-consumed nonce. Pass the returned and consumed states to
+the SDK so it rejects login CSRF before exchanging the one-time code:
 
 ```python
 session = client.auth.exchange_oauth_code(
@@ -546,9 +557,11 @@ Revoke one session by ID:
 client.auth.delete_session(session_id="00000000-0000-4000-8000-000000000099")
 ```
 
-The request uses the current access token. Deleting that token's own session clears local
-credentials, including when the request outcome is uncertain; deleting another session preserves
-them. If another authentication operation replaces the session before deletion finishes, the method
+The request uses the current access token. When its JWT contains a readable UUID `session_id`,
+deleting that session clears local credentials even if the request outcome is uncertain.
+Without that identifier, the SDK cannot recognize self-deletion. Deleting another session does not
+itself clear local state. HTTP 401 recovery can rotate credentials and emit `TOKEN_REFRESHED`;
+a server-rejected refresh clears the captured session before the operation raises. If another authentication operation replaces the session before deletion finishes, the method
 raises `SessionChangedError` instead of clearing the replacement or acknowledging a stale result.
 
 Create an anonymous account and make its tokens the current session:
@@ -560,12 +573,12 @@ session = client.auth.sign_in_anonymously(metadata={"device": "mobile"})
 Anonymous sign-ins must be enabled for the project. Convert the account before signing out if the
 user needs to recover it later.
 
-Attach email credentials without changing the anonymous user's ID or current session:
+Attach email credentials while preserving the anonymous user's ID:
 
 ```python
 user = client.auth.convert_anonymous(
     email="user@example.com",
-    password="secure-password",
+    password="a-long-example-password-2026",
     metadata={"display_name": "Ada"},
 )
 ```
@@ -577,7 +590,7 @@ Set a new password with the recovery token from that email:
 ```python
 client.auth.reset_password(
     token="recovery-token",
-    new_password="new-secret",
+    new_password="new-correct-horse-battery-staple",
 )
 ```
 
@@ -588,10 +601,13 @@ when the reset flow completes.
 To start with only a supplied user access token, pass `access_token` to
 `VolcanoClient`. Construction makes no request and leaves `refresh_token`,
 `user_id`, and `user` as `None` until supplied or validated by the server.
-`get_user()` validates and caches the profile without changing credentials.
+`get_user()` validates and caches the profile without changing credentials unless HTTP 401 recovery requires a refresh.
+Successful recovery rotates credentials and emits `TOKEN_REFRESHED`.
 Without a refresh token, `refresh_session()` raises `AuthenticationError` and
-`sign_out()` revokes the server session using the access token and clears local state.
-Supply `refresh_token` with `access_token` to enable refresh. See the [token bootstrap example](https://github.com/Kong/volcano-sdk-python/blob/main/docs/README.md#use-a-supplied-access-token).
+`sign_out()` clears local state and revokes the server session when the access JWT
+contains a readable UUID `session_id`.
+Supplied credentials require both a refresh token and an access JWT with a readable UUID
+`session_id` to enable refresh. See the [token bootstrap example](https://github.com/Kong/volcano-sdk-python/blob/main/docs/README.md#use-a-supplied-access-token).
 
 Copy a complete native session into another client's memory:
 
@@ -616,7 +632,8 @@ assert client.auth.get_session() is refreshed
 ```
 
 On success, `refresh_session()` replaces the in-memory session and returns the immutable new
-snapshot. An authentication failure clears the session that initiated the request. Server and
+snapshot. An authentication rejection from the refresh endpoint clears the captured session.
+Missing refresh credentials, failed session-continuity checks, server errors, and
 transport failures preserve it, and a late response never replaces a newer session. The SDK does
 not persist sessions.
 
@@ -638,8 +655,8 @@ subscription.unsubscribe()
 Registration queues `INITIAL_SESSION`. It normally arrives before registration returns, but an
 existing notification dispatch may deliver it afterward. Successful session creation, refresh, and
 local clearing emit `SIGNED_IN`, `TOKEN_REFRESHED`, and `SIGNED_OUT`. Callbacks are delivered locally
-in transition order after the state lock is released, and callback failures cannot interrupt auth
-operations. Unsubscribing prevents queued and future delivery; a callback already selected for
+in transition order after the state lock is released. Ordinary callback `Exception` failures are
+isolated; exceptions such as `KeyboardInterrupt` propagate after the session transition has committed. Unsubscribing prevents queued and future delivery; a callback already selected for
 delivery may finish after `unsubscribe()` returns. The SDK does not broadcast between processes or
 persist sessions.
 
@@ -651,8 +668,10 @@ assert client.auth.get_session() is None
 ```
 
 Sign-out uses the refresh token directly when the SDK received both credentials together from
-sign-in or a validated refresh. Supplied credentials use the access-token session; on HTTP 401,
-the SDK can refresh once and revoke that same session without adopting the renewed credentials.
+sign-in or a validated refresh. Supplied credentials use the access-token session when its JWT
+contains a readable UUID `session_id`; on HTTP 401, the SDK can refresh once and revoke that
+same session without adopting the renewed credentials. Without that identifier, sign-out uses
+the supplied refresh token, or only clears local state if no refresh token is available.
 Calling `sign_out()` without a session succeeds without a request. A revocation failure is raised
 after the captured local session is cleared. Sign-out waits for an already-running refresh and uses its validated credentials.
 Later refresh attempts raise `SessionChangedError` without a request. Concurrent sign-out calls
