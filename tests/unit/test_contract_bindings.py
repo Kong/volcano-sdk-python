@@ -392,3 +392,34 @@ def test_rejected_token_binding_preserves_refreshable_session_identity() -> None
     steps.read_replaced_token(context)
     assert len(requests) == 1
     assert requests[0].url.path == "/auth/refresh"
+
+
+@pytest.mark.parametrize("leaking_response", [None, 0, 1])
+def test_visibility_assertion_rejects_private_payload_leaks(
+    leaking_response: int | None,
+) -> None:
+    registry.clear()
+    steps = _load_module(
+        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
+    )
+    content = b"private contract content"
+    private_bytes = [b"not found", b"not found"]
+    if leaking_response is not None:
+        private_bytes[leaking_response] = b"prefix: " + content
+    world = SimpleNamespace(
+        storage_bytes=content,
+        last_outcome=SimpleNamespace(
+            value={
+                "statuses": [404, 200, 404],
+                "bytes": content,
+                "visibility": [True, False],
+                "private_bytes": private_bytes,
+            }
+        ),
+    )
+    context = SimpleNamespace(contract=world)
+    if leaking_response is None:
+        steps.anonymous_visibility_matches(context)
+    else:
+        with pytest.raises(AssertionError):
+            steps.anonymous_visibility_matches(context)

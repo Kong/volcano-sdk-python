@@ -877,6 +877,7 @@ def change_contract_visibility(context: Any) -> None:
             "statuses": [before.status_code, visible.status_code, after.status_code],
             "bytes": visible.content,
             "visibility": [public.is_public, private.is_public],
+            "private_bytes": [before.content, after.content],
         }
 
     world.record(operation)
@@ -885,7 +886,9 @@ def change_contract_visibility(context: Any) -> None:
 @then("anonymous reads return the original bytes only while the object is public")
 def anonymous_visibility_matches(context: Any) -> None:
     world = _world(context)
-    assert world.last_outcome.value == {
+    value = world.last_outcome.value
+    assert all(world.storage_bytes not in body for body in value["private_bytes"])
+    assert {key: value[key] for key in ("statuses", "bytes", "visibility")} == {
         "statuses": [404, 200, 404],
         "bytes": world.storage_bytes,
         "visibility": [True, False],
