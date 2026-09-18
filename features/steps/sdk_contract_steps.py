@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from typing import Any
+from uuid import uuid4
 
 from behave import given, then, when
 from broadcast_pause import verify_broadcast_pause
@@ -569,6 +570,30 @@ def start_durable_execution_twice(context: Any) -> None:
     def operation() -> tuple[Any, Any]:
         return world.start_durable_execution(), world.start_durable_execution()
 
+@when("the client recovers the contract lock with caller-owned tokens")
+def recover_lock(context: Any) -> None:
+    world = _world(context)
+
+    def operation() -> dict[str, Any]:
+        locks, key = world.service_client.locks, world.lock_key
+        token, request_id = str(uuid4()), str(uuid4())
+        lease = locks.acquire(key, ttl=30, token=token, request_id=request_id)
+        cleanup = world.register_lock_cleanup(key, lease)
+        recovered = locks.acquire(key, ttl=30, token=token, request_id=request_id)
+        held = locks.get(key, request_id=str(uuid4()))
+        renewed = locks.renew(key, recovered, ttl=60, request_id=str(uuid4()))
+        locks.release(key, renewed, request_id=str(uuid4()))
+        available = locks.get(key, request_id=str(uuid4()))
+        return {
+            "token": token,
+            "cleanup": cleanup,
+            "lease": lease,
+            "recovered": recovered,
+            "held": held,
+            "renewed": renewed,
+            "available": available,
+        }
+
     world.record(operation)
 
 
@@ -634,6 +659,75 @@ def listed_executions_include_the_started_one(context: Any) -> None:
     assert world.started_execution is not None
     listed = {execution.id for execution in world.last_outcome.value.executions}
     assert world.started_execution.id in listed
+
+@then("recovery and renewal preserve the held lease until release")
+def recovered_lock_lifecycle(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    value = world.last_outcome.value
+    assert value["held"].held is True
+    assert value["available"].held is False
+    world.cleanup_callbacks.remove(value["cleanup"])
+    assert (
+        value["token"]
+        == value["lease"].token
+        == value["recovered"].token
+        == value["renewed"].token
+    )
+    assert value["lease"].fencing_token is not None
+    assert (
+        value["lease"].fencing_token
+        == value["recovered"].fencing_token
+        == value["held"].fencing_token
+        == value["renewed"].fencing_token
+    )
+
+
+@when("the client acquires and force releases the contract lock")
+def force_release_lock(context: Any) -> None:
+    world = _world(context)
+
+    def operation() -> object:
+        locks, key = world.service_client.locks, world.lock_key
+        lease = locks.acquire(key, ttl=30)
+        cleanup = world.register_lock_cleanup(key, lease)
+        locks.force_release(key, request_id=str(uuid4()))
+        return {"lease": lease, "cleanup": cleanup, "available": locks.get(key)}
+
+    world.record(operation)
+
+
+@then("the force-released lock is available")
+def force_released_lock_available(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.last_outcome.value["available"].held is False
+    world.cleanup_callbacks.remove(world.last_outcome.value["cleanup"])
+
+
+@when("the client reacquires the force-released contract lock")
+def reacquire_force_released_lock(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    original = world.last_outcome.value["lease"]
+
+    def operation() -> object:
+        replacement = world.service_client.locks.acquire(world.lock_key, ttl=30)
+        world.register_lock_cleanup(world.lock_key, replacement)
+        return {"original": original, "replacement": replacement}
+
+    world.record(operation)
+
+
+@then("the replacement owner receives a higher fencing token")
+def replacement_lock_fence_increases(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    original = world.last_outcome.value["original"]
+    replacement = world.last_outcome.value["replacement"]
+    assert replacement.token != original.token
+    assert original.fencing_token is not None
+    assert replacement.fencing_token > original.fencing_token
 
 
 @given("two authenticated realtime clients")

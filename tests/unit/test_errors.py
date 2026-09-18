@@ -115,8 +115,9 @@ class ErrorTransport:
         key: str,
         ttl: int,
         token: str,
+        request_id: str | None = None,
     ) -> ErrorResponse:
-        del authorization, key, ttl, token
+        del authorization, key, ttl, token, request_id
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
     def release_project_lock(
@@ -125,8 +126,9 @@ class ErrorTransport:
         authorization: str,
         key: str,
         token: str,
+        request_id: str | None = None,
     ) -> ErrorResponse:
-        del authorization, key, token
+        del authorization, key, token, request_id
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
 

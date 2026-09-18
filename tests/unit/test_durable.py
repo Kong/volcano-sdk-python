@@ -187,7 +187,7 @@ def test_get_returns_the_result_of_a_succeeded_execution() -> None:
         (
             "getDurableExecution",
             {
-                "authorization": "service-key",
+                "authorization": "access-token",
                 "project_id": PROJECT_ID,
                 "function_id": "order-pipeline",
                 "execution_id": EXECUTION_ID,
@@ -263,7 +263,7 @@ def test_list_returns_an_immutable_page() -> None:
         (
             "listDurableExecutions",
             {
-                "authorization": "service-key",
+                "authorization": "access-token",
                 "project_id": PROJECT_ID,
                 "function_id": "order-pipeline",
                 "request": DurableExecutionListRequest(
@@ -310,7 +310,7 @@ def test_stop_returns_the_execution_read_back_after_asking() -> None:
         (
             "stopDurableExecution",
             {
-                "authorization": "service-key",
+                "authorization": "access-token",
                 "project_id": PROJECT_ID,
                 "function_id": "order-pipeline",
                 "execution_id": EXECUTION_ID,
@@ -384,23 +384,46 @@ def test_owner_scoped_reads_reject_empty_path_segments(
     assert transport.calls == []
 
 
-def test_owner_scoped_reads_use_the_service_key_without_a_session() -> None:
+def test_start_refuses_an_execution_name_over_the_platform_limit() -> None:
+    """Refused locally, because the platform refuses it anyway.
+
+    The header has a documented maximum; sending a longer name spends a
+    request and an allowance check to be told so.
+    """
     transport = FakeDurableTransport()
-    client = durable_client(transport, session=False)
+    client = durable_client(transport)
+
+    with pytest.raises(ValueError, match="at most 255 characters"):
+        client.durable.start("order-pipeline", {}, execution_name="x" * 256)
+
+    assert transport.calls == []
+
+
+def test_owner_scoped_reads_send_the_session_token() -> None:
+    """The routes take a user token, so that is the only credential to send.
+
+    A service key is refused by the platform with a 401 -- list, get and stop
+    are registered behind RequireUserAuth -- so preferring one here would have
+    meant a backend holding a platform token never sent it and saw an
+    authentication error instead. The JavaScript SDK sends the session token
+    alone for the same reason.
+    """
+    transport = FakeDurableTransport()
+    client = durable_client(transport)
 
     client.durable.get(PROJECT_ID, "order-pipeline", EXECUTION_ID)
 
-    assert transport.calls[0][1]["authorization"] == "service-key"
+    assert transport.calls[0][1]["authorization"] == "access-token"
 
 
-def test_owner_scoped_reads_refuse_without_a_platform_credential() -> None:
+def test_owner_scoped_reads_refuse_a_service_key_alone() -> None:
     transport = FakeDurableTransport()
-    client = durable_client(transport, session=False, service_key=None)
+    client = durable_client(transport, session=False)
 
     with pytest.raises(RuntimeError, match="No active session"):
         client.durable.get(PROJECT_ID, "order-pipeline", EXECUTION_ID)
 
-    assert transport.calls == []
+    assert transport.calls == [], "a credential the route refuses must not be sent"
 
 
 def test_get_raises_not_found_for_a_missing_execution() -> None:

@@ -25,6 +25,7 @@ python3.14.
 
 from __future__ import annotations
 
+import functools
 import importlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, cast, overload
@@ -151,8 +152,10 @@ class _Engine:
 class RetryOptions:
     """How a step retries after a failed attempt.
 
-    What is left unset keeps the platform's default: 6 attempts, 5 seconds
-    apart doubling to a minute, with the delays jittered.
+    What is left unset is left unset: the option is omitted from the config
+    handed to the runtime, so the runtime's own default applies to that field
+    alone. Naming particular numbers here would be asserting defaults this
+    package does not own and cannot keep current.
     """
 
     # Total attempts, including the first.
@@ -658,6 +661,11 @@ def durable(
     # time would break a module that merely mentions a durable handler.
     wrapped: list[Any] = []
 
+    # functools.wraps rather than copying two attributes: __qualname__,
+    # __module__, __dict__ and __wrapped__ matter to inspect.unwrap and to a
+    # traceback, and leaving them pointing at this closure makes the SDK's
+    # wrapper the thing a user sees when their handler fails.
+    @functools.wraps(handler)
     def invoke(event: Any, function_context: Any) -> Any:
         if not wrapped:
             engine = _Engine.load()
@@ -670,8 +678,6 @@ def durable(
             wrapped.append(engine.durable_execution(run))
         return wrapped[0](event, function_context)
 
-    invoke.__name__ = getattr(handler, "__name__", "handler")
-    invoke.__doc__ = handler.__doc__
     return invoke
 
 

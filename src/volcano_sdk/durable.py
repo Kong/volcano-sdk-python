@@ -26,6 +26,11 @@ if TYPE_CHECKING:
 
 _INVALID_EXECUTION_PAYLOAD = "Expected a complete durable execution"
 _INVALID_EXECUTION_PAGE = "Expected a complete durable execution page"
+# The spec's maxLength on X-Volcano-Execution-Name. Checked here so an
+# over-long name is refused before a request is spent on it, the way the
+# JavaScript SDK refuses it.
+_MAX_EXECUTION_NAME_LENGTH = 255
+
 _INVALID_IDENTIFIERS = {
     "function_name": "function_name must be a non-empty string",
     "execution_name": "execution_name must be a non-empty string",
@@ -119,11 +124,7 @@ class Durable:
         than beginning a second one, and is charged once.
         """
         identifier = _identifier(function_name, "function_name")
-        name = (
-            None
-            if execution_name is None
-            else _identifier(execution_name, "execution_name")
-        )
+        name = None if execution_name is None else _execution_name(execution_name)
         transport = cast("DurableTransport", self._client._transport)
         response = invoke(
             transport.start_durable_execution_from_application,
@@ -142,11 +143,12 @@ class Durable:
     ) -> DurableExecution:
         """Read an execution, including its result once it has succeeded.
 
-        Owner-scoped: it takes the project id and a platform token or
-        service key, because an execution is addressed by its id alone and an
+        Owner-scoped: it takes the project id and the project's own platform
+        token, because an execution is addressed by its id alone and an
         anonymous key is held by everyone who loads the page. Poll it from a
-        backend, not a browser. An auth-user session from sign-in is not
-        enough.
+        backend, not a browser. Neither an auth-user session from sign-in nor a
+        service key is accepted here -- the route takes a user token, and
+        anything else is answered 401.
         """
         project = _identifier(project_id, "project_id")
         identifier = _identifier(function_name, "function_name")
@@ -154,7 +156,7 @@ class Durable:
         transport = cast("DurableTransport", self._client._transport)
         response = invoke(
             transport.get_durable_execution,
-            authorization=self._client._owner_token(),
+            authorization=self._client._session_token(),
             project_id=project,
             function_id=identifier,
             execution_id=execution,
@@ -181,7 +183,7 @@ class Durable:
         request = DurableExecutionListRequest(status=status, page=page, limit=limit)
         response = invoke(
             transport.list_durable_executions,
-            authorization=self._client._owner_token(),
+            authorization=self._client._session_token(),
             project_id=project,
             function_id=identifier,
             request=request,
@@ -208,12 +210,28 @@ class Durable:
         transport = cast("DurableTransport", self._client._transport)
         response = invoke(
             transport.stop_durable_execution,
-            authorization=self._client._owner_token(),
+            authorization=self._client._session_token(),
             project_id=project,
             function_id=identifier,
             execution_id=execution,
         )
         return _durable_execution(response_payload(response, _HTTP_OK))
+
+
+def _execution_name(value: object) -> str:
+    """Require a name the platform will accept, including its length.
+
+    The header carries a documented maximum, and a name over it is refused
+    server-side with a 400 -- a request, an allowance check and a round trip
+    spent on something that could be answered here.
+    """
+    name = _identifier(value, "execution_name")
+    if len(name) > _MAX_EXECUTION_NAME_LENGTH:
+        message = (
+            f"execution_name must be at most {_MAX_EXECUTION_NAME_LENGTH} characters"
+        )
+        raise ValueError(message)
+    return name
 
 
 def _identifier(value: object, field: str) -> str:

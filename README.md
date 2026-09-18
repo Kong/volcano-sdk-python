@@ -181,6 +181,13 @@ original error. `on_progress` runs after each successful part with cumulative
 uploaded bytes and the total size.
 `upload_part()` returns immutable part metadata and can safely retry the same
 part number to replace that part.
+Acquisition accepts caller-owned UUID `token` and `request_id` values and retries
+an ambiguous transport failure or HTTP 503 once with the same request and credential.
+Retain those IDs to recover an uncertain acquisition. Other lock methods accept
+`request_id`; block-scoped helpers forward initial IDs only to acquisition.
+See the [lock guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/locks.md)
+for examples and fencing requirements.
+
 `locks.get()` returns immutable lock availability, expiry, and fencing-token
 state without acquiring the lock.
 Lock acquisition and renewal require an integer TTL from 5 seconds through 90 days.
@@ -224,9 +231,10 @@ name returns the execution that already exists rather than beginning a second
 one, and is charged once.
 
 `durable.get()`, `durable.list()` and `durable.stop()` are owner-scoped and need
-a platform token or a configured service key, because an execution is addressed
-by its id alone and an anonymous key is held by everyone who loads the page. An
-auth-user session from `sign_in()` is not accepted. Poll them from a backend.
+the project's own platform token, because an execution is addressed by its id
+alone and an anonymous key is held by everyone who loads the page. Neither an
+auth-user session from `sign_in()` nor a service key is accepted -- the routes
+take a user token, and anything else is answered 401. Poll them from a backend.
 `get()` carries `result` once the execution has succeeded and `error` when it
 failed; `result_expired` separates a result the platform has discarded from a
 function that returned nothing. `is_terminal` reports whether the execution has
@@ -239,7 +247,7 @@ awaited: what it returns is the execution read back after asking, often still
 
 `volcano_sdk.durable_authoring` is what the durable function itself is written
 against. It needs a durable-capable runtime — `python3.13` or `python3.14` — and
-`volcano-sdk` in the function's `requirements.txt`. Nothing else: the runtime
+`volcano-sdk-python` in the function's `requirements.txt`. Nothing else: the runtime
 that does the checkpointing is installed by Volcano when it builds a function
 deployed as durable.
 
@@ -863,7 +871,7 @@ row fetching for every channel.
 
 ## Dependencies
 
-Installing `volcano-sdk` pulls in three packages, plus their own transitive
+Installing `volcano-sdk-python` pulls in three packages, plus their own transitive
 dependencies:
 
 | Package                                                            | Why                                        |
