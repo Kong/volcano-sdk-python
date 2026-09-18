@@ -113,6 +113,12 @@ def test_staged_auth_request_feature_matches_proposed_shared_source() -> None:
     assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
 
 
+def test_staged_database_queries_match_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "database-queries.feature"
+    expected = "37d7f2e8fd4efb035cbc094c9c91a44a86f15fbcd689627e525e8d04f033a928"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
 def test_every_contract_phrase_is_bound_verbatim() -> None:
     registry.clear()
     _load_module(
