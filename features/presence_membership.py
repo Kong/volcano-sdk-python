@@ -41,9 +41,7 @@ class PresenceObserver:
 
 async def verify_presence_membership(world: ContractWorld) -> list[int]:
     first, second = [
-        client.realtime.channel(
-            world.realtime_channel + "-presence", channel_type="presence"
-        )
+        client.realtime.channel(world.realtime_channel, channel_type="presence")
         for client in world.realtime_clients
     ]
     first_observer = PresenceObserver(first, world.fixture["user_id"])
