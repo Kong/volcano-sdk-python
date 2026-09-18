@@ -113,6 +113,12 @@ def test_staged_auth_request_feature_matches_proposed_shared_source() -> None:
     assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
 
 
+def test_staged_database_queries_match_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "database-queries.feature"
+    expected = "37d7f2e8fd4efb035cbc094c9c91a44a86f15fbcd689627e525e8d04f033a928"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
 def test_every_contract_phrase_is_bound_verbatim() -> None:
     registry.clear()
     _load_module(
@@ -124,6 +130,17 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         for definition in definitions
     }
     assert bound == {
+        "the client selects a projected page of query fixture members",
+        "the projected page contains only beta and gamma in that order",
+        "the client selects query fixture rows with each comparison filter",
+        "each comparison returns exactly the matching query fixture rows",
+        (
+            "the client selects query fixture rows with "
+            "case-sensitive and insensitive patterns"
+        ),
+        "each pattern returns exactly the matching query fixture rows",
+        "the client selects query fixture rows with null and boolean filters",
+        "each identity filter returns exactly the matching query fixture rows",
         "the client copies, moves, and removes a copy of the contract object",
         "the original, copied, and moved bytes equal the uploaded bytes",
         "moving the copy leaves only the original and moved paths",
