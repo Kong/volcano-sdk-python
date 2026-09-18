@@ -1,17 +1,26 @@
 from __future__ import annotations
 
+import base64
+import json
 from typing import TYPE_CHECKING
 
 import httpx
 import pytest
 
-from volcano_sdk import AuthenticationError, Session, SessionChangedError, VolcanoClient
+from volcano_sdk import (
+    AuthenticationError,
+    Session,
+    SessionChangedError,
+    VolcanoClient,
+    VolcanoError,
+)
 from volcano_sdk._transport import GeneratedTransport
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 USER_ID = "00000000-0000-4000-8000-000000000001"
+SUPPLIED_ACCESS = "supplied-access"
 PROFILE = {"id": USER_ID, "email": "user@example.com", "status": "active"}
 
 
@@ -19,10 +28,11 @@ def token_client(
     handler: Callable[[httpx.Request], httpx.Response],
     *,
     refresh_token: str | None = None,
+    access_token: str = SUPPLIED_ACCESS,
 ) -> VolcanoClient:
     return VolcanoClient(
         anon_key="anon",
-        access_token="supplied-access",
+        access_token=access_token,
         refresh_token=refresh_token,
         _transport=GeneratedTransport(
             api_url="https://api.test.volcano.dev",
@@ -57,7 +67,7 @@ def test_token_bootstrap_is_local_until_profile_validation() -> None:
     assert requests[0].headers["authorization"] == "Bearer supplied-access"
 
 
-def test_token_bootstrap_never_refreshes_or_revokes_without_a_refresh_token() -> None:
+def test_token_bootstrap_retains_an_invalid_token_until_local_sign_out() -> None:
     requests: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -199,3 +209,42 @@ def test_refresh_cannot_replace_a_validated_bootstrap_identity(
         request.headers["authorization"] != "Bearer other-user-access"
         for request in requests
     )
+
+
+@pytest.mark.parametrize("outcome", [204, 401, 503, "transport"])
+@pytest.mark.parametrize("replace", [False, True])
+def test_token_only_sign_out_revokes_the_captured_session(
+    outcome: int | str, *, replace: bool
+) -> None:
+    session_id = "00000000-0000-4000-8000-000000000002"
+    payload = (
+        base64.urlsafe_b64encode(json.dumps({"session_id": session_id}).encode())
+        .decode()
+        .rstrip("=")
+    )
+    token = f"header.{payload}.signature"
+    requests: list[httpx.Request] = []
+    replacement = Session("replacement", "refresh", USER_ID)
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if replace:
+            client.auth.set_session(replacement)
+        if outcome == "transport":
+            message = "connection lost"
+            raise httpx.ReadError(message, request=request)
+        return httpx.Response(
+            int(outcome),
+            json={"error": "revocation failed"} if outcome != 204 else None,
+        )
+
+    client = token_client(handle, access_token=token)
+    if replace or outcome != 204:
+        with pytest.raises(SessionChangedError if replace else VolcanoError):
+            client.auth.sign_out()
+    else:
+        client.auth.sign_out()
+    assert [(r.method, r.url.path, r.headers["authorization"]) for r in requests] == [
+        ("DELETE", f"/auth/user/sessions/{session_id}", f"Bearer {token}")
+    ]
+    assert client.current_session == (replacement if replace else None)

@@ -576,8 +576,8 @@ To start with only a supplied user access token, pass `access_token` to
 `user_id`, and `user` as `None` until supplied or validated by the server.
 `get_user()` validates and caches the profile without changing credentials.
 Without a refresh token, `refresh_session()` raises `AuthenticationError` and
-`sign_out()` clears only local state. Supply `refresh_token` with `access_token`
-to enable refresh and revocation. See the [token bootstrap example](https://github.com/Kong/volcano-sdk-python/blob/main/docs/README.md#use-a-supplied-access-token).
+`sign_out()` revokes the server session using the access token and clears local state.
+Supply `refresh_token` with `access_token` to enable refresh. See the [token bootstrap example](https://github.com/Kong/volcano-sdk-python/blob/main/docs/README.md#use-a-supplied-access-token).
 
 Copy a complete native session into another client's memory:
 

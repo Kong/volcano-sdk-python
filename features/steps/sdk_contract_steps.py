@@ -145,6 +145,18 @@ def current_session_is_empty(context: Any) -> None:
     assert _world(context).client.auth.get_session() is None
 
 
+@when("a fresh client loads a profile with the signed-out access token")
+def load_signed_out_profile(context: Any) -> None:
+    world = _world(context)
+    assert world.signed_out_session is not None
+    target = VolcanoClient(
+        api_url=world.fixture["api_url"],
+        anon_key=world.fixture["anon_key"],
+        access_token=world.signed_out_session.access_token,
+    )
+    world.record(target.auth.get_user)
+
+
 @when("a fresh client tries to refresh the signed-out session")
 def refresh_signed_out_session(context: Any) -> None:
     world = _world(context)

@@ -99,8 +99,9 @@ Once a user identity has been validated, a refresh response for another user is 
 Construction makes no request and does not persist credentials.
 The initial snapshot has `refresh_token=None`, `user_id=None`, and `user=None`.
 A successful profile read fills in the validated identity and cached user while retaining the supplied access token.
-Without a refresh token, an HTTP 401 remains an authentication error, `refresh_session()` raises `AuthenticationError`, and `sign_out()` clears only the local session without a request.
-Pass `refresh_token` alongside `access_token` when the client should refresh or revoke that session.
+Without a refresh token, an HTTP 401 remains an authentication error, `refresh_session()` raises `AuthenticationError`, and `sign_out()` revokes the server session identified by the access token before clearing local state.
+Pass `refresh_token` alongside `access_token` when the client should refresh that session.
+A revocation failure is reported after local clearing; it does not prove that copied tokens are invalid.
 Adopting a session with `set_session()` still requires complete credentials and identity.
 
 ## Use the rest of the API

@@ -98,7 +98,7 @@ def test_staged_lock_recovery_matches_proposed_shared_source() -> None:
 
 def test_staged_token_bootstrap_feature_matches_proposed_shared_source() -> None:
     staged = ROOT / "features" / "staged" / "auth-token-bootstrap.feature"
-    expected = "a8074032747b380bd6f2e167d8ae7d85c5148129bacb4e2c19413b0f7666418d"
+    expected = "9438248ff4778e1bdc1671e6552a3e95221bc90b29a5766cd889589e4f2f4f14"
     assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
 
 
@@ -143,6 +143,7 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the function echoes the payload",
         "a fresh client adopts the current session",
         "a fresh client tries to refresh the signed-out session",
+        "a fresh client loads a profile with the signed-out access token",
         "an authenticated client",
         "exactly the deleted contract row is returned",
         "exactly the fixture row is returned",

@@ -1141,22 +1141,33 @@ class Auth:
         generation, current = self._client._capture_session()
         if current is None:
             return
-        if current.refresh_token is None:
-            if not self._client._clear_session_if_current(generation):
-                raise SessionChangedError
-            return
-        transport = cast("AuthLogoutTransport", self._client._transport)
         error: VolcanoError | None = None
         try:
-            response = invoke(
-                transport.auth_logout,
-                authorization=self._client._anon_token(),
-                refresh_token=current.refresh_token,
-            )
-            response_payload(response, 204)
+            self._revoke_session(current)
         except VolcanoError as caught:
             error = caught
         if not self._client._clear_session_if_current(generation):
             raise SessionChangedError from error
         if error is not None:
             raise error
+
+    def _revoke_session(self, session: Session) -> None:
+        if session.refresh_token is not None:
+            transport = cast("AuthLogoutTransport", self._client._transport)
+            response = invoke(
+                transport.auth_logout,
+                authorization=self._client._anon_token(),
+                refresh_token=session.refresh_token,
+            )
+        elif session_id := _session_id_from_access_token(session.access_token):
+            session_transport = cast(
+                "AuthDeleteMySessionTransport", self._client._transport
+            )
+            response = invoke(
+                session_transport.auth_delete_my_session,
+                authorization=session.access_token,
+                session_id=session_id,
+            )
+        else:
+            return
+        response_payload(response, 204)
