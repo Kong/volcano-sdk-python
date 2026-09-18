@@ -246,12 +246,14 @@ def authenticated_client(context: Any) -> None:
 
 @given("the client replaces its access token with a rejected token")
 def replace_access_token(context: Any) -> None:
-    client = _world(context).client
+    world = _world(context)
+    client = world.client
     session = client.auth.get_session()
     assert session is not None
-    client.auth.set_session(
+    header, payload, _signature = session.access_token.split(".")
+    world.previous_session = client.auth.set_session(
         Session(
-            access_token=REJECTED_BEARER,
+            access_token=f"{header}.{payload}.sdk-contract-rejected-signature",
             refresh_token=session.refresh_token,
             user_id=session.user_id,
         )
@@ -266,7 +268,8 @@ def read_replaced_token(context: Any) -> None:
     session = world.client.auth.get_session()
     assert session is not None
     assert session.access_token
-    assert session.access_token != REJECTED_BEARER
+    assert world.previous_session is not None
+    assert session.access_token != world.previous_session.access_token
     assert session.refresh_token
     assert session.user_id == world.fixture["user_id"]
 

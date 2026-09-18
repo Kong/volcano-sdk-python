@@ -10,8 +10,13 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock, call
 
+import httpx
 import pytest
 from behave.step_registry import registry
+from session_fixtures import access_token
+
+from volcano_sdk import Session, VolcanoClient
+from volcano_sdk._transport import GeneratedTransport
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -305,3 +310,46 @@ def test_bootstrap_cleanup_is_disarmed_only_after_successful_revocation(
         steps.sign_out(SimpleNamespace(contract=world))
         steps.ContractWorld.cleanup(world)
     assert source.auth.sign_out.call_count == (0 if revoked else 1)
+
+
+def test_rejected_token_binding_preserves_refreshable_session_identity() -> None:
+    registry.clear()
+    steps = _load_module(
+        "contract_steps", ROOT / "features/steps/sdk_contract_steps.py"
+    )
+    user = "00000000-0000-4000-8000-000000000001"
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "access_token": access_token("renewed"),
+                "refresh_token": "rotated",
+                "token_type": "bearer",
+                "expires_in": 3600,
+                "user": {"id": user, "email": "u@example.com", "status": "active"},
+            },
+        )
+
+    client = VolcanoClient(
+        anon_key="anon",
+        _transport=GeneratedTransport(
+            api_url="https://api.test", httpx_transport=httpx.MockTransport(handle)
+        ),
+    )
+    client.auth.set_session(Session(access_token(), "refresh", user))
+    world = SimpleNamespace(client=client, fixture={"user_id": user})
+    context = SimpleNamespace(contract=world)
+    steps.replace_access_token(context)
+    assert client.current_session is not None
+    assert client.current_session.access_token != access_token()
+    assert (
+        client.current_session.access_token.split(".")[:2]
+        == access_token().split(".")[:2]
+    )
+    client.auth.refresh_session()
+    steps.read_replaced_token(context)
+    assert len(requests) == 1
+    assert requests[0].url.path == "/auth/refresh"
