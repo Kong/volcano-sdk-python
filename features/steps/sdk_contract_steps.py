@@ -565,9 +565,10 @@ def recover_lock(context: Any) -> None:
         held = locks.get(key, request_id=str(uuid4()))
         renewed = locks.renew(key, recovered, ttl=60, request_id=str(uuid4()))
         locks.release(key, renewed, request_id=str(uuid4()))
-        world.cleanup_callbacks.remove(cleanup)
         available = locks.get(key, request_id=str(uuid4()))
         return {
+            "token": token,
+            "cleanup": cleanup,
             "lease": lease,
             "recovered": recovered,
             "held": held,
@@ -585,7 +586,13 @@ def recovered_lock_lifecycle(context: Any) -> None:
     value = world.last_outcome.value
     assert value["held"].held is True
     assert value["available"].held is False
-    assert value["lease"].token == value["recovered"].token == value["renewed"].token
+    world.cleanup_callbacks.remove(value["cleanup"])
+    assert (
+        value["token"]
+        == value["lease"].token
+        == value["recovered"].token
+        == value["renewed"].token
+    )
     assert value["lease"].fencing_token is not None
     assert (
         value["lease"].fencing_token
@@ -604,8 +611,7 @@ def force_release_lock(context: Any) -> None:
         lease = locks.acquire(key, ttl=30)
         cleanup = world.register_lock_cleanup(key, lease)
         locks.force_release(key, request_id=str(uuid4()))
-        world.cleanup_callbacks.remove(cleanup)
-        return locks.get(key)
+        return {"lease": lease, "cleanup": cleanup, "available": locks.get(key)}
 
     world.record(operation)
 
@@ -614,7 +620,33 @@ def force_release_lock(context: Any) -> None:
 def force_released_lock_available(context: Any) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.last_outcome.value.held is False
+    assert world.last_outcome.value["available"].held is False
+    world.cleanup_callbacks.remove(world.last_outcome.value["cleanup"])
+
+
+@when("the client reacquires the force-released contract lock")
+def reacquire_force_released_lock(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    original = world.last_outcome.value["lease"]
+
+    def operation() -> object:
+        replacement = world.service_client.locks.acquire(world.lock_key, ttl=30)
+        world.register_lock_cleanup(world.lock_key, replacement)
+        return {"original": original, "replacement": replacement}
+
+    world.record(operation)
+
+
+@then("the replacement owner receives a higher fencing token")
+def replacement_lock_fence_increases(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    original = world.last_outcome.value["original"]
+    replacement = world.last_outcome.value["replacement"]
+    assert replacement.token != original.token
+    assert original.fencing_token is not None
+    assert replacement.fencing_token > original.fencing_token
 
 
 @given("two authenticated realtime clients")

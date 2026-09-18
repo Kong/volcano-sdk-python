@@ -92,7 +92,7 @@ def test_staged_profile_feature_matches_proposed_shared_source() -> None:
 
 def test_staged_lock_recovery_matches_proposed_shared_source() -> None:
     staged = ROOT / "features" / "staged" / "locks-recovery.feature"
-    expected = "d90215deafa9a66c8a0f41dc5f7416e062a4b2e7e97dcd5063868aa7f1b77b90"
+    expected = "4f4b52caf587bdc61e72cbdcc39dcf5c9b06ea8573d8b99a183c2644e375ffab"
     assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
 
 
@@ -145,6 +145,8 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "recovery and renewal preserve the held lease until release",
         "the client acquires and force releases the contract lock",
         "the force-released lock is available",
+        "the client reacquires the force-released contract lock",
+        "the replacement owner receives a higher fencing token",
         "the client acquires and releases the contract lock",
         "the client deletes its contract row",
         "the client deletes a missing contract row",
