@@ -601,3 +601,39 @@ def test_deletion_does_not_retain_a_later_refresh_result() -> None:
     assert client.current_session is None
     assert owner.refreshing is None
     assert owner._verified_pair is None
+
+
+def test_local_clear_before_refresh_claim_prevents_io(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entered, release = Event(), Event()
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        message = "delete response lost"
+        raise httpx.ReadError(message, request=request)
+
+    client = client_for(handle)
+    owner = client._capture_session_binding()[1]
+    claim = owner.refresh
+
+    def delayed_claim(operation: Callable[[], Session]) -> Session:
+        entered.set()
+        assert release.wait(2)
+        return claim(operation)
+
+    monkeypatch.setattr(owner, "refresh", delayed_claim)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        refreshing = pool.submit(client.auth.refresh_session)
+        try:
+            assert entered.wait(2)
+            with pytest.raises(VolcanoError, match="delete response lost"):
+                client.auth.delete_session(session_id=SESSION_A)
+        finally:
+            release.set()
+        with pytest.raises(SessionChangedError):
+            refreshing.result(2)
+    assert len(requests) == 1
+    assert requests[0].url.path == f"/auth/user/sessions/{SESSION_A}"
+    assert client.current_session is None

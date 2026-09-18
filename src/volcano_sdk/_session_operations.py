@@ -65,7 +65,7 @@ class SessionOperations:
 
     def refresh(self, operation: Callable[[], Session]) -> Session:
         with self._lock:
-            if self.signing_out is not None:
+            if self.signing_out is not None or self._locally_cleared:
                 raise SessionChangedError
             future = self.refreshing
             if future is None or future.done():
