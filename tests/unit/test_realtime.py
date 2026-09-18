@@ -4419,7 +4419,11 @@ def test_realtime_binds_bootstrap_refresh_without_profile(
             return Response(
                 200,
                 {
-                    "access_token": token("session-a" if same_session else "session-b"),
+                    "access_token": token(
+                        "00000000-0000-4000-8000-000000000001"
+                        if same_session
+                        else "00000000-0000-4000-8000-000000000002"
+                    ),
                     "refresh_token": "other-refresh",
                     "user": {"id": "00000000-0000-4000-8000-000000000002"},
                 },
@@ -4429,7 +4433,7 @@ def test_realtime_binds_bootstrap_refresh_without_profile(
         official = FakeCentrifugeClient()
         client = VolcanoClient(
             anon_key="anon",
-            access_token=token("session-a"),
+            access_token=token("00000000-0000-4000-8000-000000000001"),
             refresh_token="other-refresh",
             _transport=BootstrapTransport(),
             _realtime_client_factory=FakeCentrifugeFactory(official),
@@ -4446,7 +4450,9 @@ def test_realtime_binds_bootstrap_refresh_without_profile(
                     AuthenticationError, match="different server session"
                 ):
                     client.auth.refresh_session()
-            assert client.current_session.access_token == token("session-a")
+            assert client.current_session.access_token == token(
+                "00000000-0000-4000-8000-000000000001"
+            )
         finally:
             await client.realtime.disconnect()
 

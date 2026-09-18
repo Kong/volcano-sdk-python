@@ -1121,7 +1121,28 @@ class Auth:
 
     def sign_out(self) -> None:
         """Revoke and clear the current session."""
-        generation, lineage, current = self._client._capture_session_binding()
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
+            return
+        notifications: list[Callable[[], None]] = []
+        try:
+            with self._refresh_lock:
+                self._sign_out_captured(binding, notifications)
+        finally:
+            for dispatch in notifications:
+                dispatch()
+
+    def _sign_out_captured(
+        self,
+        binding: tuple[int, int, Session | None],
+        notifications: list[Callable[[], None]],
+    ) -> None:
+        generation, lineage, current = binding
+        active_generation, active_lineage, active = (
+            self._client._capture_session_binding()
+        )
+        if active_lineage == lineage and active is not None:
+            generation, current = active_generation, active
         if current is None:
             return
         error: VolcanoError | None = None
@@ -1131,7 +1152,9 @@ class Auth:
             error = caught
         server_session = session_id_from_access_token(current.access_token)
         if not self._client._clear_session_if_current(
-            generation, lineage=lineage if server_session else None
+            generation,
+            lineage=lineage if server_session else None,
+            notifications=notifications,
         ):
             raise SessionChangedError from error
         if error is not None:

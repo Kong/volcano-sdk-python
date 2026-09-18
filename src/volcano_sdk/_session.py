@@ -37,7 +37,10 @@ def session_id_from_access_token(access_token: str) -> str | None:
     session_id = values.get("session_id")
     if not isinstance(session_id, str) or not session_id.strip():
         return None
-    return session_id.strip()
+    try:
+        return str(UUID(session_id.strip()))
+    except ValueError:
+        return None
 
 
 def validate_refresh_source(current: Session) -> None:

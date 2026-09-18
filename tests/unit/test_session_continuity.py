@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import base64
 import json
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
+from threading import Event, current_thread
 from typing import TYPE_CHECKING
 
 import httpx
@@ -184,3 +187,71 @@ def test_expired_sign_out_never_revokes_a_mismatched_refresh_session(
         client.auth.sign_out()
     assert client.current_session is None
     assert [r.method for r in requests] == ["DELETE", "POST"]
+
+
+def test_sign_out_joins_a_refresh_that_already_owns_the_rotating_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refresh_entered, finish_refresh, sign_out_captured = Event(), Event(), Event()
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/refresh":
+            if refresh_entered.is_set():
+                return httpx.Response(401, json={"error": "refresh token consumed"})
+            refresh_entered.set()
+            assert finish_refresh.wait(2)
+            return refreshed(SESSION_A)
+        if request.headers["authorization"] == f"Bearer {access_token(SESSION_A)}":
+            return httpx.Response(401, json={"error": "expired"})
+        return httpx.Response(204)
+
+    client = client_for(handle)
+    capture = client._capture_session_binding
+
+    def capture_and_signal() -> tuple[int, int, Session | None]:
+        binding = capture()
+        if current_thread().name.startswith("logout"):
+            sign_out_captured.set()
+        return binding
+
+    monkeypatch.setattr(client, "_capture_session_binding", capture_and_signal)
+    with (
+        ThreadPoolExecutor(thread_name_prefix="refresh") as refresher,
+        ThreadPoolExecutor(thread_name_prefix="logout") as logout,
+    ):
+        refreshing = refresher.submit(client.auth.refresh_session)
+        assert refresh_entered.wait(2)
+        signing_out = logout.submit(client.auth.sign_out)
+        try:
+            assert sign_out_captured.wait(2)
+            assert not signing_out.done()
+        finally:
+            finish_refresh.set()
+        # Logout may clear the lineage before the refresh caller reads it.
+        with suppress(SessionChangedError):
+            refreshing.result(timeout=2)
+        signing_out.result(timeout=2)
+    assert client.current_session is None
+    assert [r.method for r in requests] == ["POST", "DELETE"]
+    assert requests[-1].headers["authorization"] == (
+        f"Bearer {access_token(SESSION_A, renewed=True)}"
+    )
+
+
+@pytest.mark.parametrize("identifier", ["not-a-uuid", "../other-session", "", "  "])
+def test_sign_out_uses_refresh_logout_for_an_invalid_session_claim(
+    identifier: str,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(204)
+
+    client = client_for(handle)
+    client._current_session = Session(access_token(identifier), "refresh", None)
+    client.auth.sign_out()
+    assert [r.url.path for r in requests] == ["/auth/logout"]
+    assert client.current_session is None

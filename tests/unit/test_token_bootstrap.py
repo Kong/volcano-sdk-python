@@ -26,7 +26,9 @@ PROFILE = {"id": USER_ID, "email": "user@example.com", "status": "active"}
 
 def bootstrap_token(*, renewed: bool = False) -> str:
     payload = base64.urlsafe_b64encode(
-        json.dumps({"session_id": "bootstrap-session", "renewed": renewed}).encode()
+        json.dumps(
+            {"session_id": "00000000-0000-4000-8000-000000000012", "renewed": renewed}
+        ).encode()
     ).decode()
     return f"header.{payload}.signature"
 
