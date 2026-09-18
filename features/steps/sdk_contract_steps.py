@@ -260,6 +260,7 @@ def replace_access_token(context: Any) -> None:
     )
 
 
+@then("the session list replaces the rejected token for the same user")
 @then("the profile read replaces the rejected token for the same user")
 @then("the storage operation replaces the rejected token for the same user")
 @then("the database read replaces the rejected token for the same user")
@@ -272,6 +273,22 @@ def read_replaced_token(context: Any) -> None:
     assert session.access_token != world.previous_session.access_token
     assert session.refresh_token
     assert session.user_id == world.fixture["user_id"]
+
+
+@when("the client lists its server sessions")
+def list_server_sessions(context: Any) -> None:
+    world = _world(context)
+    world.record(lambda: world.client.auth.list_sessions(page=1, limit=100))
+
+
+@then("the session list contains the current session for the contract user")
+def listed_sessions_belong_to_contract_user(context: Any) -> None:
+    world = _world(context)
+    page = world.last_outcome.value
+    assert page.page == 1
+    assert page.total >= len(page.sessions) > 0
+    assert all(session.user_id == world.fixture["user_id"] for session in page.sessions)
+    assert sum(session.is_current for session in page.sessions) == 1
 
 
 @when("the client loads its server-validated profile")

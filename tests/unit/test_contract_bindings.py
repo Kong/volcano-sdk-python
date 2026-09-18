@@ -107,6 +107,12 @@ def test_staged_token_bootstrap_feature_matches_proposed_shared_source() -> None
     assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
 
 
+def test_staged_auth_request_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "auth-request-recovery.feature"
+    expected = "9fa6f8d6cb3bca89501d32d950f06b8982ed34b888cce134465e0358b8261e8f"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
 def test_every_contract_phrase_is_bound_verbatim() -> None:
     registry.clear()
     _load_module(
@@ -133,6 +139,9 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the database read replaces the rejected token for the same user",
         "the storage operation replaces the rejected token for the same user",
         "the profile read replaces the rejected token for the same user",
+        "the session list replaces the rejected token for the same user",
+        "the client lists its server sessions",
+        "the session list contains the current session for the contract user",
         "the client loads its server-validated profile",
         "the returned and cached profiles belong to the contract user",
         (

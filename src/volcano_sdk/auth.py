@@ -590,33 +590,37 @@ class Auth:
 
     def request_email_change(self, *, new_email: str) -> EmailChangeResult:
         """Request a confirmation email without changing the current session."""
-        generation, current = self._client._capture_session()
-        if current is None:
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast("AuthRequestEmailChangeTransport", self._client._transport)
-        response = invoke(
-            transport.auth_request_email_change,
-            authorization=current.access_token,
-            new_email=new_email,
+        response = self._session_request(
+            lambda access_token: invoke(
+                transport.auth_request_email_change,
+                authorization=access_token,
+                new_email=new_email,
+            ),
+            binding=binding,
         )
         result = _email_change_result_from_payload(response_payload(response, 200))
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
+        self._owned_refresh_session(binding)
         return result
 
     def cancel_email_change(self) -> None:
         """Cancel a pending email change without changing the current session."""
-        generation, current = self._client._capture_session()
-        if current is None:
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast("AuthCancelEmailChangeTransport", self._client._transport)
-        response = invoke(
-            transport.auth_cancel_email_change,
-            authorization=current.access_token,
+        response = self._session_request(
+            lambda access_token: invoke(
+                transport.auth_cancel_email_change,
+                authorization=access_token,
+            ),
+            binding=binding,
         )
         response_payload(response, 200)
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
+        self._owned_refresh_session(binding)
 
     def confirm_email_change(self, *, token: str) -> User:
         """Confirm a pending email change and return the updated user."""
@@ -636,48 +640,54 @@ class Auth:
 
     def delete_all_other_sessions(self) -> None:
         """Delete every other session while preserving the current session."""
-        generation, current = self._client._capture_session()
-        if current is None:
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast("AuthDeleteAllMySessionsTransport", self._client._transport)
-        response = invoke(
-            transport.auth_delete_all_my_sessions,
-            authorization=current.access_token,
+        response = self._session_request(
+            lambda access_token: invoke(
+                transport.auth_delete_all_my_sessions,
+                authorization=access_token,
+            ),
+            binding=binding,
         )
         response_payload(response, 204)
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
+        self._owned_refresh_session(binding)
 
     def list_sessions(self, *, page: int = 1, limit: int = 20) -> SessionPage:
         """List sessions in the stable offset-paginated activity order."""
-        generation, current = self._client._capture_session()
-        if current is None:
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast("AuthGetMySessionsTransport", self._client._transport)
-        response = invoke(
-            transport.auth_get_my_sessions,
-            authorization=current.access_token,
-            page=page,
-            limit=limit,
+        response = self._session_request(
+            lambda access_token: invoke(
+                transport.auth_get_my_sessions,
+                authorization=access_token,
+                page=page,
+                limit=limit,
+            ),
+            binding=binding,
         )
         result = _session_page_from_payload(response_payload(response, 200))
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
+        self._owned_refresh_session(binding)
         return result
 
     def list_linked_oauth_providers(self) -> tuple[LinkedOAuthProvider, ...]:
         """List OAuth providers linked to the current account."""
-        generation, current = self._client._capture_session()
-        if current is None:
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast("AuthListOAuthProvidersTransport", self._client._transport)
-        response = invoke(
-            transport.auth_list_oauth_providers,
-            authorization=current.access_token,
+        response = self._session_request(
+            lambda access_token: invoke(
+                transport.auth_list_oauth_providers,
+                authorization=access_token,
+            ),
+            binding=binding,
         )
         result = _linked_oauth_providers_from_payload(response_payload(response, 200))
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
+        self._owned_refresh_session(binding)
         return result
 
     def get_hosted_auth_url(
@@ -763,38 +773,42 @@ class Auth:
     def link_oauth_provider(self, *, provider: OAuthProviderName) -> str:
         """Return the authorization URL for linking an OAuth provider."""
         provider_name = _oauth_provider_name(provider)
-        generation, current = self._client._capture_session()
-        if current is None:
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast("AuthLinkOAuthProviderTransport", self._client._transport)
-        response = invoke(
-            transport.auth_link_oauth_provider,
-            authorization=current.access_token,
-            provider=provider_name,
+        response = self._session_request(
+            lambda access_token: invoke(
+                transport.auth_link_oauth_provider,
+                authorization=access_token,
+                provider=provider_name,
+            ),
+            binding=binding,
         )
         result = _oauth_link_from_payload(response_payload(response, 200))
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
+        self._owned_refresh_session(binding)
         return result
 
     def unlink_oauth_provider(self, *, provider: OAuthProviderName) -> None:
         """Unlink an OAuth provider from the current account."""
         provider_name = _oauth_provider_name(provider)
-        generation, current = self._client._capture_session()
-        if current is None:
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast(
             "AuthUnlinkOAuthProviderTransport",
             self._client._transport,
         )
-        response = invoke(
-            transport.auth_unlink_oauth_provider,
-            authorization=current.access_token,
-            provider=provider_name,
+        response = self._session_request(
+            lambda access_token: invoke(
+                transport.auth_unlink_oauth_provider,
+                authorization=access_token,
+                provider=provider_name,
+            ),
+            binding=binding,
         )
         response_payload(response, 204)
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
+        self._owned_refresh_session(binding)
 
     def get_oauth_provider_token(
         self,
@@ -803,23 +817,25 @@ class Auth:
     ) -> OAuthProviderTokenStatus:
         """Return validity metadata for a server-held OAuth provider token."""
         provider_name = _oauth_provider_name(provider)
-        generation, current = self._client._capture_session()
-        if current is None:
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast(
             "AuthGetOAuthProviderTokenTransport",
             self._client._transport,
         )
-        response = invoke(
-            transport.auth_get_oauth_provider_token,
-            authorization=current.access_token,
-            provider=provider_name,
+        response = self._session_request(
+            lambda access_token: invoke(
+                transport.auth_get_oauth_provider_token,
+                authorization=access_token,
+                provider=provider_name,
+            ),
+            binding=binding,
         )
         result = _oauth_provider_token_status_from_payload(
             response_payload(response, 200)
         )
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
+        self._owned_refresh_session(binding)
         return result
 
     def refresh_oauth_provider_token(
@@ -829,23 +845,25 @@ class Auth:
     ) -> OAuthProviderTokenStatus:
         """Refresh a server-held OAuth provider token and return its status."""
         provider_name = _oauth_provider_name(provider)
-        generation, current = self._client._capture_session()
-        if current is None:
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast(
             "AuthRefreshOAuthProviderTokenTransport",
             self._client._transport,
         )
-        response = invoke(
-            transport.auth_refresh_oauth_provider_token,
-            authorization=current.access_token,
-            provider=provider_name,
+        response = self._session_request(
+            lambda access_token: invoke(
+                transport.auth_refresh_oauth_provider_token,
+                authorization=access_token,
+                provider=provider_name,
+            ),
+            binding=binding,
         )
         result = _oauth_provider_token_status_from_payload(
             response_payload(response, 200)
         )
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
+        self._owned_refresh_session(binding)
         return result
 
     def call_oauth_api(
@@ -859,26 +877,30 @@ class Auth:
         """Call a provider API through Volcano's fixed-host server proxy."""
         provider_name = _oauth_provider_name(provider)
         request_method = _oauth_api_method(method)
-        generation, current = self._client._capture_session()
-        if current is None:
+        binding = self._client._capture_session_binding()
+        if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         transport = cast("AuthCallOAuthAPITransport", self._client._transport)
-        response = invoke(
-            transport.auth_call_oauth_api,
-            authorization=current.access_token,
-            provider=provider_name,
-            endpoint=endpoint,
-            method=request_method,
-            body=body,
+        request_body = deepcopy(dict(body)) if body is not None else None
+        response = self._session_request(
+            lambda access_token: invoke(
+                transport.auth_call_oauth_api,
+                authorization=access_token,
+                provider=provider_name,
+                endpoint=endpoint,
+                method=request_method,
+                body=request_body,
+            ),
+            binding=binding,
         )
         result = _oauth_api_data_from_payload(response_payload(response, 200))
-        if self._client._capture_session()[0] != generation:
-            raise SessionChangedError
+        self._owned_refresh_session(binding)
         return result
 
     def delete_session(self, *, session_id: str) -> None:
         """Delete one session and clear local state when it is current."""
-        generation, current = self._client._capture_session()
+        binding = self._client._capture_session_binding()
+        generation, lineage, current = binding
         if current is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         current_session_id = session_id_from_access_token(current.access_token)
@@ -888,24 +910,28 @@ class Auth:
         )
         transport = cast("AuthDeleteMySessionTransport", self._client._transport)
         try:
-            response = invoke(
-                transport.auth_delete_my_session,
-                authorization=current.access_token,
-                session_id=session_id,
+            response = self._session_request(
+                lambda access_token: invoke(
+                    transport.auth_delete_my_session,
+                    authorization=access_token,
+                    session_id=session_id,
+                ),
+                binding=binding,
             )
             response_payload(response, 204)
         except TransportError as error:
             if deletes_current and not self._client._clear_session_if_current(
-                generation
+                generation, lineage=lineage
             ):
                 raise SessionChangedError from error
             raise
         if deletes_current:
-            current_unchanged = self._client._clear_session_if_current(generation)
+            if not self._client._clear_session_if_current(generation, lineage=lineage):
+                raise SessionChangedError
         else:
-            current_unchanged = self._client._capture_session()[0] == generation
-        if not current_unchanged:
-            raise SessionChangedError
+            _, active_lineage, active_session = self._client._capture_session_binding()
+            if active_lineage is not lineage or active_session is None:
+                raise SessionChangedError
 
     def confirm_email(self, *, token: str) -> None:
         """Confirm an email with its token without changing local state."""
