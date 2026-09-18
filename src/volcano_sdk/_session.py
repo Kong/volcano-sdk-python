@@ -29,7 +29,7 @@ def session_id_from_access_token(access_token: str) -> str | None:
         payload: object = json.loads(
             base64.urlsafe_b64decode(parts[1] + padding).decode()
         )
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, UnicodeDecodeError, RecursionError):
         return None
     if not isinstance(payload, Mapping):
         return None

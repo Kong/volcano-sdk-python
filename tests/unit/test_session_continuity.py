@@ -174,6 +174,33 @@ def test_sign_out_clears_malformed_bootstrap_tokens(token: str) -> None:
     assert client.current_session is None
 
 
+@pytest.mark.parametrize("operation", ["refresh", "sign_out"])
+def test_deeply_nested_access_claims_remain_untrusted(operation: str) -> None:
+    payload = '{"extra":' + "[" * 2000 + "0" + "]" * 2000 + "}"
+    encoded = base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(204)
+
+    client = client_for(handle)
+    client.auth.set_session(
+        Session(f"header.{encoded}.signature", "unverified-refresh", USER_A)
+    )
+    if operation == "refresh":
+        with pytest.raises(AuthenticationError, match="without a session identifier"):
+            client.auth.refresh_session()
+        assert client.current_session is not None
+    else:
+        client = VolcanoClient(
+            anon_key="anon", access_token=f"header.{encoded}.signature"
+        )
+        client.auth.sign_out()
+        assert client.current_session is None
+    assert not requests
+
+
 @pytest.mark.parametrize("user_id", [USER_A, USER_B])
 def test_expired_sign_out_never_revokes_a_mismatched_refresh_session(
     user_id: str,
