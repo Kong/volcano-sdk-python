@@ -41,7 +41,9 @@ sign_up = client.auth.sign_up(
 if sign_up.confirmation_required:
     print(sign_up.message)
 
-session = client.auth.sign_in(email="user@example.com", password="correct-horse-battery-staple")
+session = client.auth.sign_in(
+    email="user@example.com", password="correct-horse-battery-staple"
+)
 current_session = client.auth.get_session()
 assert current_session == session
 
@@ -306,7 +308,9 @@ The signup acknowledgement is identical for new and existing email addresses. Pa
 
 ```python
 result = client.auth.sign_up(
-    email="new-user@example.com", password="correct-horse-battery-staple", sign_in_when_allowed=True
+    email="new-user@example.com",
+    password="correct-horse-battery-staple",
+    sign_in_when_allowed=True,
 )
 session = result.session  # None when no follow-up sign-in ran.
 ```

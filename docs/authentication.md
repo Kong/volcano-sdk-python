@@ -38,7 +38,9 @@ The signup acknowledgement is identical for new and existing email addresses. Pa
 
 ```python
 result = client.auth.sign_up(
-    email="new-user@example.com", password="correct-horse-battery-staple", sign_in_when_allowed=True
+    email="new-user@example.com",
+    password="correct-horse-battery-staple",
+    sign_in_when_allowed=True,
 )
 session = result.session  # None when no follow-up sign-in ran.
 ```
