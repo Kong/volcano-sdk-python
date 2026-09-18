@@ -119,6 +119,12 @@ def test_staged_database_queries_match_proposed_shared_source() -> None:
     assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
 
 
+def test_staged_storage_sessions_match_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "storage-sessions.feature"
+    expected = "037c60a8da27ec4cc5777596ba0c669b8309181a54b27aa61882535ed2f6beb1"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
 def test_every_contract_phrase_is_bound_verbatim() -> None:
     registry.clear()
     _load_module(
@@ -141,6 +147,13 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "each pattern returns exactly the matching query fixture rows",
         "the client selects query fixture rows with null and boolean filters",
         "each identity filter returns exactly the matching query fixture rows",
+        "the client uploads one part and resumes the contract upload",
+        "upload progress describes exactly the first uploaded part",
+        "the completed multipart object preserves its path, type, and bytes",
+        "the client uploads one part and aborts the contract upload",
+        "the aborted session and unfinished object are not found",
+        "the client makes the contract object public and private again",
+        "anonymous reads return the original bytes only while the object is public",
         "the client copies, moves, and removes a copy of the contract object",
         "the original, copied, and moved bytes equal the uploaded bytes",
         "moving the copy leaves only the original and moved paths",
@@ -379,3 +392,34 @@ def test_rejected_token_binding_preserves_refreshable_session_identity() -> None
     steps.read_replaced_token(context)
     assert len(requests) == 1
     assert requests[0].url.path == "/auth/refresh"
+
+
+@pytest.mark.parametrize("leaking_response", [None, 0, 1])
+def test_visibility_assertion_rejects_private_payload_leaks(
+    leaking_response: int | None,
+) -> None:
+    registry.clear()
+    steps = _load_module(
+        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
+    )
+    content = b"private contract content"
+    private_bytes = [b"not found", b"not found"]
+    if leaking_response is not None:
+        private_bytes[leaking_response] = b"prefix: " + content
+    world = SimpleNamespace(
+        storage_bytes=content,
+        last_outcome=SimpleNamespace(
+            value={
+                "statuses": [404, 200, 404],
+                "bytes": content,
+                "visibility": [True, False],
+                "private_bytes": private_bytes,
+            }
+        ),
+    )
+    context = SimpleNamespace(contract=world)
+    if leaking_response is None:
+        steps.anonymous_visibility_matches(context)
+    else:
+        with pytest.raises(AssertionError):
+            steps.anonymous_visibility_matches(context)
