@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, Protocol, cast
+from collections.abc import Callable, Mapping
+from typing import TYPE_CHECKING, Protocol, TypeVar, cast
 
 from . import _function_resolution
 from ._function_resolution import FunctionResolution
 from ._transport import TransportResponse, invoke, response_payload
-from .errors import NotFoundError
-from .models import FunctionResponse, JSONValue
+from .errors import (
+    AuthenticationError,
+    NotFoundError,
+    SessionChangedError,
+    VolcanoError,
+)
+from .models import FunctionResponse, JSONValue, _freeze_json
 
 if TYPE_CHECKING:
     from .client import VolcanoClient
@@ -27,8 +32,55 @@ _UNKNOWN_FUNCTION = "Function was not found"
 _HTTP_SUCCESS_MIN = 200
 _HTTP_SUCCESS_MAX = 300
 _HTTP_NOT_FOUND = 404
+_HTTP_UNAUTHORIZED = 401
 # Present only once the platform has dispatched to the function.
 _FUNCTION_INVOKED_HEADER = "X-Volcano-Function-Invoked"
+
+
+_Result = TypeVar("_Result")
+
+
+class _FunctionAuth:
+    def __init__(self, client: VolcanoClient) -> None:
+        self._client = client
+        self._binding = client._capture_session_binding()
+        self._fallback_token = client._function_token()
+
+    def run(self, operation: Callable[[str], _Result]) -> _Result:
+        if self._binding[2] is not None:
+            self._binding = self._client.auth._owned_refresh_session(self._binding)
+        try:
+            return self._run(operation)
+        finally:
+            if self._binding[2] is not None:
+                self._client.auth._validate_read_failure(self._binding)
+            elif self._client._capture_session_binding()[1] != self._binding[1]:
+                raise SessionChangedError
+
+    def _run(self, operation: Callable[[str], _Result]) -> _Result:
+        try:
+            return operation(self._token())
+        except AuthenticationError as original:
+            if self._binding[2] is None or original.status != _HTTP_UNAUTHORIZED:
+                raise
+            try:
+                # Resolve has released its cache lock before refresh callbacks run.
+                self._client.auth._refresh_session_for_binding(self._binding)
+            except SessionChangedError:
+                raise
+            except VolcanoError:
+                raise original from None
+            return operation(self._token())
+
+    def _token(self) -> str:
+        if self._binding[2] is None:
+            if self._client._capture_session_binding()[1] != self._binding[1]:
+                raise SessionChangedError
+            return self._fallback_token
+        session = self._client.auth._owned_refresh_session(self._binding)[2]
+        if session is None:
+            raise SessionChangedError
+        return session.access_token
 
 
 class FunctionsTransport(Protocol):
@@ -77,13 +129,17 @@ class Functions:
         payload: Mapping[str, JSONValue] | None = None,
     ) -> FunctionResponse:
         """Resolve and invoke a function with an optional JSON object payload."""
+        auth = _FunctionAuth(self._client)
         name = _function_name(name)
         request_payload = _function_payload(payload)
-        authorization = self._client._function_token()
         transport = cast("FunctionsTransport", self._client._transport)
-        resolution = self._resolve(transport, authorization, name)
-        response = self._invoke_resolved(
-            transport, authorization, resolution, request_payload
+        authorization, resolution = auth.run(
+            lambda token: (token, self._resolve(transport, token, name))
+        )
+        response = auth.run(
+            lambda token: self._invoke_resolved(
+                transport, token, resolution, request_payload
+            )
         )
         if _stale_mapping(response):
             # The function was deleted and recreated, so the cached identity no
@@ -91,9 +147,13 @@ class Functions:
             _function_resolution.forget(
                 self._client._api_base_url(), authorization, name
             )
-            resolution = self._resolve(transport, authorization, name)
-            response = self._invoke_resolved(
-                transport, authorization, resolution, request_payload
+            _, resolution = auth.run(
+                lambda token: (token, self._resolve(transport, token, name))
+            )
+            response = auth.run(
+                lambda token: self._invoke_resolved(
+                    transport, token, resolution, request_payload
+                )
             )
         return self._response(response)
 
@@ -118,7 +178,13 @@ class Functions:
                 invoke_url=resolution.invoke_url,
                 payload=payload,
             )
-        return cast("TransportResponse", response)
+        response = cast("TransportResponse", response)
+        if (
+            response.status_code == _HTTP_UNAUTHORIZED
+            and _header(response.headers, _FUNCTION_INVOKED_HEADER) is None
+        ):
+            response_payload(response, _HTTP_SUCCESS_MIN)
+        return response
 
     def _resolve(
         self,
@@ -269,9 +335,9 @@ def _function_name(value: object) -> str:
     return value
 
 
-def _function_payload(value: object) -> dict[str, JSONValue]:
+def _function_payload(value: object) -> Mapping[str, JSONValue]:
     if value is None:
         return {}
     if not isinstance(value, Mapping):
         raise TypeError(_INVALID_FUNCTION_PAYLOAD)
-    return dict(cast("Mapping[str, JSONValue]", value))
+    return cast("Mapping[str, JSONValue]", _freeze_json(cast("JSONValue", value)))

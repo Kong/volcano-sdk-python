@@ -266,6 +266,7 @@ def replace_access_token(context: Any) -> None:
     )
 
 
+@then("the function invocation replaces the rejected token for the same user")
 @then("the session list replaces the rejected token for the same user")
 @then("the profile read replaces the rejected token for the same user")
 @then("the storage operation replaces the rejected token for the same user")
@@ -1102,6 +1103,16 @@ def subscriber_received_message(context: Any) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value == world.realtime_message
+
+
+@when("the authenticated client invokes the contract function by name")
+def invoke_authenticated_contract_function(context: Any) -> None:
+    world = _world(context)
+    world.record(
+        lambda: world.client.functions.invoke(
+            world.fixture["function_name"], {"value": "contract"}
+        )
+    )
 
 
 @when("the client invokes the contract function by name")
