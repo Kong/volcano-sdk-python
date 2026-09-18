@@ -768,12 +768,12 @@ stop_changes()
 ```
 
 Binding a database automatically fetches the matching row for lightweight
-`INSERT` and `UPDATE` notifications in the `public` schema. The fetch uses the
+`INSERT` and `UPDATE` notifications in public or custom schemas. The fetch uses the
 realtime connection's RLS-scoped access token. Compatible row lookups are
 batched while callback delivery preserves publication order.
 If the row is absent or the query fails, the callback receives the lightweight
-notification with its `id` and `mode` intact. Non-public schemas also retain
-that lightweight form. Lightweight deletes never query the database; they
+notification with its `id` and `mode` intact. Custom-schema row lookups preserve
+the schema from the notification. Lightweight deletes never query the database; they
 preserve `old_record`, or provide `{"id": change.id}` when no old row was
 included. Tune a channel's batching with `fetch_batch_window_ms` and
 `fetch_max_batch_size`; the defaults are 20 milliseconds and 50 rows. Set

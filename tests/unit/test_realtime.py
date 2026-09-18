@@ -1041,17 +1041,19 @@ def test_realtime_captures_supported_postgres_fetch_request() -> None:
             table="messages",
             row_id=42,
         )
-        assert (
-            channel._postgres_fetch_request(
-                realtime_module.PostgresChange(
-                    type="INSERT",
-                    schema="private",
-                    table="messages",
-                    id=42,
-                    mode="lightweight",
-                )
+        assert channel._postgres_fetch_request(
+            realtime_module.PostgresChange(
+                type="INSERT",
+                schema="private",
+                table="messages",
+                id=42,
+                mode="lightweight",
             )
-            is None
+        ) == realtime_module._PostgresFetchRequest(
+            database_name="next",
+            access_token="access-1",
+            table="private.messages",
+            row_id=42,
         )
         assert (
             channel._postgres_fetch_request(
@@ -1083,7 +1085,8 @@ def test_realtime_captures_supported_postgres_fetch_request() -> None:
     asyncio.run(scenario())
 
 
-def test_realtime_fetches_lightweight_postgres_rows() -> None:
+@pytest.mark.parametrize("schema", ["public", "private"])
+def test_realtime_fetches_lightweight_postgres_rows(schema: str) -> None:
     official = FakeCentrifugeClient()
     transport = RealtimeDatabaseTransport([{"id": 42, "body": "fetched"}])
     client = VolcanoClient(
@@ -1098,7 +1101,7 @@ def test_realtime_fetches_lightweight_postgres_rows() -> None:
         changes: list[Any] = []
         received = asyncio.Event()
         channel = client.realtime.channel(
-            "public:messages",
+            f"{schema}:messages",
             channel_type="postgres",
         )
 
@@ -1108,7 +1111,7 @@ def test_realtime_fetches_lightweight_postgres_rows() -> None:
 
         channel.on_postgres_changes(
             "INSERT",
-            schema="public",
+            schema=schema,
             table="messages",
             callback=on_insert,
         )
@@ -1119,7 +1122,7 @@ def test_realtime_fetches_lightweight_postgres_rows() -> None:
         await subscription.emit(
             {
                 "type": "INSERT",
-                "schema": "public",
+                "schema": schema,
                 "table": "messages",
                 "id": 42,
                 "mode": "lightweight",
@@ -1136,7 +1139,7 @@ def test_realtime_fetches_lightweight_postgres_rows() -> None:
                 "authorization": "access-1",
                 "database_name": "app",
                 "body": {
-                    "table": "messages",
+                    "table": "messages" if schema == "public" else f"{schema}.messages",
                     "filters": [{"column": "id", "operator": "in", "value": [42]}],
                     "limit": 1,
                 },
