@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import json
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -7,6 +10,7 @@ import httpx
 import pytest
 
 from volcano_sdk import Session, SessionChangedError, VolcanoClient, VolcanoError
+from volcano_sdk import auth as auth_module
 from volcano_sdk._transport import GeneratedTransport
 
 if TYPE_CHECKING:
@@ -85,11 +89,11 @@ CASES = [
 ]
 
 
-def refresh_response() -> httpx.Response:
+def refresh_response(access: str = "access-2") -> httpx.Response:
     return httpx.Response(
         200,
         json={
-            "access_token": "access-2",
+            "access_token": access,
             "refresh_token": "refresh-2",
             "token_type": "bearer",
             "expires_in": 3600,
@@ -192,4 +196,117 @@ def test_auth_facade_preserves_replacement_without_replaying(case: AuthCase) -> 
     with pytest.raises(SessionChangedError):
         case.invoke(client)
     assert len(requests) == 1
+    assert client.current_session == replacement
+
+
+def session_token(*, renewed: bool = False) -> str:
+    payload = (
+        base64.urlsafe_b64encode(
+            json.dumps({"session_id": SESSION, "renewed": renewed}).encode()
+        )
+        .decode()
+        .rstrip("=")
+    )
+    return f"header.{payload}.signature"
+
+
+def test_oauth_recovery_replays_a_snapshot_of_the_nested_body() -> None:
+    body: dict[str, JSONValue] = {"names": ["original"]}
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/refresh":
+            return refresh_response()
+        if len(requests) == 1:
+            body["names"] = ["changed"]
+            return httpx.Response(401)
+        return httpx.Response(
+            200,
+            json={
+                "provider": "github",
+                "endpoint": "/user",
+                "status_code": 200,
+                "data": {},
+            },
+        )
+
+    client_for(handle).auth.call_oauth_api(
+        provider="github", endpoint="/user", method="POST", body=body
+    )
+    assert requests[0].content == requests[2].content
+    assert json.loads(requests[2].content)["body"] == {"names": ["original"]}
+
+
+def test_oauth_captures_ownership_before_copying_the_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[httpx.Request] = []
+    replacement = Session("other", "other-refresh", "other-user")
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200)
+
+    client = client_for(handle)
+
+    def replace_while_copying(value: dict[str, JSONValue]) -> dict[str, JSONValue]:
+        client.auth.set_session(replacement)
+        return deepcopy(value)
+
+    monkeypatch.setattr(auth_module, "deepcopy", replace_while_copying)
+    with pytest.raises(SessionChangedError):
+        client.auth.call_oauth_api(provider="github", endpoint="/user", body={"x": 1})
+    assert client.current_session == replacement
+    assert not requests
+
+
+@pytest.mark.parametrize("timing", ["401", "during_delete"])
+@pytest.mark.parametrize("failure", [False, True])
+def test_delete_current_session_clears_refreshed_descendant(
+    timing: str, *, failure: bool
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/refresh":
+            return refresh_response(session_token(renewed=True))
+        if len(requests) == 1:
+            if timing == "401":
+                return httpx.Response(401)
+            client.auth.refresh_session()
+        if failure:
+            message = "response lost"
+            raise httpx.ReadError(message, request=request)
+        return httpx.Response(204)
+
+    client = client_for(handle)
+    client.auth.set_session(Session(session_token(), "refresh-1", USER))
+    if failure:
+        with pytest.raises(VolcanoError, match="response lost"):
+            client.auth.delete_session(session_id=SESSION)
+    else:
+        client.auth.delete_session(session_id=SESSION)
+    assert client.current_session is None
+    assert len(requests) == (3 if timing == "401" else 2)
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_delete_current_session_preserves_explicit_replacement(
+    *, failure: bool
+) -> None:
+    replacement = Session("other", "other-refresh", "other-user")
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        client.auth.set_session(replacement)
+        if failure:
+            message = "response lost"
+            raise httpx.ReadError(message, request=request)
+        return httpx.Response(204)
+
+    client = client_for(handle)
+    client.auth.set_session(Session(session_token(), "refresh-1", USER))
+    with pytest.raises(SessionChangedError):
+        client.auth.delete_session(session_id=SESSION)
     assert client.current_session == replacement
