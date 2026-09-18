@@ -233,6 +233,13 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the stored object path equals the contract path",
         "the subscriber receives the contract message within 10 seconds",
         "two authenticated realtime clients",
+        "a read-only project logs client",
+        "the contract function emits three unique structured log events",
+        "the contract function emits one unique structured log event",
+        "the client searches and paginates those events within 240 seconds",
+        "the client reads matching log activity within 120 seconds",
+        "all three structured events retain their metadata without duplicates",
+        "activity counts exactly that event in its function and level buckets",
     }
 
 
@@ -423,3 +430,69 @@ def test_visibility_assertion_rejects_private_payload_leaks(
     else:
         with pytest.raises(AssertionError):
             steps.anonymous_visibility_matches(context)
+
+
+def test_staged_logs_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "logs.feature"
+    expected = "5616e288fe1a68e13fa70416fe0323a5ce830c0edaa885a387efbf9e5bb2a269"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
+def test_log_contract_rejects_duplicate_and_wrong_resource_events() -> None:
+    module = _load_module("logs_contract", ROOT / "features" / "logs_contract.py")
+    world = SimpleNamespace(
+        fixture={
+            "api_url": "https://api.test",
+            "anon_key": "anon",
+            "logs_access_token": "project-token",
+            "function_id": "function-id",
+        }
+    )
+    contract = module.LogContract(world)
+    events = [
+        {
+            "id": f"event-{ordinal}",
+            "timestamp": f"2026-09-18T12:00:0{2 - ordinal}Z",
+            "body": {"marker": contract.marker, "ordinal": ordinal},
+            "resource": {"type": "function", "id": "function-id"},
+            "level": "info",
+        }
+        for ordinal in range(3)
+    ]
+    contract.verify_events(events)
+    with pytest.raises(AssertionError):
+        contract.verify_events([events[0], events[0], events[2]])
+    events[1] = {
+        **events[1],
+        "resource": {"type": "function", "id": "another-function"},
+    }
+    with pytest.raises(AssertionError):
+        contract.verify_events(events)
+
+
+def test_log_activity_contract_rejects_wrong_resource_counts() -> None:
+    module = _load_module("logs_contract", ROOT / "features" / "logs_contract.py")
+    contract = module.LogContract(
+        SimpleNamespace(
+            fixture={
+                "api_url": "https://api.test",
+                "anon_key": "anon",
+                "logs_access_token": "project-token",
+                "function_id": "function-id",
+            }
+        )
+    )
+    response = SimpleNamespace(
+        total=1,
+        data=[
+            {
+                "total": 1,
+                "counts": {"resource_ids": {"function-id": 1}, "levels": {"info": 1}},
+            },
+            {"total": 0, "counts": {"resource_ids": {}, "levels": {}}},
+        ],
+    )
+    contract.verify_activity(response)
+    response.data[0]["counts"]["resource_ids"] = {"another-function": 1}
+    with pytest.raises(AssertionError):
+        contract.verify_activity(response)

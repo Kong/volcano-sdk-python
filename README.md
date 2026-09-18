@@ -57,14 +57,18 @@ function = client.functions.invoke(
 )
 print(function.status, function.version, function.data)
 
-logs = client.logs.search(
+# Project logs use a control-plane project token, not this end-user session.
+logs_client = VolcanoClient(
+    anon_key="ak_your_anon_key", access_token="vpat_your_project_token"
+)
+logs = logs_client.logs.search(
     "00000000-0000-4000-8000-000000000001",
     {"resource": {"type": "function"}, "limit": 100},
 )
 for event in logs.data:
     print(event["timestamp"], event["body"])
 
-activity = client.logs.activity(
+activity = logs_client.logs.activity(
     "00000000-0000-4000-8000-000000000001",
     {"resource": {"type": "function"}, "bucket_count": 24},
 )
@@ -204,7 +208,9 @@ ran; platform failures raise typed SDK errors.
 `logs.search()` returns an immutable page of retained runtime or deployment log
 events. Pass `next_cursor` back as `cursor` to continue a search. `logs.activity()`
 returns immutable time buckets using the same resource selector and query syntax.
-Both methods require an active user session.
+Both methods require a platform user token or a project access token.
+A `read_only` project token is sufficient; end-user sessions cannot read project logs.
+See the [logs guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/logs.md).
 
 Database selects, inserts, updates, deletes, log reads, and authenticated storage
 requests (including upload sessions and parts) refresh the captured

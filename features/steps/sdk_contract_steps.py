@@ -16,6 +16,7 @@ from contract_support import (
     Outcome,
     classify_error,
 )
+from logs_contract import LogContract
 
 from volcano_sdk import NotFoundError, Session, VolcanoClient
 
@@ -1123,3 +1124,38 @@ def function_echoed_payload(context: Any) -> None:
     response = world.last_outcome.value
     assert response.status == HTTP_OK, response
     assert response.data == {"echoed": "contract"}, response.data
+
+
+@given("a read-only project logs client")
+def project_logs_client(context: Any) -> None:
+    context.logs_contract = LogContract(_world(context))
+
+
+@when("the contract function emits three unique structured log events")
+def emit_three_logs(context: Any) -> None:
+    context.logs_contract.emit(3)
+
+
+@when("the contract function emits one unique structured log event")
+def emit_one_log(context: Any) -> None:
+    context.logs_contract.emit(1)
+
+
+@when("the client searches and paginates those events within 240 seconds")
+def search_contract_logs(context: Any) -> None:
+    _world(context).record(context.logs_contract.search)
+
+
+@when("the client reads matching log activity within 120 seconds")
+def read_contract_log_activity(context: Any) -> None:
+    _world(context).record(context.logs_contract.activity)
+
+
+@then("all three structured events retain their metadata without duplicates")
+def verify_contract_logs(context: Any) -> None:
+    context.logs_contract.verify_events(_world(context).last_outcome.value)
+
+
+@then("activity counts exactly that event in its function and level buckets")
+def verify_contract_log_activity(context: Any) -> None:
+    context.logs_contract.verify_activity(_world(context).last_outcome.value)
