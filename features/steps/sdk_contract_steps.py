@@ -17,6 +17,7 @@ from contract_support import (
     classify_error,
 )
 from logs_contract import LogContract
+from postgres_changes import verify_postgres_changes
 from presence_membership import verify_presence_membership
 
 from volcano_sdk import NotFoundError, Session, VolcanoClient
@@ -1178,3 +1179,18 @@ def verify_presence_rosters(context: Any) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value == [1, 2, 1]
+
+
+@when("the clients observe an inserted and updated contract row")
+def observe_postgres_changes(context: Any) -> None:
+    world = _world(context)
+    if world.last_outcome is not None and not world.last_outcome.ok:
+        return
+    world.record(lambda: world.run(verify_postgres_changes(world)))
+
+
+@then("automatic and lightweight notifications retain metadata and row identity")
+def verify_postgres_rows(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.last_outcome.value == ["INSERT", "UPDATE"]

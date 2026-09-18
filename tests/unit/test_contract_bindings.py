@@ -234,6 +234,8 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the stored object path equals the contract path",
         "the subscriber receives the contract message within 10 seconds",
         "two authenticated realtime clients",
+        "the clients observe an inserted and updated contract row",
+        "automatic and lightweight notifications retain metadata and row identity",
         "a read-only project logs client",
         "the contract function emits three unique structured log events",
         "the contract function emits one unique structured log event",
@@ -556,3 +558,33 @@ def test_presence_requires_original_handler_membership_sequence(
         module._observed_membership(snapshots, {"first"}, {"first", "second"})
         is expected
     )
+
+
+def test_staged_postgres_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "realtime-postgres.feature"
+    expected = "794c2ecbb94fd262a37840f4c3fe3bd9f9ee58c22fda9df2a46de60f93e52c91"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
+@pytest.mark.parametrize(
+    ("automatic", "wrong_field"),
+    [(True, "record"), (False, "id"), (True, "table")],
+)
+def test_postgres_notification_checks_reject_wrong_identity(
+    *, automatic: bool, wrong_field: str
+) -> None:
+    module = _load_module("postgres_changes", ROOT / "features" / "postgres_changes.py")
+    row = {"id": "row", "value": "inserted", "owner_id": "user"}
+    event = SimpleNamespace(
+        type="INSERT",
+        schema="public",
+        table="records",
+        timestamp="2026-09-18T12:00:00Z",
+        record=row if automatic else None,
+        id="row",
+        mode="lightweight",
+    )
+    module.verify_change(event, "INSERT", "records", row, automatic=automatic)
+    setattr(event, wrong_field, "wrong-value")
+    with pytest.raises(AssertionError):
+        module.verify_change(event, "INSERT", "records", row, automatic=automatic)
