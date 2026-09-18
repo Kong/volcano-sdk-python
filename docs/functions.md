@@ -6,6 +6,8 @@ order: 5
 
 Invoke a deployed function by its name.
 This example assumes a public function named `hello` that accepts a JSON object.
+Grant the anonymous key the explicit `functions.invoke` permission; the default
+authentication-only permissions do not allow invocation. See [anonymous keys](/platform/authentication/security/anon-keys).
 
 ```python
 import os
@@ -44,8 +46,10 @@ JSON arrays become immutable tuples, and invalid JSON is returned as text.
 
 A function's own non-success response is returned as a result when Volcano confirms the function ran.
 Check `result.status` to handle those application errors.
-Failures before dispatch raise typed SDK exceptions such as `NotFoundError` or `AuthenticationError`.
+Non-success platform HTTP responses before dispatch raise typed SDK exceptions such as `NotFoundError` or `AuthenticationError`.
 
 If a cached function identity no longer exists, the SDK resolves the name again and retries once only when the platform confirms no function was dispatched.
 A function's own HTTP 404 does not trigger another invocation.
 Network failures do not establish whether a function ran; do not blindly retry operations with side effects.
+
+Invalid invocation arguments and malformed successful resolution responses can raise `ValueError` or `TypeError`.

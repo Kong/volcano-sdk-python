@@ -38,7 +38,7 @@ The signup acknowledgement is identical for new and existing email addresses. Pa
 
 ```python
 result = client.auth.sign_up(
-    email="new-user@example.com", password="secret", sign_in_when_allowed=True
+    email="new-user@example.com", password="correct-horse-battery-staple", sign_in_when_allowed=True
 )
 session = result.session  # None when no follow-up sign-in ran.
 ```
@@ -177,7 +177,9 @@ hosted_url = client.auth.get_hosted_auth_url(
 ```
 
 Store `hosted_state` in the user's signed server-side session before redirecting to `hosted_url`.
-After parsing the returned fragment into a `Session`, validate and adopt it atomically:
+In the callback, atomically fetch and delete the stored state before validation,
+even if validation or adoption fails. Reject a missing or already-consumed state.
+After parsing the returned fragment into a `Session`, validate and adopt it:
 
 ```python
 session = client.auth.adopt_hosted_auth_session(
@@ -208,8 +210,9 @@ authorization_url = client.auth.sign_in_with_oauth(
 ```
 
 Store `oauth_state` in the user's signed server-side session, then redirect the user to the returned
-URL. In the callback, pass the returned and stored states to the SDK so it rejects login CSRF before
-exchanging the one-time code:
+URL. In the callback, atomically fetch and delete the stored nonce as `stored_oauth_state`;
+reject a missing or already-consumed nonce. Pass the returned and consumed states to
+the SDK so it rejects login CSRF before exchanging the one-time code:
 
 ```python
 session = client.auth.exchange_oauth_code(
@@ -346,7 +349,7 @@ Set a new password with the recovery token from that email:
 ```python
 client.auth.reset_password(
     token="recovery-token",
-    new_password="new-secret",
+    new_password="new-correct-horse-battery-staple",
 )
 ```
 
@@ -391,7 +394,8 @@ assert client.auth.get_session() is refreshed
 ```
 
 On success, `refresh_session()` replaces the in-memory session and returns the immutable new
-snapshot. An authentication failure clears the session that initiated the request. Server and
+snapshot. An authentication rejection from the refresh endpoint clears the captured session.
+Missing refresh credentials, failed session-continuity checks, server errors, and
 transport failures preserve it, and a late response never replaces a newer session. The SDK does
 not persist sessions.
 
