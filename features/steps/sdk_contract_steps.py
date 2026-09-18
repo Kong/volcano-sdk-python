@@ -952,6 +952,7 @@ def start_durable_execution_twice(context: Any) -> None:
     def operation() -> tuple[Any, Any]:
         return world.start_durable_execution(), world.start_durable_execution()
 
+
 @when("the client recovers the contract lock with caller-owned tokens")
 def recover_lock(context: Any) -> None:
     world = _world(context)
@@ -1041,6 +1042,7 @@ def listed_executions_include_the_started_one(context: Any) -> None:
     assert world.started_execution is not None
     listed = {execution.id for execution in world.last_outcome.value.executions}
     assert world.started_execution.id in listed
+
 
 @then("recovery and renewal preserve the held lease until release")
 def recovered_lock_lifecycle(context: Any) -> None:
