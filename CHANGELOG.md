@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.4](https://github.com/Kong/volcano-sdk-python/compare/v0.9.3...v0.9.4) (2026-09-18)
+
+
+### Bug Fixes
+
+* **functions:** preserve cached resolution error metadata ([#176](https://github.com/Kong/volcano-sdk-python/issues/176)) ([b83c2de](https://github.com/Kong/volcano-sdk-python/commit/b83c2deb156fbfe8f1212c21f0540f2cd6fdbb13))
+
 ## [0.9.3](https://github.com/Kong/volcano-sdk-python/compare/v0.9.2...v0.9.3) (2026-09-18)
 
 
