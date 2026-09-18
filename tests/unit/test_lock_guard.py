@@ -130,6 +130,7 @@ def test_lock_guard_preserves_the_absolute_acquisition_deadline(
         lease(),
         ttl=guard_module.MAX_LOCK_LIFETIME_SECONDS,
         started_at=clock[0],
+        lease_started_at=10.0,
     )
 
     clock[0] = guard_module.MAX_LOCK_LIFETIME_SECONDS - 1

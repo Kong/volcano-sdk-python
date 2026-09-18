@@ -160,6 +160,13 @@ original error. `on_progress` runs after each successful part with cumulative
 uploaded bytes and the total size.
 `upload_part()` returns immutable part metadata and can safely retry the same
 part number to replace that part.
+Acquisition accepts caller-owned UUID `token` and `request_id` values and retries
+an ambiguous transport failure or HTTP 503 once with the same request and credential.
+Retain those IDs to recover an uncertain acquisition. Other lock methods accept
+`request_id`; block-scoped helpers forward initial IDs only to acquisition.
+See the [lock guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/locks.md)
+for examples and fencing requirements.
+
 `locks.get()` returns immutable lock availability, expiry, and fencing-token
 state without acquiring the lock.
 Lock acquisition and renewal require an integer TTL from 5 seconds through 90 days.

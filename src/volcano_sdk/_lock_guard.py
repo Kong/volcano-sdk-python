@@ -54,13 +54,16 @@ class LockGuard:
         *,
         ttl: int,
         started_at: float,
+        lease_started_at: float | None = None,
     ) -> None:
         """Track one acquired lease against its local monotonic deadline."""
         self._state_lock = threading.Lock()
         self._lease = lease
         self._ttl = ttl
         self._absolute_deadline = started_at + MAX_LOCK_LIFETIME_SECONDS
-        self._lease_deadline = min(started_at + ttl, self._absolute_deadline)
+        # A successful retry renews the TTL, not the maximum ownership lifetime.
+        lease_started_at = started_at if lease_started_at is None else lease_started_at
+        self._lease_deadline = min(lease_started_at + ttl, self._absolute_deadline)
         self._failure: Exception | None = None
         self._lost = threading.Event()
 

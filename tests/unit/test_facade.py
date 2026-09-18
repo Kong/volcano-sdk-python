@@ -589,6 +589,7 @@ def test_storage_list_normalizes_an_empty_terminal_cursor() -> None:
 
 
 def test_locks_gets_immutable_current_state() -> None:
+    request_id = "00000000-0000-4000-8000-000000000002"
     transport = FakeTransport()
     client = VolcanoClient(
         anon_key="anon-key",
@@ -596,7 +597,7 @@ def test_locks_gets_immutable_current_state() -> None:
         _transport=transport,
     )
 
-    state = client.locks.get("build")
+    state = client.locks.get("build", request_id=request_id)
 
     assert type(state).__name__ == "LockState"
     assert (state.held, state.expires_at, state.fencing_token) == (
@@ -607,12 +608,13 @@ def test_locks_gets_immutable_current_state() -> None:
     assert transport.calls == [
         (
             "getProjectLock",
-            {"authorization": "service-key", "key": "build"},
+            {"authorization": "service-key", "key": "build", "request_id": request_id},
         )
     ]
 
 
 def test_locks_renews_a_lease_without_mutating_the_original() -> None:
+    request_id = "00000000-0000-4000-8000-000000000002"
     transport = FakeTransport()
     client = VolcanoClient(
         anon_key="anon-key",
@@ -626,7 +628,7 @@ def test_locks_renews_a_lease_without_mutating_the_original() -> None:
         fencing_token=7,
     )
 
-    renewed = client.locks.renew("build", lease, ttl=60)
+    renewed = client.locks.renew("build", lease, ttl=60, request_id=request_id)
 
     assert renewed == LockLease(
         key="build",
@@ -642,6 +644,7 @@ def test_locks_renews_a_lease_without_mutating_the_original() -> None:
                 "authorization": "service-key",
                 "key": "build",
                 "ttl": 60,
+                "request_id": request_id,
                 "token": lease.token,
             },
         )
@@ -827,6 +830,7 @@ def test_locks_rejects_invalid_renewal_ttl(ttl: object) -> None:
 
 
 def test_locks_force_releases_without_an_ownership_token() -> None:
+    request_id = "00000000-0000-4000-8000-000000000002"
     transport = FakeTransport()
     client = VolcanoClient(
         anon_key="anon-key",
@@ -834,12 +838,12 @@ def test_locks_force_releases_without_an_ownership_token() -> None:
         _transport=transport,
     )
 
-    client.locks.force_release("build")
+    client.locks.force_release("build", request_id=request_id)
 
     assert transport.calls == [
         (
             "forceReleaseProjectLock",
-            {"authorization": "service-key", "key": "build"},
+            {"authorization": "service-key", "key": "build", "request_id": request_id},
         )
     ]
 
