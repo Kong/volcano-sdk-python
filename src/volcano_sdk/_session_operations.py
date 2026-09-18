@@ -71,8 +71,31 @@ class SessionOperations:
             preceding = self.refreshing
             pending = preceding is not None and not preceding.done()
         if owner:
-            self._complete(future, lambda: operation(preceding, pending))
+            self._complete(
+                future, lambda: self._revoke(operation, preceding, pending=pending)
+            )
         future.result()
+
+    def wait_for_sign_out(self) -> None:
+        with self._lock:
+            future = self.signing_out
+            pending = future is not None and not future.done()
+        if pending and future is not None:
+            future.result()
+
+    def _revoke(
+        self,
+        operation: Callable[[Future[Session] | None, bool], None],
+        preceding: Future[Session] | None,
+        *,
+        pending: bool,
+    ) -> None:
+        try:
+            operation(preceding, pending)
+        finally:
+            with self._lock:
+                self._verified_pair = None
+                self.refreshing = None
 
     @staticmethod
     def _complete(future: Future[_T], operation: Callable[[], _T]) -> None:

@@ -76,6 +76,7 @@ from ._transport import (
 )
 from .errors import (
     AuthenticationError,
+    RateLimitedError,
     SessionChangedError,
     TransportError,
     VolcanoError,
@@ -1103,9 +1104,14 @@ class Auth:
         if current.refresh_token is None:
             raise AuthenticationError(_REFRESH_UNAVAILABLE)
         validate_refresh_source(current)
+        verified = owner.has_verified_pair(current)
         owner.verify_pair(None)
         try:
             refreshed = self._request_refreshed_session(current.refresh_token)
+        except RateLimitedError:
+            if verified:
+                owner.verify_pair(current)
+            raise
         except AuthenticationError:
             if owner.signing_out is None and self._client._clear_session_if_current(
                 generation, notifications=notifications
@@ -1139,6 +1145,7 @@ class Auth:
         """Revoke and clear the current session."""
         binding = self._client._capture_session_binding()
         if binding[2] is None:
+            binding[1].wait_for_sign_out()
             return
         notifications: list[Callable[[], None]] = []
         try:
@@ -1191,12 +1198,13 @@ class Auth:
         joined: bool,
     ) -> None:
         session_id = session_id_from_access_token(session.access_token)
-        if session_id is not None and not owner.has_verified_pair(session):
+        verified = owner.has_verified_pair(session)
+        if session_id is not None and not verified:
             self._revoke_access_session(
                 session, session_id, refresh_error, joined=joined
             )
             return
-        if refresh_error is not None:
+        if refresh_error is not None and not verified:
             raise refresh_error
         if session.refresh_token is not None:
             transport = cast("AuthLogoutTransport", self._client._transport)
