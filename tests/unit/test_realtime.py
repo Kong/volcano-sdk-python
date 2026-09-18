@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from volcano_sdk import (
+    AuthenticationError,
     RealtimeConnectContext,
     RealtimeDisconnectContext,
     RealtimeErrorContext,
@@ -17,6 +18,9 @@ from volcano_sdk import (
     VolcanoClient,
 )
 from volcano_sdk import realtime as realtime_module
+from volcano_sdk._generated.models.auth_get_user_response_200 import (
+    AuthGetUserResponse200,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -4395,6 +4399,56 @@ def test_realtime_cancelled_unsubscribe_settles_on_native_timeout(
                 await asyncio.wait_for(stopping, timeout=0.2)
             assert not channel._subscribed
             assert not factory.client._inflight_commands
+        finally:
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_pins_bootstrap_identity_before_connecting() -> None:
+    user_id = "00000000-0000-4000-8000-000000000001"
+
+    class BootstrapTransport(AuthTransport):
+        def auth_get_user(self, **_arguments: Any) -> Response:
+            return Response(
+                200,
+                AuthGetUserResponse200.from_dict(
+                    {
+                        "user": {
+                            "id": user_id,
+                            "email": "u@example.com",
+                            "status": "active",
+                        }
+                    }
+                ),
+            )
+
+        def auth_refresh(self, **_arguments: Any) -> Response:
+            return Response(
+                200,
+                {
+                    "access_token": "other-access",
+                    "refresh_token": "other-refresh",
+                    "user": {"id": "00000000-0000-4000-8000-000000000002"},
+                },
+            )
+
+    async def scenario() -> None:
+        official = FakeCentrifugeClient()
+        client = VolcanoClient(
+            anon_key="anon",
+            access_token="access-token",
+            refresh_token="other-refresh",
+            _transport=BootstrapTransport(),
+            _realtime_client_factory=FakeCentrifugeFactory(official),
+        )
+        try:
+            await client.realtime.channel("contract").subscribe()
+            assert client.current_session is not None
+            assert client.current_session.user_id == user_id
+            with pytest.raises(AuthenticationError, match="different user"):
+                client.auth.refresh_session()
+            assert client.current_session.access_token == "access-token"
         finally:
             await client.realtime.disconnect()
 

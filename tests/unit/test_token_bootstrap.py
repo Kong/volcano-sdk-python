@@ -211,10 +211,11 @@ def test_refresh_cannot_replace_a_validated_bootstrap_identity(
     )
 
 
+@pytest.mark.parametrize("refresh_token", [None, "another-session-refresh"])
 @pytest.mark.parametrize("outcome", [204, 401, 503, "transport"])
 @pytest.mark.parametrize("replace", [False, True])
 def test_token_only_sign_out_revokes_the_captured_session(
-    outcome: int | str, *, replace: bool
+    outcome: int | str, *, replace: bool, refresh_token: str | None
 ) -> None:
     session_id = "00000000-0000-4000-8000-000000000002"
     payload = (
@@ -238,7 +239,7 @@ def test_token_only_sign_out_revokes_the_captured_session(
             json={"error": "revocation failed"} if outcome != 204 else None,
         )
 
-    client = token_client(handle, access_token=token)
+    client = token_client(handle, access_token=token, refresh_token=refresh_token)
     if replace or outcome != 204:
         with pytest.raises(SessionChangedError if replace else VolcanoError):
             client.auth.sign_out()

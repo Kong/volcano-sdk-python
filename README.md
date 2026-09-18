@@ -636,6 +636,7 @@ client.auth.sign_out()
 assert client.auth.get_session() is None
 ```
 
+Sign-out uses the access-token session when available, even if a refresh token was supplied.
 Calling `sign_out()` without a session succeeds without a request. A revocation failure is raised
 after the captured local session is cleared. A newer session established while sign-out is in
 flight remains current.

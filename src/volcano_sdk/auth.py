@@ -1152,14 +1152,7 @@ class Auth:
             raise error
 
     def _revoke_session(self, session: Session) -> None:
-        if session.refresh_token is not None:
-            transport = cast("AuthLogoutTransport", self._client._transport)
-            response = invoke(
-                transport.auth_logout,
-                authorization=self._client._anon_token(),
-                refresh_token=session.refresh_token,
-            )
-        elif session_id := _session_id_from_access_token(session.access_token):
+        if session_id := _session_id_from_access_token(session.access_token):
             session_transport = cast(
                 "AuthDeleteMySessionTransport", self._client._transport
             )
@@ -1167,6 +1160,13 @@ class Auth:
                 session_transport.auth_delete_my_session,
                 authorization=session.access_token,
                 session_id=session_id,
+            )
+        elif session.refresh_token is not None:
+            transport = cast("AuthLogoutTransport", self._client._transport)
+            response = invoke(
+                transport.auth_logout,
+                authorization=self._client._anon_token(),
+                refresh_token=session.refresh_token,
             )
         else:
             return
