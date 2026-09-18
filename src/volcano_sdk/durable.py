@@ -142,10 +142,11 @@ class Durable:
     ) -> DurableExecution:
         """Read an execution, including its result once it has succeeded.
 
-        Owner-scoped: it takes the project id and needs the project's own
-        token, because an execution is addressed by its id alone and an
+        Owner-scoped: it takes the project id and a platform token or
+        service key, because an execution is addressed by its id alone and an
         anonymous key is held by everyone who loads the page. Poll it from a
-        backend, not a browser.
+        backend, not a browser. An auth-user session from sign-in is not
+        enough.
         """
         project = _identifier(project_id, "project_id")
         identifier = _identifier(function_name, "function_name")
@@ -153,7 +154,7 @@ class Durable:
         transport = cast("DurableTransport", self._client._transport)
         response = invoke(
             transport.get_durable_execution,
-            authorization=self._client._session_token(),
+            authorization=self._client._owner_token(),
             project_id=project,
             function_id=identifier,
             execution_id=execution,
@@ -180,7 +181,7 @@ class Durable:
         request = DurableExecutionListRequest(status=status, page=page, limit=limit)
         response = invoke(
             transport.list_durable_executions,
-            authorization=self._client._session_token(),
+            authorization=self._client._owner_token(),
             project_id=project,
             function_id=identifier,
             request=request,
@@ -207,7 +208,7 @@ class Durable:
         transport = cast("DurableTransport", self._client._transport)
         response = invoke(
             transport.stop_durable_execution,
-            authorization=self._client._session_token(),
+            authorization=self._client._owner_token(),
             project_id=project,
             function_id=identifier,
             execution_id=execution,

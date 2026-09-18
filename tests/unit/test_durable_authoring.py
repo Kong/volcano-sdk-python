@@ -556,6 +556,29 @@ def test_wait_refuses_a_name_that_is_not_a_string() -> None:
     assert "takes a name and a duration" in failing_handler(handler)
 
 
+# A zero wait passes every shape check and is refused by the platform, which
+# means the execution fails partway through -- after earlier steps have run
+# and been charged -- rather than at the call that was wrong.
+@pytest.mark.parametrize(
+    "duration",
+    [0, "0s", {"seconds": 0}, {"minutes": 0, "seconds": 0}],
+)
+def test_wait_refuses_a_wait_of_nothing(duration: object) -> None:
+    @durable
+    def handler(_event: Any, ctx: DurableContext) -> Any:
+        return ctx.wait("cool-off", duration)  # type: ignore[arg-type]
+
+    assert "wait must be at least 1 second" in failing_handler(handler)
+
+
+def test_wait_refuses_a_wait_longer_than_an_execution_may_run() -> None:
+    @durable
+    def handler(_event: Any, ctx: DurableContext) -> Any:
+        return ctx.wait("cool-off", {"days": 367})
+
+    assert "wait must be at most 31622400 seconds" in failing_handler(handler)
+
+
 def test_wait_until_refuses_a_timeout() -> None:
     @durable
     def handler(_event: Any, ctx: DurableContext) -> Any:

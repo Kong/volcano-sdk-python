@@ -53,6 +53,12 @@ _DURATION_FIELDS = ("days", "hours", "minutes", "seconds")
 # could only be rounded -- and a rounded "400ms" is no wait at all.
 _DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 _FIELD_UNITS = {"days": 86400, "hours": 3600, "minutes": 60, "seconds": 1}
+# The bounds the platform puts on one wait: at least a second, and no longer
+# than an execution may live. Checked here because a zero wait reaches the
+# platform as a wait of nothing and fails the execution after earlier steps
+# have run and been charged.
+_MIN_WAIT_SECONDS = 1
+_MAX_WAIT_SECONDS = 31622400
 _REQUIRES_HANDLER = "durable(handler) requires a callable"
 _REQUIRES_UNTIL = "wait_until() requires an `until` predicate"
 _REQUIRES_INITIAL_STATE = (
@@ -401,11 +407,11 @@ class DurableContext:
         strings, so `wait("30s")` would otherwise be ambiguous.
         """
         if duration is None:
-            self._context.wait(self._duration(name, "wait"))
+            self._context.wait(self._wait_duration(name))
             return
         if not isinstance(name, str):
             raise TypeError(_INVALID_WAIT_ARGS)
-        self._context.wait(self._duration(duration, "wait"), name)
+        self._context.wait(self._wait_duration(duration), name)
 
     def child(
         self,
@@ -598,6 +604,18 @@ class DurableContext:
 
     def _duration(self, value: object, field_name: str) -> Any:
         return self._engine.duration.from_seconds(_to_seconds(value, field_name))
+
+    def _wait_duration(self, value: object) -> Any:
+        seconds = _to_seconds(value, "wait")
+        if seconds < _MIN_WAIT_SECONDS:
+            message = f"wait must be at least {_MIN_WAIT_SECONDS} second"
+            raise TypeError(message)
+        if seconds > _MAX_WAIT_SECONDS:
+            message = (
+                f"wait must be at most {_MAX_WAIT_SECONDS} seconds (366 days)"
+            )
+            raise TypeError(message)
+        return self._engine.duration.from_seconds(seconds)
 
 
 @overload

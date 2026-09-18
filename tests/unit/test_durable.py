@@ -187,7 +187,7 @@ def test_get_returns_the_result_of_a_succeeded_execution() -> None:
         (
             "getDurableExecution",
             {
-                "authorization": "access-token",
+                "authorization": "service-key",
                 "project_id": PROJECT_ID,
                 "function_id": "order-pipeline",
                 "execution_id": EXECUTION_ID,
@@ -263,7 +263,7 @@ def test_list_returns_an_immutable_page() -> None:
         (
             "listDurableExecutions",
             {
-                "authorization": "access-token",
+                "authorization": "service-key",
                 "project_id": PROJECT_ID,
                 "function_id": "order-pipeline",
                 "request": DurableExecutionListRequest(
@@ -310,7 +310,7 @@ def test_stop_returns_the_execution_read_back_after_asking() -> None:
         (
             "stopDurableExecution",
             {
-                "authorization": "access-token",
+                "authorization": "service-key",
                 "project_id": PROJECT_ID,
                 "function_id": "order-pipeline",
                 "execution_id": EXECUTION_ID,
@@ -384,9 +384,18 @@ def test_owner_scoped_reads_reject_empty_path_segments(
     assert transport.calls == []
 
 
-def test_owner_scoped_reads_refuse_without_a_session() -> None:
+def test_owner_scoped_reads_use_the_service_key_without_a_session() -> None:
     transport = FakeDurableTransport()
     client = durable_client(transport, session=False)
+
+    client.durable.get(PROJECT_ID, "order-pipeline", EXECUTION_ID)
+
+    assert transport.calls[0][1]["authorization"] == "service-key"
+
+
+def test_owner_scoped_reads_refuse_without_a_platform_credential() -> None:
+    transport = FakeDurableTransport()
+    client = durable_client(transport, session=False, service_key=None)
 
     with pytest.raises(RuntimeError, match="No active session"):
         client.durable.get(PROJECT_ID, "order-pipeline", EXECUTION_ID)

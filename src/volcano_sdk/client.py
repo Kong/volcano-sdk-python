@@ -131,6 +131,15 @@ class VolcanoClient:
             raise RuntimeError(_NO_SERVICE_KEY)
         return self._service_key
 
+    def _owner_token(self) -> str:
+        # Owner-scoped project routes take a platform UserToken, not an
+        # auth-user access token from sign-in. A configured service key is
+        # that credential. Otherwise the session must already hold a platform
+        # token, the way the JS client documents.
+        if self._service_key is not None:
+            return self._service_key
+        return self._session_token()
+
     def _function_token(self) -> str:
         session = self._capture_session()[1]
         if session is not None:
