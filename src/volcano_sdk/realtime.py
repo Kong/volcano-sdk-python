@@ -768,7 +768,6 @@ class Channel:
             not self._fetch_config.enabled
             or change.mode != "lightweight"
             or change.type == "DELETE"
-            or change.schema != "public"
             or change.id is None
             or database_name is None
         ):
@@ -776,7 +775,11 @@ class Channel:
         return _PostgresFetchRequest(
             database_name=database_name,
             access_token=self._realtime._connection_token(),
-            table=change.table,
+            table=(
+                change.table
+                if change.schema == "public"
+                else f"{change.schema}.{change.table}"
+            ),
             row_id=change.id,
         )
 
