@@ -28,7 +28,6 @@ _INVALID_FUNCTION_NAME = (
 )
 _INVALID_FUNCTION_RESPONSE = "Expected a complete function response"
 _INVALID_FUNCTION_PAYLOAD = "Function payload must be a mapping"
-_UNKNOWN_FUNCTION = "Function was not found"
 _HTTP_SUCCESS_MIN = 200
 _HTTP_SUCCESS_MAX = 300
 _HTTP_NOT_FOUND = 404
@@ -214,7 +213,12 @@ class Functions:
         if cached is None:
             return None
         if cached.resolution is None:
-            raise NotFoundError(_UNKNOWN_FUNCTION, status=_HTTP_NOT_FOUND)
+            raise NotFoundError(
+                cached.message,
+                status=_HTTP_NOT_FOUND,
+                code=cached.code,
+                retry_after=cached.retry_after,
+            )
         return cached.resolution
 
     def _resolve_uncached(
@@ -229,9 +233,11 @@ class Functions:
             authorization=authorization,
             name=name,
         )
-        if int(resolved.status_code) == _HTTP_NOT_FOUND:
-            _function_resolution.store_missing(api_url, authorization, name)
-        payload = response_payload(resolved, _HTTP_SUCCESS_MIN)
+        try:
+            payload = response_payload(resolved, _HTTP_SUCCESS_MIN)
+        except NotFoundError as error:
+            _function_resolution.store_missing(api_url, authorization, name, error)
+            raise
         resolution = self._resolution(payload, api_url)
         _function_resolution.store(
             api_url, authorization, name, resolution, self._cache_ttl(payload)

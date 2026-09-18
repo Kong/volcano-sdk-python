@@ -12,7 +12,11 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
+
+if TYPE_CHECKING:
+    from .errors import NotFoundError
 
 MAX_ENTRIES = 1024
 NEGATIVE_TTL_SECONDS = 30.0
@@ -41,6 +45,9 @@ class CachedOutcome:
     """A cached resolve result: a resolution, or a remembered miss when None."""
 
     resolution: FunctionResolution | None
+    message: str = "Function was not found"
+    code: str | None = None
+    retry_after: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,13 +129,19 @@ def store(
     _store((api_url, authorization, name), CachedOutcome(resolution), ttl_seconds)
 
 
-def store_missing(api_url: str, authorization: str, name: str) -> None:
+def store_missing(
+    api_url: str, authorization: str, name: str, error: NotFoundError
+) -> None:
     """Remember briefly that a name does not resolve.
 
     A caller retrying an unknown name in a loop would otherwise re-ask the
     server on every attempt.
     """
-    _store((api_url, authorization, name), CachedOutcome(None), NEGATIVE_TTL_SECONDS)
+    _store(
+        (api_url, authorization, name),
+        CachedOutcome(None, str(error), error.code, error.retry_after),
+        NEGATIVE_TTL_SECONDS,
+    )
 
 
 def _store(

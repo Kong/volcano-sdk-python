@@ -491,3 +491,32 @@ class _FakeClock:
 
     def advance(self, seconds: float) -> None:
         self._now += seconds
+
+
+def test_functions_preserves_owned_error_metadata_in_negative_cache() -> None:
+    transport = FakeFunctionsTransport()
+    transport.resolve_response = FakeResponse(
+        404, {"error": "Unknown function", "code": "function_missing"}, {}
+    )
+    client = functions_client(transport)
+    with pytest.raises(NotFoundError) as first:
+        client.functions.invoke("missing-function")
+    assert (
+        str(first.value),
+        first.value.status,
+        first.value.code,
+        first.value.retry_after,
+    ) == ("Unknown function", 404, "function_missing", None)
+    first.value.args = ("changed",)
+    first.value.code = "changed"
+    first.value.retry_after = 99
+    with pytest.raises(NotFoundError) as second:
+        client.functions.invoke("missing-function")
+    assert (
+        str(second.value),
+        second.value.status,
+        second.value.code,
+        second.value.retry_after,
+    ) == ("Unknown function", 404, "function_missing", None)
+    assert second.value is not first.value
+    assert transport.resolve_calls == 1
