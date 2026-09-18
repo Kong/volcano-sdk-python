@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import os
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -496,3 +497,31 @@ def test_log_activity_contract_rejects_wrong_resource_counts() -> None:
     response.data[0]["counts"]["resource_ids"] = {"another-function": 1}
     with pytest.raises(AssertionError):
         contract.verify_activity(response)
+
+
+@pytest.mark.parametrize("server_skew_seconds", [-120, 120])
+def test_log_bounds_allow_server_clock_skew(server_skew_seconds: int) -> None:
+    module = _load_module("logs_contract", ROOT / "features" / "logs_contract.py")
+    world = SimpleNamespace(
+        fixture={
+            "api_url": "https://api.test",
+            "anon_key": "anon",
+            "logs_access_token": "project-token",
+            "function_id": "function-id",
+            "function_name": "function",
+        },
+        service_client=SimpleNamespace(
+            functions=SimpleNamespace(
+                invoke=Mock(
+                    return_value=SimpleNamespace(
+                        status=200, data={"echoed": "contract"}
+                    )
+                ),
+            )
+        ),
+    )
+    contract = module.LogContract(world)
+    server_time = datetime.now(UTC) + timedelta(seconds=server_skew_seconds)
+    contract.emit(1)
+    assert datetime.fromisoformat(contract.request["start_time"]) < server_time
+    assert server_time < datetime.fromisoformat(contract.request["end_time"])

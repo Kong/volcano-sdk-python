@@ -37,7 +37,7 @@ class LogContract:
         self.request: dict[str, Any] = {
             "resource": {"type": "function", "ids": [world.fixture["function_id"]]},
             "q": self.marker,
-            "start_time": (datetime.now(UTC) - timedelta(seconds=5)).isoformat(),
+            "start_time": (datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
         }
 
     def emit(self, count: int) -> None:
@@ -53,7 +53,7 @@ class LogContract:
             assert response.status == HTTP_OK
             assert response.data == {"echoed": "contract"}
         self.request["end_time"] = (
-            datetime.now(UTC) + timedelta(seconds=1)
+            datetime.now(UTC) + timedelta(minutes=5)
         ).isoformat()
 
     def search(self) -> list[Any]:
