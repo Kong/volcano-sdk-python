@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/Kong/volcano-sdk-python/compare/v0.7.3...v0.8.0) (2026-09-18)
+
+
+### Features
+
+* **locks:** add recoverable acquisition with caller-owned tokens ([#160](https://github.com/Kong/volcano-sdk-python/issues/160)) ([ba0f261](https://github.com/Kong/volcano-sdk-python/commit/ba0f26149d7ca33b9043bb1932ad10b95e43073e))
+
 ## [0.7.3](https://github.com/Kong/volcano-sdk-python/compare/v0.7.2...v0.7.3) (2026-09-17)
 
 
