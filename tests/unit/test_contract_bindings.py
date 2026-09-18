@@ -241,6 +241,11 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the client reads matching log activity within 120 seconds",
         "all three structured events retain their metadata without duplicates",
         "activity counts exactly that event in its function and level buckets",
+        "one presence client joins and leaves while the other remains subscribed",
+        (
+            "both rosters identify the contract user "
+            "and the original handler observes membership changes"
+        ),
     }
 
 
@@ -525,3 +530,29 @@ def test_log_bounds_allow_server_clock_skew(server_skew_seconds: int) -> None:
     contract.emit(1)
     assert datetime.fromisoformat(contract.request["start_time"]) < server_time
     assert server_time < datetime.fromisoformat(contract.request["end_time"])
+
+
+def test_staged_presence_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "realtime-presence.feature"
+    expected = "b4429f6e3df60a6a98be4daf1d8517e2cd7cee651f9eb6463a1090ab49a102b5"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
+@pytest.mark.parametrize(
+    ("snapshots", "expected"),
+    [
+        ([{"first"}, {"first", "second"}, {"first"}], True),
+        ([{"first"}, {"first", "second"}], False),
+        ([{"first", "second"}, {"first"}], False),
+    ],
+)
+def test_presence_requires_original_handler_membership_sequence(
+    snapshots: list[set[str]], *, expected: bool
+) -> None:
+    module = _load_module(
+        "presence_membership", ROOT / "features" / "presence_membership.py"
+    )
+    assert (
+        module._observed_membership(snapshots, {"first"}, {"first", "second"})
+        is expected
+    )

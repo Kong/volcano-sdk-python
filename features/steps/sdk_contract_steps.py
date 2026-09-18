@@ -17,6 +17,7 @@ from contract_support import (
     classify_error,
 )
 from logs_contract import LogContract
+from presence_membership import verify_presence_membership
 
 from volcano_sdk import NotFoundError, Session, VolcanoClient
 
@@ -1159,3 +1160,21 @@ def verify_contract_logs(context: Any) -> None:
 @then("activity counts exactly that event in its function and level buckets")
 def verify_contract_log_activity(context: Any) -> None:
     context.logs_contract.verify_activity(_world(context).last_outcome.value)
+
+
+@when("one presence client joins and leaves while the other remains subscribed")
+def observe_presence_membership(context: Any) -> None:
+    world = _world(context)
+    if world.last_outcome is not None and not world.last_outcome.ok:
+        return
+    world.record(lambda: world.run(verify_presence_membership(world)))
+
+
+@then(
+    "both rosters identify the contract user "
+    "and the original handler observes membership changes"
+)
+def verify_presence_rosters(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.last_outcome.value == [1, 2, 1]
