@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+from session_fixtures import access_token
 
 from volcano_sdk import Session, SessionChangedError, VolcanoClient, VolcanoError
 from volcano_sdk import auth as auth_module
@@ -89,7 +90,7 @@ CASES = [
 ]
 
 
-def refresh_response(access: str = "access-2") -> httpx.Response:
+def refresh_response(access: str = access_token("rotated")) -> httpx.Response:
     return httpx.Response(
         200,
         json={
@@ -110,7 +111,7 @@ def client_for(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCli
             httpx_transport=httpx.MockTransport(handler),
         ),
     )
-    client.auth.set_session(Session("access-1", "refresh-1", USER))
+    client.auth.set_session(Session(access_token("original"), "refresh-1", USER))
     return client
 
 
@@ -134,15 +135,15 @@ def test_auth_facade_replays_only_the_captured_request_after_401(
     client = client_for(handle)
     case.invoke(client)
     assert [request.headers["authorization"] for request in requests] == [
-        "Bearer access-1",
+        f"Bearer {access_token('original')}",
         "Bearer anon",
-        "Bearer access-2",
+        f"Bearer {access_token('rotated')}",
     ]
     assert requests[0].url == requests[2].url
     assert requests[0].method == requests[2].method
     assert requests[0].content == requests[2].content
     assert client.current_session is not None
-    assert client.current_session.access_token == "access-2"
+    assert client.current_session.access_token == access_token("rotated")
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
