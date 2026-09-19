@@ -955,6 +955,8 @@ def start_durable_execution_twice(context: Any) -> None:
     def operation() -> tuple[Any, Any]:
         return world.start_durable_execution(), world.start_durable_execution()
 
+    world.record(operation)
+
 
 @when("the client recovers the contract lock with caller-owned tokens")
 def recover_lock(context: Any) -> None:

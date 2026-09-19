@@ -7,7 +7,7 @@ import os
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock, call
 
@@ -303,6 +303,26 @@ def test_broadcast_pause_checks_silence(
         )
     subscriber.on.assert_called_once()
     pause.asyncio.sleep.assert_awaited_once_with(1)
+
+
+def test_durable_idempotency_binding_starts_twice_and_records_both_handles() -> None:
+    registry.clear()
+    steps = _load_module(
+        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
+    )
+    first = SimpleNamespace(id="execution", name="contract")
+    second = SimpleNamespace(id="execution", name="contract")
+    world = SimpleNamespace(
+        start_durable_execution=Mock(side_effect=[first, second]), last_outcome=None
+    )
+    world.record = MethodType(steps.ContractWorld.record, world)
+
+    steps.start_durable_execution_twice(SimpleNamespace(contract=world))
+
+    assert world.start_durable_execution.call_args_list == [call(), call()]
+    assert world.last_outcome is not None
+    assert world.last_outcome.ok is True
+    assert world.last_outcome.value == (first, second)
 
 
 def test_lifecycle_cleanup_attempts_all_paths_after_a_deletion_failure() -> None:
