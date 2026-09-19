@@ -153,7 +153,7 @@ def sync_detailed(
     `package.json` `engines.node`; if omitted, Volcano uses Node.js 22.x.
     The selected Node.js family must also satisfy the installed Next.js package's
     `engines.node` constraint. Volcano tests Next 15.5.25 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
-    16.3.4 (`>=20.9.0`).
+    16.3.5 (`>=20.9.0`).
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.
@@ -217,7 +217,7 @@ def sync(
     `package.json` `engines.node`; if omitted, Volcano uses Node.js 22.x.
     The selected Node.js family must also satisfy the installed Next.js package's
     `engines.node` constraint. Volcano tests Next 15.5.25 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
-    16.3.4 (`>=20.9.0`).
+    16.3.5 (`>=20.9.0`).
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.
@@ -276,7 +276,7 @@ async def asyncio_detailed(
     `package.json` `engines.node`; if omitted, Volcano uses Node.js 22.x.
     The selected Node.js family must also satisfy the installed Next.js package's
     `engines.node` constraint. Volcano tests Next 15.5.25 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
-    16.3.4 (`>=20.9.0`).
+    16.3.5 (`>=20.9.0`).
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.
@@ -340,7 +340,7 @@ async def asyncio(
     `package.json` `engines.node`; if omitted, Volcano uses Node.js 22.x.
     The selected Node.js family must also satisfy the installed Next.js package's
     `engines.node` constraint. Volcano tests Next 15.5.25 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
-    16.3.4 (`>=20.9.0`).
+    16.3.5 (`>=20.9.0`).
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.

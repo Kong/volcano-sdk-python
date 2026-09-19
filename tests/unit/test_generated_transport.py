@@ -19,6 +19,7 @@ from volcano_sdk._generated.models.auth_update_user_response_200 import (
 )
 from volcano_sdk._generated.types import Unset
 from volcano_sdk._transport import (
+    DurableExecutionListRequest,
     GeneratedTransport,
     StorageUploadPartRequest,
     StorageUploadSessionReference,
@@ -1865,3 +1866,194 @@ def test_generated_transport_updates_storage_object_visibility() -> None:
     assert requests[0].method == "PATCH"
     assert requests[0].url.path == "/storage/assets/avatars/a.png/visibility"
     assert json.loads(requests[0].content) == {"is_public": True}
+
+
+# The durable methods are the only ones that turn an identifier into a UUID, put
+# a name in a header rather than the body, and carry list filters as query
+# parameters. The facade's own tests substitute the whole transport, so without
+# these a regeneration could move any of that and nothing local would fail.
+
+
+def _durable_execution_payload() -> dict[str, object]:
+    return {
+        "id": "00000000-0000-4000-8000-000000000041",
+        "function_id": "00000000-0000-4000-8000-000000000042",
+        "name": "charge-order-1",
+        "status": "running",
+        "region": "aws-us-east-1",
+        "created_at": "2026-01-01T00:00:00Z",
+    }
+
+
+def test_generated_transport_starts_a_durable_execution_with_a_name() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(202, json=_durable_execution_payload())
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.start_durable_execution_from_application(
+        authorization="service-key",
+        function_id="charge-order",
+        payload={"order": 7},
+        execution_name="charge-order-1",
+    )
+
+    assert response.status_code == 202
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/durable-functions/charge-order/executions"
+    assert requests[0].headers["x-volcano-execution-name"] == "charge-order-1"
+    assert json.loads(requests[0].content) == {"order": 7}
+
+
+def test_generated_transport_starts_a_durable_execution_without_a_name() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(202, json=_durable_execution_payload())
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    transport.start_durable_execution_from_application(
+        authorization="service-key",
+        function_id="charge-order",
+        payload={"order": 7},
+    )
+
+    # Omitted rather than sent empty: an empty name is a name the platform would
+    # have to reject, where an absent one asks it to generate one.
+    assert "x-volcano-execution-name" not in requests[0].headers
+
+
+def test_generated_transport_reads_one_durable_execution() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=_durable_execution_payload())
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.get_durable_execution(
+        authorization="platform-token",
+        project_id="00000000-0000-4000-8000-000000000001",
+        function_id="charge-order",
+        execution_id="00000000-0000-4000-8000-000000000041",
+    )
+
+    assert response.status_code == 200
+    assert requests[0].method == "GET"
+    assert requests[0].url.path == (
+        "/projects/00000000-0000-4000-8000-000000000001"
+        "/durable-functions/charge-order"
+        "/executions/00000000-0000-4000-8000-000000000041"
+    )
+
+
+def test_generated_transport_lists_durable_executions_with_filters() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "data": [_durable_execution_payload()],
+                "page": 2,
+                "limit": 5,
+                "total": 6,
+                "has_more": False,
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.list_durable_executions(
+        authorization="platform-token",
+        project_id="00000000-0000-4000-8000-000000000001",
+        function_id="charge-order",
+        request=DurableExecutionListRequest(status="running", page=2, limit=5),
+    )
+
+    assert response.status_code == 200
+    assert requests[0].url.params["status"] == "running"
+    assert requests[0].url.params["page"] == "2"
+    assert requests[0].url.params["limit"] == "5"
+
+
+def test_generated_transport_lists_durable_executions_without_filters() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "data": [],
+                "page": 1,
+                "limit": 20,
+                "total": 0,
+                "has_more": False,
+            },
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    transport.list_durable_executions(
+        authorization="platform-token",
+        project_id="00000000-0000-4000-8000-000000000001",
+        function_id="charge-order",
+        request=DurableExecutionListRequest(),
+    )
+
+    # An unset filter is left off the query rather than sent as a default, so the
+    # server's own defaults are what answer.
+    assert requests[0].url.params.get("status") is None
+    assert requests[0].url.params.get("page") is None
+    assert requests[0].url.params.get("limit") is None
+
+
+def test_generated_transport_stops_a_durable_execution() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200, json=_durable_execution_payload() | {"status": "stopped"}
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    response = transport.stop_durable_execution(
+        authorization="platform-token",
+        project_id="00000000-0000-4000-8000-000000000001",
+        function_id="charge-order",
+        execution_id="00000000-0000-4000-8000-000000000041",
+    )
+
+    assert response.status_code == 200
+    assert requests[0].method == "POST"
+    assert requests[0].url.path.endswith(
+        "/executions/00000000-0000-4000-8000-000000000041/stop"
+    )

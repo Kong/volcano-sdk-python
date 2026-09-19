@@ -12,6 +12,8 @@ from ..types import UNSET, Unset
 
 from ..models.create_function_body_runtime import check_create_function_body_runtime
 from ..models.create_function_body_runtime import CreateFunctionBodyRuntime
+from ..models.create_function_body_variable_scope import check_create_function_body_variable_scope
+from ..models.create_function_body_variable_scope import CreateFunctionBodyVariableScope
 from ..models.function_http_auth_mode import check_function_http_auth_mode
 from ..models.function_http_auth_mode import FunctionHTTPAuthMode
 from ..models.function_invocation_mode import check_function_invocation_mode
@@ -49,7 +51,9 @@ class CreateFunctionBody:
                 - Python: def handler() (in main.py)
                 - Ruby: def handler() (in main.rb)
                  Default: 'handler'. Example: handler.
-            is_public (bool | Unset): Whether the function can be reached through public invocation ingress. Default: False.
+            is_public (bool | Unset): Whether the function can be reached through public invocation
+                ingress. Omit it to keep the function's current visibility; a
+                new function starts private.
             invocation_mode (FunctionInvocationMode | Unset): Invocation contract. `rpc` preserves the existing POST
                 `{payload: ...}` contract;
                 `http` forwards HTTP request semantics to the function runtime.
@@ -57,16 +61,25 @@ class CreateFunctionBody:
                 for public
                 HTTP-mode functions and is intended for externally signed webhooks.
             openapi_spec (str | Unset): JSON-encoded OpenAPI 3.0 or 3.1 metadata for an HTTP-mode function.
+            variable_scope (CreateFunctionBodyVariableScope | Unset): Which project variables this function receives. `all`
+                (the default) gives it only project variables marked `shared: true`; `scoped` gives it only the variables it
+                selects. Omitting this leaves an existing function's scope unchanged.
+            variables (str | Unset): JSON-encoded array of project variable names this function requires, on top of the ones
+                detected in its source. A declared name the project does not define is rejected with 400; a detected name it
+                does not define is ignored. Only used when `variable_scope` is `scoped`. Omitting this leaves an existing
+                function's declared names unchanged.
      """
 
     name: str
     code: File
     runtime: CreateFunctionBodyRuntime
     handler: str | Unset = 'handler'
-    is_public: bool | Unset = False
+    is_public: bool | Unset = UNSET
     invocation_mode: FunctionInvocationMode | Unset = UNSET
     http_auth_mode: FunctionHTTPAuthMode | Unset = UNSET
     openapi_spec: str | Unset = UNSET
+    variable_scope: CreateFunctionBodyVariableScope | Unset = UNSET
+    variables: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -97,6 +110,13 @@ class CreateFunctionBody:
 
         openapi_spec = self.openapi_spec
 
+        variable_scope: str | Unset = UNSET
+        if not isinstance(self.variable_scope, Unset):
+            variable_scope = self.variable_scope
+
+
+        variables = self.variables
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -115,6 +135,10 @@ class CreateFunctionBody:
             field_dict["http_auth_mode"] = http_auth_mode
         if openapi_spec is not UNSET:
             field_dict["openapi_spec"] = openapi_spec
+        if variable_scope is not UNSET:
+            field_dict["variable_scope"] = variable_scope
+        if variables is not UNSET:
+            field_dict["variables"] = variables
 
         return field_dict
 
@@ -156,6 +180,16 @@ class CreateFunctionBody:
 
         if not isinstance(self.openapi_spec, Unset):
             files.append(("openapi_spec", (None, str(self.openapi_spec).encode(), "text/plain")))
+
+
+
+        if not isinstance(self.variable_scope, Unset):
+            files.append(("variable_scope", (None, str(self.variable_scope).encode(), "text/plain")))
+
+
+
+        if not isinstance(self.variables, Unset):
+            files.append(("variables", (None, str(self.variables).encode(), "text/plain")))
 
 
 
@@ -211,6 +245,18 @@ class CreateFunctionBody:
 
         openapi_spec = d.pop("openapi_spec", UNSET)
 
+        _variable_scope = d.pop("variable_scope", UNSET)
+        variable_scope: CreateFunctionBodyVariableScope | Unset
+        if isinstance(_variable_scope,  Unset):
+            variable_scope = UNSET
+        else:
+            variable_scope = check_create_function_body_variable_scope(_variable_scope)
+
+
+
+
+        variables = d.pop("variables", UNSET)
+
         create_function_body = cls(
             name=name,
             code=code,
@@ -220,6 +266,8 @@ class CreateFunctionBody:
             invocation_mode=invocation_mode,
             http_auth_mode=http_auth_mode,
             openapi_spec=openapi_spec,
+            variable_scope=variable_scope,
+            variables=variables,
         )
 
 

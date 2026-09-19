@@ -937,6 +937,25 @@ def released_lease_not_held(context: Any) -> None:
     assert world.last_outcome.value["released"] is True
 
 
+@given("a project-owner client")
+def project_owner_client(context: Any) -> None:
+    assert _world(context).fixture["platform_token"]
+
+
+@when("the client starts the contract durable function")
+def start_durable_execution(context: Any) -> None:
+    world = _world(context)
+    world.record(world.start_durable_execution)
+
+
+@when("the client starts the contract durable function twice under one execution name")
+def start_durable_execution_twice(context: Any) -> None:
+    world = _world(context)
+
+    def operation() -> tuple[Any, Any]:
+        return world.start_durable_execution(), world.start_durable_execution()
+
+
 @when("the client recovers the contract lock with caller-owned tokens")
 def recover_lock(context: Any) -> None:
     world = _world(context)
@@ -962,6 +981,70 @@ def recover_lock(context: Any) -> None:
         }
 
     world.record(operation)
+
+
+@then("the started execution carries its id, function, name, region, and creation time")
+def started_execution_is_addressable(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    execution = world.last_outcome.value
+    assert execution.id
+    assert execution.function_id
+    assert execution.name == world.durable_execution_name
+    assert execution.region
+    assert execution.created_at is not None
+
+
+@then("the started execution is not terminal and carries no result")
+def started_execution_is_a_handle(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.last_outcome.value.is_terminal is False
+    assert world.last_outcome.value.result is None
+
+
+@then("both starts return the same execution")
+def both_starts_return_one_execution(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    first, second = world.last_outcome.value
+    assert second.id == first.id
+    assert second.name == first.name
+
+
+@when("the owner reads the execution until it is terminal")
+def read_execution_until_terminal(context: Any) -> None:
+    world = _world(context)
+    if world.last_outcome is not None and not world.last_outcome.ok:
+        return
+    assert world.started_execution is not None
+    execution_id = world.started_execution.id
+    world.record(lambda: world.follow_durable_execution(execution_id))
+
+
+@then("the execution succeeded carrying the function's result")
+def execution_succeeded_with_result(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.last_outcome.value.status == "succeeded"
+    assert world.last_outcome.value.result == {"echoed": world.durable_payload["value"]}
+
+
+@when("the owner lists the durable function's executions")
+def list_durable_executions(context: Any) -> None:
+    world = _world(context)
+    if world.last_outcome is not None and not world.last_outcome.ok:
+        return
+    world.record(world.list_durable_executions)
+
+
+@then("the listed executions include the started execution")
+def listed_executions_include_the_started_one(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.started_execution is not None
+    listed = {execution.id for execution in world.last_outcome.value.executions}
+    assert world.started_execution.id in listed
 
 
 @then("recovery and renewal preserve the held lease until release")

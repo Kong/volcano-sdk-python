@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import secrets
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -14,6 +15,7 @@ from volcano_sdk import (
     NotFoundError,
     RateLimitedError,
     ServerError,
+    Session,
     TransportError,
     ValidationError,
     VolcanoClient,
@@ -23,7 +25,12 @@ from volcano_sdk import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from volcano_sdk.models import AuthChangeEvent, LockLease, Session
+    from volcano_sdk.models import (
+        AuthChangeEvent,
+        DurableExecution,
+        DurableExecutionPage,
+        LockLease,
+    )
     from volcano_sdk.realtime import Channel
 
 HTTP_NOT_FOUND = 404
@@ -31,6 +38,17 @@ HTTP_CONFLICT = 409
 HTTP_RATE_LIMITED = 429
 HTTP_SERVER_ERROR_MIN = 500
 HTTP_SERVER_ERROR_MAX = 599
+
+# A durable execution is started asynchronously and observed through a status
+# read, so it settles in seconds. Bounded, so a scenario reports a timeout
+# instead of hanging the lane.
+DURABLE_POLL_INTERVAL_SECONDS = 5
+DURABLE_POLL_TIMEOUT_SECONDS = 300
+
+# The platform token is not an auth session: it cannot be refreshed and belongs
+# to no auth user. The SDK carries a credential as a session and requires a
+# complete one, so the rest of the owner's session is a placeholder.
+OWNER_SESSION_PLACEHOLDER = "sdk-contract-platform-token-has-no-auth-session"
 
 CONTRACT_EXCEPTIONS = (
     CentrifugeError,
@@ -104,6 +122,20 @@ class ContractWorld:
             anon_key=fixture["anon_key"],
             service_key=fixture["service_key"],
         )
+        # Reading or stopping an execution is owner-scoped, so its client
+        # carries the project's own token as its session. Neither key above can
+        # reach those routes.
+        self.owner_client = VolcanoClient(
+            api_url=fixture["api_url"],
+            anon_key=fixture["anon_key"],
+        )
+        self.owner_client.auth.set_session(
+            Session(
+                access_token=fixture["platform_token"],
+                refresh_token=OWNER_SESSION_PLACEHOLDER,
+                user_id=OWNER_SESSION_PLACEHOLDER,
+            )
+        )
         suffix = f"py-{os.getpid()}-{secrets.token_hex(5)}"
         self.storage_path = f"{fixture['storage_path']}.{suffix}"
         self.realtime_channel = f"{fixture['realtime_channel']}-{suffix}"
@@ -113,6 +145,9 @@ class ContractWorld:
             "event": "message",
             "value": f"volcano-sdk-contract-{suffix}",
         }
+        self.durable_execution_name = f"{fixture['durable_function_name']}-{suffix}"
+        self.durable_payload = {"value": f"volcano-sdk-contract-{suffix}"}
+        self.started_execution: DurableExecution | None = None
         self.last_outcome: Outcome | None = None
         self.previous_session: Session | None = None
         self.signed_out_session: Session | None = None
@@ -132,6 +167,44 @@ class ContractWorld:
 
     def run(self, operation: Awaitable[Any]) -> Any:
         return self.loop.run_until_complete(operation)
+
+    def start_durable_execution(self) -> DurableExecution:
+        execution = self.service_client.durable.start(
+            self.fixture["durable_function_name"],
+            self.durable_payload,
+            execution_name=self.durable_execution_name,
+        )
+        self.started_execution = execution
+        return execution
+
+    def follow_durable_execution(self, execution_id: str) -> DurableExecution:
+        """Poll an execution to a terminal status under the owner's credential.
+
+        That read is also what reconciles the stored status against the
+        platform's, so it is the path a client waiting for a result takes.
+        """
+        deadline = time.monotonic() + DURABLE_POLL_TIMEOUT_SECONDS
+        while True:
+            execution = self.owner_client.durable.get(
+                self.fixture["project_id"],
+                self.fixture["durable_function_name"],
+                execution_id,
+            )
+            if execution.is_terminal:
+                return execution
+            if time.monotonic() >= deadline:
+                message = (
+                    f"durable execution {execution_id} was still "
+                    f"{execution.status} after {DURABLE_POLL_TIMEOUT_SECONDS}s"
+                )
+                raise TimeoutError(message)
+            time.sleep(DURABLE_POLL_INTERVAL_SECONDS)
+
+    def list_durable_executions(self) -> DurableExecutionPage:
+        return self.owner_client.durable.list(
+            self.fixture["project_id"],
+            self.fixture["durable_function_name"],
+        )
 
     def record(self, operation: Callable[[], Any]) -> Outcome:
         try:

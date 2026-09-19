@@ -36,6 +36,9 @@ class Variable:
             value (str):
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
+            shared (bool | Unset): Include this name in the project's shared function variables. Omission preserves existing
+                membership; new variables default to true for legacy clients. Send false explicitly to create a non-shared
+                variable.
             status (VariableStatus | Unset): Latest project variable propagation status, when a sync has run.
             current_sync_id (UUID | Unset): Identifier of the latest variable propagation sync.
             provisioning_started_at (datetime.datetime | Unset): Timestamp when the current variable propagation phase
@@ -50,6 +53,7 @@ class Variable:
     value: str
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    shared: bool | Unset = UNSET
     status: VariableStatus | Unset = UNSET
     current_sync_id: UUID | Unset = UNSET
     provisioning_started_at: datetime.datetime | Unset = UNSET
@@ -72,6 +76,8 @@ class Variable:
         created_at = self.created_at.isoformat()
 
         updated_at = self.updated_at.isoformat()
+
+        shared = self.shared
 
         status: str | Unset = UNSET
         if not isinstance(self.status, Unset):
@@ -102,6 +108,8 @@ class Variable:
             "created_at": created_at,
             "updated_at": updated_at,
         })
+        if shared is not UNSET:
+            field_dict["shared"] = shared
         if status is not UNSET:
             field_dict["status"] = status
         if current_sync_id is not UNSET:
@@ -141,6 +149,8 @@ class Variable:
 
 
 
+
+        shared = d.pop("shared", UNSET)
 
         _status = d.pop("status", UNSET)
         status: VariableStatus | Unset
@@ -189,6 +199,7 @@ class Variable:
             value=value,
             created_at=created_at,
             updated_at=updated_at,
+            shared=shared,
             status=status,
             current_sync_id=current_sync_id,
             provisioning_started_at=provisioning_started_at,

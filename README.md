@@ -62,6 +62,27 @@ function = client.functions.invoke(
 )
 print(function.status, function.version, function.data)
 
+execution = client.durable.start(
+    "order-pipeline",
+    {"order_id": 4417},
+    execution_name="order-4417",
+)
+print(execution.id, execution.status)
+
+execution = client.durable.get(
+    "00000000-0000-4000-8000-000000000001", "order-pipeline", execution.id
+)
+print(execution.is_terminal, execution.result)
+
+executions = client.durable.list(
+    "00000000-0000-4000-8000-000000000001", "order-pipeline", status="running"
+)
+print(executions.total, executions.has_more)
+
+client.durable.stop(
+    "00000000-0000-4000-8000-000000000001", "order-pipeline", execution.id
+)
+
 # Project logs use a control-plane project token, not this end-user session.
 logs_client = VolcanoClient(
     anon_key="ak_your_anon_key", access_token="vpat_your_project_token"
@@ -216,6 +237,91 @@ Concurrent calls share successful recovery. Replacing or signing out that sessio
 prevents replay under another identity. The call preserves its original payload values.
 A function's own response, HTTP 403, or a network failure never triggers this retry.
 Anonymous and service keys do not refresh.
+
+`durable.start()` begins an execution of a deployed durable function and returns
+a handle rather than a result: an execution can run for hours, so its result is
+read back with `durable.get()`. It takes the credential `functions.invoke()`
+takes, and is the only durable operation an application credential may perform.
+An `execution_name` makes the start idempotent — starting again under the same
+name returns the execution that already exists rather than beginning a second
+one, and is charged once.
+
+`durable.get()`, `durable.list()` and `durable.stop()` are owner-scoped and need
+the project's own platform token, because an execution is addressed by its id
+alone and an anonymous key is held by everyone who loads the page. Neither an
+auth-user session from `sign_in()` nor a service key is accepted -- the routes
+take a user token, and anything else is answered 401. Poll them from a backend.
+`get()` carries `result` once the execution has succeeded and `error` when it
+failed; `result_expired` separates a result the platform has discarded from a
+function that returned nothing. `is_terminal` reports whether the execution has
+stopped changing, and counts `unknown` — the status the platform writes for an
+outcome it could not determine — as finished. `stop()` is accepted rather than
+awaited: what it returns is the execution read back after asking, often still
+`running`, so poll `get()` to see it reach `stopped`. Repeating a stop is safe.
+
+## Write a durable function
+
+`volcano_sdk.durable_authoring` is what the durable function itself is written
+against. It needs a durable-capable runtime — `python3.13` or `python3.14` — and
+`volcano-sdk-python` in the function's `requirements.txt`. Nothing else: the runtime
+that does the checkpointing is installed by Volcano when it builds a function
+deployed as durable.
+
+Importing this module never requires that runtime, so a standard function or a
+script that imports it still installs and runs; the handler fails only when it
+is actually invoked somewhere durable execution does not exist.
+
+```python
+from volcano_sdk.durable_authoring import durable
+
+
+@durable
+def handler(event, ctx):
+    charge = ctx.step("charge", lambda scope: charge_card(event["order_id"]))
+
+    ctx.wait("settle", "30s")
+
+    packed = ctx.map(
+        event["items"],
+        lambda item, item_ctx, index: item_ctx.step("pack-item", lambda s: pack(item)),
+        "pack",
+    )
+
+    return {"charged": charge["id"], "packed": packed.results}
+```
+
+Every context operation is checkpointed: what finished is recorded, and a
+resumed execution replays that recorded outcome instead of doing the work again.
+That is the one rule the handler has to respect — the code between operations
+runs again on every resume, so it has to reach the same operations in the same
+order. Keep decisions that must not change inside a `step`, and do not branch on
+the clock or a random value.
+
+| Operation | What it does |
+|---|---|
+| `ctx.step(name, fn, retry=..., at_most_once=...)` | Runs one atomic operation and records its result. `retry=False` fails on the first error; `RetryOptions` sets attempts and backoff. |
+| `ctx.wait(name, duration)` | Suspends the execution. `"30s"`, `"2h"`, `"1m30s"`, a whole number of seconds, or `{"hours": 2}`. |
+| `ctx.wait_until(check, options, name=None)` | Polls your own state until `options.until` holds, suspending between checks. `options.initial_state` is required. |
+| `ctx.map(items, fn, name=None, options=None)` | Runs the same work over every item, each in its own child context. |
+| `ctx.parallel(branches, name=None, options=None)` | Runs independent branches at the same time. |
+| `ctx.child(name, fn)` | Groups operations under one recorded context. |
+| `ctx.log` | The execution's logger, suppressed while an operation is replayed. |
+
+`ctx.map` and `ctx.parallel` both return a batch result: `items` (the items that
+finished, each with `index`, `status`, `result`, `error`), `results`, `errors`,
+`succeeded`, `failed`, `completed`, `completion_reason`, and `throw_if_failed()`.
+`options.min_succeeded` ends the batch while other items are still running, and
+those are not in the result — whether the platform can reproduce an in-flight
+item when the execution resumes is not guaranteed, so a handler that branched on
+one would take a different path on the replay. `completion_reason` is how to tell
+why the batch ended.
+
+Durable operations are synchronous here — there is no `await`, and a step's own
+function is handed a scope carrying `log` and `attempt`. A wait is held by the
+platform rather than by your code, so an execution suspended for an hour costs
+nothing while it waits. Running the handler anywhere durable execution does not
+exist raises `DurableRuntimeMissingError` rather than an import error from an
+unfamiliar package.
 
 `logs.search()` returns an immutable page of retained runtime or deployment log
 events. Pass `next_cursor` back as `cursor` to continue a search. `logs.activity()`
@@ -807,6 +913,29 @@ included. Tune a channel's batching with `fetch_batch_window_ms` and
 `auto_fetch=False` on a Postgres channel to keep lightweight notifications
 without querying their rows. Pass `None` to `set_database_name()` to disable
 row fetching for every channel.
+
+## Dependencies
+
+Installing `volcano-sdk-python` pulls in three packages, plus their own transitive
+dependencies:
+
+| Package                                                            | Why                                        |
+| ------------------------------------------------------------------ | ------------------------------------------ |
+| [`httpx`](https://pypi.org/project/httpx/)                         | The HTTP client every request goes through |
+| [`attrs`](https://pypi.org/project/attrs/)                         | The generated client's models              |
+| [`centrifuge-python`](https://pypi.org/project/centrifuge-python/) | The realtime protocol client               |
+
+A durable function you deploy needs one more, and you do not install it:
+Volcano adds it when it builds the function.
+
+| Package                                                                                          | Why                                                                   |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| [`aws-durable-execution-sdk-python`](https://pypi.org/project/aws-durable-execution-sdk-python/) | Checkpointing. `volcano_sdk.durable_authoring` is written on top of it |
+
+The `durable` extra installs it if you want it yourself — to run a durable
+handler in your own tests, or to pin a version, since the build leaves a
+function that pins the runtime exactly as it is. A function's `requirements.txt`
+does not need it otherwise.
 
 ## Compatibility
 

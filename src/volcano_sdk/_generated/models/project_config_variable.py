@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..types import UNSET, Unset
 
 
 
@@ -24,10 +25,14 @@ class ProjectConfigVariable:
         Attributes:
             name (str):
             value (str):
+            shared (bool | Unset): Include this name in the project's shared function variables. Omission preserves existing
+                membership; new variables default to true for legacy clients. Send false explicitly to create a non-shared
+                variable.
      """
 
     name: str
     value: str
+    shared: bool | Unset = UNSET
 
 
 
@@ -38,6 +43,8 @@ class ProjectConfigVariable:
 
         value = self.value
 
+        shared = self.shared
+
 
         field_dict: dict[str, Any] = {}
 
@@ -45,6 +52,8 @@ class ProjectConfigVariable:
             "name": name,
             "value": value,
         })
+        if shared is not UNSET:
+            field_dict["shared"] = shared
 
         return field_dict
 
@@ -57,9 +66,12 @@ class ProjectConfigVariable:
 
         value = d.pop("value")
 
+        shared = d.pop("shared", UNSET)
+
         project_config_variable = cls(
             name=name,
             value=value,
+            shared=shared,
         )
 
         return project_config_variable

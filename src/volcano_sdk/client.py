@@ -13,6 +13,7 @@ from ._session_operations import SessionOperations
 from ._transport import GeneratedTransport, Transport
 from .auth import Auth
 from .database import Database
+from .durable import Durable
 from .errors import AuthenticationError
 from .functions import Functions
 from .locks import Locks
@@ -127,6 +128,7 @@ class VolcanoClient:
         )
         self.auth = Auth(self)
         self.functions = Functions(self)
+        self.durable = Durable(self)
         self.logs = Logs(self)
         self.storage = Storage(self)
         self.locks = Locks(self)
