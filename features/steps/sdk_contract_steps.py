@@ -17,6 +17,8 @@ from contract_support import (
     classify_error,
 )
 from logs_contract import LogContract
+from postgres_changes import verify_postgres_changes
+from presence_membership import verify_presence_membership
 
 from volcano_sdk import NotFoundError, Session, VolcanoClient
 
@@ -264,6 +266,7 @@ def replace_access_token(context: Any) -> None:
     )
 
 
+@then("the function invocation replaces the rejected token for the same user")
 @then("the session list replaces the rejected token for the same user")
 @then("the profile read replaces the rejected token for the same user")
 @then("the storage operation replaces the rejected token for the same user")
@@ -1185,6 +1188,16 @@ def subscriber_received_message(context: Any) -> None:
     assert world.last_outcome.value == world.realtime_message
 
 
+@when("the authenticated client invokes the contract function by name")
+def invoke_authenticated_contract_function(context: Any) -> None:
+    world = _world(context)
+    world.record(
+        lambda: world.client.functions.invoke(
+            world.fixture["function_name"], {"value": "contract"}
+        )
+    )
+
+
 @when("the client invokes the contract function by name")
 def invoke_contract_function(context: Any) -> None:
     world = _world(context)
@@ -1242,3 +1255,36 @@ def verify_contract_logs(context: Any) -> None:
 @then("activity counts exactly that event in its function and level buckets")
 def verify_contract_log_activity(context: Any) -> None:
     context.logs_contract.verify_activity(_world(context).last_outcome.value)
+
+
+@when("one presence client joins and leaves while the other remains subscribed")
+def observe_presence_membership(context: Any) -> None:
+    world = _world(context)
+    if world.last_outcome is not None and not world.last_outcome.ok:
+        return
+    world.record(lambda: world.run(verify_presence_membership(world)))
+
+
+@then(
+    "both rosters identify the contract user "
+    "and the original handler observes membership changes"
+)
+def verify_presence_rosters(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.last_outcome.value == [1, 2, 1]
+
+
+@when("the clients observe an inserted and updated contract row")
+def observe_postgres_changes(context: Any) -> None:
+    world = _world(context)
+    if world.last_outcome is not None and not world.last_outcome.ok:
+        return
+    world.record(lambda: world.run(verify_postgres_changes(world)))
+
+
+@then("automatic and lightweight notifications retain metadata and row identity")
+def verify_postgres_rows(context: Any) -> None:
+    world = _world(context)
+    assert world.last_outcome is not None
+    assert world.last_outcome.value == ["INSERT", "UPDATE"]

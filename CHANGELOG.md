@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.9.4](https://github.com/Kong/volcano-sdk-python/compare/v0.9.3...v0.9.4) (2026-09-18)
+
+
+### Bug Fixes
+
+* **functions:** preserve cached resolution error metadata ([#176](https://github.com/Kong/volcano-sdk-python/issues/176)) ([b83c2de](https://github.com/Kong/volcano-sdk-python/commit/b83c2deb156fbfe8f1212c21f0540f2cd6fdbb13))
+
+## [0.9.3](https://github.com/Kong/volcano-sdk-python/compare/v0.9.2...v0.9.3) (2026-09-18)
+
+
+### Bug Fixes
+
+* **functions:** recover rejected user sessions before dispatch ([#173](https://github.com/Kong/volcano-sdk-python/issues/173)) ([ab76b7f](https://github.com/Kong/volcano-sdk-python/commit/ab76b7f6448022fb2101cff5382fdfdac1861c26))
+
+## [0.9.2](https://github.com/Kong/volcano-sdk-python/compare/v0.9.1...v0.9.2) (2026-09-18)
+
+
+### Bug Fixes
+
+* **realtime:** fetch rows from custom Postgres schemas ([#171](https://github.com/Kong/volcano-sdk-python/issues/171)) ([2a54e95](https://github.com/Kong/volcano-sdk-python/commit/2a54e957975792a6a092121786992f0a917d4aa5))
+
 ## [0.9.1](https://github.com/Kong/volcano-sdk-python/compare/v0.9.0...v0.9.1) (2026-09-18)
 
 

@@ -140,6 +140,8 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         for definition in definitions
     }
     assert bound == {
+        "the authenticated client invokes the contract function by name",
+        "the function invocation replaces the rejected token for the same user",
         "the client selects a projected page of query fixture members",
         "the projected page contains only beta and gamma in that order",
         "the client selects query fixture rows with each comparison filter",
@@ -253,6 +255,8 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the stored object path equals the contract path",
         "the subscriber receives the contract message within 10 seconds",
         "two authenticated realtime clients",
+        "the clients observe an inserted and updated contract row",
+        "automatic and lightweight notifications retain metadata and row identity",
         "a read-only project logs client",
         "the contract function emits three unique structured log events",
         "the contract function emits one unique structured log event",
@@ -260,6 +264,11 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
         "the client reads matching log activity within 120 seconds",
         "all three structured events retain their metadata without duplicates",
         "activity counts exactly that event in its function and level buckets",
+        "one presence client joins and leaves while the other remains subscribed",
+        (
+            "both rosters identify the contract user "
+            "and the original handler observes membership changes"
+        ),
     }
 
 
@@ -544,3 +553,111 @@ def test_log_bounds_allow_server_clock_skew(server_skew_seconds: int) -> None:
     contract.emit(1)
     assert datetime.fromisoformat(contract.request["start_time"]) < server_time
     assert server_time < datetime.fromisoformat(contract.request["end_time"])
+
+
+def test_staged_presence_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "realtime-presence.feature"
+    expected = "b4429f6e3df60a6a98be4daf1d8517e2cd7cee651f9eb6463a1090ab49a102b5"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
+@pytest.mark.parametrize(
+    ("snapshots", "expected"),
+    [
+        ([{"first"}, {"first", "second"}, {"first"}], True),
+        ([{"first"}, {"first", "second"}], False),
+        ([{"first", "second"}, {"first"}], False),
+    ],
+)
+def test_presence_requires_original_handler_membership_sequence(
+    snapshots: list[set[str]], *, expected: bool
+) -> None:
+    module = _load_module(
+        "presence_membership", ROOT / "features" / "presence_membership.py"
+    )
+    assert (
+        module._observed_membership(snapshots, {"first"}, {"first", "second"})
+        is expected
+    )
+
+
+def test_staged_postgres_feature_matches_proposed_shared_source() -> None:
+    staged = ROOT / "features" / "staged" / "realtime-postgres.feature"
+    expected = "794c2ecbb94fd262a37840f4c3fe3bd9f9ee58c22fda9df2a46de60f93e52c91"
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+
+
+@pytest.mark.parametrize(
+    ("automatic", "wrong_field"),
+    [(True, "record"), (False, "id"), (True, "table"), (True, "id"), (True, "mode")],
+)
+def test_postgres_notification_checks_reject_wrong_identity(
+    *, automatic: bool, wrong_field: str
+) -> None:
+    module = _load_module("postgres_changes", ROOT / "features" / "postgres_changes.py")
+    row = {"id": "row", "value": "inserted", "owner_id": "user"}
+    event = SimpleNamespace(
+        type="INSERT",
+        schema="public",
+        table="records",
+        timestamp="2026-09-18T12:00:00Z",
+        record=row if automatic else None,
+        id=None if automatic else "row",
+        mode=None if automatic else "lightweight",
+    )
+    module.verify_change(event, "INSERT", "records", row, automatic=automatic)
+    setattr(event, wrong_field, "wrong-value")
+    with pytest.raises(AssertionError):
+        module.verify_change(event, "INSERT", "records", row, automatic=automatic)
+
+
+@pytest.mark.parametrize("automatic", [True, False])
+def test_postgres_observer_ignores_other_rows(*, automatic: bool) -> None:
+    module = _load_module("postgres_changes", ROOT / "features" / "postgres_changes.py")
+    channel = Mock()
+    observer = module.ChangeObserver(channel, "records", "row")
+    callbacks = [
+        entry.kwargs["callback"] for entry in channel.on_postgres_changes.call_args_list
+    ]
+    other = SimpleNamespace(
+        record={"id": "other"} if automatic else None, id=None if automatic else "other"
+    )
+    for callback in callbacks:
+        callback(other)
+    assert not observer.events
+    assert not observer.inserts
+    assert not observer.wrong_table
+    own = SimpleNamespace(
+        record={"id": "row"} if automatic else None, id=None if automatic else "row"
+    )
+    callbacks[0](own)
+    callbacks[1](own)
+    assert asyncio.run(observer.next()) is own
+    assert observer.inserts == [own]
+    observer.close()
+
+
+def test_presence_retains_channel_name_at_platform_length_boundary() -> None:
+    module = _load_module(
+        "presence_membership", ROOT / "features" / "presence_membership.py"
+    )
+    stop = RuntimeError("valid channel")
+
+    def channel(name: str, *, channel_type: str) -> Mock:
+        assert len(name) <= 64
+        assert channel_type == "presence"
+        return Mock(
+            on_presence_sync=Mock(return_value=lambda: None),
+            subscribe=AsyncMock(side_effect=stop),
+            unsubscribe=AsyncMock(),
+        )
+
+    world = SimpleNamespace(
+        realtime_channel="x" * 64,
+        fixture={"user_id": "user"},
+        realtime_clients=[SimpleNamespace(realtime=SimpleNamespace(channel=channel))]
+        * 2,
+    )
+    with pytest.raises(RuntimeError, match="valid channel") as error:
+        asyncio.run(module.verify_presence_membership(world))
+    assert error.value is stop

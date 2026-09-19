@@ -105,9 +105,11 @@ from ._generated.api.durable_functions import (
     start_durable_execution_from_application,
     stop_durable_execution,
 )
-from ._generated.api.functions import resolve_function_for_invocation
 from ._generated.api.functions.invoke_function import (
     _get_kwargs as invoke_function_kwargs,
+)
+from ._generated.api.functions.resolve_function_for_invocation import (
+    _get_kwargs as resolve_function_kwargs,
 )
 from ._generated.api.locks import (
     force_release_project_lock,
@@ -1658,11 +1660,10 @@ class GeneratedTransport:
         name: str,
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = resolve_function_for_invocation.sync_detailed(
-                client=client,
-                name=name,
+            response = client.get_httpx_client().request(
+                **resolve_function_kwargs(name=name)
             )
-        return self._response(response)
+        return self._raw_response(response)
 
     def invoke_function(
         self,

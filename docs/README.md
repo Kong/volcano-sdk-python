@@ -124,3 +124,10 @@ Read the [database guide](./database.md) for projection, filters, ordered pagina
 For uploads, visibility, and resumable sessions, see [Storage](./storage.md).
 
 See [Logs](./logs.md) for project-token authentication, search, pagination, and activity.
+
+
+See [Realtime](./realtime.md) for broadcasts, presence, database changes, and shutdown.
+
+See [Authentication](./authentication.md) for account, session, email, and OAuth workflows.
+
+See [Functions](./functions.md) for invocation identity, response values, and error handling.
