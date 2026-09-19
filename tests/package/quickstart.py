@@ -13,7 +13,15 @@ from contextlib import redirect_stdout
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
+from typing import TYPE_CHECKING, Any, NoReturn
+
+if TYPE_CHECKING:
+    from types import FrameType
+
+
+def timeout(_signum: int, _frame: FrameType | None) -> NoReturn:
+    message = "Documented quickstart timed out"
+    raise TimeoutError(message)
 
 
 def run_quickstart() -> None:
@@ -77,6 +85,7 @@ def run_quickstart() -> None:
     with HTTPServer(("127.0.0.1", 0), Handler) as server:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
+        previous_handler = signal.signal(signal.SIGALRM, timeout)
         try:
             signal.alarm(30)
             os.environ.update(
@@ -109,6 +118,7 @@ def run_quickstart() -> None:
             ]
         finally:
             signal.alarm(0)
+            signal.signal(signal.SIGALRM, previous_handler)
             server.shutdown()
             thread.join(timeout=5)
 
