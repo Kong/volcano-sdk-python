@@ -227,7 +227,9 @@ def test_a_batch_reports_the_item_that_failed() -> None:
 
             return child.step(run, retry=False)
 
-        batch = ctx.map([1, 2, 3], work, "some-fail")
+        # The batch ends on its first failure. Finish the successful items first
+        # so the exact result below does not depend on concurrent scheduling.
+        batch = ctx.map([1, 3, 2], work, "some-fail", BatchOptions(concurrency=1))
         return {
             "succeeded": batch.succeeded,
             "failed": batch.failed,
