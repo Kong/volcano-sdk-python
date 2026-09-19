@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+repo_dir="$PWD"
 
 version="${1:-$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')}"
 export PACKAGE_VERSION="$version"
@@ -33,6 +34,7 @@ assert_type(client.auth.get_user(), User)
 assert_type(client.storage.from_("assets").download("hello.txt"), bytes)
 PY
 for artifact in "${artifacts[@]}"; do
+  artifact_digest="$(shasum -a 256 "$artifact")"
   uv venv --clear "$smoke_dir/venv"
   uv pip install --python "$smoke_dir/venv/bin/python" "$artifact"
   "$smoke_dir/venv/bin/python" -I - <<'PY'
@@ -47,6 +49,10 @@ assert VolcanoClient
 assert package.read_text("WHEEL")
 print(f"Installed {package.metadata['Name']} {package.version}; volcano_sdk import OK")
 PY
+  env -i PATH="$PATH" HOME="$smoke_dir" \
+    "$smoke_dir/venv/bin/python" -I "$repo_dir/tests/package/quickstart.py"
+  test "$artifact_digest" = "$(shasum -a 256 "$artifact")"
+  printf 'Documented quickstart passed (synthetic HTTP): %s\n' "$artifact_digest"
   (
     cd "$smoke_dir"
     unset MYPYPATH
