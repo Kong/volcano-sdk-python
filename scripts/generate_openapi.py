@@ -59,6 +59,7 @@ def generate(output: Path) -> None:
             "--output-path",
             str(output),
             "--overwrite",
+            "--fail-on-warning",
         ],
         cwd=ROOT,
         check=True,
