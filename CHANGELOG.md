@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/Kong/volcano-sdk-python/compare/v0.9.4...v0.10.0) (2026-09-19)
+
+
+### Features
+
+* **durable:** start, follow and author durable executions ([#133](https://github.com/Kong/volcano-sdk-python/issues/133)) ([f97aeee](https://github.com/Kong/volcano-sdk-python/commit/f97aeee64760d9c4b5458199b5692f5811b5a840))
+
 ## [0.9.4](https://github.com/Kong/volcano-sdk-python/compare/v0.9.3...v0.9.4) (2026-09-18)
 
 
