@@ -148,7 +148,8 @@ def sync_detailed(
     - This operation is the authenticated direct RPC endpoint and always uses the
       POST `{payload: ...}` contract, including for functions whose DNS ingress is
       configured in HTTP mode.
-    - The geo-routed DNS ingress is `https://{functionId}.functions.<domain>/`.
+    - The geo-routed DNS ingress is the function's `invoke_url`. It is on a
+      different domain from this API, so it cannot be derived from the API host.
     - RPC-mode DNS ingress accepts POST at `/`. HTTP-mode DNS ingress accepts GET,
       HEAD, POST, PUT, PATCH, and DELETE at `/` and nested paths.
     - Direct and RPC-mode CORS preflight advertises `POST, OPTIONS`. HTTP-mode DNS
@@ -225,7 +226,8 @@ def sync(
     - This operation is the authenticated direct RPC endpoint and always uses the
       POST `{payload: ...}` contract, including for functions whose DNS ingress is
       configured in HTTP mode.
-    - The geo-routed DNS ingress is `https://{functionId}.functions.<domain>/`.
+    - The geo-routed DNS ingress is the function's `invoke_url`. It is on a
+      different domain from this API, so it cannot be derived from the API host.
     - RPC-mode DNS ingress accepts POST at `/`. HTTP-mode DNS ingress accepts GET,
       HEAD, POST, PUT, PATCH, and DELETE at `/` and nested paths.
     - Direct and RPC-mode CORS preflight advertises `POST, OPTIONS`. HTTP-mode DNS
@@ -297,7 +299,8 @@ async def asyncio_detailed(
     - This operation is the authenticated direct RPC endpoint and always uses the
       POST `{payload: ...}` contract, including for functions whose DNS ingress is
       configured in HTTP mode.
-    - The geo-routed DNS ingress is `https://{functionId}.functions.<domain>/`.
+    - The geo-routed DNS ingress is the function's `invoke_url`. It is on a
+      different domain from this API, so it cannot be derived from the API host.
     - RPC-mode DNS ingress accepts POST at `/`. HTTP-mode DNS ingress accepts GET,
       HEAD, POST, PUT, PATCH, and DELETE at `/` and nested paths.
     - Direct and RPC-mode CORS preflight advertises `POST, OPTIONS`. HTTP-mode DNS
@@ -374,7 +377,8 @@ async def asyncio(
     - This operation is the authenticated direct RPC endpoint and always uses the
       POST `{payload: ...}` contract, including for functions whose DNS ingress is
       configured in HTTP mode.
-    - The geo-routed DNS ingress is `https://{functionId}.functions.<domain>/`.
+    - The geo-routed DNS ingress is the function's `invoke_url`. It is on a
+      different domain from this API, so it cannot be derived from the API host.
     - RPC-mode DNS ingress accepts POST at `/`. HTTP-mode DNS ingress accepts GET,
       HEAD, POST, PUT, PATCH, and DELETE at `/` and nested paths.
     - Direct and RPC-mode CORS preflight advertises `POST, OPTIONS`. HTTP-mode DNS
