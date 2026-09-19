@@ -14,14 +14,15 @@ uv run pyright
 uv run pytest tests/unit -q
 chmod 600 tests/fixtures/sdk-contract-dry-run.json
 VOLCANO_SDK_CONTRACT_FIXTURE="$PWD/tests/fixtures/sdk-contract-dry-run.json" \
-  uv run behave features/contract --dry-run --no-snippets
+  uv run behave features --dry-run --no-snippets
 uv run python -m build
 bash scripts/check_package.sh
 ```
 
-Regenerate a changed wire snapshot with `uv run python scripts/generate_openapi.py`.
-The dry run checks phrase bindings without creating fixtures or exercising live
-behavior. Keep generated code inside `src/volcano_sdk/_generated`.
+After updating `openapi/openapi.yaml` from Hosting's public bundle, regenerate
+the internal client with `uv run python scripts/generate_openapi.py`.
+The dry run checks active and staged phrase bindings without creating fixtures
+or exercising live behavior. Keep generated code inside `src/volcano_sdk/_generated`.
 
 ## Coordinate SDK changes
 
@@ -50,6 +51,14 @@ Hosting changes also require human approval.
 
 ### Roll out shared scenarios
 
+Before merging SDK code, prove it remains compatible with the currently deployed
+Hosting contract. Staging Gherkin does not keep runtime code dormant, and the
+existing release automation can publish a main-derived package. If new server
+support is required, first land a backward-compatible Hosting prerequisite or
+keep the SDK PR in draft until an explicitly reviewed release/rollout plan is in
+place. Do not merge an incompatible implementation merely because its scenario
+is staged.
+
 1. Change the canonical scenario in Hosting once. Copy its bytes into each SDK
    and implement its native binding.
 2. Stage new scenarios under `features/staged` while Hosting main still uses the
@@ -64,6 +73,13 @@ Hosting CI checks out each SDK's latest `main` and records the actual tested
 SHAs. Do not introduce a checked-in pin manifest or assume a rerun uses the same
 SDK revisions. Generate and verify each SDK against its own OpenAPI snapshot;
 compatibility with the server is established by integration tests.
+
+When the wire contract changes, first build Hosting's public bundle with
+`scripts/ci/openapi-bundle.sh <output-directory>` and update the affected SDK's
+`openapi/openapi.yaml` from that bundle. Then run its generator and freshness
+check. The generator reads the vendored snapshot; it does not update that
+snapshot from Hosting. Do not use snapshot equality as a server compatibility
+gate.
 
 From a Hosting checkout, verify shared tooling and copies before review:
 
