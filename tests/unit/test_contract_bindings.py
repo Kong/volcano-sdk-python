@@ -65,6 +65,37 @@ FEATURE_SHA256 = {
     "storage.feature": (
         "0772d46691d2a158e752d19cea995ff79db960fc3774c799ebdf081e19424d82"
     ),
+    "auth-profile-refresh.feature": (
+        "df46f1c374fcbdeb790cde0781ff14f580e56c44ac9aa6445d97469a385f6f51"
+    ),
+    "auth-request-recovery.feature": (
+        "9fa6f8d6cb3bca89501d32d950f06b8982ed34b888cce134465e0358b8261e8f"
+    ),
+    "auth-token-bootstrap.feature": (
+        "7f2cef1489ce2cb5a9f3ba230d7f411197415a0f4a3c14f38361c5ce0522e0ac"
+    ),
+    "database-queries.feature": (
+        "37d7f2e8fd4efb035cbc094c9c91a44a86f15fbcd689627e525e8d04f033a928"
+    ),
+    "functions-refresh.feature": (
+        "34ca84c8a4cf7f06addf7ff6f4c01c9546fac131e99b3d1509ae54f896d1bd9e"
+    ),
+    "locks-recovery.feature": (
+        "4f4b52caf587bdc61e72cbdcc39dcf5c9b06ea8573d8b99a183c2644e375ffab"
+    ),
+    "logs.feature": "5616e288fe1a68e13fa70416fe0323a5ce830c0edaa885a387efbf9e5bb2a269",
+    "realtime-postgres.feature": (
+        "794c2ecbb94fd262a37840f4c3fe3bd9f9ee58c22fda9df2a46de60f93e52c91"
+    ),
+    "realtime-presence.feature": (
+        "b4429f6e3df60a6a98be4daf1d8517e2cd7cee651f9eb6463a1090ab49a102b5"
+    ),
+    "storage-refresh.feature": (
+        "00257b455f9897791db7fd82c4166c7f34c7134b5b9f4ea92f509bba533751a1"
+    ),
+    "storage-sessions.feature": (
+        "037c60a8da27ec4cc5777596ba0c669b8309181a54b27aa61882535ed2f6beb1"
+    ),
 }
 
 
@@ -87,46 +118,46 @@ def test_contract_features_match_shared_source() -> None:
         assert hashlib.sha256((copied / name).read_bytes()).hexdigest() == expected
 
 
-def test_staged_storage_feature_matches_proposed_shared_source() -> None:
-    staged = ROOT / "features" / "staged" / "storage-refresh.feature"
+def test_contract_storage_feature_matches_shared_source() -> None:
+    feature = ROOT / "features" / "contract" / "storage-refresh.feature"
     expected = "00257b455f9897791db7fd82c4166c7f34c7134b5b9f4ea92f509bba533751a1"
-    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+    assert hashlib.sha256(feature.read_bytes()).hexdigest() == expected
 
 
-def test_staged_profile_feature_matches_proposed_shared_source() -> None:
-    staged = ROOT / "features" / "staged" / "auth-profile-refresh.feature"
+def test_contract_profile_feature_matches_shared_source() -> None:
+    feature = ROOT / "features" / "contract" / "auth-profile-refresh.feature"
     expected = "df46f1c374fcbdeb790cde0781ff14f580e56c44ac9aa6445d97469a385f6f51"
-    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+    assert hashlib.sha256(feature.read_bytes()).hexdigest() == expected
 
 
-def test_staged_lock_recovery_matches_proposed_shared_source() -> None:
-    staged = ROOT / "features" / "staged" / "locks-recovery.feature"
+def test_contract_lock_recovery_matches_shared_source() -> None:
+    feature = ROOT / "features" / "contract" / "locks-recovery.feature"
     expected = "4f4b52caf587bdc61e72cbdcc39dcf5c9b06ea8573d8b99a183c2644e375ffab"
-    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+    assert hashlib.sha256(feature.read_bytes()).hexdigest() == expected
 
 
-def test_staged_token_bootstrap_feature_matches_proposed_shared_source() -> None:
-    staged = ROOT / "features" / "staged" / "auth-token-bootstrap.feature"
+def test_contract_token_bootstrap_feature_matches_shared_source() -> None:
+    feature = ROOT / "features" / "contract" / "auth-token-bootstrap.feature"
     expected = "7f2cef1489ce2cb5a9f3ba230d7f411197415a0f4a3c14f38361c5ce0522e0ac"
-    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+    assert hashlib.sha256(feature.read_bytes()).hexdigest() == expected
 
 
-def test_staged_auth_request_feature_matches_proposed_shared_source() -> None:
-    staged = ROOT / "features" / "staged" / "auth-request-recovery.feature"
+def test_contract_auth_request_feature_matches_shared_source() -> None:
+    feature = ROOT / "features" / "contract" / "auth-request-recovery.feature"
     expected = "9fa6f8d6cb3bca89501d32d950f06b8982ed34b888cce134465e0358b8261e8f"
-    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+    assert hashlib.sha256(feature.read_bytes()).hexdigest() == expected
 
 
-def test_staged_database_queries_match_proposed_shared_source() -> None:
-    staged = ROOT / "features" / "staged" / "database-queries.feature"
+def test_contract_database_queries_match_shared_source() -> None:
+    feature = ROOT / "features" / "contract" / "database-queries.feature"
     expected = "37d7f2e8fd4efb035cbc094c9c91a44a86f15fbcd689627e525e8d04f033a928"
-    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+    assert hashlib.sha256(feature.read_bytes()).hexdigest() == expected
 
 
-def test_staged_storage_sessions_match_proposed_shared_source() -> None:
-    staged = ROOT / "features" / "staged" / "storage-sessions.feature"
+def test_contract_storage_sessions_match_shared_source() -> None:
+    feature = ROOT / "features" / "contract" / "storage-sessions.feature"
     expected = "037c60a8da27ec4cc5777596ba0c669b8309181a54b27aa61882535ed2f6beb1"
-    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+    assert hashlib.sha256(feature.read_bytes()).hexdigest() == expected
 
 
 def test_every_contract_phrase_is_bound_verbatim() -> None:
@@ -481,10 +512,10 @@ def test_visibility_assertion_rejects_private_payload_leaks(
             steps.anonymous_visibility_matches(context)
 
 
-def test_staged_logs_feature_matches_proposed_shared_source() -> None:
-    staged = ROOT / "features" / "staged" / "logs.feature"
+def test_contract_logs_feature_matches_shared_source() -> None:
+    feature = ROOT / "features" / "contract" / "logs.feature"
     expected = "5616e288fe1a68e13fa70416fe0323a5ce830c0edaa885a387efbf9e5bb2a269"
-    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+    assert hashlib.sha256(feature.read_bytes()).hexdigest() == expected
 
 
 def test_log_contract_rejects_duplicate_and_wrong_resource_events() -> None:
@@ -575,10 +606,10 @@ def test_log_bounds_allow_server_clock_skew(server_skew_seconds: int) -> None:
     assert server_time < datetime.fromisoformat(contract.request["end_time"])
 
 
-def test_staged_presence_feature_matches_proposed_shared_source() -> None:
-    staged = ROOT / "features" / "staged" / "realtime-presence.feature"
+def test_contract_presence_feature_matches_shared_source() -> None:
+    feature = ROOT / "features" / "contract" / "realtime-presence.feature"
     expected = "b4429f6e3df60a6a98be4daf1d8517e2cd7cee651f9eb6463a1090ab49a102b5"
-    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+    assert hashlib.sha256(feature.read_bytes()).hexdigest() == expected
 
 
 @pytest.mark.parametrize(
@@ -601,10 +632,10 @@ def test_presence_requires_original_handler_membership_sequence(
     )
 
 
-def test_staged_postgres_feature_matches_proposed_shared_source() -> None:
-    staged = ROOT / "features" / "staged" / "realtime-postgres.feature"
+def test_contract_postgres_feature_matches_shared_source() -> None:
+    feature = ROOT / "features" / "contract" / "realtime-postgres.feature"
     expected = "794c2ecbb94fd262a37840f4c3fe3bd9f9ee58c22fda9df2a46de60f93e52c91"
-    assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected
+    assert hashlib.sha256(feature.read_bytes()).hexdigest() == expected
 
 
 @pytest.mark.parametrize(
