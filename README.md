@@ -955,6 +955,8 @@ subscription, publish, and disconnect behavior to `centrifuge-python` 0.6.
 
 ## Develop locally
 
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for cross-language coordination and the full verification workflow.
+
 Generation fails on unsupported responses instead of omitting them. The generator
 configuration maps image and wildcard binary responses to raw-byte parsing while
 preserving the OpenAPI media types and response headers.
