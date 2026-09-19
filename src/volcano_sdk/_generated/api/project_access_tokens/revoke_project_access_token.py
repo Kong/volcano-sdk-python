@@ -16,7 +16,7 @@ from uuid import UUID
 
 def _get_kwargs(
     id: UUID,
-    function_id: str,
+    token_id: UUID,
 
 ) -> dict[str, Any]:
     
@@ -27,7 +27,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "delete",
-        "url": "/projects/{id}/durable-functions/{function_id}".format(id=quote(str(id), safe=""),function_id=quote(str(function_id), safe=""),),
+        "url": "/projects/{id}/access-tokens/{token_id}".format(id=quote(str(id), safe=""),token_id=quote(str(token_id), safe=""),),
     }
 
 
@@ -36,9 +36,23 @@ def _get_kwargs(
 
 
 def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Error | None:
-    if response.status_code == 202:
-        response_202 = cast(Any, None)
-        return response_202
+    if response.status_code == 204:
+        response_204 = cast(Any, None)
+        return response_204
+
+    if response.status_code == 401:
+        response_401 = Error.from_dict(response.json())
+
+
+
+        return response_401
+
+    if response.status_code == 403:
+        response_403 = Error.from_dict(response.json())
+
+
+
+        return response_403
 
     if response.status_code == 404:
         response_404 = Error.from_dict(response.json())
@@ -46,6 +60,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
         return response_404
+
+    if response.status_code == 409:
+        response_409 = Error.from_dict(response.json())
+
+
+
+        return response_409
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -64,26 +85,29 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 def sync_detailed(
     id: UUID,
-    function_id: str,
+    token_id: UUID,
     *,
     client: AuthenticatedClient,
 
 ) -> Response[Any | Error]:
-    """ Delete a durable function
+    """ Revoke a project access token
 
-     Accepted for asynchronous teardown; the work continues after the
-    response. The function's executions go with it: executions still in
-    flight are stopped, and history stops being readable whatever
-    `retention_days` had left.
+     Revokes the token. It stops authenticating immediately in the region
+    handling this call and within seconds across Volcano's other regions.
 
-    Stopping is asynchronous at the platform, and it does not interrupt a
-    step already running -- that step runs to its next checkpoint. So a
-    delete ends an execution rather than halting it mid-step; stop the
-    execution yourself first if you need to observe it ending.
+    The record is kept rather than deleted, so the token's name, prefix, last
+    use, and request history stay available — which is what you need if you
+    are revoking because a secret leaked. Revoking an already-revoked token
+    succeeds.
+
+    Revoking does not undo anything the token already did. Treat whatever it
+    could reach as exposed and rotate accordingly.
+
+    Requires a platform token.
 
     Args:
         id (UUID):
-        function_id (str):
+        token_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -96,7 +120,7 @@ def sync_detailed(
 
     kwargs = _get_kwargs(
         id=id,
-function_id=function_id,
+token_id=token_id,
 
     )
 
@@ -108,26 +132,29 @@ function_id=function_id,
 
 def sync(
     id: UUID,
-    function_id: str,
+    token_id: UUID,
     *,
     client: AuthenticatedClient,
 
 ) -> Any | Error | None:
-    """ Delete a durable function
+    """ Revoke a project access token
 
-     Accepted for asynchronous teardown; the work continues after the
-    response. The function's executions go with it: executions still in
-    flight are stopped, and history stops being readable whatever
-    `retention_days` had left.
+     Revokes the token. It stops authenticating immediately in the region
+    handling this call and within seconds across Volcano's other regions.
 
-    Stopping is asynchronous at the platform, and it does not interrupt a
-    step already running -- that step runs to its next checkpoint. So a
-    delete ends an execution rather than halting it mid-step; stop the
-    execution yourself first if you need to observe it ending.
+    The record is kept rather than deleted, so the token's name, prefix, last
+    use, and request history stay available — which is what you need if you
+    are revoking because a secret leaked. Revoking an already-revoked token
+    succeeds.
+
+    Revoking does not undo anything the token already did. Treat whatever it
+    could reach as exposed and rotate accordingly.
+
+    Requires a platform token.
 
     Args:
         id (UUID):
-        function_id (str):
+        token_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -140,33 +167,36 @@ def sync(
 
     return sync_detailed(
         id=id,
-function_id=function_id,
+token_id=token_id,
 client=client,
 
     ).parsed
 
 async def asyncio_detailed(
     id: UUID,
-    function_id: str,
+    token_id: UUID,
     *,
     client: AuthenticatedClient,
 
 ) -> Response[Any | Error]:
-    """ Delete a durable function
+    """ Revoke a project access token
 
-     Accepted for asynchronous teardown; the work continues after the
-    response. The function's executions go with it: executions still in
-    flight are stopped, and history stops being readable whatever
-    `retention_days` had left.
+     Revokes the token. It stops authenticating immediately in the region
+    handling this call and within seconds across Volcano's other regions.
 
-    Stopping is asynchronous at the platform, and it does not interrupt a
-    step already running -- that step runs to its next checkpoint. So a
-    delete ends an execution rather than halting it mid-step; stop the
-    execution yourself first if you need to observe it ending.
+    The record is kept rather than deleted, so the token's name, prefix, last
+    use, and request history stay available — which is what you need if you
+    are revoking because a secret leaked. Revoking an already-revoked token
+    succeeds.
+
+    Revoking does not undo anything the token already did. Treat whatever it
+    could reach as exposed and rotate accordingly.
+
+    Requires a platform token.
 
     Args:
         id (UUID):
-        function_id (str):
+        token_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -179,7 +209,7 @@ async def asyncio_detailed(
 
     kwargs = _get_kwargs(
         id=id,
-function_id=function_id,
+token_id=token_id,
 
     )
 
@@ -191,26 +221,29 @@ function_id=function_id,
 
 async def asyncio(
     id: UUID,
-    function_id: str,
+    token_id: UUID,
     *,
     client: AuthenticatedClient,
 
 ) -> Any | Error | None:
-    """ Delete a durable function
+    """ Revoke a project access token
 
-     Accepted for asynchronous teardown; the work continues after the
-    response. The function's executions go with it: executions still in
-    flight are stopped, and history stops being readable whatever
-    `retention_days` had left.
+     Revokes the token. It stops authenticating immediately in the region
+    handling this call and within seconds across Volcano's other regions.
 
-    Stopping is asynchronous at the platform, and it does not interrupt a
-    step already running -- that step runs to its next checkpoint. So a
-    delete ends an execution rather than halting it mid-step; stop the
-    execution yourself first if you need to observe it ending.
+    The record is kept rather than deleted, so the token's name, prefix, last
+    use, and request history stay available — which is what you need if you
+    are revoking because a secret leaked. Revoking an already-revoked token
+    succeeds.
+
+    Revoking does not undo anything the token already did. Treat whatever it
+    could reach as exposed and rotate accordingly.
+
+    Requires a platform token.
 
     Args:
         id (UUID):
-        function_id (str):
+        token_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -223,7 +256,7 @@ async def asyncio(
 
     return (await asyncio_detailed(
         id=id,
-function_id=function_id,
+token_id=token_id,
 client=client,
 
     )).parsed

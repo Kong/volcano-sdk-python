@@ -8,7 +8,8 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.service_key import ServiceKey
+from ...models.error import Error
+from ...models.project_access_token import ProjectAccessToken
 from typing import cast
 from uuid import UUID
 
@@ -16,7 +17,7 @@ from uuid import UUID
 
 def _get_kwargs(
     id: UUID,
-    key_id: UUID,
+    token_id: UUID,
 
 ) -> dict[str, Any]:
     
@@ -26,8 +27,8 @@ def _get_kwargs(
     
 
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/projects/{id}/service-keys/{key_id}/regenerate".format(id=quote(str(id), safe=""),key_id=quote(str(key_id), safe=""),),
+        "method": "get",
+        "url": "/projects/{id}/access-tokens/{token_id}".format(id=quote(str(id), safe=""),token_id=quote(str(token_id), safe=""),),
     }
 
 
@@ -35,13 +36,34 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ServiceKey | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Error | ProjectAccessToken | None:
     if response.status_code == 200:
-        response_200 = ServiceKey.from_dict(response.json())
+        response_200 = ProjectAccessToken.from_dict(response.json())
 
 
 
         return response_200
+
+    if response.status_code == 401:
+        response_401 = Error.from_dict(response.json())
+
+
+
+        return response_401
+
+    if response.status_code == 403:
+        response_403 = Error.from_dict(response.json())
+
+
+
+        return response_403
+
+    if response.status_code == 404:
+        response_404 = Error.from_dict(response.json())
+
+
+
+        return response_404
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -49,7 +71,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[ServiceKey]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | ProjectAccessToken]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -60,33 +82,34 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 def sync_detailed(
     id: UUID,
-    key_id: UUID,
+    token_id: UUID,
     *,
     client: AuthenticatedClient,
 
-) -> Response[ServiceKey]:
-    """ Regenerate service key
+) -> Response[Error | ProjectAccessToken]:
+    """ Get a project access token
 
-     Generate new JWT value for existing key.
-    The old key stops working within a few seconds.
-    Update your backend services with the new key before regenerating in production.
+     Returns one token's metadata. Never its secret, which is not stored in a
+    recoverable form.
+
+    Requires a platform token.
 
     Args:
         id (UUID):
-        key_id (UUID):
+        token_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ServiceKey]
+        Response[Error | ProjectAccessToken]
      """
 
 
     kwargs = _get_kwargs(
         id=id,
-key_id=key_id,
+token_id=token_id,
 
     )
 
@@ -98,66 +121,68 @@ key_id=key_id,
 
 def sync(
     id: UUID,
-    key_id: UUID,
+    token_id: UUID,
     *,
     client: AuthenticatedClient,
 
-) -> ServiceKey | None:
-    """ Regenerate service key
+) -> Error | ProjectAccessToken | None:
+    """ Get a project access token
 
-     Generate new JWT value for existing key.
-    The old key stops working within a few seconds.
-    Update your backend services with the new key before regenerating in production.
+     Returns one token's metadata. Never its secret, which is not stored in a
+    recoverable form.
+
+    Requires a platform token.
 
     Args:
         id (UUID):
-        key_id (UUID):
+        token_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ServiceKey
+        Error | ProjectAccessToken
      """
 
 
     return sync_detailed(
         id=id,
-key_id=key_id,
+token_id=token_id,
 client=client,
 
     ).parsed
 
 async def asyncio_detailed(
     id: UUID,
-    key_id: UUID,
+    token_id: UUID,
     *,
     client: AuthenticatedClient,
 
-) -> Response[ServiceKey]:
-    """ Regenerate service key
+) -> Response[Error | ProjectAccessToken]:
+    """ Get a project access token
 
-     Generate new JWT value for existing key.
-    The old key stops working within a few seconds.
-    Update your backend services with the new key before regenerating in production.
+     Returns one token's metadata. Never its secret, which is not stored in a
+    recoverable form.
+
+    Requires a platform token.
 
     Args:
         id (UUID):
-        key_id (UUID):
+        token_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ServiceKey]
+        Response[Error | ProjectAccessToken]
      """
 
 
     kwargs = _get_kwargs(
         id=id,
-key_id=key_id,
+token_id=token_id,
 
     )
 
@@ -169,33 +194,34 @@ key_id=key_id,
 
 async def asyncio(
     id: UUID,
-    key_id: UUID,
+    token_id: UUID,
     *,
     client: AuthenticatedClient,
 
-) -> ServiceKey | None:
-    """ Regenerate service key
+) -> Error | ProjectAccessToken | None:
+    """ Get a project access token
 
-     Generate new JWT value for existing key.
-    The old key stops working within a few seconds.
-    Update your backend services with the new key before regenerating in production.
+     Returns one token's metadata. Never its secret, which is not stored in a
+    recoverable form.
+
+    Requires a platform token.
 
     Args:
         id (UUID):
-        key_id (UUID):
+        token_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ServiceKey
+        Error | ProjectAccessToken
      """
 
 
     return (await asyncio_detailed(
         id=id,
-key_id=key_id,
+token_id=token_id,
 client=client,
 
     )).parsed
