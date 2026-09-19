@@ -52,8 +52,10 @@ Every dependency update and server channel-shape change must:
 
 1. Run deterministic generation, lint, typing, native tests, build and installed
    package checks from CI. The native realtime tests use both controlled fakes
-   and the installed official client; preserve the latter's dispatch and
-   lifecycle coverage.
+   and the installed official client. The `native_dispatch` tests feed prefixed
+   publication pushes through the installed client before observing public
+   broadcast, presence and Postgres callbacks. Preserve this lookup coverage
+   alongside the lifecycle tests.
 2. Exercise broadcast, presence, Postgres/RLS routing, recovery, pause/resume,
    subscription removal and disconnect. Reject delivery from obsolete session
    or subscription epochs.

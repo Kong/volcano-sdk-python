@@ -502,6 +502,96 @@ class ControlledCentrifugeFactory:
         await self.client._process_reply({"id": command["id"], **result})
 
 
+@pytest.mark.parametrize("channel_type", ["broadcast", "presence"])
+def test_realtime_native_dispatch_routes_project_prefixed_publications(
+    monkeypatch: pytest.MonkeyPatch, channel_type: realtime_module.ChannelType
+) -> None:
+    async def scenario() -> None:
+        factory = ControlledCentrifugeFactory(monkeypatch)
+        client = VolcanoClient(
+            anon_key="anon-key",
+            _transport=AuthTransport(),
+            _realtime_client_factory=factory,
+        )
+        client.auth.sign_in(email="user@example.com", password="secret")
+        received: list[Any] = []
+        channel = client.realtime.channel("room", channel_type=channel_type)
+        channel.on("message", received.append)
+        subscribing = asyncio.create_task(channel.subscribe())
+        await factory.reply(await factory.command(), subscribe={})
+        if channel_type == "presence":
+            await factory.reply(await factory.command(), presence={"presence": {}})
+        await subscribing
+        payload = {"event": "message", "value": "contract"}
+        try:
+            # Enter native push dispatch, including its subscription lookup.
+            await factory.client._process_reply(
+                {
+                    "push": {
+                        "channel": f"project-id:{channel.name}",
+                        "pub": {"data": payload},
+                    }
+                }
+            )
+            await channel._callback_queue.join()
+            assert received == [payload]
+        finally:
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
+def test_realtime_native_dispatch_routes_user_scoped_postgres_publications(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        factory = ControlledCentrifugeFactory(monkeypatch)
+        client = VolcanoClient(
+            anon_key="anon-key",
+            _transport=AuthTransport(),
+            _realtime_client_factory=factory,
+        )
+        client.auth.sign_in(email="user@example.com", password="secret")
+        received: list[Any] = []
+        delivered = asyncio.Event()
+
+        def on_insert(change: Any) -> None:
+            received.append(change)
+            delivered.set()
+
+        channel = client.realtime.channel("public:messages", channel_type="postgres")
+        channel.on_postgres_changes(
+            "INSERT", schema="public", table="messages", callback=on_insert
+        )
+        subscribing = asyncio.create_task(channel.subscribe())
+        await factory.reply(await factory.command(), subscribe={})
+        await subscribing
+        payload = {
+            "type": "INSERT",
+            "schema": "public",
+            "table": "messages",
+            "record": {"id": 1, "body": "contract"},
+            "timestamp": "2026-09-19T22:00:00Z",
+        }
+        try:
+            await factory.client._process_reply(
+                {
+                    "push": {
+                        "channel": "project-id:postgres:public:messages:user-id",
+                        "pub": {"data": payload},
+                    }
+                }
+            )
+            await asyncio.wait_for(delivered.wait(), timeout=0.2)
+            assert len(received) == 1
+            assert received[0].record == payload["record"]
+            assert received[0].type == "INSERT"
+        finally:
+            await client.realtime.disconnect()
+
+    asyncio.run(scenario())
+
+
 async def start_native_presence_refresh(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[
