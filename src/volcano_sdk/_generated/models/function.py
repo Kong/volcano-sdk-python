@@ -55,7 +55,10 @@ class Function:
             updated_at (datetime.datetime):
             provisioning_started_at (datetime.datetime | Unset): Timestamp when the current provisioning phase started
             aws_function_arn (str | Unset):
-            invoke_url (str | Unset): Canonical GeoDNS endpoint URL for invoking this function (always HTTPS)
+            invoke_url (str | Unset): Canonical geo-routed HTTPS endpoint for invoking this function. Use it as-is: it does
+                not share a domain with the API, so a host derived from the API URL will not reach the function. Omitted when
+                the deployment serves no public invocation domain, as in local development, so a client testing for an empty
+                string never matches.
             runtime (str | Unset):
             handler (str | Unset):
             current_deployment_id (UUID | Unset): Identifier of the latest function deployment operation

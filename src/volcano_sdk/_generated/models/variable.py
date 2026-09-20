@@ -39,6 +39,7 @@ class Variable:
             shared (bool | Unset): Include this name in the project's shared function variables. Omission preserves existing
                 membership; new variables default to true for legacy clients. Send false explicitly to create a non-shared
                 variable.
+            frontend_shared (bool | Unset): Whether this name is in the project's shared frontend-variable list.
             status (VariableStatus | Unset): Latest project variable propagation status, when a sync has run.
             current_sync_id (UUID | Unset): Identifier of the latest variable propagation sync.
             provisioning_started_at (datetime.datetime | Unset): Timestamp when the current variable propagation phase
@@ -54,6 +55,7 @@ class Variable:
     created_at: datetime.datetime
     updated_at: datetime.datetime
     shared: bool | Unset = UNSET
+    frontend_shared: bool | Unset = UNSET
     status: VariableStatus | Unset = UNSET
     current_sync_id: UUID | Unset = UNSET
     provisioning_started_at: datetime.datetime | Unset = UNSET
@@ -78,6 +80,8 @@ class Variable:
         updated_at = self.updated_at.isoformat()
 
         shared = self.shared
+
+        frontend_shared = self.frontend_shared
 
         status: str | Unset = UNSET
         if not isinstance(self.status, Unset):
@@ -110,6 +114,8 @@ class Variable:
         })
         if shared is not UNSET:
             field_dict["shared"] = shared
+        if frontend_shared is not UNSET:
+            field_dict["frontend_shared"] = frontend_shared
         if status is not UNSET:
             field_dict["status"] = status
         if current_sync_id is not UNSET:
@@ -151,6 +157,8 @@ class Variable:
 
 
         shared = d.pop("shared", UNSET)
+
+        frontend_shared = d.pop("frontend_shared", UNSET)
 
         _status = d.pop("status", UNSET)
         status: VariableStatus | Unset
@@ -200,6 +208,7 @@ class Variable:
             created_at=created_at,
             updated_at=updated_at,
             shared=shared,
+            frontend_shared=frontend_shared,
             status=status,
             current_sync_id=current_sync_id,
             provisioning_started_at=provisioning_started_at,

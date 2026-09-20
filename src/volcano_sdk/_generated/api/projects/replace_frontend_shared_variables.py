@@ -9,6 +9,7 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.error import Error
+from ...models.replace_frontend_shared_variables_body import ReplaceFrontendSharedVariablesBody
 from typing import cast
 from uuid import UUID
 
@@ -16,36 +17,68 @@ from uuid import UUID
 
 def _get_kwargs(
     id: UUID,
-    function_id: str,
+    *,
+    body: ReplaceFrontendSharedVariablesBody,
 
 ) -> dict[str, Any]:
-    
+    headers: dict[str, Any] = {}
+
 
     
 
     
 
     _kwargs: dict[str, Any] = {
-        "method": "delete",
-        "url": "/projects/{id}/durable-functions/{function_id}".format(id=quote(str(id), safe=""),function_id=quote(str(function_id), safe=""),),
+        "method": "put",
+        "url": "/projects/{id}/frontend-shared-variables".format(id=quote(str(id), safe=""),),
     }
 
+    _kwargs["json"] = body.to_dict()
 
+    headers["Content-Type"] = "application/json"
+
+    _kwargs["headers"] = headers
     return _kwargs
 
 
 
 def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Error | None:
-    if response.status_code == 202:
-        response_202 = cast(Any, None)
-        return response_202
+    if response.status_code == 204:
+        response_204 = cast(Any, None)
+        return response_204
+
+    if response.status_code == 400:
+        response_400 = Error.from_dict(response.json())
+
+
+
+        return response_400
+
+    if response.status_code == 401:
+        response_401 = cast(Any, None)
+        return response_401
 
     if response.status_code == 404:
-        response_404 = Error.from_dict(response.json())
-
-
-
+        response_404 = cast(Any, None)
         return response_404
+
+    if response.status_code == 409:
+        response_409 = Error.from_dict(response.json())
+
+
+
+        return response_409
+
+    if response.status_code == 413:
+        response_413 = Error.from_dict(response.json())
+
+
+
+        return response_413
+
+    if response.status_code == 500:
+        response_500 = cast(Any, None)
+        return response_500
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -64,26 +97,21 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 def sync_detailed(
     id: UUID,
-    function_id: str,
     *,
     client: AuthenticatedClient,
+    body: ReplaceFrontendSharedVariablesBody,
 
 ) -> Response[Any | Error]:
-    """ Delete a durable function
+    """ Replace frontend shared variable names
 
-     Accepted for asynchronous teardown; the work continues after the
-    response. The function's executions go with it: executions still in
-    flight are stopped, and history stops being readable whatever
-    `retention_days` had left.
-
-    Stopping is asynchronous at the platform, and it does not interrupt a
-    step already running -- that step runs to its next checkpoint. So a
-    delete ends an execution rather than halting it mid-step; stop the
-    execution yourself first if you need to observe it ending.
+     Atomically replaces the complete shared frontend-variable list without
+    changing values. Names must already exist. Validates final affected
+    frontend environments before membership or propagation side effects.
+    An empty list clears membership. Omitted names remain stored outside the frontend shared list.
 
     Args:
         id (UUID):
-        function_id (str):
+        body (ReplaceFrontendSharedVariablesBody):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -96,7 +124,7 @@ def sync_detailed(
 
     kwargs = _get_kwargs(
         id=id,
-function_id=function_id,
+body=body,
 
     )
 
@@ -108,26 +136,21 @@ function_id=function_id,
 
 def sync(
     id: UUID,
-    function_id: str,
     *,
     client: AuthenticatedClient,
+    body: ReplaceFrontendSharedVariablesBody,
 
 ) -> Any | Error | None:
-    """ Delete a durable function
+    """ Replace frontend shared variable names
 
-     Accepted for asynchronous teardown; the work continues after the
-    response. The function's executions go with it: executions still in
-    flight are stopped, and history stops being readable whatever
-    `retention_days` had left.
-
-    Stopping is asynchronous at the platform, and it does not interrupt a
-    step already running -- that step runs to its next checkpoint. So a
-    delete ends an execution rather than halting it mid-step; stop the
-    execution yourself first if you need to observe it ending.
+     Atomically replaces the complete shared frontend-variable list without
+    changing values. Names must already exist. Validates final affected
+    frontend environments before membership or propagation side effects.
+    An empty list clears membership. Omitted names remain stored outside the frontend shared list.
 
     Args:
         id (UUID):
-        function_id (str):
+        body (ReplaceFrontendSharedVariablesBody):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -140,33 +163,28 @@ def sync(
 
     return sync_detailed(
         id=id,
-function_id=function_id,
 client=client,
+body=body,
 
     ).parsed
 
 async def asyncio_detailed(
     id: UUID,
-    function_id: str,
     *,
     client: AuthenticatedClient,
+    body: ReplaceFrontendSharedVariablesBody,
 
 ) -> Response[Any | Error]:
-    """ Delete a durable function
+    """ Replace frontend shared variable names
 
-     Accepted for asynchronous teardown; the work continues after the
-    response. The function's executions go with it: executions still in
-    flight are stopped, and history stops being readable whatever
-    `retention_days` had left.
-
-    Stopping is asynchronous at the platform, and it does not interrupt a
-    step already running -- that step runs to its next checkpoint. So a
-    delete ends an execution rather than halting it mid-step; stop the
-    execution yourself first if you need to observe it ending.
+     Atomically replaces the complete shared frontend-variable list without
+    changing values. Names must already exist. Validates final affected
+    frontend environments before membership or propagation side effects.
+    An empty list clears membership. Omitted names remain stored outside the frontend shared list.
 
     Args:
         id (UUID):
-        function_id (str):
+        body (ReplaceFrontendSharedVariablesBody):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -179,7 +197,7 @@ async def asyncio_detailed(
 
     kwargs = _get_kwargs(
         id=id,
-function_id=function_id,
+body=body,
 
     )
 
@@ -191,26 +209,21 @@ function_id=function_id,
 
 async def asyncio(
     id: UUID,
-    function_id: str,
     *,
     client: AuthenticatedClient,
+    body: ReplaceFrontendSharedVariablesBody,
 
 ) -> Any | Error | None:
-    """ Delete a durable function
+    """ Replace frontend shared variable names
 
-     Accepted for asynchronous teardown; the work continues after the
-    response. The function's executions go with it: executions still in
-    flight are stopped, and history stops being readable whatever
-    `retention_days` had left.
-
-    Stopping is asynchronous at the platform, and it does not interrupt a
-    step already running -- that step runs to its next checkpoint. So a
-    delete ends an execution rather than halting it mid-step; stop the
-    execution yourself first if you need to observe it ending.
+     Atomically replaces the complete shared frontend-variable list without
+    changing values. Names must already exist. Validates final affected
+    frontend environments before membership or propagation side effects.
+    An empty list clears membership. Omitted names remain stored outside the frontend shared list.
 
     Args:
         id (UUID):
-        function_id (str):
+        body (ReplaceFrontendSharedVariablesBody):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -223,7 +236,7 @@ async def asyncio(
 
     return (await asyncio_detailed(
         id=id,
-function_id=function_id,
 client=client,
+body=body,
 
     )).parsed
