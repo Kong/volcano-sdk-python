@@ -52,9 +52,10 @@ dev = [
   "openapi-python-client==0.29.0",
   "pyright>=1.1.405",
   "pytest>=8.3.0",
-  "ruff>=0.9.0",
+  "ruff==0.16.4",
   "pip-audit==2.10.1",
   "hypothesis==6.168.0",
+  "poethepoet==0.46.0",
 ]
 
 [tool.mypy]
@@ -89,6 +90,7 @@ typeCheckingMode = "strict"
 reportPrivateUsage = false
 
 [tool.ruff]
+required-version = "==0.16.4"
 target-version = "py311"
 extend-exclude = ["src/volcano_sdk/_generated"]
 
@@ -144,3 +146,32 @@ ignore = [
 
 [tool.pytest.ini_options]
 filterwarnings = ["error"]
+
+[tool.poe.tasks]
+quality = ["audit", "generated", "lint", "format-check", "types", "test", "contract-check", "package-check"]
+audit = "bash scripts/audit_dependencies.sh"
+generated = "python scripts/check_openapi.py"
+lint = "ruff check ."
+format-check = "ruff format --check ."
+types = ["mypy", "pyright"]
+mypy = "mypy"
+pyright = "pyright"
+test = "pytest tests/unit -q --junitxml=reports/unit.xml"
+
+[tool.poe.tasks.contract-check]
+sequence = [
+  { cmd = "chmod 600 tests/fixtures/sdk-contract-dry-run.json" },
+  { cmd = "behave features/contract --dry-run --no-snippets" },
+]
+env.VOLCANO_SDK_CONTRACT_FIXTURE = "${POE_ROOT}/tests/fixtures/sdk-contract-dry-run.json"
+
+[tool.poe.tasks.package-check]
+# Keep artifacts private to this run and remove them even when validation fails.
+interpreter = "bash"
+shell = """
+set -euo pipefail
+package_dir="$(mktemp -d)"
+trap 'rm -rf "$package_dir"' EXIT
+python -m build --outdir "$package_dir"
+bash scripts/check_package.sh "" "$package_dir"
+"""

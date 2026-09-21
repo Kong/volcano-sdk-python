@@ -35,9 +35,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
-      - run: uv sync --frozen
+      - run: uv sync --locked
       - name: Run SDK quality checks
-        run: uv run python scripts/quality.py
+        run: uv run --locked poe quality
       - name: Preserve test failures and property seeds
         if: ${{ failure() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

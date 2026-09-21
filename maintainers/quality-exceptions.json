@@ -1,18 +1,1 @@
-[
-  {
-    "rule": "S603",
-    "path": "scripts/quality.py",
-    "marker": "# noqa: S603 - fixed command and private temporary path.",
-    "rationale": "Ruff cannot establish the safety of the dynamically allocated output directory. The executable and build arguments are fixed, the directory comes from TemporaryDirectory, and shell execution is disabled.",
-    "evidence": "The subprocess calls sys.executable -m build --outdir with only the private temporary directory as a dynamic argument.",
-    "approval": "Sean Keever, 2026-09-21: Approve the two documented S603 exceptions"
-  },
-  {
-    "rule": "S603",
-    "path": "scripts/quality.py",
-    "marker": "# noqa: S603 - fixed script and private build artifacts.",
-    "rationale": "Ruff cannot establish the safety of dynamically constructed package validation arguments. The executable and script are fixed; the remaining values are installed package metadata and a private TemporaryDirectory. Shell execution is disabled.",
-    "evidence": "The subprocess calls /bin/bash scripts/check_package.sh with the package version and private build directory as separate arguments.",
-    "approval": "Sean Keever, 2026-09-21: Approve the two documented S603 exceptions"
-  }
-]
+[]
