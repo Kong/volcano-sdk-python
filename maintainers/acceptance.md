@@ -11,7 +11,7 @@ The bundle contains the existing contract bindings and a native dependency lock.
 
 Hosting authenticates the bundle and customer-registry package, restores that
 package at the filename recorded in `acceptance.json`, then performs a frozen
-install. Ruby places the gem in `vendor/cache` and sets
-`VOLCANO_ACCEPTANCE_VERSION` from the recorded version. Build candidate bundles
+install with `uv sync --frozen`. Place the wheel beside `pyproject.toml` and
+`uv.lock`, then run tests with `uv run --no-sync`. Build candidate bundles
 with the same command before publishing; package and bundle must come from the
 same source commit. Never modify imports or lockfile text in the consumer.
