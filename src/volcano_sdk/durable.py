@@ -122,6 +122,12 @@ class Durable:
         Passing `execution_name` makes the start idempotent: starting again
         under the same name returns the execution that already exists rather
         than beginning a second one, and is charged once.
+
+        Returns
+        -------
+        DurableExecution
+            The accepted execution, or the existing execution for an idempotent start.
+
         """
         identifier = _identifier(function_name, "function_name")
         name = None if execution_name is None else _execution_name(execution_name)
@@ -149,6 +155,12 @@ class Durable:
         backend, not a browser. Neither an auth-user session from sign-in nor a
         service key is accepted here -- the route takes a user token, and
         anything else is answered 401.
+
+        Returns
+        -------
+        DurableExecution
+            The execution snapshot, including any available result or failure.
+
         """
         project = _identifier(project_id, "project_id")
         identifier = _identifier(function_name, "function_name")
@@ -176,6 +188,12 @@ class Durable:
 
         Each entry carries the status the platform last observed rather than a
         live one; read a single execution for that. Owner-scoped, like `get`.
+
+        Returns
+        -------
+        DurableExecutionPage
+            Execution summaries and pagination metadata.
+
         """
         project = _identifier(project_id, "project_id")
         identifier = _identifier(function_name, "function_name")
@@ -203,6 +221,12 @@ class Durable:
         it reach `stopped`. Completed steps are not undone. Repeating a stop is
         safe -- an execution that has already finished reports the state it is
         in. Owner-scoped, like `get`.
+
+        Returns
+        -------
+        DurableExecution
+            The execution snapshot after the stop request; it may still be running.
+
         """
         project = _identifier(project_id, "project_id")
         identifier = _identifier(function_name, "function_name")
@@ -224,6 +248,17 @@ def _execution_name(value: object) -> str:
     The header carries a documented maximum, and a name over it is refused
     server-side with a 400 -- a request, an allowance check and a round trip
     spent on something that could be answered here.
+
+    Returns
+    -------
+    str
+        The trimmed execution name.
+
+    Raises
+    ------
+    ValueError
+        If the name is empty, is not a string, or exceeds the length limit.
+
     """
     name = _identifier(value, "execution_name")
     if len(name) > _MAX_EXECUTION_NAME_LENGTH:
@@ -239,6 +274,17 @@ def _identifier(value: object, field: str) -> str:
 
     An empty segment would address the collection instead of the execution,
     which is a different request rather than a failed one.
+
+    Returns
+    -------
+    str
+        The trimmed identifier, preserving its UUID spelling.
+
+    Raises
+    ------
+    ValueError
+        If the value is empty, is not a string, or requires a valid UUID.
+
     """
     if not isinstance(value, str) or not value.strip():
         raise ValueError(_INVALID_IDENTIFIERS[field])
