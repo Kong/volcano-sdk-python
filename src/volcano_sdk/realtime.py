@@ -162,6 +162,22 @@ class PostgresChange:
         object.__setattr__(self, "id", _freeze_json(self.id))
 
 
+def _filter_postgres_changes(
+    event: PostgresListenerEvent,
+    schema: str,
+    table: str,
+    callback: PostgresChangeCallback,
+) -> PostgresChangeCallback:
+    def filtered(change: PostgresChange) -> object:
+        if change.schema != schema or change.table != table:
+            return None
+        if event not in ("*", change.type):
+            return None
+        return callback(change)
+
+    return filtered
+
+
 @dataclass(frozen=True, slots=True)
 class _PostgresFetchRequest:
     database_name: str
@@ -660,12 +676,7 @@ class Channel:
             message = f"unsupported Postgres change event: {event}"
             raise ValueError(message)
 
-        def filtered(change: PostgresChange) -> Any:
-            if change.schema != schema or change.table != table:
-                return None
-            if event not in ("*", change.type):
-                return None
-            return callback(change)
+        filtered = _filter_postgres_changes(event, schema, table, callback)
 
         self._callbacks.setdefault("*", []).append(filtered)
         self._postgres_filters[id(filtered)] = (event, schema, table)
@@ -835,19 +846,10 @@ class Channel:
         if outcome.record is not None:
             change = replace(change, record=outcome.record, id=None, mode=None)
         elif outcome.job.request is not None:
-            error = outcome.error
-            if error is None:
-                identifier = (
-                    f"{change.schema}.{change.table}:{outcome.job.request.row_id}"
-                )
-                message = f"Postgres row not found: {identifier}"
-                error = LookupError(message)
-            asyncio.get_running_loop().call_exception_handler(
-                {
-                    "message": POSTGRES_FETCH_FAILED_MESSAGE,
-                    "exception": error,
-                    "channel": self._name,
-                }
+            self._report_postgres_fetch_failure(
+                change,
+                outcome.job.request,
+                outcome.error,
             )
         if self._postgres_delivery_is_current(delivery.identity):
             await self._emit(
@@ -855,6 +857,24 @@ class Channel:
                 change,
                 postgres_identity=delivery.identity,
             )
+
+    def _report_postgres_fetch_failure(
+        self,
+        change: PostgresChange,
+        request: _PostgresFetchRequest,
+        error: Exception | None,
+    ) -> None:
+        if error is None:
+            identifier = f"{change.schema}.{change.table}:{request.row_id}"
+            message = f"Postgres row not found: {identifier}"
+            error = LookupError(message)
+        asyncio.get_running_loop().call_exception_handler(
+            {
+                "message": POSTGRES_FETCH_FAILED_MESSAGE,
+                "exception": error,
+                "channel": self._name,
+            }
+        )
 
     async def subscribe(self) -> None:
         """Wait until this channel is subscribed and ready for use."""
