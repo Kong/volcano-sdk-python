@@ -1,0 +1,50 @@
+# Guardrail configuration, enforcement, and agent authority.
+/.github/ @Kong/team-volcano
+CODEOWNERS @Kong/team-volcano
+AGENTS.md @Kong/team-volcano
+CLAUDE.md @Kong/team-volcano
+GEMINI.md @Kong/team-volcano
+.agents/ @Kong/team-volcano
+.codex/ @Kong/team-volcano
+.claude/ @Kong/team-volcano
+.cursor/ @Kong/team-volcano
+.cursorrules @Kong/team-volcano
+/scripts/ @Kong/team-volcano
+/maintainers/ @Kong/team-volcano
+
+# Match nested tool configurations too; new overrides are policy changes.
+pyproject.toml @Kong/team-volcano
+uv.toml @Kong/team-volcano
+uv.lock @Kong/team-volcano
+.python-version @Kong/team-volcano
+ruff.toml @Kong/team-volcano
+.ruff.toml @Kong/team-volcano
+mypy.ini @Kong/team-volcano
+.mypy.ini @Kong/team-volcano
+pyrightconfig.json @Kong/team-volcano
+basedpyrightconfig.json @Kong/team-volcano
+openapi-python-client.yaml @Kong/team-volcano
+/openapi/templates/ @Kong/team-volcano
+pytest.ini @Kong/team-volcano
+.pytest.ini @Kong/team-volcano
+tox.ini @Kong/team-volcano
+.coveragerc @Kong/team-volcano
+.mutmut-config* @Kong/team-volcano
+setup.cfg @Kong/team-volcano
+setup.py @Kong/team-volcano
+requirements*.txt @Kong/team-volcano
+requirements*.in @Kong/team-volcano
+Pipfile* @Kong/team-volcano
+poetry.lock @Kong/team-volcano
+noxfile.py @Kong/team-volcano
+Makefile @Kong/team-volcano
+.gitignore @Kong/team-volcano
+.gitattributes @Kong/team-volcano
+.pre-commit-config.yaml @Kong/team-volcano
+release-please-config.json @Kong/team-volcano
+.release-please-manifest.json @Kong/team-volcano
+
+# Test discovery and the tests that prove the gate cannot be weakened.
+conftest.py @Kong/team-volcano
+/tests/unit/test_quality_configuration.py @Kong/team-volcano
+/tests/unit/test_test_integrity.py @Kong/team-volcano

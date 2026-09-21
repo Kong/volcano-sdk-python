@@ -11,6 +11,9 @@
   for verified tool limitations require human approval and an exact record in
   `maintainers/quality-exceptions.json`. Never approve quality-policy changes
   on a human reviewer's behalf.
+- Keep reviewer and repository-administration credentials outside ordinary
+  automation. Quality policy and enforcement are owned by `@Kong/team-volcano`
+  through `.github/CODEOWNERS`.
 - Keep generated clients private. Regenerate them from the checked-in OpenAPI
   snapshot; never edit generated output by hand.
 - Preserve shared behavioral scenarios and coordinate contract changes with
