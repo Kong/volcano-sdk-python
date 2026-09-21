@@ -719,23 +719,26 @@ def _to_seconds(value: object, field_name: str) -> int:
     Accepts `"30s"`, `"1m30s"`, a whole number of seconds, or a mapping of
     days/hours/minutes/seconds.
     """
-    if isinstance(value, bool):
-        raise TypeError(_duration_type_error(field_name))
-    if isinstance(value, int):
-        if value < 0:
-            message = f"{field_name} must be a non-negative whole number of seconds"
-            raise ValueError(message)
-        return value
-    if isinstance(value, float):
-        # Whole seconds only: a fraction would silently become a different
-        # wait than the one asked for.
-        message = f"{field_name} must be a whole number of seconds, not a fraction"
-        raise TypeError(message)
+    if isinstance(value, (int, float)):
+        return _numeric_seconds(value, field_name)
     if isinstance(value, dict):
         return _mapping_seconds(cast("dict[str, object]", value), field_name)
     if not isinstance(value, str):
         raise TypeError(_duration_type_error(field_name))
     return _parse_duration(value.strip(), field_name)
+
+
+def _numeric_seconds(value: object, field_name: str) -> int:
+    if isinstance(value, bool):
+        raise TypeError(_duration_type_error(field_name))
+    if not isinstance(value, int):
+        # Fractions would silently change the requested wait.
+        message = f"{field_name} must be a whole number of seconds, not a fraction"
+        raise TypeError(message)
+    if value < 0:
+        message = f"{field_name} must be a non-negative whole number of seconds"
+        raise ValueError(message)
+    return value
 
 
 def _duration_type_error(field_name: str) -> str:
@@ -761,16 +764,19 @@ def _mapping_seconds(value: dict[str, object], field_name: str) -> int:
     if not any(value.get(key) is not None for key in _DURATION_FIELDS):
         message = f"{field_name} duration needs one of {', '.join(_DURATION_FIELDS)}"
         raise TypeError(message)
-    seconds = 0
-    for key in _DURATION_FIELDS:
-        part = value.get(key)
-        if part is None:
-            continue
-        if isinstance(part, bool) or not isinstance(part, int) or part < 0:
-            message = f"{field_name} duration {key} must be a non-negative whole number"
-            raise ValueError(message)
-        seconds += part * _FIELD_UNITS[key]
-    return seconds
+    return sum(
+        _duration_part(value.get(key), field_name, key) * _FIELD_UNITS[key]
+        for key in _DURATION_FIELDS
+    )
+
+
+def _duration_part(part: object, field_name: str, key: str) -> int:
+    if part is None:
+        return 0
+    if isinstance(part, bool) or not isinstance(part, int) or part < 0:
+        message = f"{field_name} duration {key} must be a non-negative whole number"
+        raise ValueError(message)
+    return part
 
 
 def _parse_duration(text: str, field_name: str) -> int:
