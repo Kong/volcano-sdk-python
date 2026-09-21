@@ -1212,6 +1212,18 @@ class Channel:
         await self._presence_unsubscribed()
 
 
+async def _reset_realtime_channels(
+    channels: tuple[Channel, ...],
+) -> asyncio.CancelledError | None:
+    cancelled: asyncio.CancelledError | None = None
+    for channel in channels:
+        try:
+            await channel._reset()
+        except asyncio.CancelledError as error:
+            cancelled = error
+    return cancelled
+
+
 class Realtime:
     """Manage project realtime connections and channels."""
 
@@ -1562,23 +1574,31 @@ class Realtime:
                 finally:
                     channel._readiness_task = None
             except BaseException as error:
-                if (
-                    subscription is None
-                    or channel._subscription is not subscription
-                    or channel._paused
-                ):
-                    # An explicit pause or removal owns the newer subscription intent.
-                    raise
-                channel._subscribe_generation += 1
-                channel._subscription_events = None
-                channel._pause_delivery()
-                try:
-                    async with self._connection_lock:
-                        if channel._subscription is subscription:
-                            await self._discard_subscription(channel)
-                except CENTRIFUGE_ERROR:
-                    error.add_note("Failed to clean up the realtime subscription")
+                await self._cleanup_failed_subscription(channel, subscription, error)
                 raise
+
+    async def _cleanup_failed_subscription(
+        self,
+        channel: Channel,
+        subscription: CentrifugeSubscription | None,
+        error: BaseException,
+    ) -> None:
+        if (
+            subscription is None
+            or channel._subscription is not subscription
+            or channel._paused
+        ):
+            # An explicit pause or removal owns the newer subscription intent.
+            return
+        channel._subscribe_generation += 1
+        channel._subscription_events = None
+        channel._pause_delivery()
+        try:
+            async with self._connection_lock:
+                if channel._subscription is subscription:
+                    await self._discard_subscription(channel)
+        except CENTRIFUGE_ERROR:
+            error.add_note("Failed to clean up the realtime subscription")
 
     async def _prepare_subscription(
         self, channel: Channel, generation: int
@@ -1670,11 +1690,7 @@ class Realtime:
                 channel._invalidate()
             cancelled: asyncio.CancelledError | None = None
             try:
-                for channel in channels:
-                    try:
-                        await channel._reset()
-                    except asyncio.CancelledError as error:
-                        cancelled = error
+                cancelled = await _reset_realtime_channels(channels)
             finally:
                 try:
                     if connection is not None:
