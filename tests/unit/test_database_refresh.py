@@ -57,6 +57,62 @@ def rows_response() -> httpx.Response:
     return httpx.Response(200, json={"data": [{"id": 1}], "count": 1})
 
 
+def handle_expired_read(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/auth/refresh":
+        return refreshed_response()
+    if request.headers["authorization"] == f"Bearer {access_token('old')}":
+        return httpx.Response(401, json={"error": "expired"})
+    return rows_response()
+
+
+def replace_session_on(
+    client: VolcanoClient, replacement: Session, expected_event: str
+) -> Callable[[str, Session | None], None]:
+    def listener(event: str, _session: Session | None) -> None:
+        if event == expected_event:
+            client.auth.set_session(replacement)
+
+    return listener
+
+
+def mutation_response(
+    request: httpx.Request, outcome: str, rejection: bytes
+) -> httpx.Response:
+    if outcome == "network":
+        message = "timeout"
+        raise httpx.ReadTimeout(message, request=request)
+    if (
+        request.headers["authorization"] == f"Bearer {access_token('old')}"
+        or outcome == "denied"
+    ):
+        return httpx.Response(401, content=rejection)
+    return rows_response()
+
+
+def assert_mutation_outcome(mutation: Callable[[], object], outcome: str) -> None:
+    if outcome == "success":
+        assert mutation() == [{"id": 1}]
+        return
+    errors = {
+        "denied": AuthenticationError,
+        "replaced": SessionChangedError,
+        "network": TransportError,
+    }
+    with pytest.raises(errors[outcome]):
+        mutation()
+
+
+def assert_mutation_requests(
+    requests: list[httpx.Request], operation: str, outcome: str
+) -> None:
+    expected_requests = {"success": 3, "denied": 3, "replaced": 2, "network": 1}
+    assert len(requests) == expected_requests[outcome]
+    assert requests[0].url.path.endswith(f"/{operation}")
+    if len(requests) == 3:
+        assert requests[0].content == requests[2].content
+        assert requests[2].headers["authorization"] == f"Bearer {access_token('new')}"
+
+
 @pytest.mark.parametrize("columns", [(), ("*",), ("id", "title")])
 def test_select_preserves_zero_pagination_and_query_clauses(
     columns: tuple[str, ...],
@@ -195,12 +251,9 @@ def test_read_never_retries_under_a_replacement_session(replace_at: str) -> None
 
     client = make_client(handle)
     if replace_at == "listener":
-
-        def replace_on_refresh(event: str, _session: Session | None) -> None:
-            if event == "TOKEN_REFRESHED":
-                client.auth.set_session(replacement)
-
-        client.auth.on_auth_state_change(replace_on_refresh)
+        client.auth.on_auth_state_change(
+            replace_session_on(client, replacement, "TOKEN_REFRESHED")
+        )
     with pytest.raises(SessionChangedError):
         client.database("db").from_("items").execute()
     assert client.current_session == replacement
@@ -278,14 +331,7 @@ def test_read_completes_before_a_queued_refresh_listener_changes_session() -> No
     release = Event()
     replacement = Session("replacement", "refresh", "other")
 
-    def handle(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/auth/refresh":
-            return refreshed_response()
-        if request.headers["authorization"] == f"Bearer {access_token('old')}":
-            return httpx.Response(401, json={"error": "expired"})
-        return rows_response()
-
-    client = make_client(handle)
+    client = make_client(handle_expired_read)
 
     def on_auth_change(event: str, _session: Session | None) -> None:
         if event == "INITIAL_SESSION":
@@ -311,14 +357,7 @@ def test_refresh_listener_can_wait_for_another_refresh_thread() -> None:
     completed: list[bool] = []
     workers: list[Thread] = []
 
-    def handle(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/auth/refresh":
-            return refreshed_response()
-        if request.headers["authorization"] == f"Bearer {access_token('old')}":
-            return httpx.Response(401, json={"error": "expired"})
-        return rows_response()
-
-    client = make_client(handle)
+    client = make_client(handle_expired_read)
 
     def on_refresh(event: str, _session: Session | None) -> None:
         if event != "TOKEN_REFRESHED":
@@ -355,11 +394,9 @@ def test_read_rechecks_session_after_replay_or_failure_notification(
 
     client = make_client(handle)
 
-    def on_sign_out(event: str, _session: Session | None) -> None:
-        if event == "SIGNED_OUT":
-            client.auth.set_session(replacement)
-
-    client.auth.on_auth_state_change(on_sign_out)
+    client.auth.on_auth_state_change(
+        replace_session_on(client, replacement, "SIGNED_OUT")
+    )
     with pytest.raises(SessionChangedError):
         client.database("db").from_("items").execute()
     assert client.current_session == replacement
@@ -401,15 +438,7 @@ def test_mutation_retries_only_an_explicit_401_under_the_same_session(
             if outcome == "replaced":
                 client.auth.set_session(replacement)
             return refreshed_response()
-        if outcome == "network":
-            message = "timeout"
-            raise httpx.ReadTimeout(message, request=request)
-        if (
-            request.headers["authorization"] == f"Bearer {access_token('old')}"
-            or outcome == "denied"
-        ):
-            return httpx.Response(401, content=rejection)
-        return rows_response()
+        return mutation_response(request, outcome, rejection)
 
     client = make_client(handle)
     table = client.database("db").from_("items").eq("id", 1)
@@ -418,21 +447,7 @@ def test_mutation_retries_only_an_explicit_401_under_the_same_session(
         "update": table.update({"id": 1}).execute,
         "delete": table.delete().execute,
     }[operation]
-    if outcome == "success":
-        assert mutation() == [{"id": 1}]
-    else:
-        errors = {
-            "denied": AuthenticationError,
-            "replaced": SessionChangedError,
-            "network": TransportError,
-        }
-        with pytest.raises(errors[outcome]):
-            mutation()
-    expected_requests = {"success": 3, "denied": 3, "replaced": 2, "network": 1}
-    assert len(requests) == expected_requests[outcome]
-    assert requests[0].url.path.endswith(f"/{operation}")
-    if len(requests) == 3:
-        assert requests[0].content == requests[2].content
-        assert requests[2].headers["authorization"] == f"Bearer {access_token('new')}"
+    assert_mutation_outcome(mutation, outcome)
+    assert_mutation_requests(requests, operation, outcome)
     if outcome == "replaced":
         assert client.auth.get_session() == replacement

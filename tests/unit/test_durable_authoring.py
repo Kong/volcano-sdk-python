@@ -243,6 +243,16 @@ def test_a_batch_reports_the_item_that_failed() -> None:
     }
 
 
+def fail_second_item(item: int, child: DurableContext, _index: int) -> int:
+    def run(_scope: StepScope) -> int:
+        if item == 2:
+            message = "item two is bad"
+            raise ValueError(message)
+        return item
+
+    return child.step(run, retry=False)
+
+
 def test_a_failure_is_reported_in_the_facade_s_own_shape() -> None:
     """A failed item reports the platform's wire object, not an exception.
 
@@ -253,16 +263,7 @@ def test_a_failure_is_reported_in_the_facade_s_own_shape() -> None:
 
     @durable
     def handler(_event: Any, ctx: DurableContext) -> Any:
-        def work(item: int, child: DurableContext, _index: int) -> int:
-            def run(_scope: StepScope) -> int:
-                if item == 2:
-                    message = "item two is bad"
-                    raise ValueError(message)
-                return item
-
-            return child.step(run, retry=False)
-
-        batch = ctx.map([1, 2], work, "one-fails")
+        batch = ctx.map([1, 2], fail_second_item, "one-fails")
         # Found rather than indexed. `items` carries the items that settled,
         # and a batch can come back the moment the failure does -- leaving the
         # sibling that was still running out of it -- so the failed item's
@@ -488,26 +489,27 @@ def test_the_logger_is_reachable_on_the_context() -> None:
     assert run_handler(handler) is True
 
 
+class Recorder:
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+
+    def info(self, message: str, *_args: object, **_kwargs: object) -> None:
+        self.messages.append(message)
+
+    def warn(self, message: str, *_args: object, **_kwargs: object) -> None:
+        self.messages.append(message)
+
+    def warning(self, message: str, *_args: object, **_kwargs: object) -> None:
+        self.messages.append(message)
+
+    def error(self, message: str, *_args: object, **_kwargs: object) -> None:
+        self.messages.append(message)
+
+    def debug(self, message: str, *_args: object, **_kwargs: object) -> None:
+        self.messages.append(message)
+
+
 def test_a_replacement_logger_is_installed() -> None:
-    class Recorder:
-        def __init__(self) -> None:
-            self.messages: list[str] = []
-
-        def info(self, message: str, *_args: object, **_kwargs: object) -> None:
-            self.messages.append(message)
-
-        def warn(self, message: str, *_args: object, **_kwargs: object) -> None:
-            self.messages.append(message)
-
-        def warning(self, message: str, *_args: object, **_kwargs: object) -> None:
-            self.messages.append(message)
-
-        def error(self, message: str, *_args: object, **_kwargs: object) -> None:
-            self.messages.append(message)
-
-        def debug(self, message: str, *_args: object, **_kwargs: object) -> None:
-            self.messages.append(message)
-
     recorder = Recorder()
 
     @durable(logger=recorder)

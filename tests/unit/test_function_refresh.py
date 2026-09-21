@@ -21,8 +21,9 @@ from volcano_sdk._transport import GeneratedTransport
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from concurrent.futures import Future
 
-    from volcano_sdk.models import JSONValue
+    from volcano_sdk.models import FunctionResponse, JSONValue
 
 USER_ID = "00000000-0000-4000-8000-000000000001"
 FUNCTION_ID = "00000000-0000-4000-8000-000000000040"
@@ -246,6 +247,36 @@ def test_function_does_not_refresh_key_credentials(key: str) -> None:
     assert paths == ["/functions/resolve"]
 
 
+def replace_session_on_refresh(
+    client: VolcanoClient, replacement: Session
+) -> Callable[[str, Session | None], None]:
+    def listener(event: str, _session: Session | None) -> None:
+        if event == "TOKEN_REFRESHED":
+            client.auth.set_session(replacement)
+
+    return listener
+
+
+def assert_invocation_outcome(
+    call: Future[FunctionResponse], refresh_status: int
+) -> None:
+    if refresh_status == 200:
+        assert call.result(timeout=5).data == {"ok": True}
+        return
+    with pytest.raises(AuthenticationError, match="invocation rejected"):
+        call.result(timeout=5)
+
+
+def refresh_invocation_response(
+    request: httpx.Request, refreshes: list[str]
+) -> httpx.Response:
+    refreshes.append(request.url.path)
+    result = refreshed_response().json()
+    result["access_token"] = access_token(f"renewed-{len(refreshes)}")
+    result["refresh_token"] = f"refresh-{len(refreshes)}"
+    return httpx.Response(200, json=result)
+
+
 @pytest.mark.parametrize("replace_at", ["refresh", "listener"])
 def test_function_does_not_dispatch_after_refresh_replaces_session(
     replace_at: str,
@@ -263,12 +294,9 @@ def test_function_does_not_dispatch_after_refresh_replaces_session(
 
     client = make_client(handle)
     if replace_at == "listener":
-
-        def replace(event: str, _session: Session | None) -> None:
-            if event == "TOKEN_REFRESHED":
-                client.auth.set_session(replacement)
-
-        client.auth.on_auth_state_change(replace)
+        client.auth.on_auth_state_change(
+            replace_session_on_refresh(client, replacement)
+        )
     with pytest.raises(SessionChangedError):
         client.functions.invoke("echo")
     assert paths == ["/functions/resolve", "/auth/refresh"]
@@ -280,30 +308,13 @@ def test_concurrent_function_invocations_share_refresh(refresh_status: int) -> N
     initial_calls = Barrier(2, timeout=5)
     refreshes: list[httpx.Request] = []
 
-    def handle(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/auth/refresh":
-            refreshes.append(request)
-            return (
-                refreshed_response()
-                if refresh_status == 200
-                else httpx.Response(401, json={"error": "refresh rejected"})
-            )
-        if request.url.path == "/functions/resolve":
-            return resolved_response()
-        if request.headers["authorization"] == f"Bearer {access_token('old')}":
-            initial_calls.wait()
-            return httpx.Response(401, json={"error": "invocation rejected"})
-        return httpx.Response(200, json={"ok": True})
-
-    client = make_client(handle)
+    client = make_client(
+        concurrent_invocation_handler(initial_calls, refreshes, refresh_status)
+    )
     with ThreadPoolExecutor(max_workers=2) as pool:
         calls = [pool.submit(client.functions.invoke, "echo") for _ in range(2)]
         for call in calls:
-            if refresh_status == 200:
-                assert call.result(timeout=5).data == {"ok": True}
-            else:
-                with pytest.raises(AuthenticationError, match="invocation rejected"):
-                    call.result(timeout=5)
+            assert_invocation_outcome(call, refresh_status)
     assert len(refreshes) == 1
 
 
@@ -312,17 +323,40 @@ def test_function_refreshes_the_token_captured_at_each_rejected_stage() -> None:
 
     def handle(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/auth/refresh":
-            refreshes.append(request.url.path)
-            result = refreshed_response().json()
-            result["access_token"] = access_token(f"renewed-{len(refreshes)}")
-            result["refresh_token"] = f"refresh-{len(refreshes)}"
-            return httpx.Response(200, json=result)
-        if request.url.path == "/functions/resolve":
-            if request.headers["authorization"] != f"Bearer {access_token('old')}":
-                return resolved_response()
-        elif request.headers["authorization"] == f"Bearer {access_token('renewed-2')}":
-            return httpx.Response(200, json={"ok": True})
-        return httpx.Response(401, json={"error": "stage expired"})
+            return refresh_invocation_response(request, refreshes)
+        return invocation_stage_response(request)
 
     assert make_client(handle).functions.invoke("echo").data == {"ok": True}
     assert len(refreshes) == 2
+
+
+def invocation_stage_response(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/functions/resolve":
+        if request.headers["authorization"] != f"Bearer {access_token('old')}":
+            return resolved_response()
+    elif request.headers["authorization"] == f"Bearer {access_token('renewed-2')}":
+        return httpx.Response(200, json={"ok": True})
+    return httpx.Response(401, json={"error": "stage expired"})
+
+
+def refresh_outcome_response(status: int) -> httpx.Response:
+    if status == 200:
+        return refreshed_response()
+    return httpx.Response(401, json={"error": "refresh rejected"})
+
+
+def concurrent_invocation_handler(
+    initial_calls: Barrier, refreshes: list[httpx.Request], refresh_status: int
+) -> Callable[[httpx.Request], httpx.Response]:
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/refresh":
+            refreshes.append(request)
+            return refresh_outcome_response(refresh_status)
+        if request.url.path == "/functions/resolve":
+            return resolved_response()
+        if request.headers["authorization"] == f"Bearer {access_token('old')}":
+            initial_calls.wait()
+            return httpx.Response(401, json={"error": "invocation rejected"})
+        return httpx.Response(200, json={"ok": True})
+
+    return handle
