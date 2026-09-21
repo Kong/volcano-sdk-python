@@ -251,13 +251,18 @@ def _identifier(value: object, field: str) -> str:
     return trimmed
 
 
-def _durable_execution(payload: object) -> DurableExecution:
+def _execution_fields(payload: object) -> Mapping[str, object]:
     if not isinstance(payload, Mapping):
         raise TypeError(_INVALID_EXECUTION_PAYLOAD)
     values = cast("Mapping[str, object]", payload)
     for required in ("id", "function_id", "name", "status", "region", "created_at"):
         if not isinstance(values.get(required), str) or not values[required]:
             raise TypeError(_INVALID_EXECUTION_PAYLOAD)
+    return values
+
+
+def _durable_execution(payload: object) -> DurableExecution:
+    values = _execution_fields(payload)
     created_at = _datetime(values["created_at"])
     if created_at is None:
         raise TypeError(_INVALID_EXECUTION_PAYLOAD)

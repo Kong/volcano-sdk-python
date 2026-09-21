@@ -503,3 +503,47 @@ def test_an_execution_has_a_stable_hash() -> None:
     )
 
     assert hash(execution) == hash(execution)
+
+
+@pytest.mark.parametrize(
+    "field", ["id", "function_id", "name", "status", "region", "created_at"]
+)
+@pytest.mark.parametrize("value", [None, "", 12])
+def test_execution_requires_nonempty_string_fields(field: str, value: object) -> None:
+    transport = FakeDurableTransport()
+    payload = running_execution()
+    payload[field] = value
+    transport.get_response = FakeResponse(200, payload, {})
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        durable_client(transport).durable.get(
+            PROJECT_ID, "order-pipeline", EXECUTION_ID
+        )
+
+
+@pytest.mark.parametrize(
+    "field", ["id", "function_id", "name", "status", "region", "created_at"]
+)
+def test_execution_requires_all_identity_fields(field: str) -> None:
+    transport = FakeDurableTransport()
+    payload = running_execution()
+    del payload[field]
+    transport.get_response = FakeResponse(200, payload, {})
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        durable_client(transport).durable.get(
+            PROJECT_ID, "order-pipeline", EXECUTION_ID
+        )
+
+
+@pytest.mark.parametrize("value", [0, 1, "true", [], {}])
+def test_execution_rejects_non_boolean_expiration(value: object) -> None:
+    transport = FakeDurableTransport()
+    transport.get_response = FakeResponse(
+        200, running_execution(result_expired=value), {}
+    )
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        durable_client(transport).durable.get(
+            PROJECT_ID, "order-pipeline", EXECUTION_ID
+        )
