@@ -51,6 +51,27 @@ def test_empty_discovery_fails(guarded: pytest.Pytester) -> None:
     result.stdout.fnmatch_lines(["*Incomplete test run: empty test discovery*"])
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import pytest\npytest.skip('module disabled', allow_module_level=True)",
+        "import pytest\npytest.importorskip('_volcano_quality_missing_module_')",
+        (
+            "import pytest\nclass TestDisabled:\n"
+            "    pytest.skip('class disabled', allow_module_level=True)"
+        ),
+    ],
+)
+def test_collection_skips_fail(guarded: pytest.Pytester, source: str) -> None:
+    guarded.makepyfile(
+        test_skipped=source, test_passed="def test_passes(): assert True"
+    )
+    result = guarded.runpytest_subprocess()
+    result.assert_outcomes(passed=1, skipped=1)
+    assert result.ret == pytest.ExitCode.TESTS_FAILED
+    result.stdout.fnmatch_lines(["*Incomplete test run: skipped collection:*"])
+
+
 def test_missing_execution_fails(guarded: pytest.Pytester) -> None:
     guarded.makeconftest(
         INTEGRITY + "\ndef pytest_runtest_protocol(item, nextitem): return True\n",

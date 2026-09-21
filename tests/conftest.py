@@ -25,6 +25,10 @@ class _TestIntegrity:
             if forbidden.intersection(marker.name for marker in item.iter_markers()):
                 self.violations.add(f"disabled test marker: {item.nodeid}")
 
+    def pytest_collectreport(self, report: pytest.CollectReport) -> None:
+        if report.skipped:
+            self.violations.add(f"skipped collection: {report.nodeid}")
+
     def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
         key = (report.nodeid, report.when)
         if key in self.reports:
