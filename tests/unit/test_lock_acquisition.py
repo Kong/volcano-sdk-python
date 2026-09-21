@@ -32,6 +32,22 @@ def make_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCl
     )
 
 
+def failed_acquisition_response(request: httpx.Request, failure: str) -> httpx.Response:
+    if failure == "transport":
+        message = "response lost after acquiring"
+        raise httpx.ReadError(message, request=request)
+    bodies = {"empty": b"", "html": b"<h1>Unavailable</h1>", "malformed": b"{"}
+    if failure in bodies:
+        return httpx.Response(503, content=bodies[failure])
+    return httpx.Response(503, json={"error": "acquire outcome unknown"})
+
+
+def lease_response(request: httpx.Request) -> httpx.Response:
+    if request.method == "DELETE":
+        return httpx.Response(204)
+    return httpx.Response(201 if request.method == "POST" else 200, json=LEASE)
+
+
 @pytest.mark.parametrize("failure", ["transport", "503", "empty", "html", "malformed"])
 @pytest.mark.parametrize("supplied", [False, True])
 def test_acquire_retries_once_with_the_same_owner_and_request(
@@ -42,13 +58,7 @@ def test_acquire_retries_once_with_the_same_owner_and_request(
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         if len(requests) == 1:
-            if failure == "transport":
-                message = "response lost after acquiring"
-                raise httpx.ReadError(message, request=request)
-            bodies = {"empty": b"", "html": b"<h1>Unavailable</h1>", "malformed": b"{"}
-            if failure in bodies:
-                return httpx.Response(503, content=bodies[failure])
-            return httpx.Response(503, json={"error": "acquire outcome unknown"})
+            return failed_acquisition_response(request, failure)
         return httpx.Response(201, json=LEASE)
 
     client = make_client(handle)
@@ -208,9 +218,7 @@ def test_guard_uses_successful_attempt_start_without_extending_a_slow_retry(
             raise httpx.ReadError(message, request=request)
         if request.method == "POST":
             clock[0] += retry_duration
-        if request.method == "DELETE":
-            return httpx.Response(204)
-        return httpx.Response(201 if request.method == "POST" else 200, json=LEASE)
+        return lease_response(request)
 
     client = make_client(handle)
     if retry_duration > 30:
