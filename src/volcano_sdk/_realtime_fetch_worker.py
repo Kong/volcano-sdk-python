@@ -196,15 +196,8 @@ class PostgresFetchWorker(Generic[FallbackT]):
             return None
         deadline = asyncio.get_running_loop().time() + self._batch_window_seconds
         while len(batch) < self._max_batch_size:
-            remaining = deadline - asyncio.get_running_loop().time()
-            if remaining <= 0:
-                return None
-            try:
-                async with asyncio.timeout(remaining):
-                    candidate = await self._queue.get()
-            except TimeoutError:
-                return None
-            if isinstance(candidate, _StopWorker):
+            candidate = await self._next_before(deadline)
+            if candidate is None or isinstance(candidate, _StopWorker):
                 return candidate
             request = candidate.request
             if (
@@ -215,6 +208,19 @@ class PostgresFetchWorker(Generic[FallbackT]):
                 return candidate
             batch.append(candidate)
         return None
+
+    async def _next_before(
+        self,
+        deadline: float,
+    ) -> PostgresFetchJob[FallbackT] | _StopWorker | None:
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            return None
+        try:
+            async with asyncio.timeout(remaining):
+                return await self._queue.get()
+        except TimeoutError:
+            return None
 
     @staticmethod
     def _same_fetch(
@@ -254,12 +260,19 @@ class PostgresFetchWorker(Generic[FallbackT]):
             return_exceptions=True,
         )
         if isinstance(result, BaseException):
-            if not isinstance(result, Exception):
-                raise result
-            for job in jobs:
-                await self._deliver(PostgresFetchOutcome(job=job, error=result))
+            await self._deliver_failure(jobs, result)
             return
         if len(result) != len(jobs):
             raise RuntimeError(_INVALID_RESULT_COUNT)
         for job, record in zip(jobs, result, strict=True):
             await self._deliver(PostgresFetchOutcome(job=job, record=record))
+
+    async def _deliver_failure(
+        self,
+        jobs: list[PostgresFetchJob[FallbackT]],
+        error: BaseException,
+    ) -> None:
+        if not isinstance(error, Exception):
+            raise error
+        for job in jobs:
+            await self._deliver(PostgresFetchOutcome(job=job, error=error))
