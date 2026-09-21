@@ -59,6 +59,10 @@ dev = [
 files = ["src", "tests", "scripts"]
 python_version = "3.11"
 strict = true
+disallow_any_unimported = true
+warn_unreachable = true
+warn_unused_ignores = true
+enable_error_code = ["ignore-without-code", "unused-awaitable"]
 explicit_package_bases = true
 mypy_path = [
   "$MYPY_CONFIG_FILE_DIR/src",

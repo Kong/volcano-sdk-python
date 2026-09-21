@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from state_assertions import assert_same
 
 from volcano_sdk import (
     AuthenticationError,
@@ -38,13 +39,13 @@ def centrifuge_error(message: str) -> Exception:
 def test_realtime_database_binding_can_be_replaced_and_cleared() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
 
-    assert client.realtime.database_name is None
+    assert_same(client.realtime.database_name, expected=None)
 
     client.realtime.set_database_name("app")
     assert client.realtime.database_name == "app"
 
     client.realtime.set_database_name(None)
-    assert client.realtime.database_name is None
+    assert_same(client.realtime.database_name, expected=None)
 
 
 def test_realtime_fetches_session_bound_postgres_rows() -> None:
@@ -706,7 +707,7 @@ def test_realtime_cancelled_pause_keeps_native_subscription_resumable(
             await pausing
         await factory.reply(presence, presence={"presence": {}})
         assert subscription.state.value == "unsubscribed"
-        assert not channel._subscribed
+        assert_same(channel._subscribed, expected=False)
 
         resuming = asyncio.create_task(channel.subscribe())
         try:
@@ -717,7 +718,7 @@ def test_realtime_cancelled_pause_keeps_native_subscription_resumable(
             await factory.reply(command, presence={"presence": {}})
             await resuming
             await channel._wait_presence_sync()
-            assert channel._subscribed
+            assert_same(channel._subscribed, expected=True)
             assert factory.client.get_subscription(channel.name) is subscription
         finally:
             await client.realtime.disconnect()
@@ -1018,7 +1019,7 @@ def test_realtime_drops_queued_postgres_callbacks_from_an_old_epoch() -> None:
         await subscription.emit(insert(2))
 
         await subscription.emit_subscribing()
-        assert channel._postgres_worker is None
+        assert_same(channel._postgres_worker, expected=None)
         release_first.set()
         await subscription.emit_subscribed()
         await subscription.emit(insert(3))
@@ -1079,12 +1080,12 @@ def test_realtime_only_queues_changes_with_an_interested_listener() -> None:
         await subscription.emit(publication("UPDATE", "messages"))
         await subscription.emit(publication("INSERT", "other"))
 
-        assert channel._postgres_worker is None
+        assert_same(channel._postgres_worker, expected=None)
 
         stop()
         await subscription.emit(publication("INSERT", "messages"))
 
-        assert channel._postgres_worker is None
+        assert_same(channel._postgres_worker, expected=None)
 
         channel.on("*", UnhashableListener(unfiltered, unfiltered_received))
         await subscription.emit(publication("UPDATE", "other"))
@@ -1558,7 +1559,7 @@ def test_realtime_disconnect_invalidates_channels_before_clearing_auth() -> None
 
         def observe_disconnect_boundary() -> None:
             nonlocal observed
-            assert not channel._subscribed
+            assert_same(channel._subscribed, expected=False)
             assert client.realtime._connection_token() == "access-1"
             observed = True
 
@@ -2796,9 +2797,9 @@ def test_realtime_reports_connection_state_and_removes_one_channel() -> None:
 
     async def scenario() -> None:
         channel = client.realtime.channel("contract")
-        assert client.realtime.is_connected is False
+        assert_same(client.realtime.is_connected, expected=False)
         await channel.subscribe()
-        assert client.realtime.is_connected is True
+        assert_same(client.realtime.is_connected, expected=True)
 
         await client.realtime.remove_channel("contract")
 
@@ -2807,10 +2808,10 @@ def test_realtime_reports_connection_state_and_removes_one_channel() -> None:
         replacement = client.realtime.channel("contract")
         assert replacement is not channel
         await replacement.subscribe()
-        assert client.realtime.is_connected is True
+        assert_same(client.realtime.is_connected, expected=True)
         await client.realtime.remove_channel("missing")
         await client.realtime.disconnect()
-        assert client.realtime.is_connected is False
+        assert_same(client.realtime.is_connected, expected=False)
 
     asyncio.run(scenario())
 
@@ -2826,11 +2827,11 @@ def test_realtime_connection_state_tracks_transport_disconnects() -> None:
 
     async def scenario() -> None:
         await client.realtime.channel("contract").subscribe()
-        assert client.realtime.is_connected is True
+        assert_same(client.realtime.is_connected, expected=True)
 
         official.state = SimpleNamespace(value="connecting")
 
-        assert client.realtime.is_connected is False
+        assert_same(client.realtime.is_connected, expected=False)
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -2978,7 +2979,7 @@ def test_realtime_removes_all_channels_without_disconnecting() -> None:
         )
         assert client.realtime.channel("first") is not first
         assert client.realtime.channel("second") is not second
-        assert client.realtime.is_connected is True
+        assert_same(client.realtime.is_connected, expected=True)
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -3710,7 +3711,7 @@ def test_realtime_subscribe_waits_for_server_acknowledgement(
                 assert official.subscription is not None
                 await official.subscription.emit_subscribed()
                 await asyncio.wait_for(subscribing, timeout=0.2)
-                assert channel._subscribed
+                assert_same(channel._subscribed, expected=True)
                 if channel_type == "broadcast":
                     await channel.send({"value": "ready"})
                     assert official.subscription.calls[-1] == (
@@ -3803,7 +3804,7 @@ def test_realtime_failed_readiness_cannot_activate_later(
             await stale.emit_subscribed()
             await stale.emit("late acknowledgement")
             await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
-            assert not channel._subscribed
+            assert_same(channel._subscribed, expected=False)
             assert received == []
             assert ("unsubscribe", None) in stale.calls
             stale.unsubscribe_error = None
@@ -3953,7 +3954,7 @@ def test_realtime_native_subscription_waits_for_acknowledgement(
                 assert not subscribing.done()
                 await factory.reply(command, presence={"presence": {}})
             await asyncio.wait_for(subscribing, timeout=0.2)
-            assert channel._subscribed
+            assert_same(channel._subscribed, expected=True)
             if channel_type == "broadcast":
                 sending = asyncio.create_task(channel.send("ready"))
                 command = await factory.command()
@@ -4001,7 +4002,7 @@ def test_realtime_native_failed_readiness_stops_late_acknowledgement_and_allows_
             )
             with pytest.raises(error):
                 await asyncio.wait_for(subscribing, timeout=0.2)
-            assert not channel._subscribed
+            assert_same(channel._subscribed, expected=False)
             assert channel._subscription is None
             assert received == []
 
@@ -4061,7 +4062,7 @@ def test_realtime_cancelled_subscribe_settles_late_presence_reply(
             await factory.reply(await factory.command(), subscribe={})
             await factory.reply(await factory.command(), presence={"presence": {}})
             await asyncio.wait_for(subscribing, timeout=0.2)
-            assert channel._subscribed
+            assert_same(channel._subscribed, expected=True)
         finally:
             await client.realtime.disconnect()
             await asyncio.gather(subscribing, return_exceptions=True)
@@ -4192,7 +4193,7 @@ def test_realtime_failed_removal_clears_presence(
                 await removing
             assert channel.get_presence_state() == {}
             assert channel.tracked_state == {}
-            assert not channel._subscribed
+            assert_same(channel._subscribed, expected=False)
         finally:
             await client.realtime.disconnect()
             await asyncio.gather(removing, return_exceptions=True)
@@ -4233,7 +4234,7 @@ def test_realtime_disconnect_cancels_readiness_and_allows_immediate_retry(
             if channel_type == "presence":
                 await second.reply(await second.command(), presence={"presence": {}})
             await asyncio.wait_for(retrying, timeout=0.2)
-            assert channel._subscribed
+            assert_same(channel._subscribed, expected=True)
         finally:
             subscribing.cancel()
             if retrying is not None:
@@ -4278,7 +4279,7 @@ def test_realtime_cancelled_local_removal_clears_presence(*, remove_all: bool) -
                 await removing
             assert channel.get_presence_state() == {}
             assert channel.tracked_state == {}
-            assert not channel._subscribed
+            assert_same(channel._subscribed, expected=False)
         finally:
             await client.realtime.disconnect()
             await asyncio.gather(removing, return_exceptions=True)
@@ -4311,7 +4312,7 @@ def test_realtime_repeated_subscribe_does_not_stop_active_delivery(
             assert not subscribing.cancel()
             await subscribing
             assert factory.commands.empty()
-            assert channel._subscribed
+            assert_same(channel._subscribed, expected=True)
         finally:
             await client.realtime.disconnect()
             await asyncio.gather(subscribing, return_exceptions=True)
@@ -4355,14 +4356,14 @@ def test_realtime_stop_invalidates_queued_subscribe_calls(
             assert done == {subscribing, queued}
             with pytest.raises(asyncio.CancelledError):
                 await queued
-            assert not channel._subscribed
+            assert_same(channel._subscribed, expected=False)
             assert first.commands.empty()
             assert second.commands.empty()
             retrying = asyncio.create_task(channel.subscribe())
             current = second if disconnect else first
             await current.reply(await current.command(), subscribe={})
             await asyncio.wait_for(retrying, timeout=0.2)
-            assert channel._subscribed
+            assert_same(channel._subscribed, expected=True)
         finally:
             for task in (subscribing, queued, stopping, retrying):
                 if task is not None:
@@ -4399,7 +4400,7 @@ def test_realtime_repeated_pause_invalidates_intervening_subscribe(
             assert done == {first, queued}
             with pytest.raises(asyncio.CancelledError):
                 await queued
-            assert not channel._subscribed
+            assert_same(channel._subscribed, expected=False)
             assert factory.commands.empty()
         finally:
             await client.realtime.disconnect()
@@ -4453,7 +4454,7 @@ def test_realtime_cancelled_unsubscribe_keeps_native_replies_valid(
                 await factory.reply(command, unsubscribe={})
             with pytest.raises(asyncio.CancelledError):
                 await asyncio.wait_for(stopping, timeout=0.2)
-            assert not channel._subscribed
+            assert_same(channel._subscribed, expected=False)
             if retrying is not None:
                 await factory.reply(await factory.command(), subscribe={})
                 await asyncio.wait_for(retrying, timeout=0.2)
@@ -4489,7 +4490,7 @@ def test_realtime_cancelled_unsubscribe_settles_on_native_timeout(
         try:
             with pytest.raises(asyncio.CancelledError):
                 await asyncio.wait_for(stopping, timeout=0.2)
-            assert not channel._subscribed
+            assert_same(channel._subscribed, expected=False)
             assert not factory.client._inflight_commands
         finally:
             await client.realtime.disconnect()
