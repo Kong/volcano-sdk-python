@@ -14,6 +14,7 @@ from tempfile import TemporaryDirectory
 def main() -> None:
     """Check source, contract bindings, and freshly built distributions."""
     os.chdir(Path(__file__).resolve().parent.parent)
+    subprocess.run(["/bin/bash", "scripts/audit_dependencies.sh"], check=True)
     subprocess.run([sys.executable, "scripts/check_openapi.py"], check=True)
     subprocess.run([sys.executable, "-m", "ruff", "check", "."], check=True)
     subprocess.run(
