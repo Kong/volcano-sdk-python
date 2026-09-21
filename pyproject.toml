@@ -56,6 +56,7 @@ dev = [
   "pip-audit==2.10.1",
   "hypothesis==6.168.0",
   "poethepoet==0.46.0",
+  "pytest-asyncio==1.4.0",
 ]
 
 [tool.mypy]
@@ -145,6 +146,10 @@ ignore = [
 ]
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
+asyncio_debug = true
 filterwarnings = ["error"]
 
 [tool.poe.tasks]
