@@ -28,7 +28,14 @@ _LOCK_STRIPES = 64
 
 
 def _now() -> float:
-    """Read the clock lifetimes are measured against, immune to wall-clock jumps."""
+    """Read the clock used for cache lifetimes.
+
+    Returns
+    -------
+    float
+        Monotonic seconds, unaffected by wall-clock adjustments.
+
+    """
     return time.monotonic()
 
 
@@ -62,7 +69,14 @@ _stripes = [threading.Lock() for _ in range(_LOCK_STRIPES)]
 
 
 def resolve_lock(api_url: str, authorization: str, name: str) -> threading.Lock:
-    """Return the lock that serializes resolving one name."""
+    """Select the lock for resolving one name.
+
+    Returns
+    -------
+    threading.Lock
+        A shared stripe keyed by API URL, credential, and function name.
+
+    """
     return _stripes[hash((api_url, authorization, name)) % _LOCK_STRIPES]
 
 
@@ -75,6 +89,12 @@ def valid_invoke_url(value: object, api_url: str) -> str | None:
 
     Anything unusable yields None so the caller falls back to the API path. A
     malformed server response must not raise out of invoke().
+
+    Returns
+    -------
+    str or None
+        The accepted URL unchanged, or None to use the API endpoint.
+
     """
     if not isinstance(value, str):
         return None
@@ -91,6 +111,12 @@ def _absolute_url_scheme(value: str) -> str:
 
     Unparseable input yields "" rather than raising, so a malformed URL reads
     as unusable to every caller.
+
+    Returns
+    -------
+    str
+        The lowercase scheme, or an empty string for an invalid authority or URL.
+
     """
     if not value or any(character.isspace() for character in value):
         return ""
@@ -105,7 +131,14 @@ def _absolute_url_scheme(value: str) -> str:
 
 
 def lookup(api_url: str, authorization: str, name: str) -> CachedOutcome | None:
-    """Return the cached outcome for a name, or None when it must be resolved."""
+    """Look up a function within its API and credential scope.
+
+    Returns
+    -------
+    CachedOutcome or None
+        An unexpired resolution or remembered miss; None requires a new resolve.
+
+    """
     key = (api_url, authorization, name)
     now = _now()
     with _lock:

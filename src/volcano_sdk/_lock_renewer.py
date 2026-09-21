@@ -17,7 +17,15 @@ def _renewal_jitter() -> float:
 
 
 def renewal_delay(ttl: int, *, remaining: float) -> float:
-    """Choose a jittered renewal time inside the current lease window."""
+    """Choose a jittered renewal time inside the current lease window.
+
+    Returns
+    -------
+    float
+        Seconds before renewal, capped by the remaining safe request window.
+        Zero requests immediate renewal.
+
+    """
     latest = max(
         0.0,
         remaining - RENEWAL_SAFETY_MARGIN_SECONDS - RENEWAL_REQUEST_BUDGET_SECONDS,

@@ -125,7 +125,15 @@ class Functions:
         name: str,
         payload: Mapping[str, JSONValue] | None = None,
     ) -> FunctionResponse:
-        """Resolve and invoke a function with an optional JSON object payload."""
+        """Resolve and invoke a function with an optional JSON object payload.
+
+        Returns
+        -------
+        FunctionResponse
+            The function's data, status, headers, and deployed version. Errors
+            returned by the function are preserved; platform failures raise.
+
+        """
         auth = _FunctionAuth(self._client)
         name = _function_name(name)
         request_payload = _function_payload(payload)
@@ -189,7 +197,14 @@ class Functions:
         authorization: str,
         name: str,
     ) -> FunctionResolution:
-        """Return the function's identity, reusing a live cached resolution."""
+        """Resolve a function, reusing a live cached result.
+
+        Returns
+        -------
+        FunctionResolution
+            The function's identifier and optional direct invocation URL.
+
+        """
         api_url = self._client._api_base_url()
         cached = self._cached(api_url, authorization, name)
         if cached is not None:
@@ -296,6 +311,12 @@ def _stale_mapping(response: TransportResponse) -> bool:
     X-Volcano-Function-Invoked only after dispatch, so its absence is what
     separates the two. X-Volcano-Version cannot: the server stamps it on every
     response, including errors raised before the function is reached.
+
+    Returns
+    -------
+    bool
+        True only for a 404 without the function-dispatch header.
+
     """
     return (
         int(response.status_code) == _HTTP_NOT_FOUND

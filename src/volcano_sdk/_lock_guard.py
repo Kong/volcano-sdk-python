@@ -69,19 +69,26 @@ class LockGuard:
 
     @property
     def lease(self) -> LockLease:
-        """Return the latest successfully renewed immutable lease."""
+        """The latest successfully renewed immutable lease."""
         with self._state_lock:
             return self._lease
 
     @property
     def lost(self) -> bool:
-        """Return whether renewal failed or the latest lease expired."""
+        """Whether renewal failed, the lease expired, or the guard closed."""
         with self._state_lock:
             self._expire_if_needed_locked(_lease_now())
             return self._lost.is_set()
 
     def wait_lost(self, timeout: float | None = None) -> bool:
-        """Wait until ownership is lost or the timeout expires."""
+        """Wait until ownership is lost or the timeout expires.
+
+        Returns
+        -------
+        bool
+            True when the guard reports lost ownership, False on timeout.
+
+        """
         timeout_deadline = None if timeout is None else _lease_now() + timeout
         while True:
             with self._state_lock:
