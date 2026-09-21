@@ -2,6 +2,8 @@
 /.github/ @Kong/team-volcano
 CODEOWNERS @Kong/team-volcano
 AGENTS.md @Kong/team-volcano
+CONTRIBUTING.md @Kong/team-volcano
+SECURITY.md @Kong/team-volcano
 CLAUDE.md @Kong/team-volcano
 GEMINI.md @Kong/team-volcano
 .agents/ @Kong/team-volcano
@@ -46,5 +48,10 @@ release-please-config.json @Kong/team-volcano
 
 # Test discovery and the tests that prove the gate cannot be weakened.
 conftest.py @Kong/team-volcano
+/tests/unit/property_support.py @Kong/team-volcano
+/tests/unit/test_dependency_audit.py @Kong/team-volcano
+/tests/unit/test_generation.py @Kong/team-volcano
+/tests/unit/test_mypy_policy.py @Kong/team-volcano
+/tests/unit/test_property_policy.py @Kong/team-volcano
 /tests/unit/test_quality_configuration.py @Kong/team-volcano
 /tests/unit/test_test_integrity.py @Kong/team-volcano
