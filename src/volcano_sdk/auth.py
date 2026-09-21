@@ -925,13 +925,22 @@ class Auth:
             ):
                 raise SessionChangedError from error
             raise
+        self._finish_session_deletion(binding, deletes_current=deletes_current)
+
+    def _finish_session_deletion(
+        self,
+        binding: tuple[int, SessionOperations, Session | None],
+        *,
+        deletes_current: bool,
+    ) -> None:
+        generation, lineage, _ = binding
         if deletes_current:
             if not self._client._clear_session_if_current(generation, lineage=lineage):
                 raise SessionChangedError
-        else:
-            _, active_lineage, active_session = self._client._capture_session_binding()
-            if active_lineage is not lineage or active_session is None:
-                raise SessionChangedError
+            return
+        _, active_lineage, active_session = self._client._capture_session_binding()
+        if active_lineage is not lineage or active_session is None:
+            raise SessionChangedError
 
     def confirm_email(self, *, token: str) -> None:
         """Confirm an email with its token without changing local state."""
@@ -1048,23 +1057,27 @@ class Auth:
             binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise RuntimeError(_NO_ACTIVE_SESSION)
-        binding = self._owned_refresh_session(binding)
-        current = binding[2]
-        if current is None:
-            raise SessionChangedError
+        owned = self._owned_refresh_session(binding)
+        current = owned[2]
         response = operation(current.access_token)
         if response.status_code != HTTPStatus.UNAUTHORIZED:
             return response
+        return self._replay_session_request(operation, owned, response)
+
+    def _replay_session_request(
+        self,
+        operation: Callable[[str], TransportResponse],
+        binding: tuple[int, SessionOperations, Session | None],
+        rejected_response: TransportResponse,
+    ) -> TransportResponse:
         try:
             self._refresh_session_for_binding(binding)
         except SessionChangedError:
             raise
         except VolcanoError:
             self._validate_read_failure(binding)
-            return response
+            return rejected_response
         session = self._owned_refresh_session(binding)[2]
-        if session is None:
-            raise SessionChangedError
         response = operation(session.access_token)
         self._owned_refresh_session(binding)
         return response
@@ -1094,16 +1107,12 @@ class Auth:
             self._validate_read_failure(binding)
             raise
         finally:
-            for dispatch in notifications:
-                dispatch()
-        active = self._owned_refresh_session(binding)[2]
-        if active is None:
-            raise SessionChangedError
-        return active
+            _dispatch_notifications(notifications)
+        return self._owned_refresh_session(binding)[2]
 
     def _owned_refresh_session(
         self, binding: tuple[int, SessionOperations, Session | None]
-    ) -> tuple[int, SessionOperations, Session | None]:
+    ) -> tuple[int, SessionOperations, Session]:
         generation, lineage, _ = binding
         active = self._client._capture_session_binding()
         if (
@@ -1114,7 +1123,7 @@ class Auth:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
         if active[1] != lineage or active[2] is None:
             raise SessionChangedError
-        return active
+        return active[0], active[1], active[2]
 
     def _perform_refresh(
         self,
@@ -1124,25 +1133,17 @@ class Auth:
     ) -> Session:
         generation, owner, _ = binding
         active_generation, _, active = self._owned_refresh_session(binding)
-        if active_generation != generation and active is not None:
+        if active_generation != generation:
             return active
-        if current.refresh_token is None:
+        refresh_token = current.refresh_token
+        if refresh_token is None:
             raise AuthenticationError(_REFRESH_UNAVAILABLE)
         verified = owner.has_verified_pair(current)
         validate_refresh_source(current, verified=verified)
         owner.verify_pair(None)
-        try:
-            refreshed = self._request_refreshed_session(current.refresh_token)
-        except RateLimitedError:
-            if verified:
-                owner.verify_pair(current)
-            raise
-        except AuthenticationError:
-            if owner.signing_out is None and self._client._clear_session_if_current(
-                generation, notifications=notifications
-            ):
-                self._rejected_refresh = (generation, owner)
-            raise
+        refreshed = self._refresh_with_recovery(
+            (current, refresh_token), binding, notifications, verified=verified
+        )
         validate_refresh_identity(current, refreshed)
         owner.verify_pair(refreshed)
         if owner.signing_out is None:
@@ -1153,6 +1154,29 @@ class Auth:
                 notifications=notifications,
             )
         return refreshed
+
+    def _refresh_with_recovery(
+        self,
+        credentials: tuple[Session, str],
+        binding: tuple[int, SessionOperations, Session | None],
+        notifications: list[Callable[[], None]],
+        *,
+        verified: bool,
+    ) -> Session:
+        generation, owner, _ = binding
+        current, refresh_token = credentials
+        try:
+            return self._request_refreshed_session(refresh_token)
+        except RateLimitedError:
+            if verified:
+                owner.verify_pair(current)
+            raise
+        except AuthenticationError:
+            if owner.signing_out is None and self._client._clear_session_if_current(
+                generation, notifications=notifications
+            ):
+                self._rejected_refresh = (generation, owner)
+            raise
 
     def _request_refreshed_session(self, refresh_token: str) -> Session:
         transport = cast("AuthRefreshTransport", self._client._transport)
@@ -1180,8 +1204,7 @@ class Auth:
                 )
             )
         finally:
-            for dispatch in notifications:
-                dispatch()
+            _dispatch_notifications(notifications)
 
     def _sign_out_captured(
         self,
@@ -1192,12 +1215,7 @@ class Auth:
         pending: bool,
     ) -> None:
         generation, owner, current = binding
-        refresh_error: VolcanoError | None = None
-        if preceding is not None:
-            try:
-                current = preceding.result()
-            except VolcanoError as caught:
-                refresh_error = caught
+        current, refresh_error = _preceding_session(current, preceding)
         if current is None:
             return
         error: VolcanoError | None = None
@@ -1273,3 +1291,19 @@ class Auth:
                 session_id=session_id,
             )
         response_payload(response, 204)
+
+
+def _dispatch_notifications(notifications: list[Callable[[], None]]) -> None:
+    for dispatch in notifications:
+        dispatch()
+
+
+def _preceding_session(
+    current: Session | None, preceding: Future[Session] | None
+) -> tuple[Session | None, VolcanoError | None]:
+    if preceding is None:
+        return current, None
+    try:
+        return preceding.result(), None
+    except VolcanoError as caught:
+        return current, caught

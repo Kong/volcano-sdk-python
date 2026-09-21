@@ -77,8 +77,6 @@ class _FunctionAuth:
                 raise SessionChangedError
             return self._fallback_token
         session = self._client.auth._owned_refresh_session(self._binding)[2]
-        if session is None:
-            raise SessionChangedError
         return session.access_token
 
 
