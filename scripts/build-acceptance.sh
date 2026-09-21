@@ -15,18 +15,17 @@ cp "$repo_dir/tests/package/quickstart.py" "$work/tests/package/"
 cp "$repo_dir/docs/README.md" "$work/docs/"
 cp "$repo_dir/scripts/smoke-wheel.sh" "$work/scripts/"
 cd "$work"
-uv add --no-sync "./$(basename "$artifact")"
-uv sync --frozen
-uv run --no-sync python -I - "$(basename "$artifact")" <<'PYTHON'
-import hashlib, json, sys
-from importlib.metadata import distribution
+uv add --no-sync --no-build "./$(basename "$artifact")"
+python3 - "$(basename "$artifact")" <<'PYTHON'
+import email, hashlib, json, sys, zipfile
 from pathlib import Path
-import volcano_sdk
-package = distribution("volcano-sdk-python")
-assert Path(volcano_sdk.__file__).resolve().is_relative_to(Path.cwd() / ".venv")
 artifact = Path(sys.argv[1])
-Path("acceptance.json").write_text(json.dumps({"schema": 1, "language": "python", "package": "volcano-sdk-python", "version": package.version, "filename": artifact.name, "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest()}, indent=2))
+with zipfile.ZipFile(artifact) as wheel:
+    names = [name for name in wheel.namelist() if name.endswith(".dist-info/METADATA")]
+    assert len(names) == 1
+    metadata = email.message_from_bytes(wheel.read(names[0]))
+assert metadata["Name"] == "volcano-sdk-python"
+Path("acceptance.json").write_text(json.dumps({"schema": 1, "language": "python", "package": metadata["Name"], "version": metadata["Version"], "filename": artifact.name, "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest()}, indent=2))
 PYTHON
-bash scripts/smoke-wheel.sh "$(basename "$artifact")"
-rm -rf .venv "$(basename "$artifact")"
+rm "$(basename "$artifact")"
 tar -czf "$output/sdk-acceptance.tar.gz" .

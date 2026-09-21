@@ -1,0 +1,53 @@
+name: Verify immutable acceptance artifacts
+
+on:
+  workflow_call:
+    inputs:
+      package-artifact-id:
+        required: true
+        type: string
+      bundle-artifact-id:
+        default: ''
+        type: string
+      release-version:
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          artifact-ids: ${{ inputs.package-artifact-id }}
+          merge-multiple: true
+          path: package
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        if: inputs.bundle-artifact-id != ''
+        with:
+          artifact-ids: ${{ inputs.bundle-artifact-id }}
+          merge-multiple: true
+          path: acceptance
+      # Fresh dependencies can modify these copies, never the uploaded artifacts.
+      - name: Verify the installed package and fresh consumer
+        env:
+          ACCEPTANCE_BUNDLE: ${{ inputs.bundle-artifact-id != '' && 'acceptance/sdk-acceptance.tar.gz' || 'package/sdk-acceptance.tar.gz' }}
+        run: bash scripts/test-acceptance.sh package/*.whl "$ACCEPTANCE_BUNDLE"
+      - name: Check wheel, source distribution and installed types
+        if: inputs.release-version != ''
+        env:
+          RELEASE_TAG: ${{ inputs.release-version }}
+        run: |
+          uv sync --frozen
+          bash scripts/check_package.sh "${RELEASE_TAG#v}" package
