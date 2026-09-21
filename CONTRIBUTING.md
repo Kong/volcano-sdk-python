@@ -18,6 +18,11 @@ Use established upstream tools before writing custom enforcement. Research
 current documentation when choosing an approach. Keep repository-specific
 checks only where a standard tool cannot express the required invariant.
 
+Pytest's [strict mode](https://docs.pytest.org/en/stable/explanation/goodpractices.html#strict-mode)
+rejects unknown settings and markers, duplicate parameter IDs, and unexpected
+xfail passes. Empty parameter sets fail during collection. Keep pytest pinned
+so new strictness options enter through a reviewed dependency update.
+
 Write asyncio behavior tests as `async def` tests. Pytest-asyncio gives each test
 its own event loop with debug checks enabled. Use explicit events or barriers
 for ordering; keep direct loop management for tests of loop lifecycle itself.

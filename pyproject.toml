@@ -51,7 +51,7 @@ dev = [
   "mypy>=1.18.0",
   "openapi-python-client==0.29.0",
   "pyright>=1.1.405",
-  "pytest>=8.3.0",
+  "pytest==9.1.1",
   "ruff==0.16.4",
   "pip-audit==2.10.1",
   "hypothesis==6.168.0",
@@ -149,6 +149,9 @@ max-complexity = 5
 ]
 
 [tool.pytest.ini_options]
+minversion = "9.1.1"
+strict = true
+empty_parameter_set_mark = "fail_at_collect"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 asyncio_default_test_loop_scope = "function"

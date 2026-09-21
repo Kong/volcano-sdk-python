@@ -1702,7 +1702,7 @@ dev = [
     { name = "pip-audit", specifier = "==2.10.1" },
     { name = "poethepoet", specifier = "==0.46.0" },
     { name = "pyright", specifier = ">=1.1.405" },
-    { name = "pytest", specifier = ">=8.3.0" },
+    { name = "pytest", specifier = "==9.1.1" },
     { name = "pytest-asyncio", specifier = "==1.4.0" },
     { name = "ruff", specifier = "==0.16.4" },
     { name = "volcano-sdk-python", extras = ["durable"] },
