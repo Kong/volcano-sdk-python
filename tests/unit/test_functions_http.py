@@ -12,6 +12,7 @@ import json
 import threading
 import time
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -100,9 +101,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         self._handle()
-
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
-        """Keep the test output free of per-request server logging."""
 
 
 class Server(ThreadingHTTPServer):
@@ -238,7 +236,9 @@ def test_an_unknown_name_is_not_re_resolved_on_every_attempt() -> None:
         api.close()
 
 
-def test_concurrent_first_invocations_share_one_resolve(function_server: Any) -> None:
+def test_concurrent_first_invocations_share_one_resolve(
+    function_server: tuple[_Server, Recorder],
+) -> None:
     """A cold cache must not let every caller open its own resolve."""
     functions, function_requests = function_server
     api_requests = Recorder()
@@ -254,21 +254,14 @@ def test_concurrent_first_invocations_share_one_resolve(function_server: Any) ->
     )
     try:
         client = _client(api.url)
-        failures: list[BaseException] = []
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [
+                executor.submit(client.functions.invoke, "send-welcome")
+                for _ in range(8)
+            ]
+            statuses = [future.result(timeout=30).status for future in futures]
 
-        def invoke() -> None:
-            try:
-                assert client.functions.invoke("send-welcome").status == 200
-            except BaseException as error:  # noqa: BLE001 - reported below
-                failures.append(error)
-
-        threads = [threading.Thread(target=invoke) for _ in range(8)]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join(timeout=30)
-
-        assert failures == []
+        assert statuses == [200] * 8
         assert api_requests.paths() == ["/functions/resolve?name=send-welcome"]
         assert len(function_requests.paths()) == 8
     finally:
