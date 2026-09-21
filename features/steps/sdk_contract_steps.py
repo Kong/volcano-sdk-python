@@ -1154,27 +1154,30 @@ def two_realtime_clients(context: Any) -> None:
         )
 
 
+async def publish_contract_message(world: ContractWorld) -> Any:
+    assert world.subscriber is not None
+    assert world.publisher is not None
+    received = world.loop.create_future()
+
+    def on_message(message: Any) -> None:
+        if not received.done():
+            received.set_result(message)
+
+    world.subscriber.on("message", on_message)
+    await world.publisher.send(world.realtime_message)
+    return await asyncio.wait_for(received, timeout=10)
+
+
 @when("one client subscribes and the other publishes the contract message")
 def subscribe_and_publish(context: Any) -> None:
     world = _world(context)
     if world.last_outcome is not None and not world.last_outcome.ok:
         return
 
-    async def operation() -> Any:
-        assert world.subscriber is not None
-        assert world.publisher is not None
-        received = world.loop.create_future()
-
-        def on_message(message: Any) -> None:
-            if not received.done():
-                received.set_result(message)
-
-        world.subscriber.on("message", on_message)
-        await world.publisher.send(world.realtime_message)
-        return await asyncio.wait_for(received, timeout=10)
-
     try:
-        world.last_outcome = Outcome(ok=True, value=world.run(operation()))
+        world.last_outcome = Outcome(
+            ok=True, value=world.run(publish_contract_message(world))
+        )
     except CONTRACT_EXCEPTIONS as error:
         world.last_outcome = Outcome(
             ok=False,

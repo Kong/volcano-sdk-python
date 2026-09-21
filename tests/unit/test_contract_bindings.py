@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import importlib.util
+import json
 import os
 import sys
 from datetime import UTC, datetime, timedelta
@@ -365,24 +366,23 @@ def test_lifecycle_cleanup_attempts_all_paths_after_a_deletion_failure() -> None
     bucket = Mock()
     bucket.list.return_value.objects = [SimpleNamespace(name=path) for path in paths]
     bucket.remove.side_effect = [RuntimeError("delete failed"), None, None]
-    world = SimpleNamespace(
-        client=SimpleNamespace(
-            storage=SimpleNamespace(from_=Mock(return_value=bucket))
-        ),
-        fixture={"bucket_name": "assets"},
-        storage_path=paths[0],
-        cleanup_callbacks=[],
-        realtime_clients=[],
-        loop=Mock(),
-        record=Mock(),
+    fixture = json.loads(
+        (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text()
     )
+    world = steps.ContractWorld(fixture)
+    world.client = SimpleNamespace(
+        storage=SimpleNamespace(from_=Mock(return_value=bucket))
+    )
+    world.fixture["bucket_name"] = "assets"
+    world.storage_path = paths[0]
+    world.record = Mock()
     steps.copy_move_and_remove(SimpleNamespace(contract=world))
 
     with pytest.raises(ExceptionGroup, match="Python contract cleanup failed"):
-        steps.ContractWorld.cleanup(world)
+        world.cleanup()
 
     assert bucket.remove.call_args_list == [call(path) for path in reversed(paths)]
-    world.loop.close.assert_called_once()
+    assert world.loop.is_closed()
 
 
 def test_fixture_loader_requires_absolute_private_file(tmp_path: Path) -> None:
@@ -421,20 +421,17 @@ def test_bootstrap_cleanup_is_disarmed_only_after_successful_revocation(
         access_token="captured-access"
     )
     target = Mock()
-    world = SimpleNamespace(
-        client=source,
-        fixture={"api_url": "https://api.test", "anon_key": "anon"},
-        cleanup_callbacks=[],
-        realtime_clients=[],
-        loop=Mock(),
-        bootstrap_cleanup=None,
-        record=Mock(return_value=SimpleNamespace(ok=revoked)),
+    fixture = json.loads(
+        (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text()
     )
+    world = steps.ContractWorld(fixture)
+    world.client = source
+    world.record = Mock(return_value=SimpleNamespace(ok=revoked))
     with monkeypatch.context() as patch:
         patch.setattr(steps, "VolcanoClient", Mock(return_value=target))
         steps.bootstrap_access_token(SimpleNamespace(contract=world))
         steps.sign_out(SimpleNamespace(contract=world))
-        steps.ContractWorld.cleanup(world)
+        world.cleanup()
     assert source.auth.sign_out.call_count == (0 if revoked else 1)
 
 
