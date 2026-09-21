@@ -277,18 +277,11 @@ def test_delete_current_session_clears_refreshed_descendant(
             if timing == "401":
                 return httpx.Response(401)
             client.auth.refresh_session()
-        if failure:
-            message = "response lost"
-            raise httpx.ReadError(message, request=request)
-        return httpx.Response(204)
+        return deletion_response(request, failure=failure)
 
     client = client_for(handle)
     client.auth.set_session(Session(session_token(), "refresh-1", USER))
-    if failure:
-        with pytest.raises(VolcanoError, match="response lost"):
-            client.auth.delete_session(session_id=SESSION)
-    else:
-        client.auth.delete_session(session_id=SESSION)
+    delete_current_session(client, failure=failure)
     assert client.current_session is None
     assert len(requests) == (3 if timing == "401" else 2)
 
@@ -301,10 +294,7 @@ def test_delete_current_session_preserves_explicit_replacement(
 
     def handle(request: httpx.Request) -> httpx.Response:
         client.auth.set_session(replacement)
-        if failure:
-            message = "response lost"
-            raise httpx.ReadError(message, request=request)
-        return httpx.Response(204)
+        return deletion_response(request, failure=failure)
 
     client = client_for(handle)
     client.auth.set_session(Session(session_token(), "refresh-1", USER))
@@ -332,3 +322,18 @@ def test_delete_other_session_rejects_completion_after_local_clear(
     with pytest.raises(SessionChangedError):
         client.auth.delete_session(session_id=SESSION)
     assert client.current_session is None
+
+
+def deletion_response(request: httpx.Request, *, failure: bool) -> httpx.Response:
+    if failure:
+        message = "response lost"
+        raise httpx.ReadError(message, request=request)
+    return httpx.Response(204)
+
+
+def delete_current_session(client: VolcanoClient, *, failure: bool) -> None:
+    if failure:
+        with pytest.raises(VolcanoError, match="response lost"):
+            client.auth.delete_session(session_id=SESSION)
+        return
+    client.auth.delete_session(session_id=SESSION)

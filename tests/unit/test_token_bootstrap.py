@@ -206,8 +206,7 @@ def test_refresh_cannot_replace_a_validated_bootstrap_identity(
     client = token_client(
         handle, refresh_token="supplied-refresh", access_token=bootstrap_token()
     )
-    if not enrich_during_refresh:
-        client.auth.get_user()
+    enrich_before_refresh(client, enrich_during_refresh=enrich_during_refresh)
     run: Callable[[], object] = (
         client.auth.refresh_session
         if operation == "refresh"
@@ -244,13 +243,7 @@ def test_token_only_sign_out_revokes_the_captured_session(
         requests.append(request)
         if replace:
             client.auth.set_session(replacement)
-        if outcome == "transport":
-            message = "connection lost"
-            raise httpx.ReadError(message, request=request)
-        return httpx.Response(
-            int(outcome),
-            json={"error": "revocation failed"} if outcome != 204 else None,
-        )
+        return revocation_response(request, outcome)
 
     client = token_client(handle, access_token=token, refresh_token=refresh_token)
     if replace or outcome != 204:
@@ -265,3 +258,20 @@ def test_token_only_sign_out_revokes_the_captured_session(
         (r.method, r.url.path, r.headers["authorization"]) for r in requests
     ] == expected
     assert client.current_session == (replacement if replace else None)
+
+
+def enrich_before_refresh(
+    client: VolcanoClient, *, enrich_during_refresh: bool
+) -> None:
+    if not enrich_during_refresh:
+        client.auth.get_user()
+
+
+def revocation_response(request: httpx.Request, outcome: int | str) -> httpx.Response:
+    if outcome == "transport":
+        message = "connection lost"
+        raise httpx.ReadError(message, request=request)
+    return httpx.Response(
+        int(outcome),
+        json={"error": "revocation failed"} if outcome != 204 else None,
+    )

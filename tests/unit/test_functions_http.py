@@ -13,8 +13,13 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from socket import socket
+    from socketserver import BaseServer
 
 import pytest
 
@@ -47,59 +52,73 @@ class Recorder:
             return [request.path for request in self.requests]
 
 
+class Handler(BaseHTTPRequestHandler):
+    def __init__(
+        self,
+        request: socket,
+        client_address: tuple[str, int],
+        server: BaseServer,
+        *,
+        respond: Responder,
+        recorder: Recorder,
+    ) -> None:
+        self.respond = respond
+        self.recorder = recorder
+        super().__init__(request, client_address, server)
+
+    protocol_version = "HTTP/1.1"
+
+    def _handle(self) -> None:
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length) if length else b""
+        body = json.loads(raw) if raw else None
+        self.recorder.record(
+            RecordedRequest(
+                path=self.path,
+                body=body,
+                authorization=self.headers.get("Authorization"),
+            )
+        )
+        answer = self.respond(self.path)
+        status, payload = answer[0], answer[1]
+        extra: dict[str, str] = answer[2] if len(answer) > 2 else {}
+        encoded = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(encoded)))
+        # The server stamps this on every response, errors included, so
+        # a test that omits it would accept a client keying the stale
+        # mapping retry off its absence.
+        self.send_header("X-Volcano-Version", "test-build")
+        for name, value in extra.items():
+            self.send_header(name, value)
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def do_GET(self) -> None:
+        self._handle()
+
+    def do_POST(self) -> None:
+        self._handle()
+
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+        """Keep the test output free of per-request server logging."""
+
+
+class Server(ThreadingHTTPServer):
+    # The default backlog of 5 resets connections when a test opens
+    # several at once, which reads as a transport failure in the SDK.
+    request_queue_size = 128
+    daemon_threads = True
+
+
 class _Server:
     """A local HTTP server that answers from a caller-supplied handler."""
 
     def __init__(self, respond: Responder, recorder: Recorder) -> None:
         self.recorder = recorder
-        outer = self
-
-        class Handler(BaseHTTPRequestHandler):
-            protocol_version = "HTTP/1.1"
-
-            def _handle(self) -> None:
-                length = int(self.headers.get("Content-Length") or 0)
-                raw = self.rfile.read(length) if length else b""
-                body = json.loads(raw) if raw else None
-                outer.recorder.record(
-                    RecordedRequest(
-                        path=self.path,
-                        body=body,
-                        authorization=self.headers.get("Authorization"),
-                    )
-                )
-                answer = respond(self.path)
-                status, payload = answer[0], answer[1]
-                extra: dict[str, str] = answer[2] if len(answer) > 2 else {}
-                encoded = json.dumps(payload).encode()
-                self.send_response(status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(encoded)))
-                # The server stamps this on every response, errors included, so
-                # a test that omits it would accept a client keying the stale
-                # mapping retry off its absence.
-                self.send_header("X-Volcano-Version", "test-build")
-                for name, value in extra.items():
-                    self.send_header(name, value)
-                self.end_headers()
-                self.wfile.write(encoded)
-
-            def do_GET(self) -> None:
-                self._handle()
-
-            def do_POST(self) -> None:
-                self._handle()
-
-            def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
-                """Keep the test output free of per-request server logging."""
-
-        class Server(ThreadingHTTPServer):
-            # The default backlog of 5 resets connections when a test opens
-            # several at once, which reads as a transport failure in the SDK.
-            request_queue_size = 128
-            daemon_threads = True
-
-        self._httpd = Server(("127.0.0.1", 0), Handler)
+        handler = partial(Handler, respond=respond, recorder=recorder)
+        self._httpd = Server(("127.0.0.1", 0), handler)
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
         self._thread.start()
 
