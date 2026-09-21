@@ -8,6 +8,7 @@ from io import SEEK_END, BytesIO, StringIO
 from typing import Any, BinaryIO, cast
 
 import pytest
+from state_assertions import assert_same
 
 from volcano_sdk import (
     LockGuard,
@@ -694,7 +695,7 @@ def test_locks_with_lock_renews_an_unsafe_initial_lease_before_yielding(
     )
 
     with client.locks.with_lock("build", ttl=5) as guard:
-        assert not guard.lost
+        assert_same(guard.lost, expected=False)
 
     assert [operation for operation, _ in transport.calls] == [
         "acquireProjectLock",
@@ -704,7 +705,7 @@ def test_locks_with_lock_renews_an_unsafe_initial_lease_before_yielding(
     assert [(renewer.started, renewer.stopped) for renewer in renewers] == [
         (True, True)
     ]
-    assert guard.lost
+    assert_same(guard.lost, expected=True)
     assert guard.wait_lost(timeout=0)
 
 
