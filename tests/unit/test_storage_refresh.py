@@ -98,7 +98,7 @@ def success_response(operation: str) -> httpx.Response:
         "created_at": "2026-09-17T00:00:00Z",
         "updated_at": "2026-09-17T00:00:00Z",
     }
-    session = {
+    session: dict[str, object] = {
         "session_id": "upload",
         "part_size": 7,
         "total_parts": 1,
