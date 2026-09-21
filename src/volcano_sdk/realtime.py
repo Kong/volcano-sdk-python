@@ -879,28 +879,32 @@ class Channel:
             return
         if event == "presence_sync":
             self._pending_presence_sync = NO_PENDING_CALLBACK
+        delivery = _CallbackDelivery(
+            event,
+            data,
+            postgres_identity,
+            self._callback_epoch(event) if postgres_identity is None else None,
+        )
+        if not self._queue_callback(delivery):
+            return
+        task = self._callback_task
+        if task is None or task.done():
+            self._start_callback_dispatcher()
+
+    def _queue_callback(self, delivery: _CallbackDelivery) -> bool:
         try:
-            self._callback_queue.put_nowait(
-                _CallbackDelivery(
-                    event,
-                    data,
-                    postgres_identity,
-                    self._callback_epoch(event) if postgres_identity is None else None,
-                )
-            )
+            self._callback_queue.put_nowait(delivery)
         except asyncio.QueueFull:
-            if event == "presence_sync":
-                self._pending_presence_sync = data
-                return
+            if delivery.event == "presence_sync":
+                self._pending_presence_sync = delivery.data
+                return False
             asyncio.get_running_loop().call_exception_handler(
                 {
                     "message": CALLBACK_QUEUE_FULL_MESSAGE,
                     "channel": self._name,
                 }
             )
-        task = self._callback_task
-        if task is None or task.done():
-            self._start_callback_dispatcher()
+        return True
 
     def _start_callback_dispatcher(self) -> None:
         task = asyncio.create_task(self._dispatch_callbacks())
@@ -929,30 +933,33 @@ class Channel:
             while not self._callback_queue.empty():
                 delivery = self._callback_queue.get_nowait()
                 try:
-                    if not self._callback_delivery_is_current(delivery):
-                        continue
-                    for callback in tuple(self._callbacks.get(delivery.event, [])):
-                        if not self._callback_delivery_is_current(delivery):
-                            break
-                        # Isolate a callback's own cancellation from later delivery.
-                        (error,) = await asyncio.gather(
-                            self._run_callback(callback, delivery),
-                            return_exceptions=True,
-                        )
-                        if isinstance(error, BaseException):
-                            asyncio.get_running_loop().call_exception_handler(
-                                {
-                                    "message": "Volcano realtime callback failed",
-                                    "exception": error,
-                                    "channel": self._name,
-                                }
-                            )
+                    await self._dispatch_delivery(delivery)
                 finally:
                     self._callback_queue.task_done()
                     self._enqueue_pending_presence_sync()
         finally:
             # Event-loop cancellation must not leave queued delivery to restart.
             self._discard_callbacks()
+
+    async def _dispatch_delivery(self, delivery: _CallbackDelivery) -> None:
+        if not self._callback_delivery_is_current(delivery):
+            return
+        for callback in tuple(self._callbacks.get(delivery.event, [])):
+            if not self._callback_delivery_is_current(delivery):
+                break
+            # Isolate a callback's own cancellation from later delivery.
+            (error,) = await asyncio.gather(
+                self._run_callback(callback, delivery),
+                return_exceptions=True,
+            )
+            if isinstance(error, BaseException):
+                asyncio.get_running_loop().call_exception_handler(
+                    {
+                        "message": "Volcano realtime callback failed",
+                        "exception": error,
+                        "channel": self._name,
+                    }
+                )
 
     def _callback_delivery_is_current(self, delivery: _CallbackDelivery) -> bool:
         if delivery.delivery_epoch is not None:
