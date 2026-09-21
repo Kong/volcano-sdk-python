@@ -256,10 +256,7 @@ class VolcanoClient:
         notifications: list[Callable[[], None]] | None = None,
     ) -> bool:
         with self._session_lock:
-            if lineage is not None:
-                if lineage != self._session_lineage:
-                    return False
-            elif generation != self._session_generation:
+            if not self._owns_session_binding(generation, lineage):
                 return False
             if self._current_session is None:
                 return True
@@ -271,6 +268,14 @@ class VolcanoClient:
         if dispatch:
             self._dispatch_or_defer(notifications)
         return True
+
+    def _owns_session_binding(
+        self, generation: int, lineage: SessionOperations | None
+    ) -> bool:
+        # Call only while holding the session lock used for the state change.
+        if lineage is not None:
+            return lineage == self._session_lineage
+        return generation == self._session_generation
 
     def _dispatch_or_defer(
         self, notifications: list[Callable[[], None]] | None

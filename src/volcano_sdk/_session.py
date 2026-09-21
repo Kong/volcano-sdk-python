@@ -34,7 +34,10 @@ def session_id_from_access_token(access_token: str) -> str | None:
     if not isinstance(payload, Mapping):
         return None
     values = cast("Mapping[object, object]", payload)
-    session_id = values.get("session_id")
+    return _normalized_session_id(values.get("session_id"))
+
+
+def _normalized_session_id(session_id: object) -> str | None:
     if not isinstance(session_id, str) or not session_id.strip():
         return None
     try:
@@ -58,13 +61,16 @@ def validate_refresh_identity(current: Session | None, refreshed: Session) -> No
         refreshed.access_token
     ):
         raise AuthenticationError(_REFRESH_SESSION_MISMATCH)
-    if current.user_id is None:
-        return
-    if current.user_id == refreshed.user_id:
-        return
-    try:
-        matches = UUID(current.user_id) == UUID(str(refreshed.user_id))
-    except ValueError:
-        matches = False
-    if not matches:
+    if current.user_id is not None and not _same_user_id(
+        current.user_id, refreshed.user_id
+    ):
         raise AuthenticationError(_REFRESH_USER_MISMATCH)
+
+
+def _same_user_id(current: str, refreshed: str | None) -> bool:
+    if current == refreshed:
+        return True
+    try:
+        return UUID(current) == UUID(str(refreshed))
+    except ValueError:
+        return False
