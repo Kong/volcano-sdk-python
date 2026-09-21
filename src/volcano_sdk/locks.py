@@ -108,7 +108,14 @@ class Locks:
         self._client = client
 
     def get(self, key: str, *, request_id: str | None = None) -> LockState:
-        """Return the current state of a project-scoped lock."""
+        """Inspect a project-scoped lock.
+
+        Returns
+        -------
+        LockState
+            Whether the lock is held, with its expiry and fencing token if set.
+
+        """
         transport = cast("LockGetTransport", self._client._transport)
         response = invoke(
             transport.get_project_lock,
@@ -131,7 +138,14 @@ class Locks:
         token: str | None = None,
         request_id: str | None = None,
     ) -> LockLease:
-        """Acquire with one bounded retry using the same ownership token."""
+        """Acquire with one bounded retry using the same ownership token.
+
+        Returns
+        -------
+        LockLease
+            The acquired key, ownership token, expiry, and fencing token.
+
+        """
         lease, _ = self._acquire_with_start(
             key, ttl=ttl, token=token, request_id=request_id
         )
@@ -181,7 +195,15 @@ class Locks:
     def renew(
         self, key: str, lease: LockLease, *, ttl: int, request_id: str | None = None
     ) -> LockLease:
-        """Renew a lock lease and return its immutable replacement."""
+        """Renew a lock lease.
+
+        Returns
+        -------
+        LockLease
+            An immutable replacement with the same ownership token and the
+            server's updated expiry and fencing token.
+
+        """
         _validate_ttl(ttl)
         transport = cast("LockRenewTransport", self._client._transport)
         response = invoke(
@@ -233,7 +255,15 @@ class Locks:
         token: str | None = None,
         request_id: str | None = None,
     ) -> Generator[LockGuard, None, None]:
-        """Hold and automatically renew a lock for the context's lifetime."""
+        """Hold and automatically renew a lock for the context's lifetime.
+
+        Yields
+        ------
+        LockGuard
+            The latest lease and ownership-loss signal. Exiting the context
+            stops renewal and attempts to release the lease.
+
+        """
         _validate_ttl(ttl)
         started_at = _lease_now()
         lease, lease_started_at = self._acquire_with_start(
