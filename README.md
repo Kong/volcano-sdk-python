@@ -964,14 +964,8 @@ configuration maps image and wildcard binary responses to raw-byte parsing while
 preserving the OpenAPI media types and response headers.
 
 ```shell
-uv sync --frozen
-uv run python scripts/check_openapi.py
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy
-uv run pyright
-uv run pytest tests/unit -q
-uv run python -m build
+uv sync --locked
+uv run --locked poe quality
 ```
 
 Live contract scenarios require an isolated fixture produced by

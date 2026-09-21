@@ -1,7 +1,10 @@
 # SDK quality
 
-- Before pushing, run `uv run python scripts/quality.py`. CI runs the same
+- Before pushing, run `uv run --locked poe quality`. CI runs the same
   command on Python 3.11 and 3.14.
+- Research upstream tools before adding enforcement. Keep rules in native tool
+  configuration and orchestration in declarative tasks. Add custom checks only
+  for requirements established tools cannot express; document that gap.
 - Fix failures rather than weakening rules or excluding code. Narrow exceptions
   for verified tool limitations require human approval and an exact record in
   `maintainers/quality-exceptions.json`. Never approve quality-policy changes

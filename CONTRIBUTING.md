@@ -5,19 +5,18 @@ Use Python 3.11 or newer and `uv`. CI covers Python 3.11 and 3.14.
 ## Verify a change
 
 ```shell
-uv sync --frozen
-uv run python scripts/check_openapi.py
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy
-uv run pyright
-uv run pytest tests/unit -q
-chmod 600 tests/fixtures/sdk-contract-dry-run.json
-VOLCANO_SDK_CONTRACT_FIXTURE="$PWD/tests/fixtures/sdk-contract-dry-run.json" \
-  uv run behave features --dry-run --no-snippets
-uv run python -m build
-bash scripts/check_package.sh
+uv sync --locked
+uv run --locked poe quality
 ```
+
+The tasks in `pyproject.toml` run the same checks locally and in CI. Run
+`uv run --locked poe` to list them, or invoke a tool directly, such as
+`uv run --locked ruff check .`. Tool settings belong in their native
+configuration sections so editors and command-line checks agree.
+
+Use established upstream tools before writing custom enforcement. Research
+current documentation when choosing an approach. Keep repository-specific
+checks only where a standard tool cannot express the required invariant.
 
 After updating `openapi/openapi.yaml` from Hosting's public bundle, regenerate
 the internal client with `uv run python scripts/generate_openapi.py`.
