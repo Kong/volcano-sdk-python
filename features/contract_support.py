@@ -90,24 +90,25 @@ def classify_error(error: Exception) -> str:
     if matched_category is not None:
         return matched_category
     if isinstance(error, VolcanoError):
-        status = error.status
-        if status in (401, 403):
-            return "authentication error"
-        if status in (400, 422):
-            return "validation error"
-        category_by_status = {
-            HTTP_NOT_FOUND: "not found",
-            HTTP_CONFLICT: "conflict",
-            HTTP_RATE_LIMITED: "rate limited",
-        }
-        if status in category_by_status:
-            return category_by_status[status]
-        if (
-            status is not None
-            and HTTP_SERVER_ERROR_MIN <= status <= HTTP_SERVER_ERROR_MAX
-        ):
-            return "server error"
+        return classify_status(error.status)
     return "transport error"
+
+
+def classify_status(status: int | None) -> str:
+    category_by_status = {
+        401: "authentication error",
+        403: "authentication error",
+        400: "validation error",
+        422: "validation error",
+        HTTP_NOT_FOUND: "not found",
+        HTTP_CONFLICT: "conflict",
+        HTTP_RATE_LIMITED: "rate limited",
+    }
+    if status is None:
+        return "transport error"
+    if HTTP_SERVER_ERROR_MIN <= status <= HTTP_SERVER_ERROR_MAX:
+        return "server error"
+    return category_by_status.get(status, "transport error")
 
 
 class ContractWorld:
@@ -231,14 +232,19 @@ class ContractWorld:
                 callback()
             except CONTRACT_EXCEPTIONS as error:
                 failures.append(error)
-        for client in self.realtime_clients:
-            try:
-                self.run(client.realtime.disconnect())
-            except CONTRACT_EXCEPTIONS as error:
-                failures.append(error)
+        failures.extend(self.disconnect_realtime_clients())
         self.cleanup_callbacks.clear()
         self.realtime_clients.clear()
         self.loop.close()
         if failures:
             message = "Python contract cleanup failed"
             raise ExceptionGroup(message, failures)
+
+    def disconnect_realtime_clients(self) -> list[Exception]:
+        failures: list[Exception] = []
+        for client in self.realtime_clients:
+            try:
+                self.run(client.realtime.disconnect())
+            except CONTRACT_EXCEPTIONS as error:
+                failures.append(error)
+        return failures

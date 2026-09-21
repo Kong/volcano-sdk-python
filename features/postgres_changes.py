@@ -91,16 +91,7 @@ async def verify_postgres_changes(world: ContractWorld) -> list[str]:
     }
     table = world.client.database(world.fixture["database_name"]).from_(table_name)
     world.cleanup_callbacks.append(lambda: table.delete().eq("id", row["id"]).execute())
-    channels = []
-    for index, client in enumerate(world.realtime_clients):
-        client.realtime.set_database_name(world.fixture["database_name"])
-        channels.append(
-            client.realtime.channel(
-                "public:" + table_name,
-                channel_type="postgres",
-                auto_fetch=index == 0,
-            )
-        )
+    channels = postgres_channels(world, table_name)
     observers = [ChangeObserver(channel, table_name, row["id"]) for channel in channels]
     try:
         await asyncio.gather(*(channel.subscribe() for channel in channels))
@@ -126,3 +117,17 @@ async def verify_postgres_changes(world: ContractWorld) -> list[str]:
             observer.close()
         await asyncio.gather(*(channel.unsubscribe() for channel in channels))
     return ["INSERT", "UPDATE"]
+
+
+def postgres_channels(world: ContractWorld, table_name: str) -> list[Channel]:
+    channels: list[Channel] = []
+    for index, client in enumerate(world.realtime_clients):
+        client.realtime.set_database_name(world.fixture["database_name"])
+        channels.append(
+            client.realtime.channel(
+                "public:" + table_name,
+                channel_type="postgres",
+                auto_fetch=index == 0,
+            )
+        )
+    return channels
