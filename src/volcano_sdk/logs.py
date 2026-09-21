@@ -52,7 +52,14 @@ class Logs:
         project_id: str,
         request: Mapping[str, JSONValue],
     ) -> LogSearchResponse:
-        """Search retained logs for one project resource type."""
+        """Search retained logs for one project resource type.
+
+        Returns
+        -------
+        LogSearchResponse
+            Matching log entries with the page limit and continuation cursor.
+
+        """
         project_id, request = _log_request(project_id, request)
         transport = cast("LogsTransport", self._client._transport)
         response = self._client.auth._session_request(
@@ -70,7 +77,14 @@ class Logs:
         project_id: str,
         request: Mapping[str, JSONValue],
     ) -> LogActivityResponse:
-        """Get bucketed activity for one project resource type."""
+        """Get bucketed activity for one project resource type.
+
+        Returns
+        -------
+        LogActivityResponse
+            Activity buckets and the total count reported by the server.
+
+        """
         project_id, request = _log_request(project_id, request)
         transport = cast("LogsTransport", self._client._transport)
         response = self._client.auth._session_request(

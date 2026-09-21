@@ -55,43 +55,113 @@ class FilterBuilder:
         raise NotImplementedError
 
     def eq(self, column: str, value: object) -> Self:
-        """Add an equality filter."""
+        """Add an equality filter.
+
+        Returns
+        -------
+        Self
+            A new builder with this filter appended; the original is unchanged.
+
+        """
         return self._filter(column, "eq", value)
 
     def neq(self, column: str, value: object) -> Self:
-        """Add an inequality filter."""
+        """Add an inequality filter.
+
+        Returns
+        -------
+        Self
+            A new builder with this filter appended; the original is unchanged.
+
+        """
         return self._filter(column, "neq", value)
 
     def gt(self, column: str, value: object) -> Self:
-        """Add a greater-than filter."""
+        """Add a greater-than filter.
+
+        Returns
+        -------
+        Self
+            A new builder with this filter appended; the original is unchanged.
+
+        """
         return self._filter(column, "gt", value)
 
     def gte(self, column: str, value: object) -> Self:
-        """Add a greater-than-or-equal filter."""
+        """Add a greater-than-or-equal filter.
+
+        Returns
+        -------
+        Self
+            A new builder with this filter appended; the original is unchanged.
+
+        """
         return self._filter(column, "gte", value)
 
     def lt(self, column: str, value: object) -> Self:
-        """Add a less-than filter."""
+        """Add a less-than filter.
+
+        Returns
+        -------
+        Self
+            A new builder with this filter appended; the original is unchanged.
+
+        """
         return self._filter(column, "lt", value)
 
     def lte(self, column: str, value: object) -> Self:
-        """Add a less-than-or-equal filter."""
+        """Add a less-than-or-equal filter.
+
+        Returns
+        -------
+        Self
+            A new builder with this filter appended; the original is unchanged.
+
+        """
         return self._filter(column, "lte", value)
 
     def like(self, column: str, pattern: str) -> Self:
-        """Add a case-sensitive pattern filter."""
+        """Add a case-sensitive pattern filter.
+
+        Returns
+        -------
+        Self
+            A new builder with this filter appended; the original is unchanged.
+
+        """
         return self._filter(column, "like", pattern)
 
     def ilike(self, column: str, pattern: str) -> Self:
-        """Add a case-insensitive pattern filter."""
+        """Add a case-insensitive pattern filter.
+
+        Returns
+        -------
+        Self
+            A new builder with this filter appended; the original is unchanged.
+
+        """
         return self._filter(column, "ilike", pattern)
 
     def is_(self, column: str, value: object) -> Self:
-        """Add a null or boolean identity filter."""
+        """Add a null or boolean identity filter.
+
+        Returns
+        -------
+        Self
+            A new builder with this filter appended; the original is unchanged.
+
+        """
         return self._filter(column, "is", value)
 
     def in_(self, column: str, values: Sequence[object]) -> Self:
-        """Add a membership filter."""
+        """Add a membership filter.
+
+        Returns
+        -------
+        Self
+            A new builder with this filter appended; the original is unchanged.
+
+        """
         return self._filter(column, "in", list(values))
 
     def _filter(self, column: str, operator: str, value: object) -> Self:
@@ -117,11 +187,25 @@ class QueryBuilder(FilterBuilder):
     _offset: int | None = None
 
     def select(self, *columns: str) -> QueryBuilder:
-        """Select the requested columns."""
+        """Select the requested columns.
+
+        Returns
+        -------
+        QueryBuilder
+            A new query with the requested columns and existing filters.
+
+        """
         return replace(self, _columns=columns)
 
     def insert(self, values: Mapping[str, JSONValue]) -> InsertBuilder:
-        """Build an insert for this table."""
+        """Build an insert for this table.
+
+        Returns
+        -------
+        InsertBuilder
+            An insert builder with a snapshot of the supplied row values.
+
+        """
         return InsertBuilder(
             self._client,
             self._database_name,
@@ -130,7 +214,14 @@ class QueryBuilder(FilterBuilder):
         )
 
     def update(self, values: Mapping[str, JSONValue]) -> UpdateBuilder:
-        """Build a filtered update for this table."""
+        """Build a filtered update for this table.
+
+        Returns
+        -------
+        UpdateBuilder
+            An update builder with the existing filters and a snapshot of the values.
+
+        """
         return UpdateBuilder(
             self._client,
             self._database_name,
@@ -140,7 +231,14 @@ class QueryBuilder(FilterBuilder):
         )
 
     def delete(self) -> DeleteBuilder:
-        """Build a filtered delete for this table."""
+        """Build a filtered delete for this table.
+
+        Returns
+        -------
+        DeleteBuilder
+            A delete builder carrying the existing filters.
+
+        """
         return DeleteBuilder(
             self._client,
             self._database_name,
@@ -149,16 +247,37 @@ class QueryBuilder(FilterBuilder):
         )
 
     def order(self, column: str, *, ascending: bool = True) -> QueryBuilder:
-        """Add an ordering clause."""
+        """Add an ordering clause.
+
+        Returns
+        -------
+        QueryBuilder
+            A new query with this ordering clause appended.
+
+        """
         clause = {"column": column, "ascending": ascending}
         return replace(self, _order=(*self._order, clause))
 
     def limit(self, count: int) -> QueryBuilder:
-        """Limit the number of returned rows."""
+        """Limit the number of returned rows.
+
+        Returns
+        -------
+        QueryBuilder
+            A new query with the row limit replaced.
+
+        """
         return replace(self, _limit=count)
 
     def offset(self, count: int) -> QueryBuilder:
-        """Skip rows before returning results."""
+        """Skip rows before returning results.
+
+        Returns
+        -------
+        QueryBuilder
+            A new query with the row offset replaced.
+
+        """
         return replace(self, _offset=count)
 
     def _with_filters(self, filters: tuple[dict[str, Any], ...]) -> QueryBuilder:
@@ -182,7 +301,14 @@ class QueryBuilder(FilterBuilder):
         }
 
     def execute(self) -> list[dict[str, Any]]:
-        """Execute the query and return its rows."""
+        """Execute the query and return its rows.
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            Rows returned by the select request.
+
+        """
         body = self._request_body()
         response = self._client.auth._session_request(
             lambda token: invoke(
@@ -206,7 +332,14 @@ class InsertBuilder:
     _values: dict[str, JSONValue]
 
     def execute(self) -> list[dict[str, Any]]:
-        """Insert one row and return the inserted rows."""
+        """Insert one row and return the inserted rows.
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            Inserted rows returned by the server.
+
+        """
         response = self._client.auth._session_request(
             lambda token: invoke(
                 self._client._transport.query_database_insert,
@@ -233,7 +366,14 @@ class UpdateBuilder(FilterBuilder):
         return replace(self, _filters=filters)
 
     def execute(self) -> list[dict[str, Any]]:
-        """Update matching rows and return them."""
+        """Update matching rows and return them.
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            Updated rows returned by the server.
+
+        """
         response = self._client.auth._session_request(
             lambda token: invoke(
                 self._client._transport.query_database_update,
@@ -263,7 +403,14 @@ class DeleteBuilder(FilterBuilder):
         return replace(self, _filters=filters)
 
     def execute(self) -> list[dict[str, Any]]:
-        """Delete matching rows and return them."""
+        """Delete matching rows and return them.
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            Deleted rows returned by the server.
+
+        """
         response = self._client.auth._session_request(
             lambda token: invoke(
                 self._client._transport.query_database_delete,
@@ -284,5 +431,12 @@ class Database:
     _name: str
 
     def from_(self, table: str) -> QueryBuilder:
-        """Create a query builder for a table."""
+        """Create a query builder for a table.
+
+        Returns
+        -------
+        QueryBuilder
+            An unfiltered select builder for the named table.
+
+        """
         return QueryBuilder(self._client, self._name, table)
