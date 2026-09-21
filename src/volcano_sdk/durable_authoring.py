@@ -447,12 +447,7 @@ class DurableContext:
         returning the last state.
         """
         check_func = _callable(check, "wait_until")
-        if not callable(options.until):
-            raise TypeError(_REQUIRES_UNTIL)
-        if options.timeout is not None:
-            raise TypeError(_NO_TIMEOUT)
-        if options.initial_state is _UNSET:
-            raise TypeError(_REQUIRES_INITIAL_STATE)
+        _validate_wait_options(options)
         engine = self._engine
         until = options.until
 
@@ -576,12 +571,7 @@ class DurableContext:
         # leaving retry unset: the platform retries by default, and a step that
         # is not safe to repeat wants the opposite.
         if retry is False:
-            no_delay = engine.duration.from_seconds(0)
-
-            def never_retry(_error: Any, _attempt: Any) -> Any:
-                return engine.retry_decision(should_retry=False, delay=no_delay)
-
-            return never_retry
+            return self._never_retry()
         if isinstance(retry, RetryOptions):
             return engine.create_retry_strategy(
                 engine.retry_strategy_config(**self._retry_kwargs(retry))
@@ -589,6 +579,15 @@ class DurableContext:
         if callable(retry):
             return retry
         raise TypeError(_INVALID_RETRY)
+
+    def _never_retry(self) -> Callable[[Exception, int], Any]:
+        engine = self._engine
+        no_delay = engine.duration.from_seconds(0)
+
+        def never_retry(_error: Exception, _attempt: int) -> Any:
+            return engine.retry_decision(should_retry=False, delay=no_delay)
+
+        return never_retry
 
     def _retry_kwargs(self, retry: RetryOptions) -> dict[str, Any]:
         return _engine_kwargs(
@@ -656,6 +655,10 @@ def durable(
     if not callable(handler):
         raise TypeError(_REQUIRES_HANDLER)
 
+    return _wrap_durable(handler, logger)
+
+
+def _wrap_durable(handler: DurableHandler, logger: object) -> FunctionHandler:
     # Wrapped on the first invocation, not here: resolving the engine is what
     # fails when the runtime is absent, and a decorator that raises at import
     # time would break a module that merely mentions a durable handler.
@@ -679,6 +682,15 @@ def durable(
         return wrapped[0](event, function_context)
 
     return invoke
+
+
+def _validate_wait_options(options: WaitUntilOptions) -> None:
+    if not callable(options.until):
+        raise TypeError(_REQUIRES_UNTIL)
+    if options.timeout is not None:
+        raise TypeError(_NO_TIMEOUT)
+    if options.initial_state is _UNSET:
+        raise TypeError(_REQUIRES_INITIAL_STATE)
 
 
 def _named(
