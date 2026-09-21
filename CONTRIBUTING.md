@@ -18,6 +18,10 @@ Use established upstream tools before writing custom enforcement. Research
 current documentation when choosing an approach. Keep repository-specific
 checks only where a standard tool cannot express the required invariant.
 
+Write asyncio behavior tests as `async def` tests. Pytest-asyncio gives each test
+its own event loop with debug checks enabled. Use explicit events or barriers
+for ordering; keep direct loop management for tests of loop lifecycle itself.
+
 After updating `openapi/openapi.yaml` from Hosting's public bundle, regenerate
 the internal client with `uv run python scripts/generate_openapi.py`.
 The dry run checks active and staged phrase bindings without creating fixtures
