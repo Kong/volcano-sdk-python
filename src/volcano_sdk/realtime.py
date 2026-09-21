@@ -348,6 +348,13 @@ async def _unsubscribe_native(subscription: CentrifugeSubscription) -> None:
         except CENTRIFUGE_ERROR:
             if cancelled is None:
                 raise
+    _finish_unsubscribe(task, cancelled)
+
+
+def _finish_unsubscribe(
+    task: asyncio.Task[None],
+    cancelled: asyncio.CancelledError | None,
+) -> None:
     if cancelled is not None:
         if not task.cancelled():
             task.exception()
@@ -1405,18 +1412,27 @@ class Realtime:
         async with self._connection_lock:
             first_error: Exception | None = None
             for wire_name, channel in tuple(self._channels.items()):
-                self._removing_channels.add(wire_name)
-                try:
-                    await self._remove_channel(channel)
-                except CENTRIFUGE_ERROR as error:
-                    first_error = first_error or error
-                else:
-                    if self._channels.get(wire_name) is channel:
-                        del self._channels[wire_name]
-                finally:
-                    self._removing_channels.remove(wire_name)
+                error = await self._remove_registered_channel(wire_name, channel)
+                first_error = first_error or error
             if first_error is not None:
                 raise first_error
+
+    async def _remove_registered_channel(
+        self,
+        wire_name: str,
+        channel: Channel,
+    ) -> Exception | None:
+        self._removing_channels.add(wire_name)
+        try:
+            await self._remove_channel(channel)
+        except CENTRIFUGE_ERROR as error:
+            return error
+        else:
+            if self._channels.get(wire_name) is channel:
+                del self._channels[wire_name]
+        finally:
+            self._removing_channels.remove(wire_name)
+        return None
 
     async def _remove_channel(self, channel: Channel) -> None:
         channel._subscribe_generation += 1
