@@ -98,30 +98,30 @@ def success_response(operation: str) -> httpx.Response:
         "created_at": "2026-09-17T00:00:00Z",
         "updated_at": "2026-09-17T00:00:00Z",
     }
-    payload: object = obj
-    if operation in {"create", "status"}:
-        payload = {
-            "session_id": "upload",
-            "part_size": 7,
-            "total_parts": 1,
-            "expires_at": "2026-09-18T00:00:00Z",
-            "created_at": "2026-09-17T00:00:00Z",
-            "status": "uploading",
-            "path": "file.bin",
-            "content_type": "application/octet-stream",
-            "total_size": 7,
-            "parts_uploaded": 0,
-            "bytes_uploaded": 0,
-            "parts": [],
-        }
-    elif operation == "part":
-        payload = {"part_number": 1, "etag": "part-1", "size": 7}
-    elif operation == "complete":
-        payload = {"object": obj}
-    elif operation == "list":
-        payload = {"objects": [obj], "next_cursor": ""}
-    elif operation in {"remove", "abort"}:
-        payload = {"message": "deleted"}
+    session: dict[str, object] = {
+        "session_id": "upload",
+        "part_size": 7,
+        "total_parts": 1,
+        "expires_at": "2026-09-18T00:00:00Z",
+        "created_at": "2026-09-17T00:00:00Z",
+        "status": "uploading",
+        "path": "file.bin",
+        "content_type": "application/octet-stream",
+        "total_size": 7,
+        "parts_uploaded": 0,
+        "bytes_uploaded": 0,
+        "parts": [],
+    }
+    responses: dict[str, object] = {
+        "create": session,
+        "status": session,
+        "part": {"part_number": 1, "etag": "part-1", "size": 7},
+        "complete": {"object": obj},
+        "list": {"objects": [obj], "next_cursor": ""},
+        "remove": {"message": "deleted"},
+        "abort": {"message": "deleted"},
+    }
+    payload = responses.get(operation, obj)
     if operation in {"download", "range"}:
         return httpx.Response(206 if operation == "range" else 200, content=b"ell")
     return httpx.Response(

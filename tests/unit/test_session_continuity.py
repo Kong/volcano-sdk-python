@@ -131,14 +131,7 @@ def test_sign_out_renews_expired_access_only_for_the_same_captured_session(
             if replace:
                 client.auth.set_session(replacement)
             return refreshed(SESSION_A)
-        assert request.url.path == f"/auth/user/sessions/{SESSION_A}"
-        if request.headers["authorization"] == f"Bearer {access_token(SESSION_A)}":
-            return httpx.Response(401, json={"error": "expired"})
-        assert (
-            request.headers["authorization"]
-            == f"Bearer {access_token(SESSION_A, renewed=True)}"
-        )
-        return httpx.Response(204)
+        return expired_session_response(request)
 
     client = client_for(handle)
     if replace:
@@ -230,19 +223,9 @@ def test_sign_out_joins_a_refresh_that_already_owns_the_rotating_token(
     refresh_entered, finish_refresh, sign_out_captured = Event(), Event(), Event()
     requests: list[httpx.Request] = []
 
-    def handle(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        if request.url.path == "/auth/refresh":
-            if refresh_entered.is_set():
-                return httpx.Response(401, json={"error": "refresh token consumed"})
-            refresh_entered.set()
-            assert finish_refresh.wait(2)
-            return refreshed(SESSION_A)
-        if request.headers["authorization"] == f"Bearer {access_token(SESSION_A)}":
-            return httpx.Response(401, json={"error": "expired"})
-        return httpx.Response(204)
-
-    client = client_for(handle)
+    client = client_for(
+        joined_refresh_handler(requests, refresh_entered, finish_refresh)
+    )
     capture = client._capture_session_binding
 
     def capture_and_signal() -> tuple[int, SessionOperations, Session | None]:
@@ -310,19 +293,7 @@ def test_sign_out_surfaces_the_refresh_it_joined_without_claiming_replacement(
     entered, release, claimed = Event(), Event(), Event()
     requests: list[httpx.Request] = []
 
-    def handle(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        if request.url.path == "/auth/signin":
-            return refreshed(SESSION_A)
-        if request.url.path == "/auth/logout":
-            return httpx.Response(204)
-        if request.url.path == "/auth/refresh":
-            entered.set()
-            assert release.wait(2)
-            return httpx.Response(status, json={"error": "refresh rejected"})
-        return httpx.Response(401, json={"error": "expired access"})
-
-    client = client_for(handle)
+    client = client_for(rejected_refresh_handler(requests, entered, release, status))
     if known_pair:
         client.auth.sign_in(email="user@example.com", password="synthetic")
         requests.clear()
@@ -405,13 +376,7 @@ def test_sign_out_revokes_a_server_issued_pair_without_access_renewal(
 
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        if request.url.path == "/auth/signin":
-            return refreshed(SESSION_A)
-        if request.url.path == "/auth/logout":
-            return httpx.Response(204)
-        if request.url.path == "/auth/refresh":
-            return httpx.Response(429, json={"error": "rate limited"})
-        return httpx.Response(401, json={"error": "expired"})
+        return verified_pair_response(request)
 
     client = client_for(handle)
     client.auth.sign_in(email="user@example.com", password="synthetic")
@@ -710,3 +675,60 @@ def test_failed_sign_out_does_not_store_a_credential_bearing_traceback() -> None
     assert failure.__traceback__ is None
     assert failure.__context__ is None
     assert failure.__cause__ is None
+
+
+def expired_session_response(request: httpx.Request) -> httpx.Response:
+    assert request.url.path == f"/auth/user/sessions/{SESSION_A}"
+    if request.headers["authorization"] == f"Bearer {access_token(SESSION_A)}":
+        return httpx.Response(401, json={"error": "expired"})
+    assert (
+        request.headers["authorization"]
+        == f"Bearer {access_token(SESSION_A, renewed=True)}"
+    )
+    return httpx.Response(204)
+
+
+def joined_refresh_handler(
+    requests: list[httpx.Request], refresh_entered: Event, finish_refresh: Event
+) -> Callable[[httpx.Request], httpx.Response]:
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/refresh":
+            if refresh_entered.is_set():
+                return httpx.Response(401, json={"error": "refresh token consumed"})
+            refresh_entered.set()
+            assert finish_refresh.wait(2)
+            return refreshed(SESSION_A)
+        if request.headers["authorization"] == f"Bearer {access_token(SESSION_A)}":
+            return httpx.Response(401, json={"error": "expired"})
+        return httpx.Response(204)
+
+    return handle
+
+
+def rejected_refresh_handler(
+    requests: list[httpx.Request], entered: Event, release: Event, status: int
+) -> Callable[[httpx.Request], httpx.Response]:
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/signin":
+            return refreshed(SESSION_A)
+        if request.url.path == "/auth/logout":
+            return httpx.Response(204)
+        if request.url.path == "/auth/refresh":
+            entered.set()
+            assert release.wait(2)
+            return httpx.Response(status, json={"error": "refresh rejected"})
+        return httpx.Response(401, json={"error": "expired access"})
+
+    return handle
+
+
+def verified_pair_response(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/auth/signin":
+        return refreshed(SESSION_A)
+    if request.url.path == "/auth/logout":
+        return httpx.Response(204)
+    if request.url.path == "/auth/refresh":
+        return httpx.Response(429, json={"error": "rate limited"})
+    return httpx.Response(401, json={"error": "expired"})

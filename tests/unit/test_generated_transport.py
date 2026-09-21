@@ -1260,78 +1260,7 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
 
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        path = request.url.path
-        if path in {"/auth/signin", "/auth/refresh"}:
-            refreshing = path == "/auth/refresh"
-            return httpx.Response(
-                200,
-                json={
-                    "access_token": (
-                        "refreshed-access-token" if refreshing else "access-token"
-                    ),
-                    "refresh_token": (
-                        "refreshed-refresh-token" if refreshing else "refresh-token"
-                    ),
-                    "user": {
-                        "id": "00000000-0000-4000-8000-000000000010",
-                        "email": "user@example.com",
-                        "status": "active",
-                        "email_confirmed": True,
-                        "created_at": "2026-08-26T12:00:00Z",
-                        "updated_at": "2026-08-26T12:00:00Z",
-                    },
-                    "expires_in": 3600,
-                    "token_type": "bearer",
-                },
-            )
-        if path == "/databases/main/query/select":
-            return httpx.Response(200, json={"data": [{"slug": "a"}], "count": 1})
-        if request.method == "POST" and path == "/storage/assets/a.txt":
-            return httpx.Response(
-                201,
-                json={
-                    "id": "00000000-0000-4000-8000-000000000020",
-                    "bucket_id": "00000000-0000-4000-8000-000000000030",
-                    "name": "a.txt",
-                    "is_public": False,
-                    "size": 5,
-                    "mime_type": "application/octet-stream",
-                    "metadata": {},
-                    "owner_id": "00000000-0000-4000-8000-000000000010",
-                    "created_at": "2026-08-26T12:00:00Z",
-                    "updated_at": "2026-08-26T12:00:00Z",
-                },
-            )
-        if request.method == "GET" and path in {
-            "/storage/assets/a.txt",
-            "/storage/assets",
-        }:
-            if path == "/storage/assets/a.txt":
-                response = httpx.Response(200, content=b"hello")
-            else:
-                assert dict(request.url.params) == {
-                    "prefix": "avatars",
-                    "limit": "25",
-                    "cursor": "cursor-1",
-                }
-                response = httpx.Response(
-                    200,
-                    json={"objects": [], "next_cursor": "cursor-2"},
-                )
-            return response
-        if request.method == "POST" and path == "/locks/build/lease":
-            return httpx.Response(
-                201,
-                json={
-                    "key": "build",
-                    "expires_at": "2026-08-26T12:00:30Z",
-                    "fencing_token": 7,
-                },
-            )
-        if request.method == "DELETE" and path == "/locks/build/lease":
-            return httpx.Response(204)
-        message = f"unexpected request: {request.method} {path}"
-        raise AssertionError(message)
+        return openapi_operation_response(request)
 
     transport = GeneratedTransport(
         api_url="https://api.test.volcano.dev",
@@ -2057,3 +1986,99 @@ def test_generated_transport_stops_a_durable_execution() -> None:
     assert requests[0].url.path.endswith(
         "/executions/00000000-0000-4000-8000-000000000041/stop"
     )
+
+
+def openapi_operation_response(request: httpx.Request) -> httpx.Response:
+    path = request.url.path
+    if path in {"/auth/signin", "/auth/refresh"}:
+        return auth_operation_response(request)
+    if path == "/databases/main/query/select":
+        return httpx.Response(200, json={"data": [{"slug": "a"}], "count": 1})
+    if path.startswith("/storage/"):
+        return storage_operation_response(request)
+    if path == "/locks/build/lease":
+        return lock_operation_response(request)
+    message = f"unexpected request: {request.method} {path}"
+    raise AssertionError(message)
+
+
+def auth_operation_response(request: httpx.Request) -> httpx.Response:
+    path = request.url.path
+    refreshing = path == "/auth/refresh"
+    return httpx.Response(
+        200,
+        json={
+            "access_token": (
+                "refreshed-access-token" if refreshing else "access-token"
+            ),
+            "refresh_token": (
+                "refreshed-refresh-token" if refreshing else "refresh-token"
+            ),
+            "user": {
+                "id": "00000000-0000-4000-8000-000000000010",
+                "email": "user@example.com",
+                "status": "active",
+                "email_confirmed": True,
+                "created_at": "2026-08-26T12:00:00Z",
+                "updated_at": "2026-08-26T12:00:00Z",
+            },
+            "expires_in": 3600,
+            "token_type": "bearer",
+        },
+    )
+
+
+def storage_operation_response(request: httpx.Request) -> httpx.Response:
+    path = request.url.path
+    if request.method == "POST" and path == "/storage/assets/a.txt":
+        return httpx.Response(
+            201,
+            json={
+                "id": "00000000-0000-4000-8000-000000000020",
+                "bucket_id": "00000000-0000-4000-8000-000000000030",
+                "name": "a.txt",
+                "is_public": False,
+                "size": 5,
+                "mime_type": "application/octet-stream",
+                "metadata": {},
+                "owner_id": "00000000-0000-4000-8000-000000000010",
+                "created_at": "2026-08-26T12:00:00Z",
+                "updated_at": "2026-08-26T12:00:00Z",
+            },
+        )
+    if request.method == "GET" and path in {
+        "/storage/assets/a.txt",
+        "/storage/assets",
+    }:
+        if path == "/storage/assets/a.txt":
+            response = httpx.Response(200, content=b"hello")
+        else:
+            assert dict(request.url.params) == {
+                "prefix": "avatars",
+                "limit": "25",
+                "cursor": "cursor-1",
+            }
+            response = httpx.Response(
+                200,
+                json={"objects": [], "next_cursor": "cursor-2"},
+            )
+        return response
+    message = f"unexpected request: {request.method} {path}"
+    raise AssertionError(message)
+
+
+def lock_operation_response(request: httpx.Request) -> httpx.Response:
+    path = request.url.path
+    if request.method == "POST" and path == "/locks/build/lease":
+        return httpx.Response(
+            201,
+            json={
+                "key": "build",
+                "expires_at": "2026-08-26T12:00:30Z",
+                "fencing_token": 7,
+            },
+        )
+    if request.method == "DELETE" and path == "/locks/build/lease":
+        return httpx.Response(204)
+    message = f"unexpected request: {request.method} {path}"
+    raise AssertionError(message)

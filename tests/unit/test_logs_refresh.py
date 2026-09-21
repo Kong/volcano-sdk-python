@@ -107,11 +107,7 @@ def test_logs_snapshot_nested_values_before_refresh_callbacks(operation: str) ->
 
     client = make_client(handle)
 
-    def mutate_on_refresh(event: str, _session: Session | None) -> None:
-        if event == "TOKEN_REFRESHED":
-            selector.update(type="frontend")
-
-    client.auth.on_auth_state_change(mutate_on_refresh)
+    client.auth.on_auth_state_change(mutate_selector_on_refresh(selector))
     method = client.logs.search if operation == "search" else client.logs.activity
     method("00000000-0000-4000-8000-000000000001", {"resource": selector})
 
@@ -185,3 +181,13 @@ def test_logs_do_not_refresh_transport_failures(operation: str) -> None:
     with pytest.raises(TransportError):
         read_logs(make_client(handle), operation)
     assert len(requests) == 1
+
+
+def mutate_selector_on_refresh(
+    selector: dict[str, str],
+) -> Callable[[str, Session | None], None]:
+    def mutate_on_refresh(event: str, _session: Session | None) -> None:
+        if event == "TOKEN_REFRESHED":
+            selector.update(type="frontend")
+
+    return mutate_on_refresh
