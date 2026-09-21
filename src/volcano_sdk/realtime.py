@@ -162,6 +162,15 @@ class PostgresChange:
         object.__setattr__(self, "id", _freeze_json(self.id))
 
 
+def _normalize_postgres_delete(change: PostgresChange) -> PostgresChange:
+    if change.mode != "lightweight" or change.type != "DELETE":
+        return change
+    old_record = change.old_record
+    if old_record is None and change.id is not None:
+        old_record = {"id": change.id}
+    return replace(change, old_record=old_record, id=None, mode=None)
+
+
 def _filter_postgres_changes(
     event: PostgresListenerEvent,
     schema: str,
@@ -809,37 +818,45 @@ class Channel:
             row_id=change.id,
         )
 
-    async def _receive_postgres_change(self, data: Any) -> None:
+    def _postgres_delivery(self, data: object) -> _PostgresDelivery | None:
         change = _postgres_change(data)
         if change is None or not self._has_postgres_listener(change):
-            return
-        if change.mode == "lightweight" and change.type == "DELETE":
-            old_record = change.old_record
-            if old_record is None and change.id is not None:
-                old_record = {"id": change.id}
-            change = replace(change, old_record=old_record, id=None, mode=None)
+            return None
+        change = _normalize_postgres_delete(change)
         identity = self._capture_postgres_delivery_identity()
         if not self._postgres_delivery_is_current(identity):
-            return
-        delivery = _PostgresDelivery(change=change, identity=identity)
-        request = self._postgres_fetch_request(change)
+            return None
+        return _PostgresDelivery(change=change, identity=identity)
+
+    async def _postgres_delivery_worker(
+        self,
+        identity: _PostgresDeliveryIdentity,
+    ) -> PostgresFetchWorker[_PostgresDelivery] | None:
         async with self._postgres_lock:
             if not self._postgres_delivery_is_current(identity):
-                return
-            worker = self._postgres_worker
-            if worker is None:
-                worker = PostgresFetchWorker(
+                return None
+            if self._postgres_worker is None:
+                self._postgres_worker = PostgresFetchWorker(
                     self._realtime._fetch_postgres_rows,
                     self._deliver_postgres,
                     queue_limit=POSTGRES_QUEUE_LIMIT,
                     batch_window_seconds=self._fetch_config.batch_window_seconds,
                     max_batch_size=self._fetch_config.max_batch_size,
                 )
-                self._postgres_worker = worker
+            return self._postgres_worker
+
+    async def _receive_postgres_change(self, data: object) -> None:
+        delivery = self._postgres_delivery(data)
+        if delivery is None:
+            return
+        request = self._postgres_fetch_request(delivery.change)
+        worker = await self._postgres_delivery_worker(delivery.identity)
+        if worker is None:
+            return
         try:
             await worker.enqueue(PostgresFetchJob(request=request, fallback=delivery))
         except RuntimeError:
-            if self._postgres_delivery_is_current(identity):
+            if self._postgres_delivery_is_current(delivery.identity):
                 raise
 
     async def _deliver_postgres(
