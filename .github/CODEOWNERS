@@ -31,6 +31,8 @@ pytest.ini @Kong/team-volcano
 .pytest.ini @Kong/team-volcano
 pytest.toml @Kong/team-volcano
 .pytest.toml @Kong/team-volcano
+behave.ini @Kong/team-volcano
+.behaverc @Kong/team-volcano
 tox.ini @Kong/team-volcano
 .coveragerc @Kong/team-volcano
 .mutmut-config* @Kong/team-volcano
