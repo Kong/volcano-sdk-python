@@ -56,9 +56,15 @@ dev = [
 ]
 
 [tool.mypy]
-files = ["src", "tests/unit", "scripts"]
+files = ["src", "tests", "scripts"]
 python_version = "3.11"
 strict = true
+explicit_package_bases = true
+mypy_path = [
+  "$MYPY_CONFIG_FILE_DIR/src",
+  "$MYPY_CONFIG_FILE_DIR/scripts",
+  "$MYPY_CONFIG_FILE_DIR/tests/unit",
+]
 exclude = ["src/volcano_sdk/_generated/"]
 
 [[tool.mypy.overrides]]
@@ -66,7 +72,7 @@ module = ["behave.*"]
 ignore_missing_imports = true
 
 [tool.pyright]
-include = ["src", "tests/unit", "scripts"]
+include = ["src", "tests", "scripts"]
 exclude = ["src/volcano_sdk/_generated"]
 pythonVersion = "3.11"
 venvPath = "."

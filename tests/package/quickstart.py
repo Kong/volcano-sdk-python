@@ -79,7 +79,7 @@ def run_quickstart() -> None:
         def do_POST(self) -> None:
             self._respond()
 
-        def log_message(self, _format: str, *_args: object) -> None:
+        def log_message(self, *_args: object, **_kwargs: object) -> None:
             pass
 
     with HTTPServer(("127.0.0.1", 0), Handler) as server:
