@@ -24,7 +24,14 @@ def main() -> None:
     subprocess.run([sys.executable, "-m", "mypy"], check=True)
     subprocess.run([sys.executable, "-m", "pyright"], check=True)
     subprocess.run(
-        [sys.executable, "-m", "pytest", "tests/unit", "-q"],
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/unit",
+            "-q",
+            "--junitxml=reports/unit.xml",
+        ],
         check=True,
     )
     fixture = Path("tests/fixtures/sdk-contract-dry-run.json").resolve()
