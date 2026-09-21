@@ -57,6 +57,51 @@ def rows_response() -> httpx.Response:
     return httpx.Response(200, json={"data": [{"id": 1}], "count": 1})
 
 
+@pytest.mark.parametrize("columns", [(), ("*",), ("id", "title")])
+def test_select_preserves_zero_pagination_and_query_clauses(
+    columns: tuple[str, ...],
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return rows_response()
+
+    query = make_client(handle).database("db").from_("items")
+    result = (
+        query.select(*columns)
+        .eq("id", 1)
+        .order("title", ascending=False)
+        .limit(0)
+        .offset(0)
+        .execute()
+    )
+    expected: dict[str, object] = {
+        "table": "items",
+        "filters": [{"column": "id", "operator": "eq", "value": 1}],
+        "order": [{"column": "title", "ascending": False}],
+        "limit": 0,
+        "offset": 0,
+    }
+    if columns == ("id", "title"):
+        expected["select"] = list(columns)
+    assert result == [{"id": 1}]
+    assert len(requests) == 1
+    assert json.loads(requests[0].content) == expected
+
+
+def test_select_omits_unset_query_options() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return rows_response()
+
+    assert make_client(handle).database("db").from_("items").execute() == [{"id": 1}]
+    assert len(requests) == 1
+    assert json.loads(requests[0].content) == {"table": "items"}
+
+
 def test_select_refreshes_once_and_replays_the_same_query() -> None:
     requests: list[httpx.Request] = []
 

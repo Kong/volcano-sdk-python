@@ -164,19 +164,26 @@ class QueryBuilder(FilterBuilder):
     def _with_filters(self, filters: tuple[dict[str, Any], ...]) -> QueryBuilder:
         return replace(self, _filters=filters)
 
-    def execute(self) -> list[dict[str, Any]]:
-        """Execute the query and return its rows."""
-        body: dict[str, Any] = {"table": self._table}
+    def _request_body(self) -> dict[str, object]:
+        body: dict[str, object] = {"table": self._table}
         if self._columns and self._columns != ("*",):
             body["select"] = list(self._columns)
         if self._filters:
             body["filters"] = list(self._filters)
         if self._order:
             body["order"] = list(self._order)
-        if self._limit is not None:
-            body["limit"] = self._limit
-        if self._offset is not None:
-            body["offset"] = self._offset
+        return body | self._pagination()
+
+    def _pagination(self) -> dict[str, int]:
+        return {
+            name: value
+            for name, value in (("limit", self._limit), ("offset", self._offset))
+            if value is not None
+        }
+
+    def execute(self) -> list[dict[str, Any]]:
+        """Execute the query and return its rows."""
+        body = self._request_body()
         response = self._client.auth._session_request(
             lambda token: invoke(
                 self._client._transport.query_database_select,
