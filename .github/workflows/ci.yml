@@ -38,6 +38,15 @@ jobs:
       - run: uv sync --frozen
       - name: Run SDK quality checks
         run: uv run python scripts/quality.py
+      - name: Preserve test failures and property seeds
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: property-failures-python-${{ matrix.python-version }}
+          path: |
+            reports/unit.xml
+            reports/hypothesis/seed.txt
+          if-no-files-found: ignore
 
   quality:
     name: Quality Gate
