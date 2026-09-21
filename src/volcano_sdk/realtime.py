@@ -25,6 +25,8 @@ from ._transport import (
 from .models import JSONValue, _freeze_json
 
 if TYPE_CHECKING:
+    from typing import TypeGuard
+
     from ._session_operations import SessionOperations
     from .models import Session
 
@@ -224,7 +226,7 @@ class _CallbackDelivery:
     delivery_epoch: int | None = None
 
 
-def _postgres_change(data: Any) -> PostgresChange | None:
+def _postgres_change(data: object) -> PostgresChange | None:
     if not isinstance(data, Mapping):
         return None
     typed_data = cast("Mapping[str, object]", data)
@@ -245,21 +247,10 @@ def _postgres_change(data: Any) -> PostgresChange | None:
         or (old_record is not None and not isinstance(old_record, Mapping))
     ):
         return None
-    typed_mode: Literal["lightweight"] | None
-    if mode is None:
-        typed_mode = None
-    elif mode == "lightweight":
-        typed_mode = "lightweight"
-    else:
+    if not _postgres_mode(mode):
         return None
-    if raw_columns is None:
-        columns = None
-    elif isinstance(raw_columns, (list, tuple)):
-        untyped_columns = cast("list[object] | tuple[object, ...]", raw_columns)
-        if not all(isinstance(column, str) for column in untyped_columns):
-            return None
-        columns = tuple(cast("list[str] | tuple[str, ...]", raw_columns))
-    else:
+    valid_columns, columns = _postgres_columns(raw_columns)
+    if not valid_columns:
         return None
     return PostgresChange(
         type=cast("PostgresEvent", event),
@@ -270,8 +261,25 @@ def _postgres_change(data: Any) -> PostgresChange | None:
         columns=columns,
         timestamp=timestamp,
         id=cast("JSONValue", typed_data.get("id")),
-        mode=typed_mode,
+        mode=mode,
     )
+
+
+def _postgres_mode(value: object) -> TypeGuard[Literal["lightweight"] | None]:
+    return value is None or value == "lightweight"
+
+
+def _postgres_columns(value: object) -> tuple[bool, tuple[str, ...] | None]:
+    if value is None:
+        return True, None
+    if not isinstance(value, (list, tuple)):
+        return False, None
+    columns: list[str] = []
+    for column in cast("list[object] | tuple[object, ...]", value):
+        if not isinstance(column, str):
+            return False, None
+        columns.append(column)
+    return True, tuple(columns)
 
 
 class RealtimeContext(Protocol):
