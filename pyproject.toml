@@ -119,6 +119,9 @@ ignore = [
   "W191",
 ]
 
+[tool.ruff.lint.mccabe]
+max-complexity = 5
+
 [tool.ruff.lint.per-file-ignores]
 "features/**/*.py" = ["ANN401", "D", "INP001", "S101"]
 "scripts/*.py" = ["T201"]

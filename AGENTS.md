@@ -5,6 +5,8 @@
 - Research upstream tools before adding enforcement. Keep rules in native tool
   configuration and orchestration in declarative tasks. Add custom checks only
   for requirements established tools cannot express; document that gap.
+- Keep every handwritten Python function at cyclomatic complexity five or less,
+  including tests and contract support. Ruff enforces this in `pyproject.toml`.
 - Fix failures rather than weakening rules or excluding code. Narrow exceptions
   for verified tool limitations require human approval and an exact record in
   `maintainers/quality-exceptions.json`. Never approve quality-policy changes
