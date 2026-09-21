@@ -200,8 +200,8 @@ class Locks:
         Returns
         -------
         LockLease
-            An immutable replacement with the same ownership token and the
-            server's updated expiry and fencing token.
+            An immutable replacement with the server's updated expiry and the
+            same ownership and fencing tokens.
 
         """
         _validate_ttl(ttl)
