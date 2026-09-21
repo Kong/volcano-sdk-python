@@ -8,10 +8,11 @@ export PACKAGE_VERSION="$version"
 uv run python -c 'import os, tomllib; p = tomllib.load(open("pyproject.toml", "rb"))["project"]; assert p["name"] == "volcano-sdk-python"; assert p["version"] == os.environ["PACKAGE_VERSION"]'
 
 # Check the exact artifacts that will be uploaded, including sdist rebuilds.
-artifacts=(dist/*)
+package_dir="${2:-dist}"
+artifacts=("$package_dir"/*)
 test "${#artifacts[@]}" -eq 2
-test -f "dist/volcano_sdk_python-$version-py3-none-any.whl"
-test -f "dist/volcano_sdk_python-$version.tar.gz"
+test -f "$package_dir/volcano_sdk_python-$version-py3-none-any.whl"
+test -f "$package_dir/volcano_sdk_python-$version.tar.gz"
 uvx --from twine==7.0.0 twine check --strict "${artifacts[@]}"
 smoke_dir="$(mktemp -d)"
 trap 'rm -rf "$smoke_dir"' EXIT
