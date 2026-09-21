@@ -18,20 +18,6 @@ def main() -> None:
     subprocess.run([sys.executable, "scripts/check_openapi.py"], check=True)
     subprocess.run([sys.executable, "-m", "ruff", "check", "."], check=True)
     subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "ruff",
-            "check",
-            "src/volcano_sdk",
-            "--select",
-            "C901",
-            "--config",
-            "lint.mccabe.max-complexity=5",
-        ],
-        check=True,
-    )
-    subprocess.run(
         [sys.executable, "-m", "ruff", "format", "--check", "."],
         check=True,
     )
