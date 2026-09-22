@@ -8,7 +8,16 @@ import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Literal,
+    Protocol,
+    TypeAlias,
+    TypeVar,
+    cast,
+    overload,
+)
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from typing_extensions import override
@@ -35,6 +44,8 @@ if TYPE_CHECKING:
     from .models import Session
 
 _PostgresFetchRequest: TypeAlias = PostgresFetchRequest
+_SubscriptionT = TypeVar("_SubscriptionT")
+_DefaultT = TypeVar("_DefaultT")
 
 MessageCallback = Callable[[Any], Any]
 RealtimeCallback = Callable[[Any], Any]
@@ -460,9 +471,20 @@ def _centrifuge_client(
     )
 
 
-class _ProjectAwareSubscriptions(dict[str, Any]):
+class _ProjectAwareSubscriptions(dict[str, _SubscriptionT]):
+    @overload
+    def get(self, key: str, default: None = None) -> _SubscriptionT | None: ...
+
+    @overload
+    def get(self, key: str, default: _SubscriptionT) -> _SubscriptionT: ...
+
+    @overload
+    def get(self, key: str, default: _DefaultT) -> _SubscriptionT | _DefaultT: ...
+
     @override
-    def get(self, key: str, default: Any = None) -> Any:
+    def get(
+        self, key: str, default: _DefaultT | None = None
+    ) -> _SubscriptionT | _DefaultT | None:
         subscription = super().get(key)
         if subscription is not None:
             return subscription
@@ -474,15 +496,22 @@ class _ProjectAwareSubscriptions(dict[str, Any]):
         return max(matches, key=lambda match: len(match[0]))[1] if matches else default
 
 
+def _project_subscriptions(value: object) -> _ProjectAwareSubscriptions[object]:
+    if not isinstance(value, dict):
+        raise TypeError(SUBSCRIPTION_REGISTRY_UNAVAILABLE)
+    subscriptions = _ProjectAwareSubscriptions[object]()
+    for channel, subscription in cast("Mapping[object, object]", value).items():
+        if not isinstance(channel, str):
+            raise TypeError(SUBSCRIPTION_REGISTRY_UNAVAILABLE)
+        subscriptions[channel] = subscription
+    return subscriptions
+
+
 class _VolcanoCentrifugeConnection:
     def __init__(self, connection: CentrifugeConnection) -> None:
         self._connection = connection
         state = vars(connection)
-        subscriptions = state.get("_subs")
-        if not isinstance(subscriptions, dict):
-            raise TypeError(SUBSCRIPTION_REGISTRY_UNAVAILABLE)
-        typed_subscriptions = cast("dict[str, Any]", subscriptions)
-        state["_subs"] = _ProjectAwareSubscriptions(typed_subscriptions)
+        state["_subs"] = _project_subscriptions(state.get("_subs"))
 
     async def connect(self) -> None:
         await self._connection.connect()

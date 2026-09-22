@@ -18,10 +18,10 @@ names and user-scoped Postgres routes to the SDK's local subscription. Connectio
 subscription, recovery, publication, presence requests and disconnect operations
 remain in the official client. The adapter and protocol objects stay internal.
 
-Construction raises `TypeError` when the expected dictionary is unavailable;
-it must not continue with silently broken delivery. That check alone cannot
-detect semantic changes to upstream dispatch, so dependency updates also need
-the regression checks below.
+Construction raises `TypeError` when the expected dictionary is unavailable or
+contains non-string channel keys; it must not continue with silently broken
+delivery. That check alone cannot detect semantic changes to upstream dispatch,
+so dependency updates also need the regression checks below.
 
 Channel mapping is not an authorization boundary. Hosting must still enforce
 project isolation and RLS before delivering a message. Do not broaden matching
