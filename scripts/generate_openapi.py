@@ -49,7 +49,7 @@ def generate(output: Path) -> None:
     if output.exists():
         shutil.rmtree(output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(  # noqa: S603 - argv and executable are controlled by this script.
+    subprocess.run(  # ruff: ignore[S603] - argv and executable are controlled by this script.
         [
             sys.executable,
             "-I",

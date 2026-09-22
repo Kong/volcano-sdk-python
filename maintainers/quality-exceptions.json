@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "rule": "S603",
+    "scope": "scripts/generate_openapi.py:generate",
+    "rationale": "The command invokes the current Python interpreter with an argument list and no shell. The output path is passed as data.",
+    "evidence": "scripts/generate_openapi.py:52-70; the executable is sys.executable and all command switches are literals."
+  }
+]
