@@ -154,6 +154,8 @@ reportUnusedParameter = "error"
 reportCallInDefaultInitializer = "error"
 reportImplicitRelativeImport = "error"
 reportUnnecessaryCast = "error"
+reportUnnecessaryComparison = "error"
+reportIncompatibleVariableOverride = "error"
 # Package-level collaborators intentionally share private implementation details;
 # Ruff still enforces private access everywhere else.
 reportPrivateUsage = false
