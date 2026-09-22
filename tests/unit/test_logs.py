@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 import pytest
+from fixtures.invalid_arguments import non_mapping_log_request
 from transport_fixtures import RejectingTransport
 
 from volcano_sdk import ServerError, Session, VolcanoClient
@@ -18,14 +19,14 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class FakeResponse:
     status_code: int
-    payload: Any
+    payload: object
     headers: dict[str, str]
     content: bytes = b""
 
 
 class FakeLogsTransport(RejectingTransport):
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.calls: list[tuple[str, dict[str, object]]] = []
         self.search_response = FakeResponse(
             200,
             {
@@ -63,11 +64,11 @@ class FakeLogsTransport(RejectingTransport):
             {},
         )
 
-    def search_project_logs(self, **kwargs: Any) -> FakeResponse:
+    def search_project_logs(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("searchProjectLogs", kwargs))
         return self.search_response
 
-    def get_project_log_activity(self, **kwargs: Any) -> FakeResponse:
+    def get_project_log_activity(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("getProjectLogActivity", kwargs))
         return self.activity_response
 
@@ -155,7 +156,7 @@ def test_logs_rejects_a_non_mapping_request() -> None:
     transport = FakeLogsTransport()
 
     with pytest.raises(TypeError, match="mapping"):
-        logs_client(transport).logs.activity("project-1", cast("Any", []))
+        non_mapping_log_request(logs_client(transport).logs)
 
     assert transport.calls == []
 
