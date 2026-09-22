@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Any
 
 import pytest
 from transport_fixtures import RejectingTransport
@@ -24,13 +23,13 @@ PROJECT_ID = "00000000-0000-4000-8000-000000000001"
 @dataclass(frozen=True)
 class FakeResponse:
     status_code: int
-    payload: Any
+    payload: object
     headers: dict[str, str]
     content: bytes = b""
 
 
-def running_execution(**overrides: Any) -> dict[str, Any]:
-    execution = {
+def running_execution(**overrides: object) -> dict[str, object]:
+    execution: dict[str, object] = {
         "id": EXECUTION_ID,
         "function_id": "00000000-0000-4000-8000-000000000040",
         "name": "order-42",
@@ -44,7 +43,7 @@ def running_execution(**overrides: Any) -> dict[str, Any]:
 
 class FakeDurableTransport(RejectingTransport):
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.calls: list[tuple[str, dict[str, object]]] = []
         self.start_response = FakeResponse(202, running_execution(), {})
         self.get_response = FakeResponse(
             200,
@@ -68,19 +67,21 @@ class FakeDurableTransport(RejectingTransport):
         )
         self.stop_response = FakeResponse(200, running_execution(), {})
 
-    def start_durable_execution_from_application(self, **kwargs: Any) -> FakeResponse:
+    def start_durable_execution_from_application(
+        self, **kwargs: object
+    ) -> FakeResponse:
         self.calls.append(("startDurableExecutionFromApplication", kwargs))
         return self.start_response
 
-    def get_durable_execution(self, **kwargs: Any) -> FakeResponse:
+    def get_durable_execution(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("getDurableExecution", kwargs))
         return self.get_response
 
-    def list_durable_executions(self, **kwargs: Any) -> FakeResponse:
+    def list_durable_executions(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("listDurableExecutions", kwargs))
         return self.list_response
 
-    def stop_durable_execution(self, **kwargs: Any) -> FakeResponse:
+    def stop_durable_execution(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("stopDurableExecution", kwargs))
         return self.stop_response
 
