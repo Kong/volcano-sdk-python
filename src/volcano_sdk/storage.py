@@ -470,7 +470,12 @@ class StorageBucket:
         *,
         content_type: str | None = None,
     ) -> dict[str, Any]:
-        """Upload bytes or the remaining contents of a binary stream."""
+        """Upload bytes or the remaining contents of a binary stream.
+
+        Returns:
+            Server response fields describing the uploaded object.
+
+        """
         mime_type = _upload_content_type(content_type)
         binding = self._client._capture_session_binding()
         self._client._session_token()
@@ -490,7 +495,12 @@ class StorageBucket:
         return dict(payload)
 
     def download(self, path: str, *, byte_range: str | None = None) -> bytes:
-        """Download bytes from a path in this bucket."""
+        """Download bytes from a path in this bucket.
+
+        Returns:
+            Downloaded bytes, without text decoding.
+
+        """
         response = self._client.auth._session_request(
             lambda token: invoke(
                 self._client._transport.download_storage_object,
@@ -516,7 +526,12 @@ class StorageBucket:
         content_type: str = "application/octet-stream",
         part_size: int | None = None,
     ) -> UploadSession:
-        """Create server state for a resumable upload."""
+        """Create server state for a resumable upload.
+
+        Returns:
+            Session ID, server-selected part size and count, and expiry.
+
+        """
         transport = cast("StorageUploadSessionTransport", self._client._transport)
         response = self._client.auth._session_request(
             lambda token: invoke(
@@ -541,7 +556,12 @@ class StorageBucket:
         part_number: int,
         data: bytes,
     ) -> UploadPart:
-        """Upload one part of a resumable upload session."""
+        """Upload one part of a resumable upload session.
+
+        Returns:
+            The accepted part number, ETag, and byte count.
+
+        """
         transport = cast("StorageUploadPartTransport", self._client._transport)
         response = self._client.auth._session_request(
             lambda token: invoke(
@@ -564,7 +584,12 @@ class StorageBucket:
         *,
         session_id: str,
     ) -> StorageObject:
-        """Complete a resumable upload and return the stored object."""
+        """Complete a resumable upload and return the stored object.
+
+        Returns:
+            Metadata for the object assembled from the uploaded parts.
+
+        """
         transport = cast("StorageCompleteUploadTransport", self._client._transport)
         response = self._client.auth._session_request(
             lambda token: invoke(
@@ -586,7 +611,12 @@ class StorageBucket:
         *,
         session_id: str,
     ) -> UploadSessionStatus:
-        """Get resumable upload progress and uploaded part metadata."""
+        """Get resumable upload progress and uploaded part metadata.
+
+        Returns:
+            Session state, byte and part counts, uploaded parts, and timestamps.
+
+        """
         transport = cast("StorageUploadStatusTransport", self._client._transport)
         response = self._client.auth._session_request(
             lambda token: invoke(
@@ -631,7 +661,12 @@ class StorageBucket:
         part_size: int | None = None,
         on_progress: Callable[[int, int], None] | None = None,
     ) -> StorageObject:
-        """Upload bytes or a binary stream through a resumable session."""
+        """Upload bytes or a binary stream through a resumable session.
+
+        Returns:
+            Metadata for the completed object.
+
+        """
         path = _storage_path(path)
         self._client._session_token()
         with _resumable_upload_source(data) as (source, total_size):
@@ -688,7 +723,12 @@ class StorageBucket:
         limit: int | None = None,
         cursor: str | None = None,
     ) -> StoragePage:
-        """List objects under a prefix and return the next-page cursor."""
+        """List objects under a prefix and return the next-page cursor.
+
+        Returns:
+            An immutable object page with a cursor, or None when no page follows.
+
+        """
         transport = cast("StorageListTransport", self._client._transport)
         response = self._client.auth._session_request(
             lambda token: invoke(
@@ -703,7 +743,12 @@ class StorageBucket:
         return _storage_page(response_payload(response, 200))
 
     def remove(self, paths: str | Sequence[str]) -> tuple[str, ...]:
-        """Delete one or more object paths and return their immutable snapshot."""
+        """Delete one or more object paths and return their immutable snapshot.
+
+        Returns:
+            The deleted paths as a tuple, in the supplied order.
+
+        """
         path_list = _storage_paths(paths)
         binding = self._client._capture_session_binding()
         for path in path_list:
@@ -726,7 +771,12 @@ class StorageBucket:
         response_payload(response, 200)
 
     def move(self, from_path: str, to_path: str) -> StorageObject:
-        """Move or rename an object within this bucket."""
+        """Move or rename an object within this bucket.
+
+        Returns:
+            Metadata for the object at its destination path.
+
+        """
         source, destination = _storage_paths((from_path, to_path))
         transport = cast("StorageMoveTransport", self._client._transport)
         response = self._client.auth._session_request(
@@ -741,7 +791,12 @@ class StorageBucket:
         return _storage_object(response_payload(response, 200))
 
     def copy(self, from_path: str, to_path: str) -> StorageObject:
-        """Copy an object to another path within this bucket."""
+        """Copy an object to another path within this bucket.
+
+        Returns:
+            Metadata for the new copy at its destination path.
+
+        """
         source, destination = _storage_paths((from_path, to_path))
         transport = cast("StorageCopyTransport", self._client._transport)
         response = self._client.auth._session_request(
@@ -756,7 +811,12 @@ class StorageBucket:
         return _storage_object(response_payload(response, 201))
 
     def update_visibility(self, path: str, *, is_public: bool) -> StorageObject:
-        """Set an object's public visibility and return its server state."""
+        """Set an object's public visibility and return its server state.
+
+        Returns:
+            Object metadata reflecting the updated visibility.
+
+        """
         object_path = _storage_paths(path)[0]
         visibility = _storage_visibility(is_public)
         transport = cast("StorageVisibilityTransport", self._client._transport)
@@ -772,7 +832,12 @@ class StorageBucket:
         return _storage_object(response_payload(response, 200))
 
     def get_public_url(self, path: str) -> str:
-        """Construct this object's public URL without making a request."""
+        """Construct this object's public URL without making a request.
+
+        Returns:
+            The encoded public URL; this does not check existence or visibility.
+
+        """
         object_path = _storage_path(path)
         project_id = _project_id_from_anon_key(self._client._anon_token())
         return (
@@ -790,5 +855,10 @@ class Storage:
         self._client = client
 
     def from_(self, bucket: str) -> StorageBucket:
-        """Create a facade scoped to a bucket."""
+        """Create a facade scoped to a bucket.
+
+        Returns:
+            A storage facade bound to the supplied bucket name.
+
+        """
         return StorageBucket(self._client, bucket)
