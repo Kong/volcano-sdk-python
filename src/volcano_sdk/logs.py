@@ -5,7 +5,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Protocol, cast
 
-from ._log_response import INVALID_LOG_RESPONSE, response_data, response_values
+from ._log_response import (
+    activity_total,
+    response_data,
+    response_values,
+    search_metadata,
+)
 from ._transport import TransportResponse, invoke, response_payload
 from .models import JSONValue, LogActivityResponse, LogSearchResponse, _freeze_json
 
@@ -112,16 +117,7 @@ def _log_request(
 
 def _search_response(payload: object) -> LogSearchResponse:
     values = response_values(payload)
-    limit = values.get("limit")
-    has_more = values.get("has_more")
-    next_cursor = values.get("next_cursor")
-    if (
-        not isinstance(limit, int)
-        or isinstance(limit, bool)
-        or not isinstance(has_more, bool)
-        or (next_cursor is not None and not isinstance(next_cursor, str))
-    ):
-        raise TypeError(INVALID_LOG_RESPONSE)
+    limit, has_more, next_cursor = search_metadata(values)
     return LogSearchResponse(
         data=response_data(values),
         limit=limit,
@@ -132,7 +128,4 @@ def _search_response(payload: object) -> LogSearchResponse:
 
 def _activity_response(payload: object) -> LogActivityResponse:
     values = response_values(payload)
-    total = values.get("total")
-    if not isinstance(total, int) or isinstance(total, bool):
-        raise TypeError(INVALID_LOG_RESPONSE)
-    return LogActivityResponse(data=response_data(values), total=total)
+    return LogActivityResponse(data=response_data(values), total=activity_total(values))

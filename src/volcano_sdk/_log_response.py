@@ -43,3 +43,42 @@ def response_data(values: Mapping[str, object]) -> tuple[Mapping[str, JSONValue]
     if any(not isinstance(item, Mapping) for item in data):
         raise TypeError(INVALID_LOG_RESPONSE)
     return tuple(cast("Mapping[str, JSONValue]", item) for item in data)
+
+
+def search_metadata(values: Mapping[str, object]) -> tuple[int, bool, str | None]:
+    """Require search pagination fields without coercing their values.
+
+    Raises:
+        TypeError: Required metadata is missing or has an invalid type.
+
+    Returns:
+        The page limit, continuation flag, and optional cursor.
+
+    """
+    limit = values.get("limit")
+    has_more = values.get("has_more")
+    next_cursor = values.get("next_cursor")
+    if (
+        not isinstance(limit, int)
+        or isinstance(limit, bool)
+        or not isinstance(has_more, bool)
+        or (next_cursor is not None and not isinstance(next_cursor, str))
+    ):
+        raise TypeError(INVALID_LOG_RESPONSE)
+    return limit, has_more, next_cursor
+
+
+def activity_total(values: Mapping[str, object]) -> int:
+    """Require the activity total without treating booleans as integers.
+
+    Raises:
+        TypeError: The total is missing or is not an integer.
+
+    Returns:
+        The total reported by the server.
+
+    """
+    total = values.get("total")
+    if not isinstance(total, int) or isinstance(total, bool):
+        raise TypeError(INVALID_LOG_RESPONSE)
+    return total

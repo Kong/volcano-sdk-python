@@ -88,3 +88,27 @@ def test_logs_activity_rejects_invalid_totals(
     )
     with pytest.raises(TypeError, match="Expected a complete log response"):
         client.logs.activity(PROJECT_ID, REQUEST)
+
+
+@pytest.mark.parametrize("native_transport", [False, True])
+@pytest.mark.parametrize("field", ["data", "limit", "has_more"])
+def test_logs_search_rejects_missing_required_fields(
+    field: str, *, native_transport: bool
+) -> None:
+    payload: dict[str, object] = {"data": [], "limit": 25, "has_more": False}
+    del payload[field]
+    client = response_client(payload, native_transport=native_transport)
+    with pytest.raises(TypeError, match="Expected a complete log response"):
+        client.logs.search(PROJECT_ID, REQUEST)
+
+
+@pytest.mark.parametrize("native_transport", [False, True])
+@pytest.mark.parametrize("field", ["data", "total"])
+def test_logs_activity_rejects_missing_required_fields(
+    field: str, *, native_transport: bool
+) -> None:
+    payload: dict[str, object] = {"data": [], "total": 0}
+    del payload[field]
+    client = response_client(payload, native_transport=native_transport)
+    with pytest.raises(TypeError, match="Expected a complete log response"):
+        client.logs.activity(PROJECT_ID, REQUEST)
