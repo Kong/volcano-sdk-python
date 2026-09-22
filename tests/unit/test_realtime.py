@@ -14,6 +14,7 @@ from state_assertions import assert_same
 
 from volcano_sdk import (
     AuthenticationError,
+    PostgresChange,
     RealtimeConnectContext,
     RealtimeDisconnectContext,
     RealtimeErrorContext,
@@ -1654,6 +1655,51 @@ def test_realtime_routes_immutable_rls_scoped_postgres_changes() -> None:
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("field", ["record", "old_record"])
+@pytest.mark.parametrize("invalid", ["invalid", 0, False, []])
+async def test_realtime_drops_malformed_records_before_delivering_valid_changes(
+    field: str,
+    invalid: object,
+) -> None:
+    official = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=AuthTransport(),
+        _realtime_client_factory=FakeCentrifugeFactory(official),
+    )
+    client.auth.sign_in(email="user@example.com", password="secret")
+    changes: list[PostgresChange] = []
+    received = asyncio.Event()
+
+    def on_change(change: PostgresChange) -> None:
+        changes.append(change)
+        if change.record == {"id": "valid"}:
+            received.set()
+
+    channel = client.realtime.channel("public:messages", channel_type="postgres")
+    channel.on_postgres_changes(
+        "*", schema="public", table="messages", callback=on_change
+    )
+    payload: dict[str, object] = {
+        "type": "UPDATE",
+        "schema": "public",
+        "table": "messages",
+        "record": {"id": "valid"},
+        "timestamp": "2026-09-02T12:00:00Z",
+    }
+    wire_channel = "project-id:postgres:public:messages:user-id"
+    invalid_payload = {**payload, "record": {"id": "invalid"}, field: invalid}
+    try:
+        await channel.subscribe()
+        await official.emit_wire_publication(wire_channel, invalid_payload)
+        await official.emit_wire_publication(wire_channel, payload)
+        await asyncio.wait_for(received.wait(), timeout=1)
+        assert len(changes) == 1
+        assert changes[0].record == {"id": "valid"}
+    finally:
+        await client.realtime.disconnect()
 
 
 def test_realtime_preserves_lightweight_postgres_metadata() -> None:

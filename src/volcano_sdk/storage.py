@@ -103,7 +103,9 @@ def _storage_page(payload: object) -> StoragePage:
     return StoragePage(
         objects=tuple(_storage_object(item) for item in objects),
         next_cursor=(
-            None if next_cursor is None or next_cursor == "" else str(next_cursor)
+            None
+            if next_cursor is None or (isinstance(next_cursor, str) and not next_cursor)
+            else str(next_cursor)
         ),
     )
 

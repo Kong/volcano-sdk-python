@@ -50,6 +50,28 @@ def make_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCl
     return client
 
 
+@pytest.mark.parametrize(
+    ("cursor", "expected"),
+    [
+        (None, None),
+        ("", None),
+        ("next", "next"),
+        (0, "0"),
+        (False, "False"),
+        ([], "[]"),
+    ],
+)
+def test_storage_cursor_normalization_preserves_non_string_values(
+    cursor: object,
+    expected: str | None,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"objects": [], "next_cursor": cursor})
+
+    client = make_client(handler)
+    assert client.storage.from_("assets").list().next_cursor == expected
+
+
 def storage_operation(client: VolcanoClient, operation: str) -> object:
     bucket = client.storage.from_("assets")
     operations: dict[str, Callable[[], object]] = {
