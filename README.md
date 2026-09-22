@@ -316,6 +316,10 @@ item when the execution resumes is not guaranteed, so a handler that branched on
 one would take a different path on the replay. `completion_reason` is how to tell
 why the batch ended.
 
+`@durable` accepts typed handlers. The decorated function is the platform
+entrypoint: its arguments and result are invocation envelopes, typed as `object`,
+rather than the handler's application input and result.
+
 Durable operations are synchronous here — there is no `await`, and a step's own
 function is handed a scope carrying `log` and `attempt`. A wait is held by the
 platform rather than by your code, so an execution suspended for an hour costs

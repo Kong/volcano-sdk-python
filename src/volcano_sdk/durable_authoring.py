@@ -41,7 +41,8 @@ Duration: TypeAlias = "str | int | dict[str, int]"
 # The second argument differs: the handler is given a durable context, and the
 # wrapper is given the invocation's own context.
 DurableHandler: TypeAlias = "Callable[[Any, DurableContext], Any]"
-FunctionHandler: TypeAlias = "Callable[[Any, Any], Any]"
+# Invocation envelopes are distinct from the user handler's input and result.
+FunctionHandler: TypeAlias = "Callable[[object, object], object]"
 
 # A deployed durable function gets the runtime from the build and needs no
 # extra. This is for running a handler in your own tests, which is the one place
@@ -673,19 +674,19 @@ class DurableContext:
 
 
 @overload
-def durable(handler: DurableHandler, *, logger: Any = ...) -> FunctionHandler: ...
+def durable(handler: DurableHandler, *, logger: object = ...) -> FunctionHandler: ...
 
 
 @overload
 def durable(
-    handler: None = ..., *, logger: Any = ...
+    handler: None = ..., *, logger: object = ...
 ) -> Callable[[DurableHandler], FunctionHandler]: ...
 
 
 def durable(
     handler: DurableHandler | None = None,
     *,
-    logger: Any = None,
+    logger: object = None,
 ) -> FunctionHandler | Callable[[DurableHandler], FunctionHandler]:
     """Wrap a handler so Volcano runs it as a durable execution.
 
@@ -709,7 +710,7 @@ def durable(
     """
     if handler is None:
 
-        def decorate(func: Callable[[Any, DurableContext], Any]) -> Any:
+        def decorate(func: DurableHandler) -> FunctionHandler:
             return durable(func, logger=logger)
 
         return decorate
@@ -719,22 +720,24 @@ def durable(
     return _wrap_durable(handler, logger)
 
 
-def _wrap_durable(handler: DurableHandler, logger: object) -> FunctionHandler:
+def _wrap_durable(
+    handler: Callable[[T, DurableContext], object], logger: object
+) -> FunctionHandler:
     # Wrapped on the first invocation, not here: resolving the engine is what
     # fails when the runtime is absent, and a decorator that raises at import
     # time would break a module that merely mentions a durable handler.
-    wrapped: list[Any] = []
+    wrapped: list[FunctionHandler] = []
 
     # functools.wraps rather than copying two attributes: __qualname__,
     # __module__, __dict__ and __wrapped__ matter to inspect.unwrap and to a
     # traceback, and leaving them pointing at this closure makes the SDK's
     # wrapper the thing a user sees when their handler fails.
     @functools.wraps(handler)
-    def invoke(event: Any, function_context: Any) -> Any:
+    def invoke(event: object, function_context: object) -> object:
         if not wrapped:
             engine = _Engine.load()
 
-            def run(input_value: Any, context: Any) -> Any:
+            def run(input_value: T, context: Any) -> object:
                 if logger is not None:
                     context.set_logger(logger)
                 return handler(input_value, DurableContext(context, engine))

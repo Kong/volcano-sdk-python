@@ -98,6 +98,7 @@ strict = true
 strict_equality_for_none = true
 strict_bytes = true
 disallow_any_unimported = true
+disallow_any_decorated = true
 warn_unreachable = true
 warn_unused_ignores = true
 enable_error_code = [
