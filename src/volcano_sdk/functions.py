@@ -7,9 +7,16 @@ import re
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Protocol, TypeVar, cast
 
-from . import _function_resolution
-from ._function_resolution import FunctionResolution
-from ._transport import TransportResponse, invoke, response_payload
+from ._function_resolution import (
+    FunctionResolution,
+    forget,
+    lookup,
+    resolve_lock,
+    store,
+    store_missing,
+    valid_invoke_url,
+)
+from ._transport import Transport, TransportResponse, invoke, response_payload
 from .errors import (
     AuthenticationError,
     NotFoundError,
@@ -19,7 +26,9 @@ from .errors import (
 from .models import FunctionResponse, JSONValue, _freeze_json
 
 if TYPE_CHECKING:
-    from .client import VolcanoClient
+    from ._session_operations import SessionOperations
+    from .auth import Auth
+    from .models import Session
 
 _FUNCTION_NAME = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _INVALID_FUNCTION_NAME = (
@@ -39,8 +48,23 @@ _FUNCTION_INVOKED_HEADER = "X-Volcano-Function-Invoked"
 _Result = TypeVar("_Result")
 
 
+class FunctionsContext(Protocol):
+    """Client capabilities required by function invocation."""
+
+    _transport: Transport
+    auth: Auth
+
+    def _capture_session_binding(
+        self,
+    ) -> tuple[int, SessionOperations, Session | None]: ...
+
+    def _function_token(self) -> str: ...
+
+    def _api_base_url(self) -> str: ...
+
+
 class _FunctionAuth:
-    def __init__(self, client: VolcanoClient) -> None:
+    def __init__(self, client: FunctionsContext) -> None:
         self._client = client
         self._binding = client._capture_session_binding()
         self._fallback_token = client._function_token()
@@ -116,7 +140,7 @@ class FunctionsTransport(Protocol):
 class Functions:
     """Invoke deployed Volcano functions by name."""
 
-    def __init__(self, client: VolcanoClient) -> None:
+    def __init__(self, client: FunctionsContext) -> None:
         """Bind function calls to a Volcano client."""
         self._client = client
 
@@ -149,9 +173,7 @@ class Functions:
         if _stale_mapping(response):
             # The function was deleted and recreated, so the cached identity no
             # longer exists. Resolve again before giving up.
-            _function_resolution.forget(
-                self._client._api_base_url(), authorization, name
-            )
+            forget(self._client._api_base_url(), authorization, name)
             _, resolution = auth.run(
                 lambda token: (token, self._resolve(transport, token, name))
             )
@@ -211,7 +233,7 @@ class Functions:
 
         # Hold the name's lock across the round trip so concurrent callers wait
         # for one resolve instead of each opening their own.
-        with _function_resolution.resolve_lock(api_url, authorization, name):
+        with resolve_lock(api_url, authorization, name):
             cached = self._cached(api_url, authorization, name)
             if cached is not None:
                 return cached
@@ -221,7 +243,7 @@ class Functions:
     def _cached(
         api_url: str, authorization: str, name: str
     ) -> FunctionResolution | None:
-        cached = _function_resolution.lookup(api_url, authorization, name)
+        cached = lookup(api_url, authorization, name)
         if cached is None:
             return None
         if cached.resolution is None:
@@ -248,12 +270,10 @@ class Functions:
         try:
             payload = response_payload(resolved, _HTTP_SUCCESS_MIN)
         except NotFoundError as error:
-            _function_resolution.store_missing(api_url, authorization, name, error)
+            store_missing(api_url, authorization, name, error)
             raise
         resolution = self._resolution(payload, api_url)
-        _function_resolution.store(
-            api_url, authorization, name, resolution, self._cache_ttl(payload)
-        )
+        store(api_url, authorization, name, resolution, self._cache_ttl(payload))
         return resolution
 
     @staticmethod
@@ -268,9 +288,7 @@ class Functions:
         # local development; the function is reached through the API instead.
         return FunctionResolution(
             function_id=function_id,
-            invoke_url=_function_resolution.valid_invoke_url(
-                values.get("invoke_url"), api_url
-            ),
+            invoke_url=valid_invoke_url(values.get("invoke_url"), api_url),
         )
 
     @staticmethod

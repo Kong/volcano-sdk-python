@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import Protocol, cast
 from uuid import UUID
 
 from ._transport import (
     DurableExecutionListRequest,
+    Transport,
     TransportResponse,
     invoke,
     response_payload,
@@ -20,9 +21,6 @@ from .models import (
     DurableExecutionStatus,
     JSONValue,
 )
-
-if TYPE_CHECKING:
-    from .client import VolcanoClient
 
 _INVALID_EXECUTION_PAYLOAD = "Expected a complete durable execution"
 _INVALID_EXECUTION_PAGE = "Expected a complete durable execution page"
@@ -47,6 +45,16 @@ _UUID_IDENTIFIERS = {
 }
 _HTTP_ACCEPTED = 202
 _HTTP_OK = 200
+
+
+class DurableClientContext(Protocol):
+    """Client capabilities required by durable execution requests."""
+
+    _transport: Transport
+
+    def _function_token(self) -> str: ...
+
+    def _session_token(self) -> str: ...
 
 
 class DurableTransport(Protocol):
@@ -100,7 +108,7 @@ class DurableTransport(Protocol):
 class Durable:
     """Start and follow executions of deployed durable functions."""
 
-    def __init__(self, client: VolcanoClient) -> None:
+    def __init__(self, client: DurableClientContext) -> None:
         """Bind durable operations to a Volcano client."""
         self._client = client
 
