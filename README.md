@@ -943,7 +943,7 @@ does not need it otherwise.
 
 ## Compatibility
 
-CI tests the SDK on Python 3.11 and 3.14. Its public facade is intentionally
+CI tests the SDK on every Python version from 3.11 through 3.14. Its public facade is intentionally
 independent of generated httpx types. The bundled `openapi/openapi.yaml` matches
 the public bundle from [Hosting #991](https://github.com/Kong/volcano-hosting/pull/991)
 at commit `ef03f689e`.

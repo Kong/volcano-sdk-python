@@ -13,7 +13,7 @@ separate smoke and gate tests; they are outside runtime coverage.
 
 Coverage runs in an isolated Python 3.12 environment with the same lockfile.
 The ordinary test task and all other quality checks still run on the selected
-Python version, including both compatibility versions in CI. uv's isolation
+Python version, including every supported version from 3.11 through 3.14 in CI. uv's isolation
 keeps coverage from replacing that interpreter or its environment.
 
 The fixed coverage interpreter avoids incorrect async branch attribution on
