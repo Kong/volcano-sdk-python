@@ -59,7 +59,10 @@ from volcano_sdk._generated.models.refresh_o_auth_provider_token_response_200 im
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
+
+    from volcano_sdk import User
+    from volcano_sdk.auth import Auth
 
 _CONNECTION_LOST = "connection lost"
 _SUBSCRIBER_FAILED = "subscriber failed"
@@ -539,17 +542,34 @@ class StateTransport:
         return Response(204)
 
 
+def profile_operations(
+    metadata: Mapping[str, str],
+) -> tuple[Callable[[Auth], User], ...]:
+    return (
+        lambda auth: auth.get_user(),
+        lambda auth: auth.update_user(metadata=metadata),
+        lambda auth: auth.convert_anonymous(
+            email="user@example.com", password="secret"
+        ),
+        lambda auth: auth.confirm_email_change(token="confirmation"),
+    )
+
+
+_PROFILE_OPERATION_IDS = (
+    "get_user",
+    "update_user",
+    "convert_anonymous",
+    "confirm_email_change",
+)
+
+
 @pytest.mark.parametrize(
-    ("method", "arguments"),
-    [
-        ("get_user", {}),
-        ("update_user", {"metadata": {"name": "updated"}}),
-        ("convert_anonymous", {"email": "user@example.com", "password": "secret"}),
-        ("confirm_email_change", {"token": "confirmation"}),
-    ],
+    "operation",
+    profile_operations({"name": "updated"}),
+    ids=_PROFILE_OPERATION_IDS,
 )
 def test_profile_operations_update_the_local_snapshot(
-    method: str, arguments: dict[str, Any]
+    operation: Callable[[Auth], User],
 ) -> None:
     client = VolcanoClient(anon_key="anon", _transport=StateTransport())
     original = client.auth.sign_in(email="user@example.com", password="secret")
@@ -558,7 +578,7 @@ def test_profile_operations_update_the_local_snapshot(
     client.auth.on_auth_state_change(lambda event, _session: events.append(event))
     events.clear()
 
-    user = getattr(client.auth, method)(**arguments)
+    user = operation(client.auth)
     current = client.auth.get_session()
 
     assert current is not None
@@ -576,49 +596,31 @@ def test_profile_operations_update_the_local_snapshot(
 
 
 @pytest.mark.parametrize(
-    ("method", "arguments"),
-    [
-        ("get_user", {}),
-        ("update_user", {"metadata": {}}),
-        (
-            "convert_anonymous",
-            {"email": "user@example.com", "password": "secret"},
-        ),
-        (
-            "confirm_email_change",
-            {"token": "confirmation"},
-        ),
-    ],
+    "operation", profile_operations({}), ids=_PROFILE_OPERATION_IDS
 )
 @pytest.mark.parametrize(
     "user_id", ["00000000-0000-4000-8000-000000000099", "invalid-id"]
 )
 def test_profile_operations_reject_a_different_user_without_changing_session(
-    method: str, arguments: dict[str, Any], user_id: str
+    operation: Callable[[Auth], User], user_id: str
 ) -> None:
     client = VolcanoClient(anon_key="anon", _transport=StateTransport())
     original = client.auth.set_session(Session("access", "refresh", user_id))
     binding = client._capture_session_binding()
 
     with pytest.raises(AuthenticationError, match="Profile user does not match"):
-        getattr(client.auth, method)(**arguments)
+        operation(client.auth)
 
     assert client.auth.get_session() is original
     assert client._capture_session_binding() == binding
 
 
 @pytest.mark.parametrize(
-    ("method", "arguments"),
-    [
-        ("get_user", {}),
-        ("update_user", {"metadata": {}}),
-        ("convert_anonymous", {"email": "user@example.com", "password": "secret"}),
-        ("confirm_email_change", {"token": "confirmation"}),
-    ],
+    "operation", profile_operations({}), ids=_PROFILE_OPERATION_IDS
 )
 @pytest.mark.parametrize("spelling", ["uppercase", "braced", "hex"])
 def test_profile_operations_preserve_equivalent_session_user_ids(
-    method: str, arguments: dict[str, Any], spelling: str
+    operation: Callable[[Auth], User], spelling: str
 ) -> None:
     transport = StateTransport()
     identity = UUID("ab123456-7890-4abc-8def-0123456789ab")
@@ -641,7 +643,7 @@ def test_profile_operations_preserve_equivalent_session_user_ids(
     )
     binding = client._capture_session_binding()
 
-    user = getattr(client.auth, method)(**arguments)
+    user = operation(client.auth)
     current = client.auth.get_session()
 
     assert user.id == str(identity)
