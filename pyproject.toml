@@ -121,7 +121,6 @@ enable_error_code = [
 explicit_package_bases = true
 mypy_path = [
   "$MYPY_CONFIG_FILE_DIR/src",
-  "$MYPY_CONFIG_FILE_DIR/scripts",
   "$MYPY_CONFIG_FILE_DIR/tests/unit",
   "$MYPY_CONFIG_FILE_DIR/features",
   "$MYPY_CONFIG_FILE_DIR/typings",
@@ -152,6 +151,8 @@ reportInvalidAbstractMethod = "error"
 reportSelfClsDefault = "error"
 reportPrivateLocalImportUsage = "error"
 reportUnusedParameter = "error"
+reportCallInDefaultInitializer = "error"
+reportImplicitRelativeImport = "error"
 # Package-level collaborators intentionally share private implementation details;
 # Ruff still enforces private access everywhere else.
 reportPrivateUsage = false
@@ -242,7 +243,7 @@ partial_branches = []
 quality = ["audit", "generated", "lint", "format-check", "types", "test", "coverage", "contract-check", "package-check"]
 build = "uv build --no-sources --require-hashes"
 audit = "bash scripts/audit_dependencies.sh"
-generated = "python scripts/check_openapi.py"
+generated = "python -m scripts.check_openapi"
 lint = "ruff check ."
 format-check = "ruff format --check ."
 types = ["mypy", "basedpyright"]

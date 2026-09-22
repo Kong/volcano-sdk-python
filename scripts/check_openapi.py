@@ -7,7 +7,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from generate_openapi import DEFAULT_OUTPUT, generate
+from scripts.generate_openapi import DEFAULT_OUTPUT, generate
 
 
 def generated_files(root: Path) -> dict[Path, Path]:

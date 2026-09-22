@@ -90,11 +90,11 @@ CASES = [
 ]
 
 
-def refresh_response(access: str = access_token("rotated")) -> httpx.Response:
+def refresh_response(access: str | None = None) -> httpx.Response:
     return httpx.Response(
         200,
         json={
-            "access_token": access,
+            "access_token": access_token("rotated") if access is None else access,
             "refresh_token": "refresh-2",
             "token_type": "bearer",
             "expires_in": 3600,
