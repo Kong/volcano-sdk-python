@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from contract_support import ContractWorld
@@ -10,8 +10,8 @@ if TYPE_CHECKING:
 
 
 async def _publish_and_receive(
-    publisher: Channel, received: asyncio.Queue[Any], message: dict[str, Any]
-) -> Any:
+    publisher: Channel, received: asyncio.Queue[object], message: dict[str, str]
+) -> object:
     async with asyncio.timeout(10):
         await publisher.send(message)
         while True:
@@ -20,14 +20,14 @@ async def _publish_and_receive(
                 return delivered
 
 
-async def verify_broadcast_pause(world: ContractWorld) -> Any:
+async def verify_broadcast_pause(world: ContractWorld) -> object:
     subscriber, publisher = world.subscriber, world.publisher
     assert subscriber is not None
     assert publisher is not None
-    received: asyncio.Queue[Any] = asyncio.Queue()
-    delivered: list[Any] = []
+    received: asyncio.Queue[object] = asyncio.Queue()
+    delivered: list[object] = []
 
-    def on_message(message: Any) -> None:
+    def on_message(message: object) -> None:
         delivered.append(message)
         received.put_nowait(message)
 
