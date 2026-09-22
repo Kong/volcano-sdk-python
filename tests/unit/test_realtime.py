@@ -6,10 +6,11 @@ import importlib
 import json
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast
 from unittest.mock import AsyncMock, create_autospec
 
 import pytest
+from fixtures.invalid_arguments import fractional_fetch_window
 from state_assertions import assert_same
 from typing_extensions import override
 
@@ -29,6 +30,11 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
 UNEXPECTED_TRANSPORT_CALL = "unexpected transport operation"
+
+
+class FetchOptions(TypedDict, total=False):
+    fetch_batch_window_ms: int
+    fetch_max_batch_size: int
 
 
 def centrifuge_error(message: str) -> Exception:
@@ -869,14 +875,13 @@ def test_realtime_rejects_conflicting_channel_fetch_configuration() -> None:
     [
         ({"fetch_batch_window_ms": True}, "fetch_batch_window_ms"),
         ({"fetch_batch_window_ms": 0}, "fetch_batch_window_ms"),
-        ({"fetch_batch_window_ms": 1.5}, "fetch_batch_window_ms"),
         ({"fetch_max_batch_size": True}, "fetch_max_batch_size"),
         ({"fetch_max_batch_size": 0}, "fetch_max_batch_size"),
         ({"fetch_max_batch_size": 129}, "fetch_max_batch_size"),
     ],
 )
 def test_realtime_rejects_invalid_channel_fetch_configuration(
-    options: dict[str, Any],
+    options: FetchOptions,
     message: str,
 ) -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
@@ -887,6 +892,13 @@ def test_realtime_rejects_invalid_channel_fetch_configuration(
             channel_type="postgres",
             **options,
         )
+
+
+def test_realtime_rejects_fractional_fetch_window() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
+
+    with pytest.raises(ValueError, match="fetch_batch_window_ms"):
+        fractional_fetch_window(client.realtime)
 
 
 def test_realtime_postgres_delivery_identity_changes_on_reauthentication() -> None:
@@ -4253,7 +4265,8 @@ def test_realtime_failed_removal_clears_presence(
 
 @pytest.mark.parametrize("channel_type", ["broadcast", "presence", "postgres"])
 def test_realtime_disconnect_cancels_readiness_and_allows_immediate_retry(
-    monkeypatch: pytest.MonkeyPatch, channel_type: Any
+    monkeypatch: pytest.MonkeyPatch,
+    channel_type: Literal["broadcast", "presence", "postgres"],
 ) -> None:
     async def scenario() -> None:
         first = ControlledCentrifugeFactory(monkeypatch)

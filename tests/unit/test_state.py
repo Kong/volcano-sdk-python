@@ -11,6 +11,7 @@ from uuid import UUID
 
 import httpx
 import pytest
+from fixtures.invalid_arguments import non_session_adoption
 
 from volcano_sdk import (
     AuthenticationError,
@@ -3049,13 +3050,14 @@ def test_auth_facade_adoption_replaces_the_current_session() -> None:
 @pytest.mark.parametrize(
     "invalid",
     [
-        object(),
         Session(access_token=" ", refresh_token="refresh", user_id="user"),
         Session(access_token="access", refresh_token="\t", user_id="user"),
         Session(access_token="access", refresh_token="refresh", user_id="\n"),
     ],
 )
-def test_auth_facade_rejects_incomplete_adoption_without_mutation(invalid: Any) -> None:
+def test_auth_facade_rejects_incomplete_adoption_without_mutation(
+    invalid: Session,
+) -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
     previous = client.auth.sign_in(email="user@example.com", password="secret")
@@ -3063,6 +3065,19 @@ def test_auth_facade_rejects_incomplete_adoption_without_mutation(invalid: Any) 
 
     with pytest.raises(ValueError, match="complete Session"):
         client.auth.set_session(invalid)
+
+    assert client.auth.get_session() is previous
+    assert transport.authorizations == calls_after_sign_in
+
+
+def test_auth_facade_rejects_non_session_adoption_without_mutation() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    previous = client.auth.sign_in(email="user@example.com", password="secret")
+    calls_after_sign_in = list(transport.authorizations)
+
+    with pytest.raises(ValueError, match="complete Session"):
+        non_session_adoption(client.auth)
 
     assert client.auth.get_session() is previous
     assert transport.authorizations == calls_after_sign_in
