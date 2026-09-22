@@ -262,6 +262,62 @@ def test_oauth_captures_ownership_before_copying_the_request(
     assert not requests
 
 
+@pytest.mark.parametrize(
+    "case",
+    [case for case in CASES if case.name in {"token", "refresh_token", "provider_api"}],
+    ids=lambda case: case.name,
+)
+@pytest.mark.parametrize(
+    "payload", [b"", b"not-json", b"null", b"42", b"true", b"\xff"]
+)
+def test_malformed_oauth_response_preserves_session_without_retry(
+    case: AuthCase, payload: bytes
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, content=payload)
+
+    client = client_for(handle)
+    original = client.current_session
+    message = (
+        "Expected OAuth provider API response data"
+        if case.name == "provider_api"
+        else "Expected complete OAuth provider token status"
+    )
+
+    with pytest.raises(VolcanoError, match=message) as error:
+        case.invoke(client)
+
+    assert error.value.__cause__ is not None
+    assert client.current_session is original
+    assert len(requests) == 1
+    assert requests[0].headers["authorization"] == f"Bearer {access_token('original')}"
+
+
+def test_oauth_get_without_a_body_preserves_the_provider_response() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "provider": "github",
+                "endpoint": "/user",
+                "status_code": 200,
+                "data": {"name": "reader"},
+            },
+        )
+
+    result = client_for(handle).auth.call_oauth_api(provider="github", endpoint="/user")
+
+    assert result == {"name": "reader"}
+    assert len(requests) == 1
+    assert json.loads(requests[0].content) == {"endpoint": "/user", "method": "GET"}
+
+
 @pytest.mark.parametrize("timing", ["401", "during_delete"])
 @pytest.mark.parametrize("failure", [False, True])
 def test_delete_current_session_clears_refreshed_descendant(

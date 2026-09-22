@@ -185,3 +185,30 @@ def test_profile_does_not_replay_an_ambiguous_transport_failure(operation: str) 
     with pytest.raises(VolcanoError, match="response lost"):
         profile_operation(make_client(handle), operation, {})
     assert len(requests) == 1
+
+
+@pytest.mark.parametrize("operation", OPERATIONS)
+@pytest.mark.parametrize(
+    "payload", [b"", b"not-json", b"null", b"42", b"true", b"\xff"]
+)
+def test_malformed_profile_response_preserves_the_current_session(
+    operation: str, payload: bytes
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, content=payload)
+
+    client = make_client(handle)
+    original = client.current_session
+
+    with pytest.raises(
+        AuthenticationError, match="Expected a complete user profile"
+    ) as error:
+        profile_operation(client, operation, {})
+
+    assert error.value.__cause__ is not None
+    assert client.current_session is original
+    assert len(requests) == 1
+    assert requests[0].headers["authorization"] == f"Bearer {access_token('old')}"
