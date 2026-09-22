@@ -58,6 +58,8 @@ dev = [
   "hypothesis==6.168.0",
   "poethepoet==0.46.0",
   "pytest-asyncio==1.4.0",
+  "coverage==7.16.1",
+  "pytest-cov==7.1.0",
 ]
 
 [tool.uv]
@@ -203,8 +205,24 @@ asyncio_default_test_loop_scope = "function"
 asyncio_debug = true
 filterwarnings = ["error"]
 
+[tool.coverage.run]
+branch = true
+source_dirs = ["src/volcano_sdk"]
+omit = ["src/volcano_sdk/_generated/*"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+include_namespace_packages = true
+# Keep declaration-only exclusions; coverage-ignore comments have no effect.
+exclude_lines = [
+  '^\s*(((async )?def .*?)?[\])]+(\s*->.*?)?:\s*)?\.\.\.\s*(#|$)',
+  'if (typing\.)?TYPE_CHECKING:',
+]
+partial_branches = []
+
 [tool.poe.tasks]
-quality = ["audit", "generated", "lint", "format-check", "types", "test", "contract-check", "package-check"]
+quality = ["audit", "generated", "lint", "format-check", "types", "test", "coverage", "contract-check", "package-check"]
 build = "uv build --no-sources --require-hashes"
 audit = "bash scripts/audit_dependencies.sh"
 generated = "python scripts/check_openapi.py"
@@ -214,6 +232,7 @@ types = ["mypy", "pyright"]
 mypy = "mypy"
 pyright = "pyright"
 test = "pytest tests/unit -q --junitxml=reports/unit.xml"
+coverage = "uv run --locked --isolated --python 3.12 pytest tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:reports/coverage.json --junitxml=reports/coverage-unit.xml"
 
 [tool.poe.tasks.contract-check]
 sequence = [
