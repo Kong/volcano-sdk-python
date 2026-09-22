@@ -2,17 +2,28 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeVar
 from uuid import uuid4
 
 from volcano_sdk import VolcanoClient
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+    from volcano_sdk.models import JSONValue
+
+_ResultT = TypeVar("_ResultT")
 
 LOG_EVENT_COUNT = 3
 ACTIVITY_BUCKET_COUNT = 2
 HTTP_OK = 200
 
 
-def poll(operation: Any, ready: Any, seconds: int) -> Any:
+def poll(
+    operation: Callable[[], _ResultT],
+    ready: Callable[[_ResultT], bool],
+    seconds: int,
+) -> _ResultT:
     deadline = time.monotonic() + seconds
     while True:
         result = operation()
@@ -22,6 +33,12 @@ def poll(operation: Any, ready: Any, seconds: int) -> Any:
             "matching logs did not arrive before deadline"
         )
         time.sleep(min(1, max(0, deadline - time.monotonic())))
+
+
+def event_id(event: Mapping[str, JSONValue]) -> str:
+    identity = event["id"]
+    assert isinstance(identity, str)
+    return identity
 
 
 class LogContract:
@@ -64,7 +81,7 @@ class LogContract:
             240,
         )
         assert len(page.data) == LOG_EVENT_COUNT
-        expected_ids = {event["id"] for event in page.data}
+        expected_ids = {event_id(event) for event in page.data}
         events: list[Any] = []
         request = {**self.request, "limit": 1}
         for _ in range(LOG_EVENT_COUNT):
@@ -77,7 +94,7 @@ class LogContract:
             assert page.next_cursor
             request = {**request, "cursor": page.next_cursor}
         assert not page.has_more
-        assert {event["id"] for event in events} == expected_ids
+        assert {event_id(event) for event in events} == expected_ids
         return events
 
     def activity(self) -> Any:
@@ -93,7 +110,7 @@ class LogContract:
         assert len(events) == LOG_EVENT_COUNT
         assert len({event["id"] for event in events}) == LOG_EVENT_COUNT
         assert sorted(event["body"]["ordinal"] for event in events) == [0, 1, 2]
-        timestamps = []
+        timestamps: list[datetime] = []
         for event in events:
             assert event["id"]
             assert event["body"] == {

@@ -4,7 +4,7 @@ import asyncio
 import time
 from contextlib import suppress
 from dataclasses import replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import httpx
@@ -22,23 +22,38 @@ from presence_membership import verify_presence_membership
 
 from volcano_sdk import NotFoundError, Session, VolcanoClient
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from behave.runner import Context
+
+    from volcano_sdk.storage import StorageBucket
+
 ACCESS_TOKEN_CLOCK_TICK_SECONDS = 1.1
 HTTP_OK = 200
 MULTIPART_PART_COUNT = 2
 REJECTED_BEARER = "sdk-contract-rejected-access-token"
 
 
-def _world(context: Any) -> ContractWorld:
-    return context.contract
+def _world(context: Context) -> ContractWorld:
+    world = context.contract
+    assert isinstance(world, ContractWorld)
+    return world
+
+
+def _outcome(context: Context) -> Outcome:
+    outcome = _world(context).last_outcome
+    assert outcome is not None
+    return outcome
 
 
 @given("the confirmed contract user")
-def confirmed_contract_user(context: Any) -> None:
+def confirmed_contract_user(context: Context) -> None:
     assert _world(context).fixture["user_id"]
 
 
 @given("the client listens for auth state changes")
-def listen_for_auth_state_changes(context: Any) -> None:
+def listen_for_auth_state_changes(context: Context) -> None:
     world = _world(context)
     subscription = world.client.auth.on_auth_state_change(
         lambda event, session: world.auth_state_events.append((event, session))
@@ -47,7 +62,7 @@ def listen_for_auth_state_changes(context: Any) -> None:
 
 
 @when("the client signs in with the contract user's credentials")
-def sign_in(context: Any) -> None:
+def sign_in(context: Context) -> None:
     world = _world(context)
     world.record(
         lambda: world.client.auth.sign_in(
@@ -58,13 +73,13 @@ def sign_in(context: Any) -> None:
 
 
 @when("the client reads the current session")
-def read_current_session(context: Any) -> None:
+def read_current_session(context: Context) -> None:
     world = _world(context)
     world.record(world.client.auth.get_session)
 
 
 @when("a fresh client adopts the current session")
-def adopt_current_session(context: Any) -> None:
+def adopt_current_session(context: Context) -> None:
     world = _world(context)
     source = world.client.auth.get_session()
     assert source is not None
@@ -77,7 +92,7 @@ def adopt_current_session(context: Any) -> None:
 
 
 @when("the client refreshes the current session")
-def refresh_current_session(context: Any) -> None:
+def refresh_current_session(context: Context) -> None:
     world = _world(context)
     world.previous_session = world.client.auth.get_session()
     assert world.previous_session is not None
@@ -86,7 +101,7 @@ def refresh_current_session(context: Any) -> None:
 
 
 @when("a fresh client tries to refresh a supplied profile without a session identifier")
-def refresh_supplied_profile_without_sid(context: Any) -> None:
+def refresh_supplied_profile_without_sid(context: Context) -> None:
     world = _world(context)
     source = world.client.auth.get_session()
     assert source is not None
@@ -99,7 +114,7 @@ def refresh_supplied_profile_without_sid(context: Any) -> None:
 
 
 @when("a fresh client starts with only the current access token")
-def bootstrap_access_token(context: Any) -> None:
+def bootstrap_access_token(context: Context) -> None:
     world = _world(context)
     source = world.client
     world.previous_session = source.auth.get_session()
@@ -115,7 +130,7 @@ def bootstrap_access_token(context: Any) -> None:
 
 
 @then("the token-only session has no cached user")
-def token_session_has_no_user(context: Any) -> None:
+def token_session_has_no_user(context: Context) -> None:
     session = _world(context).client.current_session
     assert session is not None
     assert session.user_id is None
@@ -123,7 +138,7 @@ def token_session_has_no_user(context: Any) -> None:
 
 
 @when("a fresh client starts with a rejected access token")
-def bootstrap_rejected_token(context: Any) -> None:
+def bootstrap_rejected_token(context: Context) -> None:
     world = _world(context)
     world.client = VolcanoClient(
         api_url=world.fixture["api_url"],
@@ -135,7 +150,7 @@ def bootstrap_rejected_token(context: Any) -> None:
 
 
 @then("the session retains only the supplied access token")
-def token_session_retains_access(context: Any) -> None:
+def token_session_retains_access(context: Context) -> None:
     world = _world(context)
     session = world.client.current_session
     assert session is not None
@@ -145,16 +160,17 @@ def token_session_retains_access(context: Any) -> None:
 
 
 @then("the refreshed session becomes current")
-def refreshed_session_becomes_current(context: Any) -> None:
+def refreshed_session_becomes_current(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
+    assert world.previous_session is not None
     assert world.last_outcome.value is not world.previous_session
     assert world.last_outcome.value.access_token != world.previous_session.access_token
     assert world.client.auth.get_session() is world.last_outcome.value
 
 
 @when("the client signs out")
-def sign_out(context: Any) -> None:
+def sign_out(context: Context) -> None:
     world = _world(context)
     world.signed_out_session = world.client.auth.get_session()
     assert world.signed_out_session is not None
@@ -165,12 +181,12 @@ def sign_out(context: Any) -> None:
 
 
 @then("the current session is empty")
-def current_session_is_empty(context: Any) -> None:
+def current_session_is_empty(context: Context) -> None:
     assert _world(context).client.auth.get_session() is None
 
 
 @when("a fresh client loads a profile with the signed-out access token")
-def load_signed_out_profile(context: Any) -> None:
+def load_signed_out_profile(context: Context) -> None:
     world = _world(context)
     assert world.signed_out_session is not None
     target = VolcanoClient(
@@ -182,7 +198,7 @@ def load_signed_out_profile(context: Any) -> None:
 
 
 @when("a fresh client tries to refresh the signed-out session")
-def refresh_signed_out_session(context: Any) -> None:
+def refresh_signed_out_session(context: Context) -> None:
     world = _world(context)
     assert world.signed_out_session is not None
     target = VolcanoClient(
@@ -195,7 +211,7 @@ def refresh_signed_out_session(context: Any) -> None:
 
 
 @then("the SDK operation fails with an authentication error")
-def operation_fails_with_authentication_error(context: Any) -> None:
+def operation_fails_with_authentication_error(context: Context) -> None:
     outcome = _world(context).last_outcome
     assert outcome is not None
     assert not outcome.ok
@@ -203,21 +219,21 @@ def operation_fails_with_authentication_error(context: Any) -> None:
 
 
 @then("the SDK operation succeeds")
-def operation_succeeds(context: Any) -> None:
+def operation_succeeds(context: Context) -> None:
     outcome = _world(context).last_outcome
     assert outcome is not None
     assert outcome.ok, f"SDK operation failed ({outcome.category}): {outcome.error}"
 
 
 @then("the SDK operation fails")
-def operation_fails(context: Any) -> None:
+def operation_fails(context: Context) -> None:
     outcome = _world(context).last_outcome
     assert outcome is not None
     assert not outcome.ok
 
 
 @then("the current session belongs to the contract user")
-def session_belongs_to_contract_user(context: Any) -> None:
+def session_belongs_to_contract_user(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value.user_id == world.fixture["user_id"]
@@ -226,7 +242,7 @@ def session_belongs_to_contract_user(context: Any) -> None:
 
 
 @then("the current session exposes access and refresh tokens")
-def session_exposes_tokens(context: Any) -> None:
+def session_exposes_tokens(context: Context) -> None:
     world = _world(context)
     session = world.client.current_session
     assert session is not None
@@ -235,7 +251,7 @@ def session_exposes_tokens(context: Any) -> None:
 
 
 @then("the auth-state listener observes the signed-in contract user")
-def auth_state_listener_observes_signed_in_user(context: Any) -> None:
+def auth_state_listener_observes_signed_in_user(context: Context) -> None:
     world = _world(context)
     assert any(
         event == "SIGNED_IN"
@@ -246,12 +262,12 @@ def auth_state_listener_observes_signed_in_user(context: Any) -> None:
 
 
 @given("an authenticated client")
-def authenticated_client(context: Any) -> None:
+def authenticated_client(context: Context) -> None:
     _world(context).authenticate()
 
 
 @given("the client replaces its access token with a rejected token")
-def replace_access_token(context: Any) -> None:
+def replace_access_token(context: Context) -> None:
     world = _world(context)
     client = world.client
     session = client.auth.get_session()
@@ -271,7 +287,7 @@ def replace_access_token(context: Any) -> None:
 @then("the profile read replaces the rejected token for the same user")
 @then("the storage operation replaces the rejected token for the same user")
 @then("the database read replaces the rejected token for the same user")
-def read_replaced_token(context: Any) -> None:
+def read_replaced_token(context: Context) -> None:
     world = _world(context)
     session = world.client.auth.get_session()
     assert session is not None
@@ -283,14 +299,15 @@ def read_replaced_token(context: Any) -> None:
 
 
 @when("the client lists its server sessions")
-def list_server_sessions(context: Any) -> None:
+def list_server_sessions(context: Context) -> None:
     world = _world(context)
     world.record(lambda: world.client.auth.list_sessions(page=1, limit=100))
 
 
 @then("the session list contains the current session for the contract user")
-def listed_sessions_belong_to_contract_user(context: Any) -> None:
+def listed_sessions_belong_to_contract_user(context: Context) -> None:
     world = _world(context)
+    assert world.last_outcome is not None
     page = world.last_outcome.value
     assert page.page == 1
     assert page.total >= len(page.sessions) > 0
@@ -299,13 +316,13 @@ def listed_sessions_belong_to_contract_user(context: Any) -> None:
 
 
 @when("the client loads its server-validated profile")
-def load_server_profile(context: Any) -> None:
+def load_server_profile(context: Context) -> None:
     world = _world(context)
     world.record(world.client.auth.get_user)
 
 
 @then("the returned and cached profiles belong to the contract user")
-def profiles_belong_to_contract_user(context: Any) -> None:
+def profiles_belong_to_contract_user(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value.id == world.fixture["user_id"]
@@ -316,7 +333,7 @@ def profiles_belong_to_contract_user(context: Any) -> None:
 
 
 @when("one client pauses delivery for 1 second and then resumes with the same handler")
-def pause_and_resume(context: Any) -> None:
+def pause_and_resume(context: Context) -> None:
     world = _world(context)
     if world.last_outcome is not None and not world.last_outcome.ok:
         return
@@ -324,7 +341,7 @@ def pause_and_resume(context: Any) -> None:
 
 
 @when('the client selects the contract table where "slug" equals the fixture slug')
-def select_fixture_row(context: Any) -> None:
+def select_fixture_row(context: Context) -> None:
     world = _world(context)
     world.record(
         lambda: (
@@ -338,14 +355,14 @@ def select_fixture_row(context: Any) -> None:
 
 
 @then("exactly the fixture row is returned")
-def fixture_row_returned(context: Any) -> None:
+def fixture_row_returned(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value == [world.fixture["fixture_row"]]
 
 
 @when("the client selects a projected page of query fixture members")
-def select_projected_query_page(context: Any) -> None:
+def select_projected_query_page(context: Context) -> None:
     world = _world(context)
     world.record(
         lambda: (
@@ -363,8 +380,8 @@ def select_projected_query_page(context: Any) -> None:
 
 
 @then("the projected page contains only beta and gamma in that order")
-def projected_query_page_returned(context: Any) -> None:
-    assert _world(context).last_outcome.value == [
+def projected_query_page_returned(context: Context) -> None:
+    assert _outcome(context).value == [
         {"slug": "beta", "rank": 20},
         {"slug": "gamma", "rank": 30},
     ]
@@ -388,7 +405,7 @@ def _query_filters(world: ContractWorld, filters: list[tuple[str, str, Any]]) ->
 
 
 @when("the client selects query fixture rows with each comparison filter")
-def select_query_comparisons(context: Any) -> None:
+def select_query_comparisons(context: Context) -> None:
     _query_filters(
         _world(context),
         [
@@ -405,7 +422,7 @@ def select_query_comparisons(context: Any) -> None:
 
 
 @then("each comparison returns exactly the matching query fixture rows")
-def comparison_query_rows_returned(context: Any) -> None:
+def comparison_query_rows_returned(context: Context) -> None:
     expected = {
         "neq:20": ["alpha", "gamma", "delta", "epsilon"],
         "gt:20": ["gamma", "delta", "epsilon"],
@@ -413,7 +430,7 @@ def comparison_query_rows_returned(context: Any) -> None:
         "lt:30": ["alpha", "beta"],
         "lte:30": ["alpha", "beta", "gamma"],
     }
-    assert _world(context).last_outcome.value == {
+    assert _outcome(context).value == {
         key: [{"slug": slug} for slug in slugs] for key, slugs in expected.items()
     }
 
@@ -421,22 +438,22 @@ def comparison_query_rows_returned(context: Any) -> None:
 @when(
     "the client selects query fixture rows with case-sensitive and insensitive patterns"
 )
-def select_query_patterns(context: Any) -> None:
+def select_query_patterns(context: Context) -> None:
     _query_filters(
         _world(context), [("like", "label", "Case_%"), ("ilike", "label", "case_%")]
     )
 
 
 @then("each pattern returns exactly the matching query fixture rows")
-def pattern_query_rows_returned(context: Any) -> None:
-    assert _world(context).last_outcome.value == {
+def pattern_query_rows_returned(context: Context) -> None:
+    assert _outcome(context).value == {
         "like:Case_%": [{"slug": "alpha"}, {"slug": "epsilon"}],
         "ilike:case_%": [{"slug": "alpha"}, {"slug": "beta"}, {"slug": "epsilon"}],
     }
 
 
 @when("the client selects query fixture rows with null and boolean filters")
-def select_query_identities(context: Any) -> None:
+def select_query_identities(context: Context) -> None:
     _query_filters(
         _world(context),
         [("is_", "label", None), ("is_", "enabled", True), ("is_", "enabled", False)],
@@ -444,8 +461,8 @@ def select_query_identities(context: Any) -> None:
 
 
 @then("each identity filter returns exactly the matching query fixture rows")
-def identity_query_rows_returned(context: Any) -> None:
-    assert _world(context).last_outcome.value == {
+def identity_query_rows_returned(context: Context) -> None:
+    assert _outcome(context).value == {
         "is_:None": [{"slug": "gamma"}],
         "is_:True": [{"slug": "alpha"}, {"slug": "gamma"}, {"slug": "epsilon"}],
         "is_:False": [{"slug": "beta"}, {"slug": "delta"}],
@@ -453,7 +470,7 @@ def identity_query_rows_returned(context: Any) -> None:
 
 
 @when("the client inserts its contract row")
-def insert_contract_row(context: Any) -> None:
+def insert_contract_row(context: Context) -> None:
     world = _world(context)
     row = world.fixture["mutation_rows"]["insert"]
     table = world.client.database(world.fixture["database_name"]).from_(
@@ -471,7 +488,7 @@ def insert_contract_row(context: Any) -> None:
 
 
 @then("exactly the inserted contract row is returned")
-def inserted_contract_row_returned(context: Any) -> None:
+def inserted_contract_row_returned(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     expected = world.fixture["mutation_rows"]["insert"]
@@ -479,7 +496,7 @@ def inserted_contract_row_returned(context: Any) -> None:
 
 
 @when("the client updates its contract row")
-def update_contract_row(context: Any) -> None:
+def update_contract_row(context: Context) -> None:
     world = _world(context)
     row = world.fixture["mutation_rows"]["update"]
     table = world.client.database(world.fixture["database_name"]).from_(
@@ -505,7 +522,7 @@ def update_contract_row(context: Any) -> None:
 
 
 @then("exactly the updated contract row is returned")
-def updated_contract_row_returned(context: Any) -> None:
+def updated_contract_row_returned(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     expected = world.fixture["mutation_rows"]["update"]["after"]
@@ -513,7 +530,7 @@ def updated_contract_row_returned(context: Any) -> None:
 
 
 @when("the client deletes its contract row")
-def delete_contract_row(context: Any) -> None:
+def delete_contract_row(context: Context) -> None:
     world = _world(context)
     row = world.fixture["mutation_rows"]["delete"]
     table = world.client.database(world.fixture["database_name"]).from_(
@@ -532,7 +549,7 @@ def delete_contract_row(context: Any) -> None:
 
 
 @then("exactly the deleted contract row is returned")
-def deleted_contract_row_returned(context: Any) -> None:
+def deleted_contract_row_returned(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     expected = world.fixture["mutation_rows"]["delete"]
@@ -540,7 +557,7 @@ def deleted_contract_row_returned(context: Any) -> None:
 
 
 @when("the client updates a missing contract row")
-def update_missing_contract_row(context: Any) -> None:
+def update_missing_contract_row(context: Context) -> None:
     world = _world(context)
     table = world.client.database(world.fixture["database_name"]).from_(
         world.fixture["table_name"]
@@ -556,7 +573,7 @@ def update_missing_contract_row(context: Any) -> None:
 
 
 @when("the client deletes a missing contract row")
-def delete_missing_contract_row(context: Any) -> None:
+def delete_missing_contract_row(context: Context) -> None:
     world = _world(context)
     table = world.client.database(world.fixture["database_name"]).from_(
         world.fixture["table_name"]
@@ -566,14 +583,14 @@ def delete_missing_contract_row(context: Any) -> None:
 
 
 @then("the mutation returns an empty row list")
-def mutation_returns_empty_list(context: Any) -> None:
+def mutation_returns_empty_list(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value == []
 
 
 @then("the existing contract row is unchanged")
-def existing_contract_row_unchanged(context: Any) -> None:
+def existing_contract_row_unchanged(context: Context) -> None:
     world = _world(context)
     row = world.fixture["fixture_row"]
     result = (
@@ -587,7 +604,7 @@ def existing_contract_row_unchanged(context: Any) -> None:
 
 
 @when("the client uploads and downloads the contract object")
-def upload_and_download(context: Any) -> None:
+def upload_and_download(context: Context) -> None:
     world = _world(context)
 
     def operation() -> dict[str, Any]:
@@ -602,7 +619,7 @@ def upload_and_download(context: Any) -> None:
 
 
 @then("the downloaded bytes equal the uploaded bytes")
-def downloaded_bytes_match(context: Any) -> None:
+def downloaded_bytes_match(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value["bytes"] == world.storage_bytes
@@ -611,7 +628,7 @@ def downloaded_bytes_match(context: Any) -> None:
 @when(
     "the client uploads the contract object as text/plain and reads its stored metadata"
 )
-def upload_and_read_metadata(context: Any) -> None:
+def upload_and_read_metadata(context: Context) -> None:
     world = _world(context)
 
     def operation() -> dict[str, Any]:
@@ -619,7 +636,11 @@ def upload_and_read_metadata(context: Any) -> None:
         uploaded = bucket.upload(
             world.storage_path, world.storage_bytes, content_type="text/plain"
         )
-        world.cleanup_callbacks.append(lambda: bucket.remove(world.storage_path))
+
+        def remove_object() -> None:
+            bucket.remove(world.storage_path)
+
+        world.cleanup_callbacks.append(remove_object)
         listed = bucket.list(world.storage_path)
         return {
             "path": uploaded["name"],
@@ -635,7 +656,7 @@ def upload_and_read_metadata(context: Any) -> None:
 
 
 @then("the uploaded and listed object content types are text/plain")
-def stored_content_types_match(context: Any) -> None:
+def stored_content_types_match(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value["content_type"] == "text/plain"
@@ -645,13 +666,17 @@ def stored_content_types_match(context: Any) -> None:
 
 
 @when("the client uploads the contract object and downloads bytes 2 through 7")
-def upload_and_download_range(context: Any) -> None:
+def upload_and_download_range(context: Context) -> None:
     world = _world(context)
 
     def operation() -> dict[str, Any]:
         bucket = world.client.storage.from_(world.fixture["bucket_name"])
         uploaded = bucket.upload(world.storage_path, world.storage_bytes)
-        world.cleanup_callbacks.append(lambda: bucket.remove(world.storage_path))
+
+        def remove_object() -> None:
+            bucket.remove(world.storage_path)
+
+        world.cleanup_callbacks.append(remove_object)
         return {
             "bytes": bucket.download(world.storage_path, byte_range="bytes=2-7"),
             "path": uploaded["name"],
@@ -661,14 +686,14 @@ def upload_and_download_range(context: Any) -> None:
 
 
 @then("the downloaded bytes equal uploaded bytes 2 through 7 inclusive")
-def downloaded_range_matches(context: Any) -> None:
+def downloaded_range_matches(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value["bytes"] == world.storage_bytes[2:8]
 
 
 @when("the client copies, moves, and removes a copy of the contract object")
-def copy_move_and_remove(context: Any) -> None:
+def copy_move_and_remove(context: Context) -> None:
     world = _world(context)
     bucket = world.client.storage.from_(world.fixture["bucket_name"])
     source = world.storage_path
@@ -706,7 +731,7 @@ def copy_move_and_remove(context: Any) -> None:
 
 
 @then("the original, copied, and moved bytes equal the uploaded bytes")
-def lifecycle_bytes_match(context: Any) -> None:
+def lifecycle_bytes_match(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert all(
@@ -715,7 +740,7 @@ def lifecycle_bytes_match(context: Any) -> None:
 
 
 @then("moving the copy leaves only the original and moved paths")
-def moved_paths_match(context: Any) -> None:
+def moved_paths_match(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value["after_move"] == sorted(
@@ -724,14 +749,14 @@ def moved_paths_match(context: Any) -> None:
 
 
 @then("removing the moved object leaves the original unchanged")
-def removed_path_is_absent(context: Any) -> None:
+def removed_path_is_absent(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value["after_remove"] == [world.storage_path]
     assert world.last_outcome.value["bytes"][3] == world.storage_bytes
 
 
-def _storage_bucket(world: ContractWorld) -> Any:
+def _storage_bucket(world: ContractWorld) -> StorageBucket:
     return world.client.storage.from_(world.fixture["bucket_name"])
 
 
@@ -772,7 +797,7 @@ def _partial_upload(world: ContractWorld) -> dict[str, Any]:
 
 
 @when("the client uploads one part and resumes the contract upload")
-def resume_contract_upload(context: Any) -> None:
+def resume_contract_upload(context: Context) -> None:
     world = _world(context)
 
     def operation() -> dict[str, Any]:
@@ -798,7 +823,7 @@ def resume_contract_upload(context: Any) -> None:
 
 
 @then("upload progress describes exactly the first uploaded part")
-def partial_upload_progress(context: Any) -> None:
+def partial_upload_progress(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     value = world.last_outcome.value
@@ -818,7 +843,7 @@ def partial_upload_progress(context: Any) -> None:
 
 
 @then("the completed multipart object preserves its path, type, and bytes")
-def completed_upload_matches(context: Any) -> None:
+def completed_upload_matches(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     value = world.last_outcome.value
@@ -829,7 +854,7 @@ def completed_upload_matches(context: Any) -> None:
 
 
 @when("the client uploads one part and aborts the contract upload")
-def abort_contract_upload(context: Any) -> None:
+def abort_contract_upload(context: Context) -> None:
     world = _world(context)
 
     def operation() -> dict[str, str]:
@@ -837,13 +862,14 @@ def abort_contract_upload(context: Any) -> None:
         bucket = _storage_bucket(world)
         session_id = value["session"].session_id
         bucket.abort_upload_session(world.storage_path, session_id=session_id)
-        outcomes = {}
-        for name, read in {
+        outcomes: dict[str, str] = {}
+        reads: dict[str, Callable[[], object]] = {
             "session": lambda: bucket.get_upload_session(
                 world.storage_path, session_id=session_id
             ),
             "object": lambda: bucket.download(world.storage_path),
-        }.items():
+        }
+        for name, read in reads.items():
             try:
                 read()
             except NotFoundError:
@@ -856,15 +882,15 @@ def abort_contract_upload(context: Any) -> None:
 
 
 @then("the aborted session and unfinished object are not found")
-def aborted_upload_is_gone(context: Any) -> None:
-    assert _world(context).last_outcome.value == {
+def aborted_upload_is_gone(context: Context) -> None:
+    assert _outcome(context).value == {
         "session": "not found",
         "object": "not found",
     }
 
 
 @when("the client makes the contract object public and private again")
-def change_contract_visibility(context: Any) -> None:
+def change_contract_visibility(context: Context) -> None:
     world = _world(context)
 
     def operation() -> dict[str, Any]:
@@ -888,8 +914,9 @@ def change_contract_visibility(context: Any) -> None:
 
 
 @then("anonymous reads return the original bytes only while the object is public")
-def anonymous_visibility_matches(context: Any) -> None:
+def anonymous_visibility_matches(context: Context) -> None:
     world = _world(context)
+    assert world.last_outcome is not None
     value = world.last_outcome.value
     assert all(world.storage_bytes not in body for body in value["private_bytes"])
     assert {key: value[key] for key in ("statuses", "bytes", "visibility")} == {
@@ -900,19 +927,19 @@ def anonymous_visibility_matches(context: Any) -> None:
 
 
 @then("the stored object path equals the contract path")
-def stored_object_path_matches(context: Any) -> None:
+def stored_object_path_matches(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value["path"] == world.storage_path
 
 
 @given("a service-role client")
-def service_role_client(context: Any) -> None:
+def service_role_client(context: Context) -> None:
     assert _world(context).fixture["service_key"]
 
 
 @when("the client acquires and releases the contract lock")
-def acquire_and_release_lock(context: Any) -> None:
+def acquire_and_release_lock(context: Context) -> None:
     world = _world(context)
 
     def operation() -> dict[str, Any]:
@@ -931,25 +958,25 @@ def acquire_and_release_lock(context: Any) -> None:
 
 
 @then("the released lease is no longer held")
-def released_lease_not_held(context: Any) -> None:
+def released_lease_not_held(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value["released"] is True
 
 
 @given("a project-owner client")
-def project_owner_client(context: Any) -> None:
+def project_owner_client(context: Context) -> None:
     assert _world(context).fixture["platform_token"]
 
 
 @when("the client starts the contract durable function")
-def start_durable_execution(context: Any) -> None:
+def start_durable_execution(context: Context) -> None:
     world = _world(context)
     world.record(world.start_durable_execution)
 
 
 @when("the client starts the contract durable function twice under one execution name")
-def start_durable_execution_twice(context: Any) -> None:
+def start_durable_execution_twice(context: Context) -> None:
     world = _world(context)
 
     def operation() -> tuple[Any, Any]:
@@ -959,7 +986,7 @@ def start_durable_execution_twice(context: Any) -> None:
 
 
 @when("the client recovers the contract lock with caller-owned tokens")
-def recover_lock(context: Any) -> None:
+def recover_lock(context: Context) -> None:
     world = _world(context)
 
     def operation() -> dict[str, Any]:
@@ -986,7 +1013,7 @@ def recover_lock(context: Any) -> None:
 
 
 @then("the started execution carries its id, function, name, region, and creation time")
-def started_execution_is_addressable(context: Any) -> None:
+def started_execution_is_addressable(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     execution = world.last_outcome.value
@@ -998,7 +1025,7 @@ def started_execution_is_addressable(context: Any) -> None:
 
 
 @then("the started execution is not terminal and carries no result")
-def started_execution_is_a_handle(context: Any) -> None:
+def started_execution_is_a_handle(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value.is_terminal is False
@@ -1006,7 +1033,7 @@ def started_execution_is_a_handle(context: Any) -> None:
 
 
 @then("both starts return the same execution")
-def both_starts_return_one_execution(context: Any) -> None:
+def both_starts_return_one_execution(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     first, second = world.last_outcome.value
@@ -1015,7 +1042,7 @@ def both_starts_return_one_execution(context: Any) -> None:
 
 
 @when("the owner reads the execution until it is terminal")
-def read_execution_until_terminal(context: Any) -> None:
+def read_execution_until_terminal(context: Context) -> None:
     world = _world(context)
     if world.last_outcome is not None and not world.last_outcome.ok:
         return
@@ -1025,7 +1052,7 @@ def read_execution_until_terminal(context: Any) -> None:
 
 
 @then("the execution succeeded carrying the function's result")
-def execution_succeeded_with_result(context: Any) -> None:
+def execution_succeeded_with_result(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value.status == "succeeded"
@@ -1033,7 +1060,7 @@ def execution_succeeded_with_result(context: Any) -> None:
 
 
 @when("the owner lists the durable function's executions")
-def list_durable_executions(context: Any) -> None:
+def list_durable_executions(context: Context) -> None:
     world = _world(context)
     if world.last_outcome is not None and not world.last_outcome.ok:
         return
@@ -1041,7 +1068,7 @@ def list_durable_executions(context: Any) -> None:
 
 
 @then("the listed executions include the started execution")
-def listed_executions_include_the_started_one(context: Any) -> None:
+def listed_executions_include_the_started_one(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.started_execution is not None
@@ -1050,7 +1077,7 @@ def listed_executions_include_the_started_one(context: Any) -> None:
 
 
 @then("recovery and renewal preserve the held lease until release")
-def recovered_lock_lifecycle(context: Any) -> None:
+def recovered_lock_lifecycle(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     value = world.last_outcome.value
@@ -1073,7 +1100,7 @@ def recovered_lock_lifecycle(context: Any) -> None:
 
 
 @when("the client acquires and force releases the contract lock")
-def force_release_lock(context: Any) -> None:
+def force_release_lock(context: Context) -> None:
     world = _world(context)
 
     def operation() -> object:
@@ -1087,7 +1114,7 @@ def force_release_lock(context: Any) -> None:
 
 
 @then("the force-released lock is available")
-def force_released_lock_available(context: Any) -> None:
+def force_released_lock_available(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value["available"].held is False
@@ -1095,7 +1122,7 @@ def force_released_lock_available(context: Any) -> None:
 
 
 @when("the client reacquires the force-released contract lock")
-def reacquire_force_released_lock(context: Any) -> None:
+def reacquire_force_released_lock(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     original = world.last_outcome.value["lease"]
@@ -1109,7 +1136,7 @@ def reacquire_force_released_lock(context: Any) -> None:
 
 
 @then("the replacement owner receives a higher fencing token")
-def replacement_lock_fence_increases(context: Any) -> None:
+def replacement_lock_fence_increases(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     original = world.last_outcome.value["original"]
@@ -1120,7 +1147,7 @@ def replacement_lock_fence_increases(context: Any) -> None:
 
 
 @given("two authenticated realtime clients")
-def two_realtime_clients(context: Any) -> None:
+def two_realtime_clients(context: Context) -> None:
     world = _world(context)
     try:
         clients = [
@@ -1136,13 +1163,15 @@ def two_realtime_clients(context: Any) -> None:
                 password=world.fixture["user_password"],
             )
         world.realtime_clients = clients
-        world.subscriber = clients[0].realtime.channel(world.realtime_channel)
-        world.publisher = clients[1].realtime.channel(world.realtime_channel)
+        subscriber = clients[0].realtime.channel(world.realtime_channel)
+        publisher = clients[1].realtime.channel(world.realtime_channel)
+        world.subscriber = subscriber
+        world.publisher = publisher
 
         async def subscribe() -> None:
             await asyncio.gather(
-                world.subscriber.subscribe(),
-                world.publisher.subscribe(),
+                subscriber.subscribe(),
+                publisher.subscribe(),
             )
 
         world.run(subscribe())
@@ -1169,7 +1198,7 @@ async def publish_contract_message(world: ContractWorld) -> Any:
 
 
 @when("one client subscribes and the other publishes the contract message")
-def subscribe_and_publish(context: Any) -> None:
+def subscribe_and_publish(context: Context) -> None:
     world = _world(context)
     if world.last_outcome is not None and not world.last_outcome.ok:
         return
@@ -1187,14 +1216,14 @@ def subscribe_and_publish(context: Any) -> None:
 
 
 @then("the subscriber receives the contract message within 10 seconds")
-def subscriber_received_message(context: Any) -> None:
+def subscriber_received_message(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value == world.realtime_message
 
 
 @when("the authenticated client invokes the contract function by name")
-def invoke_authenticated_contract_function(context: Any) -> None:
+def invoke_authenticated_contract_function(context: Context) -> None:
     world = _world(context)
     world.record(
         lambda: world.client.functions.invoke(
@@ -1204,7 +1233,7 @@ def invoke_authenticated_contract_function(context: Any) -> None:
 
 
 @when("the client invokes the contract function by name")
-def invoke_contract_function(context: Any) -> None:
+def invoke_contract_function(context: Context) -> None:
     world = _world(context)
 
     def operation() -> Any:
@@ -1216,7 +1245,7 @@ def invoke_contract_function(context: Any) -> None:
 
 
 @then("the function echoes the payload")
-def function_echoed_payload(context: Any) -> None:
+def function_echoed_payload(context: Context) -> None:
     # The function is reachable only at the endpoint the platform resolved, on a
     # domain the API URL does not name, so an echo coming back is what proves
     # the SDK sent the request there rather than somewhere it guessed.
@@ -1228,42 +1257,42 @@ def function_echoed_payload(context: Any) -> None:
 
 
 @given("a read-only project logs client")
-def project_logs_client(context: Any) -> None:
+def project_logs_client(context: Context) -> None:
     context.logs_contract = LogContract(_world(context))
 
 
 @when("the contract function emits three unique structured log events")
-def emit_three_logs(context: Any) -> None:
+def emit_three_logs(context: Context) -> None:
     context.logs_contract.emit(3)
 
 
 @when("the contract function emits one unique structured log event")
-def emit_one_log(context: Any) -> None:
+def emit_one_log(context: Context) -> None:
     context.logs_contract.emit(1)
 
 
 @when("the client searches and paginates those events within 240 seconds")
-def search_contract_logs(context: Any) -> None:
+def search_contract_logs(context: Context) -> None:
     _world(context).record(context.logs_contract.search)
 
 
 @when("the client reads matching log activity within 120 seconds")
-def read_contract_log_activity(context: Any) -> None:
+def read_contract_log_activity(context: Context) -> None:
     _world(context).record(context.logs_contract.activity)
 
 
 @then("all three structured events retain their metadata without duplicates")
-def verify_contract_logs(context: Any) -> None:
-    context.logs_contract.verify_events(_world(context).last_outcome.value)
+def verify_contract_logs(context: Context) -> None:
+    context.logs_contract.verify_events(_outcome(context).value)
 
 
 @then("activity counts exactly that event in its function and level buckets")
-def verify_contract_log_activity(context: Any) -> None:
-    context.logs_contract.verify_activity(_world(context).last_outcome.value)
+def verify_contract_log_activity(context: Context) -> None:
+    context.logs_contract.verify_activity(_outcome(context).value)
 
 
 @when("one presence client joins and leaves while the other remains subscribed")
-def observe_presence_membership(context: Any) -> None:
+def observe_presence_membership(context: Context) -> None:
     world = _world(context)
     if world.last_outcome is not None and not world.last_outcome.ok:
         return
@@ -1274,14 +1303,14 @@ def observe_presence_membership(context: Any) -> None:
     "both rosters identify the contract user "
     "and the original handler observes membership changes"
 )
-def verify_presence_rosters(context: Any) -> None:
+def verify_presence_rosters(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value == [1, 2, 1]
 
 
 @when("the clients observe an inserted and updated contract row")
-def observe_postgres_changes(context: Any) -> None:
+def observe_postgres_changes(context: Context) -> None:
     world = _world(context)
     if world.last_outcome is not None and not world.last_outcome.ok:
         return
@@ -1289,7 +1318,7 @@ def observe_postgres_changes(context: Any) -> None:
 
 
 @then("automatic and lightweight notifications retain metadata and row identity")
-def verify_postgres_rows(context: Any) -> None:
+def verify_postgres_rows(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.last_outcome.value == ["INSERT", "UPDATE"]

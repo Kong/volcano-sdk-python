@@ -8,7 +8,7 @@ import os
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from types import MethodType, SimpleNamespace
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock, call
 
@@ -337,24 +337,30 @@ def test_broadcast_pause_checks_silence(
     pause.asyncio.sleep.assert_awaited_once_with(1)
 
 
-def test_durable_idempotency_binding_starts_twice_and_records_both_handles() -> None:
+def test_durable_idempotency_binding_starts_twice_and_records_both_handles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     registry.clear()
     steps = _load_module(
         "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
     )
     first = SimpleNamespace(id="execution", name="contract")
     second = SimpleNamespace(id="execution", name="contract")
-    world = SimpleNamespace(
-        start_durable_execution=Mock(side_effect=[first, second]), last_outcome=None
+    fixture = json.loads(
+        (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text()
     )
-    world.record = MethodType(steps.ContractWorld.record, world)
+    world = steps.ContractWorld(fixture)
+    start = Mock(side_effect=[first, second])
+    monkeypatch.setattr(world, "start_durable_execution", start)
+    try:
+        steps.start_durable_execution_twice(SimpleNamespace(contract=world))
 
-    steps.start_durable_execution_twice(SimpleNamespace(contract=world))
-
-    assert world.start_durable_execution.call_args_list == [call(), call()]
-    assert world.last_outcome is not None
-    assert world.last_outcome.ok is True
-    assert world.last_outcome.value == (first, second)
+        assert start.call_args_list == [call(), call()]
+        assert world.last_outcome is not None
+        assert world.last_outcome.ok is True
+        assert world.last_outcome.value == (first, second)
+    finally:
+        world.cleanup()
 
 
 def test_lifecycle_cleanup_attempts_all_paths_after_a_deletion_failure() -> None:
@@ -463,19 +469,27 @@ def test_rejected_token_binding_preserves_refreshable_session_identity() -> None
         ),
     )
     client.auth.set_session(Session(access_token(), "refresh", user))
-    world = SimpleNamespace(client=client, fixture={"user_id": user})
-    context = SimpleNamespace(contract=world)
-    steps.replace_access_token(context)
-    assert client.current_session is not None
-    assert client.current_session.access_token != access_token()
-    assert (
-        client.current_session.access_token.split(".")[:2]
-        == access_token().split(".")[:2]
+    fixture = json.loads(
+        (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text()
     )
-    client.auth.refresh_session()
-    steps.read_replaced_token(context)
-    assert len(requests) == 1
-    assert requests[0].url.path == "/auth/refresh"
+    world = steps.ContractWorld(fixture)
+    world.client = client
+    world.fixture["user_id"] = user
+    context = SimpleNamespace(contract=world)
+    try:
+        steps.replace_access_token(context)
+        assert client.current_session is not None
+        assert client.current_session.access_token != access_token()
+        assert (
+            client.current_session.access_token.split(".")[:2]
+            == access_token().split(".")[:2]
+        )
+        client.auth.refresh_session()
+        steps.read_replaced_token(context)
+        assert len(requests) == 1
+        assert requests[0].url.path == "/auth/refresh"
+    finally:
+        world.cleanup()
 
 
 @pytest.mark.parametrize("leaking_response", [None, 0, 1])
@@ -490,23 +504,29 @@ def test_visibility_assertion_rejects_private_payload_leaks(
     private_bytes = [b"not found", b"not found"]
     if leaking_response is not None:
         private_bytes[leaking_response] = b"prefix: " + content
-    world = SimpleNamespace(
-        storage_bytes=content,
-        last_outcome=SimpleNamespace(
-            value={
-                "statuses": [404, 200, 404],
-                "bytes": content,
-                "visibility": [True, False],
-                "private_bytes": private_bytes,
-            }
-        ),
+    fixture = json.loads(
+        (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text()
+    )
+    world = steps.ContractWorld(fixture)
+    world.storage_bytes = content
+    world.last_outcome = steps.Outcome(
+        ok=True,
+        value={
+            "statuses": [404, 200, 404],
+            "bytes": content,
+            "visibility": [True, False],
+            "private_bytes": private_bytes,
+        },
     )
     context = SimpleNamespace(contract=world)
-    if leaking_response is None:
-        steps.anonymous_visibility_matches(context)
-    else:
-        with pytest.raises(AssertionError):
+    try:
+        if leaking_response is None:
             steps.anonymous_visibility_matches(context)
+        else:
+            with pytest.raises(AssertionError):
+                steps.anonymous_visibility_matches(context)
+    finally:
+        world.cleanup()
 
 
 def test_contract_logs_feature_matches_shared_source() -> None:

@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
     from contract_support import ContractWorld
 
+    from volcano_sdk.database import QueryBuilder
     from volcano_sdk.models import JSONValue
     from volcano_sdk.realtime import Channel, PostgresChange
 
@@ -82,6 +83,10 @@ def verify_change(
         assert event.record is None
 
 
+def remove_row(table: QueryBuilder, row_id: JSONValue) -> None:
+    table.delete().eq("id", row_id).execute()
+
+
 async def verify_postgres_changes(world: ContractWorld) -> list[str]:
     table_name = world.fixture["realtime_table_name"]
     row: dict[str, JSONValue] = {
@@ -90,7 +95,7 @@ async def verify_postgres_changes(world: ContractWorld) -> list[str]:
         "owner_id": world.fixture["user_id"],
     }
     table = world.client.database(world.fixture["database_name"]).from_(table_name)
-    world.cleanup_callbacks.append(lambda: table.delete().eq("id", row["id"]).execute())
+    world.cleanup_callbacks.append(lambda: remove_row(table, row["id"]))
     channels = postgres_channels(world, table_name)
     observers = [ChangeObserver(channel, table_name, row["id"]) for channel in channels]
     try:

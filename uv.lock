@@ -1775,6 +1775,15 @@ wheels = [
 ]
 
 [[package]]
+name = "types-behave"
+version = "1.3.0.20260408"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/ed/444978d0f7f4314bf0dd40e36127526cade4e870b87c61df8f6223a396ce/types_behave-1.3.0.20260408.tar.gz", hash = "sha256:3e57e06db090a36b90f96f12dacb5eb346613a1ec5c3c3d7d46df5c733f15866", size = 7868, upload-time = "2026-04-08T04:28:41.955Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/dd/d459dc8d2bef739d8ccb163b6e3380fc2952157b0b6367faa8d9d18b9e21/types_behave-1.3.0.20260408-py3-none-any.whl", hash = "sha256:822379f7ababf7376f2efb867365056eaaf7a6d6567f3e11bd5ed4642ae51ead", size = 9032, upload-time = "2026-04-08T04:28:41.215Z" },
+]
+
+[[package]]
 name = "typing-extensions"
 version = "4.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1838,6 +1847,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "types-behave" },
     { name = "volcano-sdk-python", extra = ["durable"] },
 ]
 
@@ -1867,6 +1877,7 @@ dev = [
     { name = "pytest-asyncio", specifier = "==1.4.0" },
     { name = "pytest-cov", specifier = "==7.1.0" },
     { name = "ruff", specifier = "==0.16.4" },
+    { name = "types-behave", specifier = "==1.3.0.20260408" },
     { name = "volcano-sdk-python", extras = ["durable"] },
 ]
 
