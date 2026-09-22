@@ -6,7 +6,7 @@ This checklist does not authorize a release, a registry mutation or an environme
 ## Before publication
 
 1. Identify the release PR, exact source commit, version, tag and intended registry account. Inspect the generated changelog and package metadata.
-2. Require passing native checks: `uv run python scripts/check_openapi.py`, Ruff, mypy, Pyright, `uv run pytest tests/unit -q`, `uv run python -m build`, and `bash scripts/check_package.sh`. Verify the OpenAPI snapshot and generated output using the checked-in commands.
+2. Require `uv run --locked poe quality`. Verify the OpenAPI snapshot and generated output using the checked-in commands.
 3. Obtain clean code and security reviews. Record the approved shared-acceptance run and exact Hosting/SDK revisions for behavior changes; dry runs and synthetic HTTP tests are not live acceptance.
 4. Build the wheel and source distribution locally, install it in a clean environment, and run the exact public quickstart. Retain its digest and inventory as candidate package-content evidence; this is not proof of the bytes the release workflow will later build.
 5. Confirm explicit release authorization before any publication action. The existing automatic release path may publish after a release PR lands; a successful check or an unprotected environment is not itself release approval. Resolve authorization before merging a release PR rather than assuming the configured PyPI environment has a human gate.
@@ -22,6 +22,36 @@ logout against synthetic local HTTP responses, without publisher credentials.
 It records each unchanged artifact's SHA256 before the release job uploads it.
 This package/example check does not replace registry installation or approved
 live platform acceptance.
+
+## Build inputs
+
+`poe build` builds the sdist and then the wheel from that sdist. Quality and
+publication use this task. uv verifies isolated build dependencies against the
+versions and hashes in `tool.uv.build-constraint-dependencies`. These native
+constraints also apply to editable installs during `uv sync` and `uv run`.
+The project and CI require uv 0.12.17.
+
+The release job installs locked dependency wheels without building an editable
+SDK and disables implicit sync in subsequent commands. To reproduce that setup:
+
+```sh
+uv sync --locked --no-install-project --no-build
+UV_NO_SYNC=true uv run --no-sync poe build
+```
+
+To update Hatchling, change its version in `build-system.requires` and the
+`build` dependency group. Resolve and inspect the group's hashes without
+executing project or dependency builds:
+
+```sh
+uv lock --no-build
+uv export --locked --only-group build --no-build
+```
+
+Copy the reviewed versions and hashes into `tool.uv.build-constraint-dependencies`,
+then run `uv lock --no-build` to record them. Run quality checks on both supported
+CI Python versions. The build group also includes these tools in the audit.
+Build constraints do not pin consumers' runtime dependencies.
 
 ## Recover from a bad release
 
