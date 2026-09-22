@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
+
+from .models import JSONValue
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from .realtime import _PostgresFetchRequest
-
 FallbackT = TypeVar("FallbackT")
-PostgresRecord = dict[str, Any]
+PostgresRecord = Mapping[str, JSONValue]
 _WORKER_CLOSED = "Postgres fetch worker is closed"
 _INVALID_QUEUE_LIMIT = "queue_limit must be positive"
 _INVALID_BATCH_WINDOW = "batch_window_seconds cannot be negative"
@@ -21,10 +22,20 @@ _INVALID_RESULT_COUNT = "Postgres fetch returned an unexpected result count"
 
 
 @dataclass(frozen=True, slots=True)
+class PostgresFetchRequest:
+    """Capture the database, credential, and row identity for a queued fetch."""
+
+    database_name: str
+    access_token: str
+    table: str
+    row_id: JSONValue
+
+
+@dataclass(frozen=True, slots=True)
 class PostgresFetchJob(Generic[FallbackT]):
     """Pair a captured row request with its lightweight fallback."""
 
-    request: _PostgresFetchRequest | None
+    request: PostgresFetchRequest | None
     fallback: FallbackT
 
 
@@ -57,8 +68,8 @@ async def _wait_for_close(
         try:
             task.result()
         except BaseException:
-            stop_task.cancel()
-            await asyncio.gather(stop_task, return_exceptions=True)
+            _ = stop_task.cancel()
+            _ = await asyncio.gather(stop_task, return_exceptions=True)
             raise
     await asyncio.shield(stop_task)
     await asyncio.shield(task)
@@ -70,7 +81,7 @@ class PostgresFetchWorker(Generic[FallbackT]):
     def __init__(
         self,
         fetch: Callable[
-            [tuple[_PostgresFetchRequest, ...]],
+            [tuple[PostgresFetchRequest, ...]],
             Awaitable[tuple[PostgresRecord | None, ...]],
         ],
         deliver: Callable[[PostgresFetchOutcome[FallbackT]], Awaitable[None]],
@@ -94,17 +105,22 @@ class PostgresFetchWorker(Generic[FallbackT]):
             raise ValueError(_INVALID_BATCH_WINDOW)
         if not 1 <= max_batch_size <= queue_limit:
             raise ValueError(_INVALID_BATCH_SIZE)
-        self._fetch = fetch
-        self._deliver = deliver
-        self._batch_window_seconds = batch_window_seconds
-        self._max_batch_size = max_batch_size
+        self._fetch: Callable[
+            [tuple[PostgresFetchRequest, ...]],
+            Awaitable[tuple[PostgresRecord | None, ...]],
+        ] = fetch
+        self._deliver: Callable[[PostgresFetchOutcome[FallbackT]], Awaitable[None]] = (
+            deliver
+        )
+        self._batch_window_seconds: float = batch_window_seconds
+        self._max_batch_size: int = max_batch_size
         self._queue: asyncio.Queue[PostgresFetchJob[FallbackT] | _StopWorker] = (
             asyncio.Queue(maxsize=queue_limit)
         )
-        self._state_lock = asyncio.Lock()
+        self._state_lock: asyncio.Lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
         self._stop_task: asyncio.Task[None] | None = None
-        self._closed = False
+        self._closed: bool = False
 
     async def enqueue(self, job: PostgresFetchJob[FallbackT]) -> None:
         """Queue one fetch, applying backpressure when the queue is full.
@@ -144,14 +160,14 @@ class PostgresFetchWorker(Generic[FallbackT]):
         task = self._task
         stop_task = self._stop_task
         if stop_task is not None and not stop_task.done():
-            stop_task.cancel()
+            _ = stop_task.cancel()
         if task is not None and not task.done():
-            task.cancel()
+            _ = task.cancel()
         pending = tuple(
             candidate for candidate in (task, stop_task) if candidate is not None
         )
         if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
+            _ = await asyncio.gather(*pending, return_exceptions=True)
         self._discard_pending()
 
     def _raise_worker_failure(self) -> None:
@@ -172,8 +188,8 @@ class PostgresFetchWorker(Generic[FallbackT]):
             )
         finally:
             if not put_task.done():
-                put_task.cancel()
-                await asyncio.gather(put_task, return_exceptions=True)
+                _ = put_task.cancel()
+                _ = await asyncio.gather(put_task, return_exceptions=True)
         if task in completed:
             if task.cancelled():
                 raise RuntimeError(_WORKER_CLOSED)
@@ -182,7 +198,7 @@ class PostgresFetchWorker(Generic[FallbackT]):
 
     def _discard_pending(self) -> None:
         while not self._queue.empty():
-            self._queue.get_nowait()
+            _ = self._queue.get_nowait()
             self._queue.task_done()
 
     async def _run(self) -> None:
@@ -239,8 +255,8 @@ class PostgresFetchWorker(Generic[FallbackT]):
 
     @staticmethod
     def _same_fetch(
-        first: _PostgresFetchRequest,
-        request: _PostgresFetchRequest,
+        first: PostgresFetchRequest,
+        request: PostgresFetchRequest,
     ) -> bool:
         return (
             first.database_name,
@@ -255,7 +271,7 @@ class PostgresFetchWorker(Generic[FallbackT]):
     @staticmethod
     def _repeats_row(
         batch: list[PostgresFetchJob[FallbackT]],
-        request: _PostgresFetchRequest,
+        request: PostgresFetchRequest,
     ) -> bool:
         return any(
             job.request is not None and job.request.row_id == request.row_id

@@ -14,6 +14,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 from ._realtime_fetch_worker import (
     PostgresFetchJob,
     PostgresFetchOutcome,
+    PostgresFetchRequest,
     PostgresFetchWorker,
 )
 from ._transport import (
@@ -29,6 +30,8 @@ if TYPE_CHECKING:
 
     from ._session_operations import SessionOperations
     from .models import Session
+
+_PostgresFetchRequest: TypeAlias = PostgresFetchRequest
 
 MessageCallback = Callable[[Any], Any]
 RealtimeCallback = Callable[[Any], Any]
@@ -185,14 +188,6 @@ def _filter_postgres_changes(
         return callback(change)
 
     return filtered
-
-
-@dataclass(frozen=True, slots=True)
-class _PostgresFetchRequest:
-    database_name: str
-    access_token: str
-    table: str
-    row_id: JSONValue
 
 
 @dataclass(frozen=True, slots=True)
