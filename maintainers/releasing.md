@@ -25,9 +25,17 @@ live platform acceptance.
 
 ## Build inputs
 
-`uv run --locked poe build` builds the sdist and then the wheel from that sdist.
-Quality and publication use this task. uv verifies every isolated build
-dependency against the versions and hashes in `build-constraints.txt`.
+`poe build` builds the sdist and then the wheel from that sdist. Quality and
+publication use this task. uv verifies every isolated artifact-build dependency
+against the versions and hashes in `build-constraints.txt`.
+
+The release job installs locked dependency wheels without building an editable
+SDK. It disables implicit sync for subsequent commands. To reproduce that setup:
+
+```sh
+uv sync --locked --no-install-project --no-build
+UV_NO_SYNC=true uv run --no-sync poe build
+```
 
 To update Hatchling, change `build-system.requires` in `pyproject.toml`, then run
 `uv run --locked poe build-lock`. The pinned pip-tools generator reads the wheel
