@@ -7,7 +7,7 @@ from typing import Literal
 
 
 class Base:
-    value: float
+    value: float = 0.0
 
     def describe(self) -> str:
         return "base"

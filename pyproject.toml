@@ -134,6 +134,10 @@ pythonVersion = "3.11"
 venvPath = "."
 venv = ".venv"
 typeCheckingMode = "strict"
+reportUninitializedInstanceVariable = "error"
+reportImplicitOverride = "error"
+reportPropertyTypeMismatch = "error"
+reportMissingModuleSource = "error"
 # Package-level collaborators intentionally share private implementation details;
 # Ruff still enforces private access everywhere else.
 reportPrivateUsage = false
