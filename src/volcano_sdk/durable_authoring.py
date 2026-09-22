@@ -28,12 +28,21 @@ from __future__ import annotations
 import functools
 import importlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, cast, overload
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Generic,
+    Protocol,
+    TypeAlias,
+    TypeVar,
+    cast,
+    overload,
+)
 
 from ._callbacks import require_callable
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 T = TypeVar("T")
 # A duration: "30s", "5m", "2h", "1d", a compound string like "1m30s", a whole
@@ -227,6 +236,40 @@ class ParallelBranch(Generic[T]):
     name: str | None = None
 
 
+class DurableLogger(Protocol):
+    """Replay-aware logging methods exposed by durable contexts and steps."""
+
+    def debug(
+        self, msg: object, *args: object, extra: Mapping[str, object] | None = None
+    ) -> None:
+        """Log a debug message unless the operation is replaying."""
+        ...
+
+    def info(
+        self, msg: object, *args: object, extra: Mapping[str, object] | None = None
+    ) -> None:
+        """Log an informational message unless the operation is replaying."""
+        ...
+
+    def warning(
+        self, msg: object, *args: object, extra: Mapping[str, object] | None = None
+    ) -> None:
+        """Log a warning unless the operation is replaying."""
+        ...
+
+    def error(
+        self, msg: object, *args: object, extra: Mapping[str, object] | None = None
+    ) -> None:
+        """Log an error unless the operation is replaying."""
+        ...
+
+    def exception(
+        self, msg: object, *args: object, extra: Mapping[str, object] | None = None
+    ) -> None:
+        """Log an exception unless the operation is replaying."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class StepScope:
     """What a step's function is given: logging, and which attempt it is on.
@@ -237,7 +280,7 @@ class StepScope:
     would invite exactly the mistake the engine then rejects.
     """
 
-    log: Any
+    log: DurableLogger
     # 1 on the first attempt.
     attempt: int
 
@@ -382,7 +425,7 @@ class DurableContext:
         self._context = context
         self._engine = engine
         # Logs, suppressed while an operation is being replayed.
-        self.log = context.logger
+        self.log: DurableLogger = context.logger
 
     def step(
         self,

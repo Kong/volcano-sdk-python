@@ -307,6 +307,10 @@ the clock or a random value.
 | `ctx.child(name, fn)` | Groups operations under one recorded context. |
 | `ctx.log` | The execution's logger, suppressed while an operation is replayed. |
 
+`ctx.log` and a step's `scope.log` expose `debug`, `info`, `warning`, `error`,
+and `exception`. They accept a message, formatting arguments, and an optional
+`extra` mapping. Messages are suppressed during replay.
+
 `ctx.map` and `ctx.parallel` both return a batch result: `items` (the items that
 finished, each with `index`, `status`, `result`, `error`), `results`, `errors`,
 `succeeded`, `failed`, `completed`, `completion_reason`, and `throw_if_failed()`.
