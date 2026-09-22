@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from volcano_sdk import VolcanoClient
-from volcano_sdk._transport import GeneratedTransport
+from volcano_sdk._transport import GeneratedTransport, _header
 from volcano_sdk.errors import (
     AuthenticationError,
     ConflictError,
@@ -41,7 +41,10 @@ def client_for(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCli
         (403, AuthenticationError),
         (404, NotFoundError),
         (409, ConflictError),
+        (418, VolcanoError),
+        (422, ValidationError),
         (429, RateLimitedError),
+        (451, VolcanoError),
         (500, ServerError),
         (503, ServerError),
     ],
@@ -66,6 +69,7 @@ def test_http_failures_map_to_stable_error_categories(
         client.auth.sign_in(email="user@example.com", password="wrong")
 
     assert str(caught.value) == "contract failure"
+    assert type(caught.value) is expected
     assert caught.value.status == status
     assert caught.value.code == "contract_code"
     assert caught.value.retry_after == (17 if status == 429 else None)
@@ -78,6 +82,48 @@ def test_http_failures_map_to_stable_error_categories(
         "password": "wrong",
     }
     assert client.auth.get_session() is None
+
+
+@pytest.mark.parametrize(
+    "retry_after", ["", "invalid", "1.5", "Wed, 21 Oct 2015 07:28:00 GMT"]
+)
+def test_invalid_retry_delay_preserves_the_rate_limit_error(retry_after: str) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            429,
+            json={"error": "rate limited", "code": "rate_limit_exceeded"},
+            headers={"Retry-After": retry_after},
+        )
+
+    client = client_for(handle)
+
+    with pytest.raises(RateLimitedError, match="rate limited") as caught:
+        client.auth.sign_in(email="user@example.com", password="wrong")
+
+    assert caught.value.status == 429
+    assert caught.value.code == "rate_limit_exceeded"
+    assert caught.value.retry_after is None
+    assert len(requests) == 1
+    assert client.auth.get_session() is None
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected"),
+    [
+        (None, None),
+        ({}, None),
+        ({"Content-Type": "application/json"}, None),
+        ({"rEtRy-AfTeR": "17"}, "17"),
+        ({"Retry-After": ""}, ""),
+    ],
+)
+def test_optional_response_headers_preserve_case_insensitive_values(
+    headers: dict[str, str] | None, expected: str | None
+) -> None:
+    assert _header(headers, "retry-after") == expected
 
 
 def test_network_failure_maps_to_transport_error() -> None:

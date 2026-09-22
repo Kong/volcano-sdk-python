@@ -16,6 +16,8 @@ from .models import LockLease, LockState
 if TYPE_CHECKING:
     from collections.abc import Generator
 
+    from ._transport import TransportResponse
+
 _MIN_LOCK_TTL_SECONDS = 5
 _MAX_LOCK_TTL_SECONDS = 7_776_000
 _INVALID_LOCK_TTL = "ttl must be an integer between 5 seconds and 90 days"
@@ -39,7 +41,7 @@ class LockGetTransport(Protocol):
         authorization: str,
         key: str,
         request_id: str | None = None,
-    ) -> object:
+    ) -> TransportResponse:
         """Get one project-scoped lock."""
         ...
 
@@ -55,7 +57,7 @@ class LockRenewTransport(Protocol):
         ttl: int,
         token: str,
         request_id: str | None = None,
-    ) -> object:
+    ) -> TransportResponse:
         """Renew one project-scoped lock."""
         ...
 
@@ -69,7 +71,7 @@ class LockForceReleaseTransport(Protocol):
         authorization: str,
         key: str,
         request_id: str | None = None,
-    ) -> object:
+    ) -> TransportResponse:
         """Force release one project-scoped lock."""
         ...
 

@@ -22,6 +22,17 @@ def test_typed_program_passes(tmp_path: Path) -> None:
     assert status == 0, output + errors
 
 
+def test_payload_reader_requires_a_transport_response(tmp_path: Path) -> None:
+    output, errors, status = check_types(
+        tmp_path,
+        "from volcano_sdk._transport import response_payload\n"
+        "response_payload(object(), 200)\n",
+    )
+    assert status == 1, output + errors
+    assert "[arg-type]" in output
+    assert "Found 1 error" in output
+
+
 def test_transport_invocation_checks_forwarded_arguments(tmp_path: Path) -> None:
     output, errors, status = check_types(
         tmp_path,
