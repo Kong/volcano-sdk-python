@@ -9,12 +9,14 @@ from __future__ import annotations
 import importlib
 import json
 from contextlib import contextmanager
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import pytest
 from aws_durable_execution_sdk_python.config import Duration
 from aws_durable_execution_sdk_python.retries import RetryDecision
 from aws_durable_execution_sdk_python_testing import DurableFunctionTestRunner
+from fixtures.invalid_wait_options import non_callable_predicate
 
 from volcano_sdk import durable_authoring
 from volcano_sdk.durable_authoring import (
@@ -632,6 +634,21 @@ def test_wait_until_requires_an_initial_state() -> None:
         )
 
     assert "requires an `initial_state`" in failing_handler(handler)
+
+
+def test_wait_until_rejects_a_non_callable_predicate_at_runtime() -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        return ctx.wait_until(lambda state, _scope: state, non_callable_predicate())
+
+    assert "requires an `until` predicate" in failing_handler(handler)
+
+
+@pytest.mark.parametrize(
+    "batch", [SimpleNamespace(), SimpleNamespace(completion_reason=None)]
+)
+def test_missing_batch_completion_reason_remains_absent(batch: object) -> None:
+    assert durable_authoring._completion_reason(batch) is None
 
 
 def test_wait_until_accepts_none_as_an_initial_state() -> None:
