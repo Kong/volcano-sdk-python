@@ -315,7 +315,7 @@ def test_broadcast_pause_checks_silence(
         on=Mock(), subscribe=AsyncMock(), unsubscribe=AsyncMock()
     )
 
-    async def publish(message: object) -> None:
+    def publish(message: object) -> None:
         paused = subscriber.unsubscribe.await_count > subscriber.subscribe.await_count
         if leak or not paused:
             subscriber.on.call_args.args[1](message)
