@@ -132,11 +132,14 @@ async def test_dispatcher_failure_reports_the_channel_and_releases_the_task(
         raise failure
 
     monkeypatch.setattr(channel, "_dispatch_delivery", fail)
-    await channel._emit("message", "queued")
+    await channel._emit("message", "first")
+    await channel._emit("message", "second")
+    assert channel._callback_queue.qsize() == 2
     task = channel._callback_task
     assert task is not None
     with pytest.raises(RuntimeError, match="dispatcher failed"):
         await task
+    await asyncio.wait_for(channel._callback_queue.join(), timeout=2)
 
     assert loop_errors == [
         {
@@ -153,15 +156,29 @@ async def test_dispatcher_failure_reports_the_channel_and_releases_the_task(
 async def test_stale_delivery_is_rejected_before_dispatch_and_callback_execution() -> (
     None
 ):
-    channel = VolcanoClient(anon_key="anon").realtime.channel("messages")
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(FakeCentrifugeClient()),
+    )
+    channel = client.realtime.channel("messages")
     received: list[object] = []
     channel.on("message", received.append)
-    delivery = _CallbackDelivery("message", "obsolete", delivery_epoch=-1)
+    try:
+        await channel.subscribe()
+        epoch = channel._delivery_epoch
+        delivery = _CallbackDelivery("message", "obsolete", delivery_epoch=epoch - 1)
+        await channel._dispatch_delivery(delivery)
+        await channel._run_callback(received.append, delivery)
 
-    await channel._dispatch_delivery(delivery)
-    await channel._run_callback(received.append, delivery)
+        assert received == []
 
-    assert received == []
+        await channel._dispatch_delivery(
+            _CallbackDelivery("message", "current", delivery_epoch=epoch)
+        )
+        assert received == ["current"]
+    finally:
+        await client.realtime.disconnect()
 
 
 def test_non_callable_connection_callback_is_rejected_at_runtime() -> None:
