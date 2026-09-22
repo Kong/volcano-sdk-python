@@ -17,7 +17,15 @@ _T = TypeVar("_T")
 
 
 def _copy_failure(error: BaseException, *, include_cause: bool = True) -> BaseException:
-    """Copy public failure details without retaining request frames or contexts."""
+    """Copy public failure details without retaining request frames or contexts.
+
+    Returns
+    -------
+    BaseException
+        A fresh exception with the original type and arguments. Volcano errors
+        also retain their status, code, retry delay, and one optional SDK cause.
+
+    """
     copied = type(error).__new__(type(error), *error.args)
     if isinstance(error, VolcanoError) and isinstance(copied, VolcanoError):
         copied.status = error.status
