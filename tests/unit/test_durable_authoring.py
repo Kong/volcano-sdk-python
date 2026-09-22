@@ -74,7 +74,8 @@ def local_runner(handler: FunctionHandler) -> Generator[DurableFunctionTestRunne
     try:
         yield runner
     finally:
-        runner.close()  # type: ignore[no-untyped-call]
+        close_runner: Callable[[], None] = runner.close
+        close_runner()
         loop = runner._scheduler._loop
         if not loop.is_closed():
             loop.close()
