@@ -65,6 +65,7 @@ class FilterBuilder:
     _filters: tuple[_FilterCondition, ...] = ()
 
     def _with_filters(self, filters: tuple[_FilterCondition, ...]) -> Self:
+        del filters
         raise NotImplementedError
 
     def eq(self, column: str, value: object) -> Self:

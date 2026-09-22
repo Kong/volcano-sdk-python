@@ -1,6 +1,6 @@
 # Contract binding types
 
-Mypy and Pyright check `features/` and `typings/` with the same settings as
+Mypy and basedpyright check `features/` and `typings/` with the same settings as
 the SDK. `types-behave` supplies Behave's development-only signatures.
 
 `typings/behave.pyi` describes the three synchronous decorators these bindings
