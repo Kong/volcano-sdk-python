@@ -115,7 +115,11 @@ def test_generated_transport_resolves_and_invokes_a_function() -> None:
         },
     )
 
-    assert resolved.payload["function_id"] == ("00000000-0000-4000-8000-000000000040")
+    assert resolved.payload == {
+        "name": "send-welcome",
+        "function_id": "00000000-0000-4000-8000-000000000040",
+        "cache_ttl_seconds": 60,
+    }
     assert response.status_code == 422
     assert response.payload == {"details": {"reason": "invalid order"}}
     assert [request.url.path for request in requests] == [
@@ -196,8 +200,36 @@ def test_generated_transport_reads_project_logs() -> None:
         },
     )
 
-    assert search.payload["data"][0]["id"] == "event-1"
-    assert activity.payload["total"] == 2
+    assert search.payload == {
+        "data": [
+            {
+                "id": "event-1",
+                "timestamp": "2026-09-02T12:00:00+00:00",
+                "body": "ready",
+                "resource": {
+                    "type": "function",
+                    "id": "00000000-0000-4000-8000-000000000040",
+                },
+            }
+        ],
+        "limit": 25,
+        "has_more": False,
+    }
+    assert activity.payload == {
+        "data": [
+            {
+                "start_time": "2026-09-02T12:00:00+00:00",
+                "end_time": "2026-09-02T12:05:00+00:00",
+                "counts": {
+                    "levels": {"info": 2},
+                    "regions": {"us-east-1": 2},
+                    "resource_ids": {"00000000-0000-4000-8000-000000000040": 2},
+                },
+                "total": 2,
+            }
+        ],
+        "total": 2,
+    }
     assert [request.url.path for request in requests] == [
         f"/projects/{project_id}/logs/search",
         f"/projects/{project_id}/logs/activity",
@@ -1316,13 +1348,47 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
         token="00000000-0000-4000-8000-000000000001",
     )
 
-    assert auth.payload["user"]["id"] == "00000000-0000-4000-8000-000000000010"
-    assert refresh.payload["access_token"] == "refreshed-access-token"
+    expected_user = {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "email": "user@example.com",
+        "status": "active",
+        "email_confirmed": True,
+        "created_at": "2026-08-26T12:00:00+00:00",
+        "updated_at": "2026-08-26T12:00:00+00:00",
+    }
+    assert auth.payload == {
+        "access_token": "access-token",
+        "refresh_token": "refresh-token",
+        "user": expected_user,
+        "expires_in": 3600,
+        "token_type": "bearer",
+    }
+    assert refresh.payload == {
+        "access_token": "refreshed-access-token",
+        "refresh_token": "refreshed-refresh-token",
+        "user": expected_user,
+        "expires_in": 3600,
+        "token_type": "bearer",
+    }
     assert query.payload == {"data": [{"slug": "a"}], "count": 1}
-    assert upload.payload["name"] == "a.txt"
+    assert upload.payload == {
+        "id": "00000000-0000-4000-8000-000000000020",
+        "bucket_id": "00000000-0000-4000-8000-000000000030",
+        "name": "a.txt",
+        "is_public": False,
+        "size": 5,
+        "mime_type": "application/octet-stream",
+        "metadata": {},
+        "owner_id": "00000000-0000-4000-8000-000000000010",
+        "created_at": "2026-08-26T12:00:00+00:00",
+        "updated_at": "2026-08-26T12:00:00+00:00",
+    }
     assert download.content == b"hello"
     assert listed.payload == {"objects": [], "next_cursor": "cursor-2"}
-    assert acquire.payload["fencing_token"] == 7
+    assert acquire.payload == {
+        "expires_at": "2026-08-26T12:00:30+00:00",
+        "fencing_token": 7,
+    }
     assert release.status_code == 204
     assert [request.method for request in requests] == [
         "POST",
@@ -1424,7 +1490,12 @@ def test_generated_transport_creates_an_upload_session_with_json() -> None:
     )
 
     assert response.status_code == 201
-    assert response.payload["session_id"] == "session-123"
+    assert response.payload == {
+        "session_id": "session-123",
+        "part_size": 8388608,
+        "total_parts": 3,
+        "expires_at": "2026-09-09T12:00:00+00:00",
+    }
     assert len(requests) == 1
     assert requests[0].url.path == "/storage/assets/videos/demo clip.mp4"
     assert requests[0].headers["authorization"] == "Bearer access-token"
@@ -1511,7 +1582,16 @@ def test_generated_transport_completes_an_upload_session() -> None:
         ),
     )
 
-    assert response.payload["object"]["name"] == "videos/demo clip.mp4"
+    assert response.payload == {
+        "object": {
+            "id": "00000000-0000-4000-8000-000000000020",
+            "bucket_id": "00000000-0000-4000-8000-000000000030",
+            "name": "videos/demo clip.mp4",
+            "size": 20000000,
+            "mime_type": "video/mp4",
+            "is_public": False,
+        }
+    }
     assert len(requests) == 1
     assert requests[0].method == "POST"
     assert requests[0].url.path == "/storage/assets/videos/demo clip.mp4"
@@ -1558,7 +1638,20 @@ def test_generated_transport_gets_upload_session_status_as_json() -> None:
         ),
     )
 
-    assert response.payload["session_id"] == "session-123"
+    assert response.payload == {
+        "session_id": "session-123",
+        "status": "uploading",
+        "path": "videos/demo clip.mp4",
+        "content_type": "video/mp4",
+        "total_size": 20000000,
+        "part_size": 8388608,
+        "total_parts": 3,
+        "parts_uploaded": 1,
+        "bytes_uploaded": 8388608,
+        "parts": [],
+        "expires_at": "2026-09-09T12:00:00Z",
+        "created_at": "2026-09-02T12:00:00Z",
+    }
     assert len(requests) == 1
     assert requests[0].method == "GET"
     assert requests[0].url.path == "/storage/assets/videos/demo clip.mp4"
@@ -1619,7 +1712,11 @@ def test_generated_transport_gets_project_lock_state() -> None:
         key="build:queue",
     )
 
-    assert response.payload["held"] is True
+    assert response.payload == {
+        "held": True,
+        "expires_at": "2026-08-26T12:00:30+00:00",
+        "fencing_token": 7,
+    }
     assert len(requests) == 1
     assert requests[0].method == "GET"
     assert requests[0].url.path == "/locks/build:queue"
@@ -1649,7 +1746,10 @@ def test_generated_transport_renews_a_project_lock() -> None:
         token="00000000-0000-4000-8000-000000000001",
     )
 
-    assert response.payload["fencing_token"] == 7
+    assert response.payload == {
+        "expires_at": "2026-08-26T12:01:00+00:00",
+        "fencing_token": 7,
+    }
     assert len(requests) == 1
     assert requests[0].method == "PATCH"
     assert requests[0].url.path == "/locks/build:queue/lease"

@@ -1,8 +1,19 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, assert_type
+
 from volcano_sdk._transport import invoke, invoke_async, response_payload
+
+if TYPE_CHECKING:
+    from volcano_sdk._transport import TransportResponse
 
 # These deliberate errors are checked by native mypy and its unused-ignore rule.
 # They are never executed by pytest or shipped in the SDK.
 response_payload(object(), 200)  # type: ignore[arg-type]
+
+
+def unknown_response_payload(response: TransportResponse) -> None:
+    assert_type(response.payload, object)
 
 
 def operation(*, value: int) -> str:

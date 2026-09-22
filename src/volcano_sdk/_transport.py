@@ -310,7 +310,7 @@ class TransportResponse(Protocol):
     def status_code(self) -> int: ...
 
     @property
-    def payload(self) -> Any: ...
+    def payload(self) -> object: ...
 
     @property
     def content(self) -> bytes: ...
@@ -370,7 +370,7 @@ class StorageUploadSessionReference:
 @dataclass(frozen=True, slots=True)
 class _GeneratedTransportResponse:
     status_code: int
-    payload: Any
+    payload: object
     content: bytes
     headers: Mapping[str, str]
 
