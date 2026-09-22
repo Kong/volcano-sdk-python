@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/Kong/volcano-sdk-python/compare/v0.10.0...v0.10.1) (2026-09-22)
+
+
+### Bug Fixes
+
+* validate log containers before generated normalization ([#228](https://github.com/Kong/volcano-sdk-python/issues/228)) ([9ddf005](https://github.com/Kong/volcano-sdk-python/commit/9ddf005f791611ebe75c64c9d34dfa94e176eab6))
+
 ## [0.10.0](https://github.com/Kong/volcano-sdk-python/compare/v0.9.4...v0.10.0) (2026-09-19)
 
 
