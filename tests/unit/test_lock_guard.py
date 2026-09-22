@@ -29,6 +29,67 @@ def test_lease_clock_falls_back_to_portable_monotonic(
     assert guard_module._lease_now() == pytest.approx(123.0)
 
 
+def test_lease_clock_uses_the_suspend_aware_system_clock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requested_clocks: list[int] = []
+
+    def clock_gettime(clock_id: int) -> float:
+        requested_clocks.append(clock_id)
+        return 456.0
+
+    monkeypatch.setattr(guard_module, "SUSPEND_AWARE_CLOCK_ID", 7)
+    monkeypatch.setattr(time, "clock_gettime", clock_gettime, raising=False)
+
+    assert guard_module._lease_now() == pytest.approx(456.0)
+    assert requested_clocks == [7]
+
+
+@pytest.mark.parametrize(
+    ("timeout", "expected_lost", "expected_waits"),
+    [(None, True, [1.0] * 5), (0.25, False, [0.25])],
+)
+def test_lock_guard_bounds_waits_by_lease_and_caller_deadlines(
+    monkeypatch: pytest.MonkeyPatch,
+    timeout: float | None,
+    *,
+    expected_lost: bool,
+    expected_waits: list[float],
+) -> None:
+    clock = [100.0]
+    waits: list[float] = []
+    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
+    guard = LockGuard(lease(), ttl=5, started_at=clock[0])
+
+    def wait(timeout: float | None) -> bool:
+        assert timeout is not None
+        waits.append(timeout)
+        clock[0] += timeout
+        return False
+
+    monkeypatch.setattr(guard._lost, "wait", wait)
+
+    assert guard.wait_lost(timeout=timeout) is expected_lost
+    assert guard.lost is expected_lost
+    assert waits == expected_waits
+
+
+def test_lock_guard_rejects_an_already_expired_renewal_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    original = lease()
+    guard = LockGuard(original, ttl=5, started_at=100.0)
+
+    assert not guard.replace_lease(lease(), started_at=95.0)
+
+    assert guard.lease is original
+    assert guard.lost
+    failure = guard._renewal_failure()
+    assert isinstance(failure, TimeoutError)
+    assert str(failure) == "lock lease expired before renewal completed"
+
+
 def test_fallback_clock_includes_system_suspend(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
