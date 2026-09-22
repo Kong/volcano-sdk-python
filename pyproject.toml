@@ -186,8 +186,6 @@ max-complexity = 5
 "src/volcano_sdk/auth.py" = ["SLF001"]
 "src/volcano_sdk/database.py" = ["SLF001"]
 "src/volcano_sdk/durable.py" = ["SLF001"]
-# The durable engine is an untyped third-party package, so the wrapper's
-# boundary is Any either way.
 "src/volcano_sdk/durable_authoring.py" = ["ANN401"]
 "src/volcano_sdk/functions.py" = ["SLF001"]
 "src/volcano_sdk/logs.py" = ["SLF001"]

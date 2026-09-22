@@ -45,6 +45,18 @@ from ._callbacks import require_callable
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
+    from aws_durable_execution_sdk_python.config import (
+        CompletionConfig,
+        ParallelConfig,
+        StepConfig,
+        StepSemantics,
+    )
+    from aws_durable_execution_sdk_python.config import Duration as EngineDuration
+    from aws_durable_execution_sdk_python.retries import (
+        RetryDecision,
+        RetryStrategyConfig,
+    )
+
 T = TypeVar("T")
 _P = ParamSpec("_P")
 # A duration: "30s", "5m", "2h", "1d", a compound string like "1m30s", a whole
@@ -146,16 +158,18 @@ class _Engine:
         except ImportError as error:
             raise DurableRuntimeMissingError(error) from error
         self.durable_execution = root.durable_execution
-        self.duration = config.Duration
-        self.step_config = config.StepConfig
-        self.step_semantics = config.StepSemantics
+        self.duration: type[EngineDuration] = config.Duration
+        self.step_config: type[StepConfig] = config.StepConfig
+        self.step_semantics: type[StepSemantics] = config.StepSemantics
         self.map_config = config.MapConfig
-        self.parallel_config = config.ParallelConfig
-        self.completion_config = config.CompletionConfig
+        self.parallel_config: type[ParallelConfig] = config.ParallelConfig
+        self.completion_config: type[CompletionConfig] = config.CompletionConfig
         self.parallel_branch = config.ParallelBranch
         self.create_retry_strategy = retries.create_retry_strategy
-        self.retry_strategy_config = retries.RetryStrategyConfig
-        self.retry_decision = retries.RetryDecision
+        self.retry_strategy_config: type[RetryStrategyConfig] = (
+            retries.RetryStrategyConfig
+        )
+        self.retry_decision: type[RetryDecision] = retries.RetryDecision
         self.create_wait_strategy = waits.create_wait_strategy
         self.wait_strategy_config = waits.WaitStrategyConfig
         self.wait_for_condition_config = waits.WaitForConditionConfig
@@ -654,7 +668,7 @@ class DurableContext:
             )
         return config
 
-    def _step_config(self, *, retry: Retry, at_most_once: bool) -> Any:
+    def _step_config(self, *, retry: Retry, at_most_once: bool) -> StepConfig:
         engine = self._engine
         config: dict[str, Any] = {}
         if at_most_once:
@@ -681,11 +695,11 @@ class DurableContext:
             return retry
         raise TypeError(_INVALID_RETRY)
 
-    def _never_retry(self) -> Callable[[Exception, int], Any]:
+    def _never_retry(self) -> Callable[[Exception, int], RetryDecision]:
         engine = self._engine
         no_delay = engine.duration.from_seconds(0)
 
-        def never_retry(_error: Exception, _attempt: int) -> Any:
+        def never_retry(_error: Exception, _attempt: int) -> RetryDecision:
             return engine.retry_decision(should_retry=False, delay=no_delay)
 
         return never_retry
@@ -702,13 +716,15 @@ class DurableContext:
             ),
         )
 
-    def _optional_duration(self, value: Duration | None, field_name: str) -> Any:
+    def _optional_duration(
+        self, value: Duration | None, field_name: str
+    ) -> EngineDuration | None:
         return None if value is None else self._duration(value, field_name)
 
-    def _duration(self, value: object, field_name: str) -> Any:
+    def _duration(self, value: object, field_name: str) -> EngineDuration:
         return self._engine.duration.from_seconds(_to_seconds(value, field_name))
 
-    def _wait_duration(self, value: object) -> Any:
+    def _wait_duration(self, value: object) -> EngineDuration:
         seconds = _to_seconds(value, "wait")
         if seconds < _MIN_WAIT_SECONDS:
             message = f"wait must be at least {_MIN_WAIT_SECONDS} second"
