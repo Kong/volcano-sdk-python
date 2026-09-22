@@ -1,6 +1,6 @@
 # Contributing to the Python SDK
 
-Use Python 3.11 or newer and `uv`. CI covers Python 3.11 and 3.14.
+Use Python 3.11 or newer and `uv`. CI covers every Python version from 3.11 through 3.14.
 
 ## Verify a change
 

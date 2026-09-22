@@ -49,8 +49,8 @@ uv export --locked --only-group build --no-build
 ```
 
 Copy the reviewed versions and hashes into `tool.uv.build-constraint-dependencies`,
-then run `uv lock --no-build` to record them. Run quality checks on both supported
-CI Python versions. The build group also includes these tools in the audit.
+then run `uv lock --no-build` to record them. Run quality checks on all supported
+CI Python versions (3.11 through 3.14). The build group also includes these tools in the audit.
 Build constraints do not pin consumers' runtime dependencies.
 
 ## Recover from a bad release
