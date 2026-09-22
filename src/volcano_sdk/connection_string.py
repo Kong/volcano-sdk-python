@@ -20,7 +20,21 @@ def database_connection_string(
     *,
     user_id: str | None = None,
 ) -> str:
-    """Select full or user-scoped database access for a Volcano function."""
+    """Select full or user-scoped database access for a Volcano function.
+
+    Returns
+    -------
+    str
+        The connection URL with application_name replaced by the selected
+        access mode. Other query parameters and credentials are preserved.
+
+    Raises
+    ------
+    ValueError
+        The URL is empty, lacks a postgres/postgresql scheme, or contains
+        invalid percent escapes.
+
+    """
     if not base_connection_string:
         raise ValueError(_REQUIRED_ERROR)
 

@@ -20,7 +20,14 @@ _MISSING_SESSION_ID = "Cannot refresh supplied credentials without a session ide
 
 
 def session_id_from_access_token(access_token: str) -> str | None:
-    """Read an untrusted continuity constraint; this never authenticates a user."""
+    """Read an untrusted continuity constraint; this never authenticates a user.
+
+    Returns
+    -------
+    str or None
+        The normalized session UUID, or None for an absent or malformed claim.
+
+    """
     parts = access_token.split(".")
     if len(parts) != _JWT_PARTS:
         return None
@@ -47,13 +54,27 @@ def _normalized_session_id(session_id: object) -> str | None:
 
 
 def validate_refresh_source(current: Session, *, verified: bool = False) -> None:
-    """Require a session constraint for supplied credentials."""
+    """Require a session constraint for supplied credentials.
+
+    Raises
+    ------
+    AuthenticationError
+        The credentials are unverified and contain no usable session identifier.
+
+    """
     if not verified and session_id_from_access_token(current.access_token) is None:
         raise AuthenticationError(_MISSING_SESSION_ID)
 
 
 def validate_refresh_identity(current: Session | None, refreshed: Session) -> None:
-    """Reject a refresh outside the captured server session or validated user."""
+    """Reject a refresh outside the captured server session or validated user.
+
+    Raises
+    ------
+    AuthenticationError
+        Refreshed credentials change a known session identifier or user identity.
+
+    """
     if current is None:
         return
     session_id = session_id_from_access_token(current.access_token)
