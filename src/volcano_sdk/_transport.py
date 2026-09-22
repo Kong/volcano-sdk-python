@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar, cast
 from uuid import UUID, uuid4
 
 import httpx
@@ -697,19 +697,25 @@ class AsyncDatabaseSelectTransport(Protocol):
     ) -> TransportResponse: ...
 
 
-def invoke(operation: Callable[..., Any], **kwargs: Any) -> Any:
+_P = ParamSpec("_P")
+_T = TypeVar("_T")
+
+
+def invoke(operation: Callable[_P, _T], /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
     try:
-        return operation(**kwargs)
+        return operation(*args, **kwargs)
     except httpx.HTTPError as error:
         raise TransportError(str(error) or "Volcano transport failed") from error
 
 
 async def invoke_async(
-    operation: Callable[..., Awaitable[Any]],
-    **kwargs: Any,
-) -> Any:
+    operation: Callable[_P, Awaitable[_T]],
+    /,
+    *args: _P.args,
+    **kwargs: _P.kwargs,
+) -> _T:
     try:
-        return await operation(**kwargs)
+        return await operation(*args, **kwargs)
     except httpx.HTTPError as error:
         raise TransportError(str(error) or "Volcano transport failed") from error
 
