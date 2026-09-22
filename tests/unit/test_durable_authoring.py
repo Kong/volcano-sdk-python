@@ -7,6 +7,7 @@ they exercise real checkpointing and replay rather than a stand-in for it.
 from __future__ import annotations
 
 import importlib
+import inspect
 import json
 from contextlib import contextmanager
 from types import SimpleNamespace
@@ -24,6 +25,7 @@ from volcano_sdk.durable_authoring import (
     BatchOptions,
     DurableContext,
     DurableRuntimeMissingError,
+    FunctionHandler,
     ParallelBranch,
     RetryOptions,
     StepScope,
@@ -51,7 +53,7 @@ _EXPECTED_FAILURE = "expected the execution to fail"
 
 
 @contextmanager
-def local_runner(handler: Any) -> Generator[DurableFunctionTestRunner]:
+def local_runner(handler: FunctionHandler) -> Generator[DurableFunctionTestRunner]:
     """Run a handler on the local runner, then close what it leaves open.
 
     The runner's own close() stops its scheduler's event loop without closing
@@ -565,6 +567,8 @@ def test_the_wrapper_keeps_the_handler_name() -> None:
     wrapped = durable(order_pipeline)
     assert wrapped.__name__ == "order_pipeline"
     assert wrapped.__doc__ == order_pipeline.__doc__
+    assert inspect.unwrap(wrapped) is order_pipeline
+    assert inspect.signature(wrapped) == inspect.signature(order_pipeline)
 
 
 def test_durable_refuses_something_that_is_not_callable() -> None:
