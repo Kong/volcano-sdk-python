@@ -180,7 +180,7 @@ def _filter_postgres_changes(
     def filtered(change: PostgresChange) -> object:
         if change.schema != schema or change.table != table:
             return None
-        if event not in ("*", change.type):
+        if event not in {"*", change.type}:
             return None
         return callback(change)
 
@@ -843,7 +843,7 @@ class Channel:
                 return True
             event, schema, table = listener_filter
             if (
-                event in ("*", change.type)
+                event in {"*", change.type}
                 and schema == change.schema
                 and table == change.table
             ):
