@@ -11,6 +11,7 @@ import pytest
 from volcano_sdk import LockLease, VolcanoClient, VolcanoError
 from volcano_sdk import _lock_guard as guard_module
 from volcano_sdk import locks as locks_module
+from volcano_sdk._lock_guard import LockGuard
 from volcano_sdk._transport import GeneratedTransport
 
 if TYPE_CHECKING:
@@ -46,6 +47,33 @@ def lease_response(request: httpx.Request) -> httpx.Response:
     if request.method == "DELETE":
         return httpx.Response(204)
     return httpx.Response(201 if request.method == "POST" else 200, json=LEASE)
+
+
+def test_preparing_a_closed_guard_preserves_lost_ownership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    monkeypatch.setattr(locks_module, "_lease_now", lambda: 100.0)
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return lease_response(request)
+
+    client = make_client(handle)
+    original = client.locks.acquire("build", ttl=30)
+    guard = LockGuard(original, ttl=30, started_at=100.0)
+    guard._close()
+
+    with pytest.raises(
+        RuntimeError, match="lock guard rejected renewal without a failure"
+    ):
+        client.locks._prepare_guard("build", guard, ttl=30)
+
+    assert guard.lost
+    assert guard.lease is original
+    assert [request.method for request in requests] == ["POST", "PATCH"]
+    assert requests[1].headers["x-volcano-lock-token"] == original.token
 
 
 @pytest.mark.parametrize("failure", ["transport", "503", "empty", "html", "malformed"])
