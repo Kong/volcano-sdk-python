@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any
 
 import httpx
 import pytest
@@ -21,14 +20,14 @@ from volcano_sdk._transport import GeneratedTransport
 @dataclass(frozen=True)
 class FakeResponse:
     status_code: int
-    payload: Any
+    payload: object
     headers: dict[str, str]
     content: bytes = b""
 
 
 class FakeFunctionsTransport(RejectingTransport):
     def __init__(self, *, invoke_url: str | None = None) -> None:
-        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.calls: list[tuple[str, dict[str, object]]] = []
         self.invoke_url = invoke_url
         self.cache_ttl_seconds: object = 60
         self.resolve_response: FakeResponse | None = None
@@ -39,11 +38,11 @@ class FakeFunctionsTransport(RejectingTransport):
             {"X-Volcano-Version": "staging-v1", "X-Trace": "trace-1"},
         )
 
-    def resolve_function_for_invocation(self, **kwargs: Any) -> FakeResponse:
+    def resolve_function_for_invocation(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("resolveFunctionForInvocation", kwargs))
         if self.resolve_response is not None:
             return self.resolve_response
-        payload: dict[str, Any] = {
+        payload: dict[str, object] = {
             "name": kwargs["name"],
             "function_id": "00000000-0000-4000-8000-000000000040",
             "cache_ttl_seconds": self.cache_ttl_seconds,
@@ -52,11 +51,11 @@ class FakeFunctionsTransport(RejectingTransport):
             payload["invoke_url"] = self.invoke_url
         return FakeResponse(200, payload, {})
 
-    def invoke_function(self, **kwargs: Any) -> FakeResponse:
+    def invoke_function(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("invokeFunction", kwargs))
         return self._next_invoke_response()
 
-    def invoke_function_url(self, **kwargs: Any) -> FakeResponse:
+    def invoke_function_url(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("invokeFunctionUrl", kwargs))
         return self._next_invoke_response()
 
