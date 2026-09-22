@@ -60,7 +60,15 @@ class PostgresFetchWorker(Generic[FallbackT]):
         batch_window_seconds: float = 0,
         max_batch_size: int = 1,
     ) -> None:
-        """Create a worker with a fixed pending-job limit."""
+        """Create a worker with a fixed pending-job limit.
+
+        Raises
+        ------
+        ValueError
+            The queue limit is not positive, the batch window is negative,
+            or the batch size is outside the range from one to the queue limit.
+
+        """
         if queue_limit <= 0:
             raise ValueError(_INVALID_QUEUE_LIMIT)
         if batch_window_seconds < 0:
@@ -80,7 +88,14 @@ class PostgresFetchWorker(Generic[FallbackT]):
         self._closed = False
 
     async def enqueue(self, job: PostgresFetchJob[FallbackT]) -> None:
-        """Queue one fetch, applying backpressure when the queue is full."""
+        """Queue one fetch, applying backpressure when the queue is full.
+
+        Raises
+        ------
+        RuntimeError
+            The worker has closed or was cancelled before accepting the job.
+
+        """
         async with self._state_lock:
             if self._closed:
                 raise RuntimeError(_WORKER_CLOSED)
