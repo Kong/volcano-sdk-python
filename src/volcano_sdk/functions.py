@@ -183,7 +183,6 @@ class Functions:
                 invoke_url=resolution.invoke_url,
                 payload=payload,
             )
-        response = cast("TransportResponse", response)
         if (
             response.status_code == _HTTP_UNAUTHORIZED
             and _header(response.headers, _FUNCTION_INVOKED_HEADER) is None
