@@ -5,10 +5,14 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import SEEK_END, BytesIO, StringIO
-from typing import Any, BinaryIO, cast
+from typing import TYPE_CHECKING, Any, BinaryIO, cast
 
 import pytest
-from fixtures.invalid_arguments import bytes_storage_paths, non_boolean_visibility
+from fixtures.invalid_arguments import (
+    bytes_storage_paths,
+    integer_visibility,
+    string_visibility,
+)
 from state_assertions import assert_same
 from typing_extensions import override
 
@@ -26,6 +30,11 @@ from volcano_sdk import (
 )
 from volcano_sdk import _lock_guard as guard_module
 from volcano_sdk import locks as locks_module
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from volcano_sdk.storage import StorageBucket
 
 
 @dataclass(frozen=True)
@@ -1417,9 +1426,9 @@ def test_storage_update_visibility_rejects_empty_path_before_transport() -> None
     assert transport.calls == calls_after_sign_in
 
 
-@pytest.mark.parametrize("is_public", [1, "true"])
+@pytest.mark.parametrize("operation", [integer_visibility, string_visibility])
 def test_storage_update_visibility_rejects_non_boolean_before_transport(
-    is_public: int | str,
+    operation: Callable[[StorageBucket], None],
 ) -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
@@ -1427,7 +1436,7 @@ def test_storage_update_visibility_rejects_non_boolean_before_transport(
     calls_after_sign_in = transport.calls.copy()
 
     with pytest.raises(TypeError, match="boolean"):
-        non_boolean_visibility(client.storage.from_("assets"), is_public)
+        operation(client.storage.from_("assets"))
 
     assert transport.calls == calls_after_sign_in
 

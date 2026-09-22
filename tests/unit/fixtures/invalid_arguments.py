@@ -33,5 +33,9 @@ def bytes_storage_paths(bucket: StorageBucket) -> None:
     bucket.remove(b"abc")  # type: ignore[arg-type]
 
 
-def non_boolean_visibility(bucket: StorageBucket, value: int | str) -> None:
-    bucket.update_visibility("avatars/a.png", is_public=value)  # type: ignore[arg-type]
+def integer_visibility(bucket: StorageBucket) -> None:
+    bucket.update_visibility("avatars/a.png", is_public=1)  # type: ignore[arg-type]
+
+
+def string_visibility(bucket: StorageBucket) -> None:
+    bucket.update_visibility("avatars/a.png", is_public="true")  # type: ignore[arg-type]
