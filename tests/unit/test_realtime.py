@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import AsyncMock, create_autospec
 
 import pytest
 from state_assertions import assert_same
@@ -480,16 +481,24 @@ class ControlledCentrifugeFactory:
         )
         self.commands: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
-        async def connect() -> None:
+        def connect() -> None:
             self.client.state = centrifuge.ClientState.CONNECTED
             self.client._connected_future.set_result(True)
 
-        async def send_commands(commands: list[dict[str, Any]]) -> None:
+        def send_commands(commands: list[dict[str, Any]]) -> None:
             for command in commands:
                 self.commands.put_nowait(command)
 
-        monkeypatch.setattr(self.client, "connect", connect)
-        monkeypatch.setattr(self.client, "_send_commands", send_commands)
+        monkeypatch.setattr(
+            self.client,
+            "connect",
+            AsyncMock(spec_set=self.client.connect, side_effect=connect),
+        )
+        monkeypatch.setattr(
+            self.client,
+            "_send_commands",
+            AsyncMock(spec_set=self.client._send_commands, side_effect=send_commands),
+        )
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         del args
@@ -2616,12 +2625,11 @@ def test_centrifuge_preserves_recovery_position_across_unsubscribe() -> None:
         subscription._offset = 41
         subscription.state = centrifuge.SubscriptionState.SUBSCRIBED
 
-        async def unsubscribe_without_transport(_channel: str) -> None:
-            return None
-
-        client._unsubscribe = unsubscribe_without_transport
+        unsubscribe = AsyncMock(spec_set=client._unsubscribe, return_value=None)
+        client._unsubscribe = unsubscribe
 
         await subscription.unsubscribe()
+        unsubscribe.assert_awaited_once_with("broadcast:room")
         command = client._construct_subscribe_command(subscription, 1)
 
         subscribe = command["subscribe"]
@@ -2715,7 +2723,7 @@ def test_realtime_connection_callbacks_receive_immutable_contexts() -> None:
             connected.append(context)
             connected_event.set()
 
-        async def on_disconnected(context: RealtimeDisconnectContext) -> None:
+        def on_disconnected(context: RealtimeDisconnectContext) -> None:
             disconnected.append(context)
             disconnected_event.set()
 
@@ -2724,7 +2732,10 @@ def test_realtime_connection_callbacks_receive_immutable_contexts() -> None:
             error_event.set()
 
         stop_connect = client.realtime.on_connect(on_connected)
-        client.realtime.on_disconnect(on_disconnected)
+        disconnect_callback = AsyncMock(
+            spec_set=on_disconnected, side_effect=on_disconnected
+        )
+        client.realtime.on_disconnect(disconnect_callback)
         stop_error = client.realtime.on_error(on_error)
 
         await client.realtime.channel("contract").subscribe()
@@ -2746,6 +2757,7 @@ def test_realtime_connection_callbacks_receive_immutable_contexts() -> None:
         assert disconnected == [
             RealtimeDisconnectContext(code=0, reason="disconnect called")
         ]
+        disconnect_callback.assert_awaited_once_with(disconnected[0])
 
     asyncio.run(scenario())
 
@@ -3225,12 +3237,13 @@ def test_realtime_disconnect_resets_channels_after_transport_failure(
     second = FakeCentrifugeClient()
     clients = iter((first, second))
 
-    async def failing_disconnect() -> None:
+    def failing_disconnect() -> None:
         first.calls.append("disconnect")
         message = "disconnect failed"
         raise RuntimeError(message)
 
-    monkeypatch.setattr(first, "disconnect", failing_disconnect)
+    disconnect = AsyncMock(spec_set=first.disconnect, side_effect=failing_disconnect)
+    monkeypatch.setattr(first, "disconnect", disconnect)
 
     def factory(*args: Any, **kwargs: Any) -> FakeCentrifugeClient:
         del args, kwargs
@@ -3256,6 +3269,7 @@ def test_realtime_disconnect_resets_channels_after_transport_failure(
     asyncio.run(scenario())
     assert first.calls == ["connect", "channel:broadcast:contract", "disconnect"]
     assert second.calls == ["connect", "channel:broadcast:contract", "disconnect"]
+    disconnect.assert_awaited_once_with()
 
 
 def test_realtime_disconnect_closes_transport_when_channel_reset_is_cancelled(
@@ -3731,9 +3745,7 @@ def test_realtime_subscribe_releases_connection_lock_after_readiness_failure(
         asyncio.CancelledError() if cancelled else centrifuge_error("ready timed out")
     )
 
-    async def ready(_subscription: FakeSubscription) -> None:
-        raise error
-
+    ready = create_autospec(FakeSubscription.ready, spec_set=True, side_effect=error)
     monkeypatch.setattr(FakeSubscription, "ready", ready)
 
     async def scenario() -> None:
@@ -3745,6 +3757,8 @@ def test_realtime_subscribe_releases_connection_lock_after_readiness_failure(
         assert not client.realtime.is_connected
 
     asyncio.run(scenario())
+
+    ready.assert_awaited_once_with(official.subscription)
 
 
 @pytest.mark.parametrize("cancelled", [False, True])
