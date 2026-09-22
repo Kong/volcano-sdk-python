@@ -32,6 +32,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Generic,
+    ParamSpec,
     Protocol,
     TypeAlias,
     TypeVar,
@@ -45,6 +46,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
 T = TypeVar("T")
+_P = ParamSpec("_P")
 # A duration: "30s", "5m", "2h", "1d", a compound string like "1m30s", a whole
 # number of seconds, or the mapping form.
 Duration: TypeAlias = "str | int | dict[str, int]"
@@ -452,7 +454,7 @@ class DurableContext:
         """
         step_name, step_func = _named(name, func, "step")
 
-        def run(scope: Any) -> Any:
+        def run(scope: Any) -> T:
             return step_func(StepScope(scope.logger, scope.attempt))
 
         # The engine hands back whatever the step returned, untyped. T is the
@@ -499,7 +501,7 @@ class DurableContext:
         child_name, child_func = _named(name, func, "child")
         engine = self._engine
 
-        def run(context: Any) -> Any:
+        def run(context: Any) -> T:
             return child_func(DurableContext(context, engine))
 
         return cast("T", self._context.run_in_child_context(run, child_name))
@@ -577,7 +579,7 @@ class DurableContext:
             raise TypeError(_INVALID_ITEMS)
         engine = self._engine
 
-        def run(context: Any, item: Any, index: int, _all: Any) -> Any:
+        def run(context: Any, item: Any, index: int, _all: Any) -> T:
             return map_func(item, DurableContext(context, engine), index)
 
         return BatchResult(
@@ -801,10 +803,10 @@ def _validate_wait_options(options: WaitUntilOptions) -> None:
 
 
 def _named(
-    name: str | Callable[..., Any] | None,
-    func: Callable[..., Any] | None,
+    name: str | Callable[_P, T] | None,
+    func: Callable[_P, T] | None,
     operation: str,
-) -> tuple[str | None, Callable[..., Any]]:
+) -> tuple[str | None, Callable[_P, T]]:
     """Accept both the named and unnamed form of an operation.
 
     The name is what the operation is recorded under, so it is worth
@@ -819,7 +821,7 @@ def _named(
     return None, _callable(name, operation)
 
 
-def _callable(func: object, operation: str) -> Callable[..., Any]:
+def _callable(func: Callable[_P, T] | None, operation: str) -> Callable[_P, T]:
     if not callable(func):
         message = f"{operation}() requires a function to run"
         raise TypeError(message)
