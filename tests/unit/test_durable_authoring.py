@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import json
+import logging
 from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -506,13 +507,19 @@ def test_wait_until_fails_when_it_runs_out_of_attempts() -> None:
     assert "exhausted 2 attempts" in failing_handler(handler)
 
 
-def test_the_logger_is_reachable_on_the_context() -> None:
-    @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
-        ctx.log.info("starting order o-1")
-        return ctx.step("noop", lambda scope: scope.log is not None)
+def test_the_context_and_step_emit_log_messages(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO)
 
-    assert run_handler(handler) is True
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> None:
+        ctx.log.info("starting order %s", "o-1", extra={"order_id": "o-1"})
+        ctx.step("noop", lambda scope: scope.log.info("running the step"))
+
+    assert run_handler(handler) is None
+    assert "starting order o-1" in caplog.messages
+    assert "running the step" in caplog.messages
 
 
 class Recorder:

@@ -126,14 +126,14 @@ class VolcanoClient:
             if _transport is not None
             else GeneratedTransport(api_url=self._api_url, timeout=timeout)
         )
-        self.auth = Auth(self)
-        self.functions = Functions(self)
-        self.durable = Durable(self)
-        self.logs = Logs(self)
-        self.storage = Storage(self)
-        self.locks = Locks(self)
+        self.auth: Auth = Auth(self)
+        self.functions: Functions = Functions(self)
+        self.durable: Durable = Durable(self)
+        self.logs: Logs = Logs(self)
+        self.storage: Storage = Storage(self)
+        self.locks: Locks = Locks(self)
         if _realtime_client_factory is None:
-            self.realtime = Realtime(self, api_url=self._api_url)
+            self.realtime: Realtime = Realtime(self, api_url=self._api_url)
         else:
             self.realtime = Realtime(
                 self,
