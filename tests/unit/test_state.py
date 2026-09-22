@@ -171,104 +171,9 @@ def _linked_oauth_providers() -> AuthListOAuthProvidersResponse200:
     )
 
 
-class StateTransport:
-    on_signin: Callable[[], None] | None = None
-    on_signup: Callable[[], None] | None = None
-
+class OAuthTransport:
     def __init__(self) -> None:
-        self.next_access_token = "access-1"
-        self.signup_response = Response(
-            201,
-            {
-                "confirmation_required": True,
-                "message": "Check your email to confirm your account",
-            },
-        )
-        self.signup_calls: list[dict[str, Any]] = []
-        self.anonymous_signin_response = Response(
-            201,
-            {
-                "access_token": "anonymous-access",
-                "refresh_token": "anonymous-refresh",
-                "user": {"id": "00000000-0000-4000-8000-000000000099"},
-            },
-        )
-        self.anonymous_signin_calls: list[dict[str, Any]] = []
-        self.on_anonymous_signin: Callable[[], None] | None = None
-        self.anonymous_conversion_response = Response(200, _converted_user_profile())
-        self.anonymous_conversion_calls: list[dict[str, Any]] = []
-        self.on_anonymous_conversion: Callable[[], None] | None = None
-        self.email_change_response = Response(
-            200,
-            {"message": "Confirmation email sent", "new_email": "new@example.com"},
-        )
-        self.email_change_calls: list[dict[str, Any]] = []
-        self.on_email_change: Callable[[], None] | None = None
-        self.cancel_email_change_response = Response(200, {})
-        self.cancel_email_change_calls: list[dict[str, Any]] = []
-        self.on_cancel_email_change: Callable[[], None] | None = None
-        self.confirm_email_change_response = Response(
-            200,
-            _confirmed_email_change_profile(),
-        )
-        self.confirm_email_change_calls: list[dict[str, Any]] = []
-        self.on_confirm_email_change: Callable[[], None] | None = None
-        self.delete_other_sessions_response = Response(204)
-        self.delete_other_sessions_calls: list[dict[str, Any]] = []
-        self.on_delete_other_sessions: Callable[[], None] | None = None
-        self.delete_session_response = Response(204)
-        self.delete_session_calls: list[dict[str, Any]] = []
-        self.on_delete_session: Callable[[], None] | None = None
-        self.list_sessions_response = Response(200, _sessions_page())
-        self.list_sessions_calls: list[dict[str, Any]] = []
-        self.on_list_sessions: Callable[[], None] | None = None
-        self._configure_oauth()
-        self.forgot_password_response = Response(
-            200,
-            {"message": "If the email exists, a password reset link has been sent."},
-        )
-        self.forgot_password_calls: list[dict[str, Any]] = []
-        self.reset_password_response = Response(
-            200,
-            {"message": "Password reset successful. Please sign in again."},
-        )
-        self.reset_password_calls: list[dict[str, Any]] = []
-        self.confirm_email_response = Response(
-            200,
-            {"message": "Email confirmed successfully"},
-        )
-        self.confirm_email_calls: list[dict[str, Any]] = []
-        self.resend_confirmation_response = Response(
-            200,
-            {"message": "If eligible, a confirmation email has been sent."},
-        )
-        self.resend_confirmation_calls: list[dict[str, Any]] = []
-        self.user_response = Response(
-            200,
-            _user_profile(),
-        )
-        self.on_get_user: Callable[[], None] | None = None
-        self.update_user_response = Response(200, _updated_user_profile())
-        self.update_user_calls: list[dict[str, Any]] = []
-        self.on_update_user: Callable[[], None] | None = None
-        self.refresh_response = Response(
-            200,
-            {
-                "access_token": "access-2",
-                "refresh_token": "refresh-2",
-                "user": {"id": "00000000-0000-4000-8000-000000000010"},
-            },
-        )
-        self.on_refresh: Callable[[], None] | None = None
-        self.logout_response = Response(204)
-        self.on_logout: Callable[[], None] | None = None
-        self.query_calls: list[dict[str, Any]] = []
-        self.insert_calls: list[dict[str, Any]] = []
-        self.update_calls: list[dict[str, Any]] = []
-        self.delete_calls: list[dict[str, Any]] = []
         self.authorizations: list[tuple[str, str]] = []
-
-    def _configure_oauth(self) -> None:
         self.oauth_authorization_url = "https://api.example/auth/oauth/github/authorize"
         self.oauth_authorization_url_calls: list[dict[str, Any]] = []
         self.oauth_exchange_response = Response(
@@ -332,6 +237,155 @@ class StateTransport:
         )
         self.call_oauth_api_calls: list[dict[str, Any]] = []
         self.on_call_oauth_api: Callable[[], None] | None = None
+
+    def auth_list_oauth_providers(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("list_oauth_providers", kwargs["authorization"]))
+        self.list_oauth_providers_calls.append(kwargs)
+        if self.on_list_oauth_providers is not None:
+            self.on_list_oauth_providers()
+        return self.list_oauth_providers_response
+
+    def auth_oauth_authorization_url(self, **kwargs: Any) -> str:
+        self.oauth_authorization_url_calls.append(kwargs)
+        return self.oauth_authorization_url
+
+    def auth_oauth_exchange(self, **kwargs: Any) -> Response:
+        self.oauth_exchange_calls.append(kwargs)
+        if self.on_oauth_exchange is not None:
+            self.on_oauth_exchange()
+        return self.oauth_exchange_response
+
+    def auth_link_oauth_provider(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("link_oauth_provider", kwargs["authorization"]))
+        self.link_oauth_provider_calls.append(kwargs)
+        if self.on_link_oauth_provider is not None:
+            self.on_link_oauth_provider()
+        return self.link_oauth_provider_response
+
+    def auth_unlink_oauth_provider(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("unlink_oauth_provider", kwargs["authorization"]))
+        self.unlink_oauth_provider_calls.append(kwargs)
+        if self.on_unlink_oauth_provider is not None:
+            self.on_unlink_oauth_provider()
+        return self.unlink_oauth_provider_response
+
+    def auth_get_oauth_provider_token(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("oauth_token_status", kwargs["authorization"]))
+        self.oauth_provider_token_status_calls.append(kwargs)
+        if self.on_oauth_provider_token_status is not None:
+            self.on_oauth_provider_token_status()
+        return self.oauth_provider_token_status_response
+
+    def auth_refresh_oauth_provider_token(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("refresh_oauth_token", kwargs["authorization"]))
+        self.refresh_oauth_provider_token_calls.append(kwargs)
+        if self.on_refresh_oauth_provider_token is not None:
+            self.on_refresh_oauth_provider_token()
+        return self.refresh_oauth_provider_token_response
+
+    def auth_call_oauth_api(self, **kwargs: Any) -> Response:
+        self.authorizations.append(("call_oauth_api", kwargs["authorization"]))
+        self.call_oauth_api_calls.append(kwargs)
+        if self.on_call_oauth_api is not None:
+            self.on_call_oauth_api()
+        return self.call_oauth_api_response
+
+
+class StateTransport(OAuthTransport):
+    on_signin: Callable[[], None] | None = None
+    on_signup: Callable[[], None] | None = None
+
+    def __init__(self) -> None:
+        self.next_access_token = "access-1"
+        self.signup_response = Response(
+            201,
+            {
+                "confirmation_required": True,
+                "message": "Check your email to confirm your account",
+            },
+        )
+        self.signup_calls: list[dict[str, Any]] = []
+        self.anonymous_signin_response = Response(
+            201,
+            {
+                "access_token": "anonymous-access",
+                "refresh_token": "anonymous-refresh",
+                "user": {"id": "00000000-0000-4000-8000-000000000099"},
+            },
+        )
+        self.anonymous_signin_calls: list[dict[str, Any]] = []
+        self.on_anonymous_signin: Callable[[], None] | None = None
+        self.anonymous_conversion_response = Response(200, _converted_user_profile())
+        self.anonymous_conversion_calls: list[dict[str, Any]] = []
+        self.on_anonymous_conversion: Callable[[], None] | None = None
+        self.email_change_response = Response(
+            200,
+            {"message": "Confirmation email sent", "new_email": "new@example.com"},
+        )
+        self.email_change_calls: list[dict[str, Any]] = []
+        self.on_email_change: Callable[[], None] | None = None
+        self.cancel_email_change_response = Response(200, {})
+        self.cancel_email_change_calls: list[dict[str, Any]] = []
+        self.on_cancel_email_change: Callable[[], None] | None = None
+        self.confirm_email_change_response = Response(
+            200,
+            _confirmed_email_change_profile(),
+        )
+        self.confirm_email_change_calls: list[dict[str, Any]] = []
+        self.on_confirm_email_change: Callable[[], None] | None = None
+        self.delete_other_sessions_response = Response(204)
+        self.delete_other_sessions_calls: list[dict[str, Any]] = []
+        self.on_delete_other_sessions: Callable[[], None] | None = None
+        self.delete_session_response = Response(204)
+        self.delete_session_calls: list[dict[str, Any]] = []
+        self.on_delete_session: Callable[[], None] | None = None
+        self.list_sessions_response = Response(200, _sessions_page())
+        self.list_sessions_calls: list[dict[str, Any]] = []
+        self.on_list_sessions: Callable[[], None] | None = None
+        super().__init__()
+        self.forgot_password_response = Response(
+            200,
+            {"message": "If the email exists, a password reset link has been sent."},
+        )
+        self.forgot_password_calls: list[dict[str, Any]] = []
+        self.reset_password_response = Response(
+            200,
+            {"message": "Password reset successful. Please sign in again."},
+        )
+        self.reset_password_calls: list[dict[str, Any]] = []
+        self.confirm_email_response = Response(
+            200,
+            {"message": "Email confirmed successfully"},
+        )
+        self.confirm_email_calls: list[dict[str, Any]] = []
+        self.resend_confirmation_response = Response(
+            200,
+            {"message": "If eligible, a confirmation email has been sent."},
+        )
+        self.resend_confirmation_calls: list[dict[str, Any]] = []
+        self.user_response = Response(
+            200,
+            _user_profile(),
+        )
+        self.on_get_user: Callable[[], None] | None = None
+        self.update_user_response = Response(200, _updated_user_profile())
+        self.update_user_calls: list[dict[str, Any]] = []
+        self.on_update_user: Callable[[], None] | None = None
+        self.refresh_response = Response(
+            200,
+            {
+                "access_token": "access-2",
+                "refresh_token": "refresh-2",
+                "user": {"id": "00000000-0000-4000-8000-000000000010"},
+            },
+        )
+        self.on_refresh: Callable[[], None] | None = None
+        self.logout_response = Response(204)
+        self.on_logout: Callable[[], None] | None = None
+        self.query_calls: list[dict[str, Any]] = []
+        self.insert_calls: list[dict[str, Any]] = []
+        self.update_calls: list[dict[str, Any]] = []
+        self.delete_calls: list[dict[str, Any]] = []
 
     def auth_signin(self, **kwargs: Any) -> Response:
         self.authorizations.append(("auth", kwargs["authorization"]))
@@ -408,58 +462,6 @@ class StateTransport:
         if self.on_list_sessions is not None:
             self.on_list_sessions()
         return self.list_sessions_response
-
-    def auth_list_oauth_providers(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("list_oauth_providers", kwargs["authorization"]))
-        self.list_oauth_providers_calls.append(kwargs)
-        if self.on_list_oauth_providers is not None:
-            self.on_list_oauth_providers()
-        return self.list_oauth_providers_response
-
-    def auth_oauth_authorization_url(self, **kwargs: Any) -> str:
-        self.oauth_authorization_url_calls.append(kwargs)
-        return self.oauth_authorization_url
-
-    def auth_oauth_exchange(self, **kwargs: Any) -> Response:
-        self.oauth_exchange_calls.append(kwargs)
-        if self.on_oauth_exchange is not None:
-            self.on_oauth_exchange()
-        return self.oauth_exchange_response
-
-    def auth_link_oauth_provider(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("link_oauth_provider", kwargs["authorization"]))
-        self.link_oauth_provider_calls.append(kwargs)
-        if self.on_link_oauth_provider is not None:
-            self.on_link_oauth_provider()
-        return self.link_oauth_provider_response
-
-    def auth_unlink_oauth_provider(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("unlink_oauth_provider", kwargs["authorization"]))
-        self.unlink_oauth_provider_calls.append(kwargs)
-        if self.on_unlink_oauth_provider is not None:
-            self.on_unlink_oauth_provider()
-        return self.unlink_oauth_provider_response
-
-    def auth_get_oauth_provider_token(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("oauth_token_status", kwargs["authorization"]))
-        self.oauth_provider_token_status_calls.append(kwargs)
-        if self.on_oauth_provider_token_status is not None:
-            self.on_oauth_provider_token_status()
-        return self.oauth_provider_token_status_response
-
-    def auth_refresh_oauth_provider_token(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("refresh_oauth_token", kwargs["authorization"]))
-        self.refresh_oauth_provider_token_calls.append(kwargs)
-        if self.on_refresh_oauth_provider_token is not None:
-            self.on_refresh_oauth_provider_token()
-        return self.refresh_oauth_provider_token_response
-
-    def auth_call_oauth_api(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("call_oauth_api", kwargs["authorization"]))
-        self.call_oauth_api_calls.append(kwargs)
-        if self.on_call_oauth_api is not None:
-            self.on_call_oauth_api()
-        return self.call_oauth_api_response
 
     def auth_forgot_password(self, **kwargs: Any) -> Response:
         self.authorizations.append(("forgot_password", kwargs["authorization"]))

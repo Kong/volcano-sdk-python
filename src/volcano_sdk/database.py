@@ -62,7 +62,7 @@ class _OrderClause(TypedDict):
 class FilterBuilder:
     """Shared immutable filters for database operations."""
 
-    _filters: tuple[_FilterCondition, ...]
+    _filters: tuple[_FilterCondition, ...] = ()
 
     def _with_filters(self, filters: tuple[_FilterCondition, ...]) -> Self:
         raise NotImplementedError
