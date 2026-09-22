@@ -617,6 +617,40 @@ class _ClientEvents:
         del ctx
 
 
+def _presence_info(info: Any) -> RealtimePresenceInfo:
+    data = getattr(info, "conn_info", None)
+    typed_data = (
+        cast("Mapping[str, JSONValue]", data)
+        if isinstance(data, Mapping)
+        else _empty_presence_data()
+    )
+    return RealtimePresenceInfo(
+        client=str(getattr(info, "client", "")),
+        user=getattr(info, "user", None),
+        data=typed_data,
+    )
+
+
+async def _run_connection_callback(
+    callback: RealtimeCallback,
+    context: Any,
+) -> None:
+    result = callback(context)
+    if inspect.isawaitable(result):
+        await result
+
+
+async def _wait_subscription(
+    channel: Channel, subscription: CentrifugeSubscription
+) -> None:
+    await subscription.ready()
+    if channel._type == "presence":
+        await channel._wait_presence_sync()
+    if channel._subscription is not subscription or not channel._subscribed:
+        message = "realtime subscription was interrupted"
+        raise RuntimeError(message)
+
+
 class Channel:
     """Realtime broadcast, presence, or Postgres channel."""
 
@@ -1098,7 +1132,7 @@ class Channel:
 
     def _replace_presence(self, clients: Mapping[str, Any]) -> None:
         self._presence_state = {
-            client_id: self._presence_info(info) for client_id, info in clients.items()
+            client_id: _presence_info(info) for client_id, info in clients.items()
         }
 
     async def _begin_presence_sync(self) -> None:
@@ -1149,7 +1183,7 @@ class Channel:
         async with self._presence_lock:
             if not self._subscribed:
                 return
-            presence = self._presence_info(info)
+            presence = _presence_info(info)
             if self._presence_syncing:
                 self._presence_events.append(("join", presence))
             self._apply_presence_event("join", presence)
@@ -1162,7 +1196,7 @@ class Channel:
         async with self._presence_lock:
             if not self._subscribed:
                 return
-            presence = self._presence_info(info)
+            presence = _presence_info(info)
             if self._presence_syncing:
                 self._presence_events.append(("leave", presence))
             self._apply_presence_event("leave", presence)
@@ -1178,19 +1212,6 @@ class Channel:
             self._presence_state.clear()
             self._tracked_state = MappingProxyType({})
             await self._emit("presence_sync", self.get_presence_state())
-
-    def _presence_info(self, info: Any) -> RealtimePresenceInfo:
-        data = getattr(info, "conn_info", None)
-        typed_data = (
-            cast("Mapping[str, JSONValue]", data)
-            if isinstance(data, Mapping)
-            else _empty_presence_data()
-        )
-        return RealtimePresenceInfo(
-            client=str(getattr(info, "client", "")),
-            user=getattr(info, "user", None),
-            data=typed_data,
-        )
 
     def _schedule_presence_sync(self) -> None:
         task = self._presence_sync_task
@@ -1428,7 +1449,7 @@ class Realtime:
                     if callback is None:
                         continue
                     (error,) = await asyncio.gather(
-                        self._run_connection_callback(callback, context),
+                        _run_connection_callback(callback, context),
                         return_exceptions=True,
                     )
                     if isinstance(error, BaseException):
@@ -1443,15 +1464,6 @@ class Realtime:
                         )
             finally:
                 self._connection_callback_queue.task_done()
-
-    async def _run_connection_callback(
-        self,
-        callback: RealtimeCallback,
-        context: Any,
-    ) -> None:
-        result = callback(context)
-        if inspect.isawaitable(result):
-            await result
 
     def channel(
         self,
@@ -1659,7 +1671,7 @@ class Realtime:
                     channel._paused = False
                     await subscription.subscribe()
                 channel._readiness_task = asyncio.create_task(
-                    self._wait_subscription(channel, subscription)
+                    _wait_subscription(channel, subscription)
                 )
                 try:
                     await channel._readiness_task
@@ -1711,16 +1723,6 @@ class Realtime:
                 recoverable=channel._type != "postgres",
             )
         return channel._subscription
-
-    async def _wait_subscription(
-        self, channel: Channel, subscription: CentrifugeSubscription
-    ) -> None:
-        await subscription.ready()
-        if channel._type == "presence":
-            await channel._wait_presence_sync()
-        if channel._subscription is not subscription or not channel._subscribed:
-            message = "realtime subscription was interrupted"
-            raise RuntimeError(message)
 
     async def _sync_presence(self, channel: Channel) -> None:
         if channel._subscription is None:
