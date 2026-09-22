@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from io import SEEK_END, BytesIO
 from tempfile import TemporaryFile
-from typing import TYPE_CHECKING, Any, BinaryIO, Protocol, cast
+from typing import TYPE_CHECKING, Any, BinaryIO, Protocol, TypeGuard, cast
 from urllib.parse import quote
 
 from ._transport import (
@@ -154,11 +154,15 @@ def _upload_session_status(payload: object) -> UploadSessionStatus:
     )
 
 
+def _is_object_sequence(value: object) -> TypeGuard[Sequence[object]]:
+    return isinstance(value, Sequence)
+
+
 def _storage_paths(paths: object) -> tuple[str, ...]:
     if isinstance(paths, str):
         raw_paths: tuple[object, ...] = (paths,)
-    elif isinstance(paths, Sequence):
-        raw_paths = tuple(cast("Sequence[object]", paths))
+    elif _is_object_sequence(paths):
+        raw_paths = tuple(paths)
     else:
         raise TypeError(_INVALID_STORAGE_PATHS)
     if not raw_paths or any(
