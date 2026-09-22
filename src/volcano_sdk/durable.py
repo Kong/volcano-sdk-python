@@ -309,9 +309,7 @@ def _execution_fields(payload: object) -> Mapping[str, object]:
 
 def _durable_execution(payload: object) -> DurableExecution:
     values = _execution_fields(payload)
-    created_at = _datetime(values["created_at"])
-    if created_at is None:
-        raise TypeError(_INVALID_EXECUTION_PAYLOAD)
+    created_at = _parse_datetime(values["created_at"])
     result_expired = values.get("result_expired")
     if result_expired is not None and not isinstance(result_expired, bool):
         raise TypeError(_INVALID_EXECUTION_PAYLOAD)
@@ -378,6 +376,10 @@ def _datetime(value: object) -> datetime | None:
         return None
     if isinstance(value, datetime):
         return value
+    return _parse_datetime(value)
+
+
+def _parse_datetime(value: object) -> datetime:
     if not isinstance(value, str) or not value:
         raise TypeError(_INVALID_EXECUTION_PAYLOAD)
     text = value.replace("Z", "+00:00") if value.endswith("Z") else value
