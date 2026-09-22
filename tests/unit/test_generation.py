@@ -45,6 +45,23 @@ def test_generate_emits_required_contract_operations(tmp_path: Path) -> None:
     }
 
 
+def test_generate_ignores_local_module_shadowing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "openapi_python_client.py").write_text(
+        "raise RuntimeError('local generator executed')\n", encoding="utf-8"
+    )
+    script = run_path(str(ROOT / "scripts" / "generate_openapi.py"))
+    generate = script["generate"]
+    monkeypatch.setitem(generate.__globals__, "ROOT", tmp_path)
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    output = tmp_path / "_generated"
+
+    generate(output)
+
+    assert (output / "api" / "authentication" / "auth_signin.py").is_file()
+
+
 @pytest.mark.parametrize(
     "content_type",
     ["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"],

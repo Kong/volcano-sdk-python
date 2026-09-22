@@ -183,6 +183,6 @@ shell = """
 set -euo pipefail
 package_dir="$(mktemp -d)"
 trap 'rm -rf "$package_dir"' EXIT
-python -m build --outdir "$package_dir"
+python -I -m build --outdir "$package_dir"
 bash scripts/check_package.sh "" "$package_dir"
 """

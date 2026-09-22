@@ -16,7 +16,7 @@ case "$1" in
     exit "$EXPORT_STATUS"
     ;;
   run)
-    expected="run --frozen --no-sync python -m pip_audit --strict --disable-pip"
+    expected="run --frozen --no-sync python -I -m pip_audit --strict --disable-pip"
     expected="$expected --require-hashes --progress-spinner off"
     expected="$expected --requirement /dev/stdin"
     test "$*" = "$expected" || exit 98
