@@ -45,6 +45,25 @@ class _StopWorker:
 _STOP_WORKER = _StopWorker()
 
 
+async def _wait_for_close(
+    task: asyncio.Task[None],
+    stop_task: asyncio.Task[None],
+) -> None:
+    completed, _pending = await asyncio.wait(
+        (task, stop_task),
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+    if task in completed:
+        try:
+            task.result()
+        except BaseException:
+            stop_task.cancel()
+            await asyncio.gather(stop_task, return_exceptions=True)
+            raise
+    await asyncio.shield(stop_task)
+    await asyncio.shield(task)
+
+
 class PostgresFetchWorker(Generic[FallbackT]):
     """Fetch queued rows serially and deliver outcomes in enqueue order."""
 
@@ -117,7 +136,7 @@ class PostgresFetchWorker(Generic[FallbackT]):
                 self._stop_task = asyncio.create_task(self._queue.put(_STOP_WORKER))
             stop_task = self._stop_task
         if task is not None and stop_task is not None:
-            await self._wait_for_close(task, stop_task)
+            await _wait_for_close(task, stop_task)
 
     async def abort(self) -> None:
         """Discard obsolete jobs and stop without waiting for row fetches."""
@@ -165,25 +184,6 @@ class PostgresFetchWorker(Generic[FallbackT]):
         while not self._queue.empty():
             self._queue.get_nowait()
             self._queue.task_done()
-
-    async def _wait_for_close(
-        self,
-        task: asyncio.Task[None],
-        stop_task: asyncio.Task[None],
-    ) -> None:
-        completed, _pending = await asyncio.wait(
-            (task, stop_task),
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-        if task in completed:
-            try:
-                task.result()
-            except BaseException:
-                stop_task.cancel()
-                await asyncio.gather(stop_task, return_exceptions=True)
-                raise
-        await asyncio.shield(stop_task)
-        await asyncio.shield(task)
 
     async def _run(self) -> None:
         pending: PostgresFetchJob[FallbackT] | _StopWorker | None = None
