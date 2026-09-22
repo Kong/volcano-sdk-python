@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     from typing import BinaryIO
 
     from volcano_sdk.auth import Auth
+    from volcano_sdk.logs import Logs
     from volcano_sdk.realtime import Realtime
     from volcano_sdk.storage import StorageBucket
 
@@ -39,3 +40,7 @@ def integer_visibility(bucket: StorageBucket) -> None:
 
 def string_visibility(bucket: StorageBucket) -> None:
     bucket.update_visibility("avatars/a.png", is_public="true")  # type: ignore[arg-type]
+
+
+def non_mapping_log_request(logs: Logs) -> None:
+    logs.activity("project-1", [])  # type: ignore[arg-type]
