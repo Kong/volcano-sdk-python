@@ -163,10 +163,13 @@ reportPrivateUsage = false
 [tool.ruff]
 required-version = "==0.16.4"
 target-version = "py311"
+output-prefer-rule-codes = true
 extend-exclude = ["src/volcano_sdk/_generated"]
 
 [tool.ruff.lint]
-select = ["ALL"]
+preview = true
+explicit-preview-rules = true
+select = ["ALL", "PLW0717"]
 ignore = [
   # The repository license covers source files without per-file headers.
   "CPY001",
@@ -247,18 +250,13 @@ quality = ["audit", "generated", "lint", "format-check", "types", "test", "cover
 build = "uv build --no-sources --require-hashes"
 audit = "bash scripts/audit_dependencies.sh"
 generated = "python -m scripts.check_openapi"
+lint = "ruff check ."
 format-check = "ruff format --check ."
 types = ["mypy", "basedpyright"]
 mypy = "mypy"
 basedpyright = "basedpyright"
 test = "pytest tests/unit -q --junitxml=reports/unit.xml"
 coverage = "uv run --locked --isolated --python 3.12 pytest tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:reports/coverage.json --junitxml=reports/coverage-unit.xml"
-
-[tool.poe.tasks.lint]
-sequence = [
-  { cmd = "ruff check ." },
-  { cmd = "ruff check --preview --select PLW0717 ." },
-]
 
 [tool.poe.tasks.contract-check]
 sequence = [
