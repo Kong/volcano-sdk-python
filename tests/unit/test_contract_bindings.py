@@ -19,6 +19,7 @@ from session_fixtures import access_token
 
 from volcano_sdk import Session, VolcanoClient
 from volcano_sdk._transport import GeneratedTransport
+from volcano_sdk.auth import Auth
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -359,6 +360,35 @@ def test_durable_idempotency_binding_starts_twice_and_records_both_handles(
         assert world.last_outcome is not None
         assert world.last_outcome.ok is True
         assert world.last_outcome.value == (first, second)
+    finally:
+        world.cleanup()
+
+
+def test_realtime_contract_pair_authenticates_and_owns_both_clients(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry.clear()
+    steps = _load_module(
+        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
+    )
+    fixture = json.loads(
+        (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text()
+    )
+    world = steps.ContractWorld(fixture)
+    signed_in: list[tuple[str, str]] = []
+
+    def sign_in(_auth: object, *, email: str, password: str) -> None:
+        signed_in.append((email, password))
+
+    monkeypatch.setattr(Auth, "sign_in", sign_in)
+    try:
+        subscriber, publisher = steps._realtime_pair(world)
+        assert len(world.realtime_clients) == 2
+        assert world.subscriber is subscriber
+        assert world.publisher is publisher
+        channel_name = f"broadcast:{world.realtime_channel}"
+        assert subscriber.name == publisher.name == channel_name
+        assert signed_in == [(fixture["user_email"], fixture["user_password"])] * 2
     finally:
         world.cleanup()
 
