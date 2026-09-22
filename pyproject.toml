@@ -53,7 +53,7 @@ dev = [
   "behave>=1.3.3,<2.0.0",
   "mypy>=1.18.0",
   "openapi-python-client==0.29.0",
-  "pyright>=1.1.405",
+  "basedpyright==1.40.1",
   "pytest==9.1.1",
   "ruff==0.16.4",
   "pip-audit==2.10.1",
@@ -128,7 +128,7 @@ mypy_path = [
 ]
 exclude = ["src/volcano_sdk/_generated/"]
 
-[tool.pyright]
+[tool.basedpyright]
 stubPath = "typings"
 include = ["src", "tests", "scripts", "features", "typings"]
 extraPaths = ["src", "tests/unit", "features"]
@@ -144,6 +144,14 @@ reportImplicitOverride = "error"
 reportPropertyTypeMismatch = "error"
 reportMissingModuleSource = "error"
 reportImportCycles = "error"
+reportIgnoreCommentWithoutRule = "error"
+reportUnsafeMultipleInheritance = "error"
+reportImplicitAbstractClass = "error"
+reportIncompatibleUnannotatedOverride = "error"
+reportInvalidAbstractMethod = "error"
+reportSelfClsDefault = "error"
+reportPrivateLocalImportUsage = "error"
+reportUnusedParameter = "error"
 # Package-level collaborators intentionally share private implementation details;
 # Ruff still enforces private access everywhere else.
 reportPrivateUsage = false
@@ -237,9 +245,9 @@ audit = "bash scripts/audit_dependencies.sh"
 generated = "python scripts/check_openapi.py"
 lint = "ruff check ."
 format-check = "ruff format --check ."
-types = ["mypy", "pyright"]
+types = ["mypy", "basedpyright"]
 mypy = "mypy"
-pyright = "pyright"
+basedpyright = "basedpyright"
 test = "pytest tests/unit -q --junitxml=reports/unit.xml"
 coverage = "uv run --locked --isolated --python 3.12 pytest tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:reports/coverage.json --junitxml=reports/coverage-unit.xml"
 
