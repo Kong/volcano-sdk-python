@@ -3,9 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any
 
 import pytest
+from transport_fixtures import RejectingTransport
 
 from volcano_sdk import (
     ConflictError,
@@ -15,9 +16,6 @@ from volcano_sdk import (
     VolcanoClient,
 )
 from volcano_sdk._transport import DurableExecutionListRequest
-
-if TYPE_CHECKING:
-    from volcano_sdk._transport import Transport
 
 EXECUTION_ID = "00000000-0000-4000-8000-0000000000e1"
 PROJECT_ID = "00000000-0000-4000-8000-000000000001"
@@ -44,7 +42,7 @@ def running_execution(**overrides: Any) -> dict[str, Any]:
     return execution
 
 
-class FakeDurableTransport:
+class FakeDurableTransport(RejectingTransport):
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.start_response = FakeResponse(202, running_execution(), {})
@@ -97,7 +95,7 @@ def durable_client(
     client = VolcanoClient(
         anon_key=anon_key,
         service_key=service_key,
-        _transport=cast("Transport", transport),
+        _transport=transport,
     )
     if session:
         client.auth.set_session(

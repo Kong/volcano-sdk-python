@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any
 
 import httpx
 import pytest
+from transport_fixtures import RejectingTransport
 
 from volcano_sdk import (
     NotFoundError,
@@ -16,9 +17,6 @@ from volcano_sdk import (
 )
 from volcano_sdk._transport import GeneratedTransport
 
-if TYPE_CHECKING:
-    from volcano_sdk._transport import Transport
-
 
 @dataclass(frozen=True)
 class FakeResponse:
@@ -28,7 +26,7 @@ class FakeResponse:
     content: bytes = b""
 
 
-class FakeFunctionsTransport:
+class FakeFunctionsTransport(RejectingTransport):
     def __init__(self, *, invoke_url: str | None = None) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.invoke_url = invoke_url
@@ -85,7 +83,7 @@ def functions_client(
     return VolcanoClient(
         anon_key=anon_key,
         service_key=service_key,
-        _transport=cast("Transport", transport),
+        _transport=transport,
     )
 
 
@@ -355,7 +353,7 @@ def test_functions_allows_a_plaintext_endpoint_for_a_plaintext_api() -> None:
         anon_key="anon-key",
         service_key="service-key",
         api_url="http://127.0.0.1:8000",
-        _transport=cast("Transport", transport),
+        _transport=transport,
     )
 
     client.functions.invoke("send-welcome")
