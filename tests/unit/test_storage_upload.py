@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Any
 
 import httpx
 import pytest
+from fixtures.invalid_arguments import non_string_content_type
 from storage_fixtures import upload_response
 
 from volcano_sdk import Session, VolcanoClient
@@ -44,9 +44,9 @@ def test_upload_sends_the_file_content_type(content_type: str | None) -> None:
 
 
 @pytest.mark.parametrize(
-    "content_type", ["", " ", "text/plain\r\nX-Bad: yes", "x\x00y", 1]
+    "content_type", ["", " ", "text/plain\r\nX-Bad: yes", "x\x00y"]
 )
-def test_upload_rejects_invalid_content_type_before_reading(content_type: Any) -> None:
+def test_upload_rejects_invalid_content_type_before_reading(content_type: str) -> None:
     client = VolcanoClient(api_url="http://127.0.0.1:1", anon_key="anon")
     client.auth.set_session(Session("access", "refresh", "user"))
     source = BytesIO(b"unchanged")
@@ -55,5 +55,16 @@ def test_upload_rejects_invalid_content_type_before_reading(content_type: Any) -
         client.storage.from_("assets").upload(
             "payload.bin", source, content_type=content_type
         )
+
+    assert source.tell() == 0
+
+
+def test_upload_rejects_non_string_content_type_before_reading() -> None:
+    client = VolcanoClient(api_url="http://127.0.0.1:1", anon_key="anon")
+    client.auth.set_session(Session("access", "refresh", "user"))
+    source = BytesIO(b"unchanged")
+
+    with pytest.raises(ValueError, match="content_type"):
+        non_string_content_type(client.storage.from_("assets"), source)
 
     assert source.tell() == 0

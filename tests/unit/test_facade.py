@@ -8,6 +8,7 @@ from io import SEEK_END, BytesIO, StringIO
 from typing import Any, BinaryIO, cast
 
 import pytest
+from fixtures.invalid_arguments import bytes_storage_paths, non_boolean_visibility
 from state_assertions import assert_same
 from typing_extensions import override
 
@@ -1314,9 +1315,9 @@ def test_storage_validates_path_before_spooling() -> None:
     assert source.read_sizes == []
 
 
-@pytest.mark.parametrize("invalid_paths", [[], [""], b"abc"])
+@pytest.mark.parametrize("invalid_paths", [[], [""]])
 def test_storage_remove_rejects_invalid_paths_before_transport(
-    invalid_paths: Any,
+    invalid_paths: list[str],
 ) -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
@@ -1325,6 +1326,18 @@ def test_storage_remove_rejects_invalid_paths_before_transport(
 
     with pytest.raises((TypeError, ValueError), match="non-empty strings"):
         client.storage.from_("assets").remove(invalid_paths)
+
+    assert transport.calls == calls_after_sign_in
+
+
+def test_storage_remove_rejects_bytes_before_transport() -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    calls_after_sign_in = transport.calls.copy()
+
+    with pytest.raises(ValueError, match="non-empty strings"):
+        bytes_storage_paths(client.storage.from_("assets"))
 
     assert transport.calls == calls_after_sign_in
 
@@ -1392,24 +1405,29 @@ def test_storage_update_visibility_returns_server_confirmed_metadata() -> None:
     )
 
 
-@pytest.mark.parametrize(
-    ("path", "is_public"),
-    [("", True), ("avatars/a.png", 1), ("avatars/a.png", "true")],
-)
-def test_storage_update_visibility_rejects_invalid_input_before_transport(
-    path: str,
-    is_public: Any,
-) -> None:
+def test_storage_update_visibility_rejects_empty_path_before_transport() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
     client.auth.sign_in(email="user@example.com", password="secret")
     calls_after_sign_in = transport.calls.copy()
 
     with pytest.raises((TypeError, ValueError)):
-        client.storage.from_("assets").update_visibility(
-            path,
-            is_public=is_public,
-        )
+        client.storage.from_("assets").update_visibility("", is_public=True)
+
+    assert transport.calls == calls_after_sign_in
+
+
+@pytest.mark.parametrize("is_public", [1, "true"])
+def test_storage_update_visibility_rejects_non_boolean_before_transport(
+    is_public: int | str,
+) -> None:
+    transport = FakeTransport()
+    client = VolcanoClient(anon_key="anon-key", _transport=transport)
+    client.auth.sign_in(email="user@example.com", password="secret")
+    calls_after_sign_in = transport.calls.copy()
+
+    with pytest.raises(TypeError, match="boolean"):
+        non_boolean_visibility(client.storage.from_("assets"), is_public)
 
     assert transport.calls == calls_after_sign_in
 

@@ -32,7 +32,7 @@ class FakeFunctionsTransport:
     def __init__(self, *, invoke_url: str | None = None) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.invoke_url = invoke_url
-        self.cache_ttl_seconds: Any = 60
+        self.cache_ttl_seconds: object = 60
         self.resolve_response: FakeResponse | None = None
         self.invoke_responses: list[FakeResponse] = []
         self.invoke_response = FakeResponse(
@@ -418,7 +418,7 @@ def test_functions_shares_a_resolution_across_clients_with_one_credential() -> N
 
 @pytest.mark.parametrize("cache_ttl_seconds", [0, -1, None, "60", 1.5])
 def test_functions_rejects_a_resolve_without_a_usable_lifetime(
-    cache_ttl_seconds: Any,
+    cache_ttl_seconds: object,
 ) -> None:
     transport = FakeFunctionsTransport()
     transport.cache_ttl_seconds = cache_ttl_seconds
