@@ -13,6 +13,7 @@ GEMINI.md @Kong/team-volcano
 .cursorrules @Kong/team-volcano
 /scripts/ @Kong/team-volcano
 /maintainers/ @Kong/team-volcano
+/features/ @Kong/team-volcano
 
 # Match nested tool configurations too; new overrides are policy changes.
 pyproject.toml @Kong/team-volcano
