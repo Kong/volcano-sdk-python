@@ -11,14 +11,21 @@ from ._log_response import (
     response_values,
     search_metadata,
 )
-from ._transport import TransportResponse, invoke, response_payload
+from ._transport import Transport, TransportResponse, invoke, response_payload
 from .models import JSONValue, LogActivityResponse, LogSearchResponse, _freeze_json
 
 if TYPE_CHECKING:
-    from .client import VolcanoClient
+    from .auth import Auth
 
 _INVALID_PROJECT_ID = "project_id must be a non-empty string"
 _INVALID_LOG_REQUEST = "Log request must be a mapping"
+
+
+class LogsContext(Protocol):
+    """Client capabilities required by project log reads."""
+
+    _transport: Transport
+    auth: Auth
 
 
 class LogsTransport(Protocol):
@@ -48,7 +55,7 @@ class LogsTransport(Protocol):
 class Logs:
     """Search retained project logs and activity."""
 
-    def __init__(self, client: VolcanoClient) -> None:
+    def __init__(self, client: LogsContext) -> None:
         """Bind log reads to a Volcano client."""
         self._client = client
 

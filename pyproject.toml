@@ -139,6 +139,7 @@ reportUninitializedInstanceVariable = "error"
 reportImplicitOverride = "error"
 reportPropertyTypeMismatch = "error"
 reportMissingModuleSource = "error"
+reportImportCycles = "error"
 # Package-level collaborators intentionally share private implementation details;
 # Ruff still enforces private access everywhere else.
 reportPrivateUsage = false
