@@ -5,10 +5,10 @@ from contextlib import suppress
 
 import pytest
 
-from volcano_sdk import realtime as realtime_module
 from volcano_sdk._realtime_fetch_worker import (
     PostgresFetchJob,
     PostgresFetchOutcome,
+    PostgresFetchRequest,
     PostgresFetchWorker,
 )
 
@@ -22,7 +22,7 @@ class BlockingRowFetch:
 
     async def __call__(
         self,
-        requests: tuple[realtime_module._PostgresFetchRequest, ...],
+        requests: tuple[PostgresFetchRequest, ...],
     ) -> tuple[dict[str, int], ...]:
         assert len(requests) == 1
         row_id = requests[0].row_id
@@ -44,7 +44,7 @@ class FailingThenSuccessfulFetch:
 
     async def __call__(
         self,
-        requests: tuple[realtime_module._PostgresFetchRequest, ...],
+        requests: tuple[PostgresFetchRequest, ...],
     ) -> tuple[dict[str, int], ...]:
         assert len(requests) == 1
         row_id = requests[0].row_id
@@ -60,7 +60,7 @@ class RecordingBatchFetch:
 
     async def __call__(
         self,
-        requests: tuple[realtime_module._PostgresFetchRequest, ...],
+        requests: tuple[PostgresFetchRequest, ...],
     ) -> tuple[dict[str, int], ...]:
         row_ids: list[int] = []
         for request in requests:
@@ -82,7 +82,7 @@ class OutcomeRecorder:
 
 def fetch_job(row_id: int, *, table: str = "messages") -> PostgresFetchJob[str]:
     return PostgresFetchJob(
-        request=realtime_module._PostgresFetchRequest(
+        request=PostgresFetchRequest(
             database_name="app",
             access_token="captured-token",
             table=table,
