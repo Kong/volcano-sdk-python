@@ -117,7 +117,13 @@ class _Engine:
     _loaded: _Engine | None = None
 
     def __init__(self) -> None:
-        """Resolve the engine's public surface."""
+        """Resolve the engine's public surface.
+
+        Raises:
+            DurableRuntimeMissingError: The runtime or a required module cannot
+                be imported.
+
+        """
         try:
             config = importlib.import_module(f"{_ENGINE_MODULE}.config")
             retries = importlib.import_module(f"{_ENGINE_MODULE}.retries")
@@ -142,7 +148,12 @@ class _Engine:
 
     @classmethod
     def load(cls) -> _Engine:
-        """Return the process-wide engine, resolving it once."""
+        """Resolve the engine once per process.
+
+        Returns:
+            The cached engine adapter.
+
+        """
         if cls._loaded is None:
             cls._loaded = cls()
         return cls._loaded
@@ -319,6 +330,10 @@ def _batch_items(batch: Any) -> list[Any]:
     """List the items that finished, in input order.
 
     The in-flight ones are left out on purpose: see `BatchResult`.
+
+    Returns:
+        Succeeded and failed items sorted by their input index.
+
     """
     items = [*batch.succeeded(), *batch.failed()]
     return sorted(items, key=lambda item: item.index)
@@ -384,6 +399,10 @@ class DurableContext:
         attempt interrupted mid-flight is not repeated on replay. Use it for
         work that must not run twice within an attempt, and pair it with
         `retry=False` to make that hold across attempts too.
+
+        Returns:
+            The operation's result, restored from its checkpoint during replay.
+
         """
         step_name, step_func = _named(name, func, "step")
 
@@ -408,6 +427,10 @@ class DurableContext:
 
         One argument is always the duration: a name and a duration can both be
         strings, so `wait("30s")` would otherwise be ambiguous.
+
+        Raises:
+            TypeError: A separate duration is supplied with a non-string name.
+
         """
         if duration is None:
             self._context.wait(self._wait_duration(name))
@@ -421,7 +444,12 @@ class DurableContext:
         name: str | Callable[[DurableContext], T],
         func: Callable[[DurableContext], T] | None = None,
     ) -> T:
-        """Group operations under one recorded context, with its own replay scope."""
+        """Group operations under one recorded context, with its own replay scope.
+
+        Returns:
+            The child function's result.
+
+        """
         child_name, child_func = _named(name, func, "child")
         engine = self._engine
 
@@ -445,6 +473,10 @@ class DurableContext:
 
         Running out of `options.max_attempts` fails the execution rather than
         returning the last state.
+
+        Returns:
+            The first checked state accepted by `options.until`.
+
         """
         check_func = _callable(check, "wait_until")
         _validate_wait_options(options)
@@ -482,7 +514,16 @@ class DurableContext:
         name: str | None = None,
         options: BatchOptions | None = None,
     ) -> BatchResult[T]:
-        """Run the same work over every item, each in its own child context."""
+        """Run the same work over every item, each in its own child context.
+
+        Returns:
+            Results and failures recorded before the batch's completion policy
+            is satisfied.
+
+        Raises:
+            TypeError: `items` is a string rather than a sequence of items.
+
+        """
         map_func = _callable(func, "map")
         # A string is a sequence, so mapping over one would silently run the
         # work per character rather than refuse.
@@ -508,7 +549,13 @@ class DurableContext:
         name: str | None = None,
         options: BatchOptions | None = None,
     ) -> BatchResult[T]:
-        """Run different branches at the same time, each in its own child context."""
+        """Run different branches at the same time, each in its own child context.
+
+        Returns:
+            Results and failures recorded before the batch's completion policy
+            is satisfied.
+
+        """
         engine = self._engine
         return BatchResult(
             self._context.parallel(
@@ -524,6 +571,13 @@ class DurableContext:
         The branch's own result type is not carried through: what goes to the
         engine is an untyped callable either way, and `parallel` keeps the
         type on its own signature.
+
+        Returns:
+            A named engine branch or a callable that wraps the engine context.
+
+        Raises:
+            TypeError: The branch is neither `ParallelBranch` nor callable.
+
         """
         engine = self._engine
         if isinstance(branch, ParallelBranch):
@@ -645,6 +699,13 @@ def durable(
 
     The handler is called with the execution's input and a durable context, in
     that order, matching a standard function's `(event, context)`.
+
+    Returns:
+        The wrapped handler, or a decorator when no handler is supplied.
+
+    Raises:
+        TypeError: The supplied handler is not callable.
+
     """
     if handler is None:
 
@@ -702,6 +763,10 @@ def _named(
 
     The name is what the operation is recorded under, so it is worth
     encouraging, but a single obvious operation reads better without one.
+
+    Returns:
+        The optional recording name and the operation's callable.
+
     """
     if isinstance(name, str) or name is None:
         return name, _callable(func, operation)
@@ -721,6 +786,10 @@ def _engine_kwargs(**entries: Any) -> dict[str, Any]:
     The engine's configs are dataclasses with real defaults, so passing None
     for an absent option would override the default with a value that is then
     read for a unit it does not have.
+
+    Returns:
+        The entries whose values are not `None`.
+
     """
     return {key: value for key, value in entries.items() if value is not None}
 
@@ -730,6 +799,13 @@ def _to_seconds(value: object, field_name: str) -> int:
 
     Accepts `"30s"`, `"1m30s"`, a whole number of seconds, or a mapping of
     days/hours/minutes/seconds.
+
+    Returns:
+        The duration in non-negative whole seconds.
+
+    Raises:
+        TypeError: The value is not a supported numeric, mapping, or string form.
+
     """
     if isinstance(value, (int, float)):
         return _numeric_seconds(value, field_name)
@@ -765,6 +841,13 @@ def _mapping_seconds(value: dict[str, object], field_name: str) -> int:
 
     Unknown keys are the reason this checks rather than forwards: a
     `{"milliseconds": 500}` would otherwise be a duration of nothing.
+
+    Returns:
+        The sum of the supplied duration fields, converted to seconds.
+
+    Raises:
+        TypeError: The mapping has unknown keys or no non-null duration fields.
+
     """
     unknown = sorted(key for key in value if key not in _DURATION_FIELDS)
     if unknown:
@@ -797,6 +880,13 @@ def _parse_duration(text: str, field_name: str) -> int:
     Scanned rather than matched because every pattern for this grammar is
     either unreadable or the kind with adjacent quantifiers that backtracks on
     a hostile string. Whole numbers only -- "90m" says what "1.5h" would.
+
+    Returns:
+        The sum of the parsed duration segments in seconds.
+
+    Raises:
+        ValueError: The text is empty or contains an invalid number or unit.
+
     """
     seconds = 0
     segments = 0
