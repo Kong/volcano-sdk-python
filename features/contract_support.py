@@ -183,6 +183,12 @@ class ContractWorld:
 
         That read is also what reconciles the stored status against the
         platform's, so it is the path a client waiting for a result takes.
+
+        Returns:
+            The execution in a terminal state.
+
+        Raises:
+            TimeoutError: If the execution stays active past the polling deadline.
         """
         deadline = time.monotonic() + DURABLE_POLL_TIMEOUT_SECONDS
         while True:

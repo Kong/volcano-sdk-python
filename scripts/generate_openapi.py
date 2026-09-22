@@ -40,7 +40,12 @@ REQUIRED_OPERATION_MODULES = {
 
 
 def generate(output: Path) -> None:
-    """Generate the OpenAPI client into ``output`` and validate required operations."""
+    """Generate the OpenAPI client into ``output`` and validate required operations.
+
+    Raises:
+        RuntimeError: If the generated client omits a required operation.
+
+    """
     if output.exists():
         shutil.rmtree(output)
     output.parent.mkdir(parents=True, exist_ok=True)

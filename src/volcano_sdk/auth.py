@@ -436,7 +436,7 @@ class AuthContext(Protocol):
 
     @property
     def current_session(self) -> Session | None:
-        """Return the locally held session, if one exists."""
+        """The locally held session, if one exists."""
         ...
 
     def _anon_token(self) -> str: ...
