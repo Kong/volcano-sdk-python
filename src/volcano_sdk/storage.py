@@ -726,7 +726,7 @@ class StorageBucket:
         """List objects under a prefix and return the next-page cursor.
 
         Returns:
-            An immutable object page with a cursor, or None when no page follows.
+            An immutable object page whose next_cursor is None on the last page.
 
         """
         transport = cast("StorageListTransport", self._client._transport)
