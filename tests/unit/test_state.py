@@ -12,6 +12,7 @@ from uuid import UUID
 import httpx
 import pytest
 from fixtures.invalid_arguments import non_session_adoption
+from fixtures.invalid_callbacks import register_non_callable_auth
 
 from volcano_sdk import (
     AuthenticationError,
@@ -1144,7 +1145,7 @@ def test_auth_state_subscription_requires_a_callable() -> None:
     client = VolcanoClient(anon_key="anon", _transport=StateTransport())
 
     with pytest.raises(TypeError, match="callback must be callable"):
-        client.auth.on_auth_state_change(cast("Any", None))
+        register_non_callable_auth(client.auth)
 
 
 def test_auth_state_callback_failure_does_not_interrupt_other_subscribers() -> None:

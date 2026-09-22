@@ -30,6 +30,8 @@ import importlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, cast, overload
 
+from ._callbacks import require_callable
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
@@ -590,8 +592,7 @@ class DurableContext:
                 return named(DurableContext(context, engine))
 
             return engine.parallel_branch(func=run_named, name=branch.name)
-        if not callable(branch):
-            raise TypeError(_INVALID_BRANCH)
+        require_callable(branch, _INVALID_BRANCH)
         bare = branch
 
         def run_bare(context: Any) -> Any:
@@ -618,7 +619,7 @@ class DurableContext:
             config["retry_strategy"] = strategy
         return engine.step_config(**config)
 
-    def _retry_strategy(self, retry: Retry) -> Any:
+    def _retry_strategy(self, retry: object) -> Any:
         engine = self._engine
         if retry is None or retry is True:
             return None
@@ -714,8 +715,7 @@ def durable(
             return durable(func, logger=logger)
 
         return decorate
-    if not callable(handler):
-        raise TypeError(_REQUIRES_HANDLER)
+    require_callable(handler, _REQUIRES_HANDLER)
 
     return _wrap_durable(handler, logger)
 
