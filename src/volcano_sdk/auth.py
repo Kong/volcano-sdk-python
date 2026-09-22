@@ -493,20 +493,38 @@ class Auth:
         self._rejected_refresh: tuple[int, SessionOperations] | None = None
 
     def get_session(self) -> Session | None:
-        """Return the immutable locally held session without validating it."""
+        """Return the immutable locally held session without validating it.
+
+        Returns:
+            The immutable local session, or None when signed out.
+
+        """
         return self._client.current_session
 
     def on_auth_state_change(
         self,
         callback: AuthStateCallback,
     ) -> AuthSubscription:
-        """Queue initial state, then observe changes until cancellation."""
+        """Queue initial state, then observe changes until cancellation.
+
+        Returns:
+            A subscription whose unsubscribe method stops notifications.
+
+        Raises:
+            TypeError: The callback is not callable.
+
+        """
         if not callable(callback):
             raise TypeError(_INVALID_AUTH_CALLBACK)
         return self._client._subscribe_auth_state_change(callback)
 
     def set_session(self, session: Session) -> Session:
-        """Copy a complete session locally without notifying auth subscribers."""
+        """Copy a complete session locally without notifying auth subscribers.
+
+        Returns:
+            The copied session stored by the client.
+
+        """
         owned = _copy_complete_session(session)
         self._client._set_session(owned, event=None)
         return owned
@@ -519,7 +537,12 @@ class Auth:
         metadata: Mapping[str, object] | None = None,
         sign_in_when_allowed: bool = False,
     ) -> SignUpResult:
-        """Sign up, optionally signing in when confirmation is not required."""
+        """Sign up, optionally signing in when confirmation is not required.
+
+        Returns:
+            The sign-up acknowledgement, including a session if signed in.
+
+        """
         generation, _ = self._client._capture_session()
         transport = cast("AuthSignUpTransport", self._client._transport)
         response = invoke(
@@ -540,7 +563,15 @@ class Auth:
         *,
         metadata: Mapping[str, object] | None = None,
     ) -> Session:
-        """Create an anonymous account and store its session."""
+        """Create an anonymous account and store its session.
+
+        Returns:
+            The new anonymous session stored by the client.
+
+        Raises:
+            SessionChangedError: The local session changed during sign-up.
+
+        """
         generation, _ = self._client._capture_session()
         transport = cast("AuthSignUpAnonymousTransport", self._client._transport)
         response = invoke(
@@ -560,7 +591,15 @@ class Auth:
         password: str,
         metadata: Mapping[str, object] | None = None,
     ) -> User:
-        """Attach email credentials to the current anonymous account."""
+        """Attach email credentials to the current anonymous account.
+
+        Returns:
+            The updated profile for the converted account.
+
+        Raises:
+            AuthenticationError: There is no active session.
+
+        """
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
@@ -589,7 +628,15 @@ class Auth:
         response_payload(response, 200)
 
     def request_email_change(self, *, new_email: str) -> EmailChangeResult:
-        """Request a confirmation email without changing the current session."""
+        """Request a confirmation email without changing the current session.
+
+        Returns:
+            The server acknowledgement of the requested email change.
+
+        Raises:
+            AuthenticationError: There is no active session.
+
+        """
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
@@ -607,7 +654,12 @@ class Auth:
         return result
 
     def cancel_email_change(self) -> None:
-        """Cancel a pending email change without changing the current session."""
+        """Cancel a pending email change without changing the current session.
+
+        Raises:
+            AuthenticationError: There is no active session.
+
+        """
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
@@ -623,7 +675,15 @@ class Auth:
         self._owned_refresh_session(binding)
 
     def confirm_email_change(self, *, token: str) -> User:
-        """Confirm a pending email change and return the updated user."""
+        """Confirm a pending email change and return the updated user.
+
+        Returns:
+            The updated profile after confirming the new email.
+
+        Raises:
+            AuthenticationError: There is no active session.
+
+        """
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
@@ -639,7 +699,12 @@ class Auth:
         return self._update_current_user(response_payload(response, 200), binding)
 
     def delete_all_other_sessions(self) -> None:
-        """Delete every other session while preserving the current session."""
+        """Delete every other session while preserving the current session.
+
+        Raises:
+            AuthenticationError: There is no active session.
+
+        """
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
@@ -655,7 +720,15 @@ class Auth:
         self._owned_refresh_session(binding)
 
     def list_sessions(self, *, page: int = 1, limit: int = 20) -> SessionPage:
-        """List sessions in the stable offset-paginated activity order."""
+        """List sessions in the stable offset-paginated activity order.
+
+        Returns:
+            A page of session records and pagination metadata.
+
+        Raises:
+            AuthenticationError: There is no active session.
+
+        """
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
@@ -674,7 +747,15 @@ class Auth:
         return result
 
     def list_linked_oauth_providers(self) -> tuple[LinkedOAuthProvider, ...]:
-        """List OAuth providers linked to the current account."""
+        """List OAuth providers linked to the current account.
+
+        Returns:
+            An immutable tuple of linked provider records.
+
+        Raises:
+            AuthenticationError: There is no active session.
+
+        """
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
@@ -697,7 +778,15 @@ class Auth:
         state: str,
         action: Literal["login", "signup", "forgot-password"] = "login",
     ) -> str:
-        """Build a managed hosted-auth URL without navigating or persisting state."""
+        """Build a managed hosted-auth URL without navigating or persisting state.
+
+        Returns:
+            The hosted-auth URL containing the action and caller state.
+
+        Raises:
+            ValueError: A parameter is empty or the action is unsupported.
+
+        """
         project = _hosted_auth_parameter(project_id).strip()
         auth_state = _hosted_auth_parameter(state)
         if action not in _HOSTED_AUTH_ACTIONS:
@@ -721,7 +810,12 @@ class Auth:
         state: str,
         expected_state: str,
     ) -> Session:
-        """Validate returned hosted-auth state before storing its session."""
+        """Validate returned hosted-auth state before storing its session.
+
+        Returns:
+            The copied session stored after validating callback state.
+
+        """
         _validate_hosted_auth_callback_state(state, expected_state)
         owned = _copy_complete_session(session)
         self._client._set_session(owned)
@@ -734,7 +828,12 @@ class Auth:
         redirect_to: str,
         state: str,
     ) -> str:
-        """Return the URL that starts an OAuth sign-in flow."""
+        """Return the URL that starts an OAuth sign-in flow.
+
+        Returns:
+            The provider authorization URL containing the caller state.
+
+        """
         provider_name = _oauth_provider_name(provider)
         transport = cast(
             "AuthOAuthAuthorizationURLTransport",
@@ -755,7 +854,15 @@ class Auth:
         state: str,
         expected_state: str,
     ) -> Session:
-        """Validate callback state, exchange a code, and store the session."""
+        """Validate callback state, exchange a code, and store the session.
+
+        Returns:
+            The exchanged session stored by the client.
+
+        Raises:
+            SessionChangedError: The local session changed during the exchange.
+
+        """
         _validate_oauth_callback_state(state, expected_state)
         generation, _ = self._client._capture_session()
         transport = cast("AuthOAuthExchangeTransport", self._client._transport)
@@ -771,7 +878,15 @@ class Auth:
         return session
 
     def link_oauth_provider(self, *, provider: OAuthProviderName) -> str:
-        """Return the authorization URL for linking an OAuth provider."""
+        """Return the authorization URL for linking an OAuth provider.
+
+        Returns:
+            The authorization URL for linking the requested provider.
+
+        Raises:
+            AuthenticationError: There is no active session.
+
+        """
         provider_name = _oauth_provider_name(provider)
         binding = self._client._capture_session_binding()
         if binding[2] is None:
@@ -790,7 +905,12 @@ class Auth:
         return result
 
     def unlink_oauth_provider(self, *, provider: OAuthProviderName) -> None:
-        """Unlink an OAuth provider from the current account."""
+        """Unlink an OAuth provider from the current account.
+
+        Raises:
+            AuthenticationError: There is no active session.
+
+        """
         provider_name = _oauth_provider_name(provider)
         binding = self._client._capture_session_binding()
         if binding[2] is None:
@@ -815,7 +935,15 @@ class Auth:
         *,
         provider: OAuthProviderName,
     ) -> OAuthProviderTokenStatus:
-        """Return validity metadata for a server-held OAuth provider token."""
+        """Return validity metadata for a server-held OAuth provider token.
+
+        Returns:
+            Validity metadata without exposing the provider token.
+
+        Raises:
+            AuthenticationError: There is no active session.
+
+        """
         provider_name = _oauth_provider_name(provider)
         binding = self._client._capture_session_binding()
         if binding[2] is None:
@@ -843,7 +971,15 @@ class Auth:
         *,
         provider: OAuthProviderName,
     ) -> OAuthProviderTokenStatus:
-        """Refresh a server-held OAuth provider token and return its status."""
+        """Refresh a server-held OAuth provider token and return its status.
+
+        Returns:
+            Validity metadata for the refreshed provider token.
+
+        Raises:
+            AuthenticationError: There is no active session.
+
+        """
         provider_name = _oauth_provider_name(provider)
         binding = self._client._capture_session_binding()
         if binding[2] is None:
@@ -874,7 +1010,15 @@ class Auth:
         method: Literal["GET", "POST"] = "GET",
         body: Mapping[str, JSONValue] | None = None,
     ) -> JSONValue:
-        """Call a provider API through Volcano's fixed-host server proxy."""
+        """Call a provider API through Volcano's fixed-host server proxy.
+
+        Returns:
+            The provider response as an immutable JSON value.
+
+        Raises:
+            AuthenticationError: There is no active session.
+
+        """
         provider_name = _oauth_provider_name(provider)
         request_method = _oauth_api_method(method)
         binding = self._client._capture_session_binding()
@@ -898,7 +1042,14 @@ class Auth:
         return result
 
     def delete_session(self, *, session_id: str) -> None:
-        """Delete one session and clear local state when it is current."""
+        """Delete one session and clear local state when it is current.
+
+        Raises:
+            AuthenticationError: There is no active session.
+            SessionChangedError: The local session changed during deletion.
+            TransportError: The deletion request failed before a usable response.
+
+        """
         binding = self._client._capture_session_binding()
         generation, lineage, current = binding
         if current is None:
@@ -983,7 +1134,15 @@ class Auth:
         return user
 
     def get_user(self) -> User:
-        """Load a server-validated profile for the current session."""
+        """Load a server-validated profile for the current session.
+
+        Returns:
+            The server profile also saved in the current session.
+
+        Raises:
+            AuthenticationError: There is no active session.
+
+        """
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
@@ -1002,7 +1161,15 @@ class Auth:
         password: str | None = None,
         metadata: Mapping[str, object] | None = None,
     ) -> User:
-        """Update and return the current user's server-validated profile."""
+        """Update and return the current user's server-validated profile.
+
+        Returns:
+            The updated profile also saved in the current session.
+
+        Raises:
+            AuthenticationError: There is no active session.
+
+        """
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
@@ -1020,7 +1187,12 @@ class Auth:
         return self._update_current_user(response_payload(response, 200), binding)
 
     def sign_in(self, *, email: str, password: str) -> Session:
-        """Sign in a user and store the returned session."""
+        """Sign in a user and store the returned session.
+
+        Returns:
+            The authenticated session stored by the client.
+
+        """
         generation, _ = self._client._capture_session()
         return self._sign_in_for_generation(email, password, generation)
 
@@ -1042,7 +1214,12 @@ class Auth:
         return session
 
     def refresh_session(self) -> Session:
-        """Refresh and replace the current session."""
+        """Refresh and replace the current session.
+
+        Returns:
+            The current session after completing or joining its refresh.
+
+        """
         return self._refresh_session_for_binding(
             self._client._capture_session_binding()
         )
