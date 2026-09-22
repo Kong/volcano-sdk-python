@@ -47,6 +47,7 @@ def generate(output: Path) -> None:
     subprocess.run(  # noqa: S603 - argv and executable are controlled by this script.
         [
             sys.executable,
+            "-I",
             "-m",
             "openapi_python_client",
             "generate",
