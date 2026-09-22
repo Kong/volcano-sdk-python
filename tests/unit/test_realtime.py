@@ -94,13 +94,15 @@ def test_realtime_row_fetch_returns_none_when_the_row_is_absent() -> None:
     )
 
     assert asyncio.run(client.realtime._fetch_postgres_rows((request,))) == (None,)
-    assert transport.queries[0]["body"]["table"] == "messages"
+    body = transport.queries[0]["body"]
+    assert isinstance(body, dict)
+    assert cast("dict[object, object]", body)["table"] == "messages"
 
 
 @dataclass(frozen=True)
 class Response:
     status_code: int
-    payload: Any
+    payload: object
     content: bytes = b""
     headers: dict[str, str] | None = None
 
@@ -131,7 +133,7 @@ class AuthTransport:
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> Response:
         del authorization, database_name, body
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
@@ -141,7 +143,7 @@ class AuthTransport:
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> Response:
         del authorization, database_name, body
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
@@ -151,7 +153,7 @@ class AuthTransport:
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> Response:
         del authorization, database_name, body
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
@@ -161,7 +163,7 @@ class AuthTransport:
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> Response:
         del authorization, database_name, body
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
@@ -214,10 +216,10 @@ class AuthTransport:
 
 
 class RealtimeDatabaseTransport(AuthTransport):
-    def __init__(self, rows: list[dict[str, Any]]) -> None:
+    def __init__(self, rows: list[dict[str, object]]) -> None:
         super().__init__()
         self.rows = rows
-        self.queries: list[dict[str, Any]] = []
+        self.queries: list[dict[str, object]] = []
 
     @override
     def query_database_select(
@@ -225,7 +227,7 @@ class RealtimeDatabaseTransport(AuthTransport):
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> Response:
         self.queries.append(
             {
@@ -241,13 +243,23 @@ class RealtimeDatabaseTransport(AuthTransport):
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> Response:
         return self.query_database_select(
             authorization=authorization,
             database_name=database_name,
             body=body,
         )
+
+
+def _query_filter_value(query: dict[str, object]) -> object:
+    body = query["body"]
+    assert isinstance(body, dict)
+    filters = cast("dict[object, object]", body)["filters"]
+    assert isinstance(filters, list)
+    condition = cast("list[object]", filters)[0]
+    assert isinstance(condition, dict)
+    return cast("dict[object, object]", condition)["value"]
 
 
 class BlockingRealtimeDatabaseTransport(RealtimeDatabaseTransport):
@@ -263,7 +275,7 @@ class BlockingRealtimeDatabaseTransport(RealtimeDatabaseTransport):
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> Response:
         self.started.set()
         try:
@@ -1396,9 +1408,7 @@ def test_realtime_honors_channel_fetch_max_batch_size() -> None:
             )
         await asyncio.wait_for(received.wait(), timeout=0.2)
 
-        query_ids = [
-            query["body"]["filters"][0]["value"] for query in transport.queries
-        ]
+        query_ids = [_query_filter_value(query) for query in transport.queries]
         assert query_ids == [[42], [43]]
         await client.realtime.disconnect()
 
