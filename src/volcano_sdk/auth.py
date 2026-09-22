@@ -12,6 +12,7 @@ from http import HTTPStatus
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 from urllib.parse import quote, urlencode
 
+from ._callbacks import require_callable
 from ._generated.models.auth_confirm_email_change_response_200 import (
     AuthConfirmEmailChangeResponse200,
 )
@@ -514,8 +515,7 @@ class Auth:
             TypeError: The callback is not callable.
 
         """
-        if not callable(callback):
-            raise TypeError(_INVALID_AUTH_CALLBACK)
+        require_callable(callback, _INVALID_AUTH_CALLBACK)
         return self._client._subscribe_auth_state_change(callback)
 
     def set_session(self, session: Session) -> Session:

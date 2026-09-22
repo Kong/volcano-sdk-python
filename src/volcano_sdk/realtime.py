@@ -13,6 +13,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 
 from typing_extensions import override
 
+from ._callbacks import require_callable
 from ._realtime_fetch_worker import (
     PostgresFetchJob,
     PostgresFetchOutcome,
@@ -1409,8 +1410,7 @@ class Realtime:
         event: str,
         callback: RealtimeCallback,
     ) -> UnsubscribeCallback:
-        if not callable(callback):
-            raise TypeError(CALLBACK_NOT_CALLABLE)
+        require_callable(callback, CALLBACK_NOT_CALLABLE)
         self._next_callback_id += 1
         callback_id = self._next_callback_id
         self._connection_callbacks[event][callback_id] = callback

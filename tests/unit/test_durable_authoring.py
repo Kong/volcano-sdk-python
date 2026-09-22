@@ -17,6 +17,11 @@ import pytest
 from aws_durable_execution_sdk_python.config import Duration
 from aws_durable_execution_sdk_python.retries import RetryDecision
 from aws_durable_execution_sdk_python_testing import DurableFunctionTestRunner
+from fixtures.invalid_callbacks import (
+    decorate_non_callable,
+    register_non_callable_branch,
+    use_non_callable_retry,
+)
 from fixtures.invalid_wait_options import non_callable_predicate
 
 from volcano_sdk import durable_authoring
@@ -573,7 +578,7 @@ def test_the_wrapper_keeps_the_handler_name() -> None:
 
 def test_durable_refuses_something_that_is_not_callable() -> None:
     with pytest.raises(TypeError, match="requires a callable"):
-        durable("not a handler")  # type: ignore[call-overload]
+        decorate_non_callable()
 
 
 @pytest.mark.parametrize("operation", ["step", "child"])
@@ -685,16 +690,16 @@ def test_map_refuses_a_string_of_items() -> None:
 
 def test_parallel_refuses_a_branch_that_is_not_callable() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
-        return ctx.parallel(["not a branch"])  # type: ignore[list-item]
+    def handler(_event: object, ctx: DurableContext) -> None:
+        register_non_callable_branch(ctx)
 
     assert "a parallel branch is a callable" in failing_handler(handler)
 
 
 def test_a_step_refuses_an_unusable_retry() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
-        return ctx.step("charge", lambda _scope: None, retry="aggressively")  # type: ignore[arg-type]
+    def handler(_event: object, ctx: DurableContext) -> None:
+        use_non_callable_retry(ctx)
 
     assert "retry must be False" in failing_handler(handler)
 
