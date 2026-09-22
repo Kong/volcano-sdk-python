@@ -268,8 +268,7 @@ def _postgres_change(data: object) -> PostgresChange | None:
         or not isinstance(schema, str)
         or not isinstance(table, str)
         or not isinstance(timestamp, str)
-        or (record is not None and not isinstance(record, Mapping))
-        or (old_record is not None and not isinstance(old_record, Mapping))
+        or not _postgres_records_valid(record, old_record)
     ):
         return None
     if not _postgres_mode(mode):
@@ -287,6 +286,12 @@ def _postgres_change(data: object) -> PostgresChange | None:
         timestamp=timestamp,
         id=cast("JSONValue", typed_data.get("id")),
         mode=mode,
+    )
+
+
+def _postgres_records_valid(record: object, old_record: object) -> bool:
+    return (record is None or isinstance(record, Mapping)) and (
+        old_record is None or isinstance(old_record, Mapping)
     )
 
 
