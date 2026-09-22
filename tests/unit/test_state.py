@@ -2835,14 +2835,15 @@ def test_resend_confirmation_preserves_rate_limit_metadata() -> None:
 
 
 def test_get_user_accepts_a_server_profile_without_an_email() -> None:
+    email = ""
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
     client.auth.sign_in(email="user@example.com", password="secret")
-    transport.user_response = Response(200, _user_profile(email=""))
+    transport.user_response = Response(200, _user_profile(email=email))
 
     user = client.auth.get_user()
 
-    assert user.email == ""
+    assert user.email == email
 
 
 def test_user_with_metadata_has_a_stable_hash() -> None:

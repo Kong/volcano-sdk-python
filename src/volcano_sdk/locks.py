@@ -167,7 +167,7 @@ class Locks:
         try:
             payload = self._acquire_payload(key, ttl, token, request_id, authorization)
         except (TransportError, ServerError) as error:
-            if error.status not in (None, 503):
+            if error.status not in {None, 503}:
                 raise
             started_at = _lease_now()
             payload = self._acquire_payload(key, ttl, token, request_id, authorization)

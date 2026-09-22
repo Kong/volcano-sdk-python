@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+
+import pytest
 
 from volcano_sdk import LockLease
 from volcano_sdk import _lock_guard as guard_module
 from volcano_sdk import _lock_renewer as renewer_module
 from volcano_sdk._lock_guard import LockGuard
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def lease(*, expires_at: datetime | None = None) -> LockLease:
@@ -28,7 +26,7 @@ def test_lease_clock_falls_back_to_portable_monotonic(
     monkeypatch.delattr(time, "clock_gettime", raising=False)
     monkeypatch.setattr(guard_module, "_FALLBACK_CLOCK", lambda: 123.0)
 
-    assert guard_module._lease_now() == 123.0
+    assert guard_module._lease_now() == pytest.approx(123.0)
 
 
 def test_fallback_clock_includes_system_suspend(
@@ -40,7 +38,7 @@ def test_fallback_clock_includes_system_suspend(
     monkeypatch.setattr(time, "time", lambda: next(wall))
     clock = guard_module._FallbackClock()
 
-    assert clock() == 1_005.0
+    assert clock() == pytest.approx(1_005.0)
 
 
 def test_fallback_clock_ignores_wall_clock_rollbacks(
@@ -52,7 +50,7 @@ def test_fallback_clock_ignores_wall_clock_rollbacks(
     monkeypatch.setattr(time, "time", lambda: next(wall))
     clock = guard_module._FallbackClock()
 
-    assert clock() == 1_001.0
+    assert clock() == pytest.approx(1_001.0)
 
 
 def test_lock_guard_exposes_the_latest_immutable_lease(
@@ -69,7 +67,7 @@ def test_lock_guard_exposes_the_latest_immutable_lease(
 
     assert guard.lease is renewed
     assert not guard.lost
-    assert guard._remaining_seconds() == 5.0
+    assert guard._remaining_seconds() == pytest.approx(5.0)
 
 
 def test_lock_guard_calculates_renewal_delay_from_remaining_lease(
@@ -79,7 +77,7 @@ def test_lock_guard_calculates_renewal_delay_from_remaining_lease(
     monkeypatch.setattr(renewer_module, "_renewal_jitter", lambda: 0.0)
     guard = LockGuard(lease(), ttl=30, started_at=100.0)
 
-    assert guard.renewal_delay() == 10.0
+    assert guard.renewal_delay() == pytest.approx(10.0)
 
 
 def test_lock_guard_rejects_a_renewal_completed_after_lease_expiry(
