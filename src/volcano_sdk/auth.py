@@ -1457,16 +1457,14 @@ class Auth:
         ):
             if refresh_error is not None:
                 raise refresh_error
-            if joined:
-                response_payload(response, 204)
-                return
-            refreshed = self._request_refreshed_session(session.refresh_token)
-            validate_refresh_identity(session, refreshed)
-            response = invoke(
-                transport.auth_delete_my_session,
-                authorization=refreshed.access_token,
-                session_id=session_id,
-            )
+            if not joined:
+                refreshed = self._request_refreshed_session(session.refresh_token)
+                validate_refresh_identity(session, refreshed)
+                response = invoke(
+                    transport.auth_delete_my_session,
+                    authorization=refreshed.access_token,
+                    session_id=session_id,
+                )
         response_payload(response, 204)
 
 
