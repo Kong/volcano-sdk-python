@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+from typing import Annotated, TypeAlias
 
 import httpx
 from hypothesis import given, seed
@@ -11,10 +12,12 @@ from storage_fixtures import upload_response
 from volcano_sdk import Session, VolcanoClient
 from volcano_sdk._transport import GeneratedTransport
 
+BinaryPayload: TypeAlias = Annotated[bytes, st.binary(max_size=1024)]
+
 
 @seed(PROPERTY_SEED)
-@given(st.binary(max_size=1024))
-def test_upload_preserves_remaining_binary_stream(payload: bytes) -> None:
+@given(...)
+def test_upload_preserves_remaining_binary_stream(payload: BinaryPayload) -> None:
     requests: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -37,8 +40,8 @@ def test_upload_preserves_remaining_binary_stream(payload: bytes) -> None:
 
 
 @seed(PROPERTY_SEED)
-@given(st.binary(max_size=1024))
-def test_download_preserves_arbitrary_bytes(payload: bytes) -> None:
+@given(...)
+def test_download_preserves_arbitrary_bytes(payload: BinaryPayload) -> None:
     def handle(request: httpx.Request) -> httpx.Response:
         assert request.headers["authorization"] == "Bearer access"
         return httpx.Response(

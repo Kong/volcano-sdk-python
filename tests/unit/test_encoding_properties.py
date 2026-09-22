@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import base64
 import json
+from typing import Literal
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 import pytest
 from hypothesis import given, seed
-from hypothesis import strategies as st
 from property_support import PROPERTY_SEED
 
 from volcano_sdk import VolcanoClient, database_connection_string
@@ -15,7 +15,7 @@ BASE = "postgresql://user:password@db.example.test/app?sslmode=require&applicati
 
 
 @seed(PROPERTY_SEED)
-@given(st.text())
+@given(...)
 def test_database_scope_encodes_user_as_one_parameter(value: str) -> None:
     user_id = f"user-{value}"
     result = urlsplit(database_connection_string(BASE, user_id=user_id))
@@ -32,7 +32,7 @@ def test_database_scope_encodes_user_as_one_parameter(value: str) -> None:
 
 
 @seed(PROPERTY_SEED)
-@given(st.text(), st.text())
+@given(...)
 def test_database_scope_replacement_keeps_only_the_latest_user(
     first: str, second: str
 ) -> None:
@@ -54,7 +54,7 @@ def public_url_client() -> VolcanoClient:
 
 
 @seed(PROPERTY_SEED)
-@given(st.text())
+@given(...)
 def test_storage_path_encoding_preserves_every_character(value: str) -> None:
     path = f"folder/{value.replace('/', '_')} name"
     result = urlsplit(
@@ -76,8 +76,10 @@ def test_storage_path_encoding_preserves_every_character(value: str) -> None:
 
 
 @seed(PROPERTY_SEED)
-@given(st.text(), st.sampled_from([".", ".."]))
-def test_storage_path_rejects_dot_segments(value: str, segment: str) -> None:
+@given(...)
+def test_storage_path_rejects_dot_segments(
+    value: str, segment: Literal[".", ".."]
+) -> None:
     path = f"folder-{value.replace('/', '_')}/{segment}/file"
     with pytest.raises(ValueError, match="dot segments"):
         public_url_client().storage.from_("assets").get_public_url(path)

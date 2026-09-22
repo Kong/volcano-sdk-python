@@ -126,6 +126,7 @@ ignore_missing_imports = true
 
 [tool.pyright]
 include = ["src", "tests", "scripts"]
+extraPaths = ["src", "tests/unit"]
 exclude = ["src/volcano_sdk/_generated"]
 pythonVersion = "3.11"
 venvPath = "."
