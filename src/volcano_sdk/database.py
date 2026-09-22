@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, Protocol, Self, cast
+from typing import TYPE_CHECKING, Any, Protocol, Self, TypedDict, cast
 
 from typing_extensions import override
 
@@ -48,12 +48,23 @@ class DatabaseContext(Protocol):
     def _session_token(self) -> str: ...
 
 
+class _FilterCondition(TypedDict):
+    column: str
+    operator: str
+    value: object
+
+
+class _OrderClause(TypedDict):
+    column: str
+    ascending: bool
+
+
 class FilterBuilder:
     """Shared immutable filters for database operations."""
 
-    _filters: tuple[dict[str, Any], ...]
+    _filters: tuple[_FilterCondition, ...]
 
-    def _with_filters(self, filters: tuple[dict[str, Any], ...]) -> Self:
+    def _with_filters(self, filters: tuple[_FilterCondition, ...]) -> Self:
         raise NotImplementedError
 
     def eq(self, column: str, value: object) -> Self:
@@ -167,7 +178,7 @@ class FilterBuilder:
         return self._filter(column, "in", list(values))
 
     def _filter(self, column: str, operator: str, value: object) -> Self:
-        condition = {
+        condition: _FilterCondition = {
             "column": column,
             "operator": operator,
             "value": _snapshot_filter_value(value),
@@ -183,8 +194,8 @@ class QueryBuilder(FilterBuilder):
     _database_name: str
     _table: str
     _columns: tuple[str, ...] = ()
-    _filters: tuple[dict[str, Any], ...] = ()
-    _order: tuple[dict[str, Any], ...] = ()
+    _filters: tuple[_FilterCondition, ...] = ()
+    _order: tuple[_OrderClause, ...] = ()
     _limit: int | None = None
     _offset: int | None = None
 
@@ -257,7 +268,7 @@ class QueryBuilder(FilterBuilder):
             A new query with this ordering clause appended.
 
         """
-        clause = {"column": column, "ascending": ascending}
+        clause: _OrderClause = {"column": column, "ascending": ascending}
         return replace(self, _order=(*self._order, clause))
 
     def limit(self, count: int) -> QueryBuilder:
@@ -283,7 +294,7 @@ class QueryBuilder(FilterBuilder):
         return replace(self, _offset=count)
 
     @override
-    def _with_filters(self, filters: tuple[dict[str, Any], ...]) -> QueryBuilder:
+    def _with_filters(self, filters: tuple[_FilterCondition, ...]) -> QueryBuilder:
         return replace(self, _filters=filters)
 
     def _request_body(self) -> dict[str, object]:
@@ -363,10 +374,10 @@ class UpdateBuilder(FilterBuilder):
     _database_name: str
     _table: str
     _values: dict[str, JSONValue]
-    _filters: tuple[dict[str, Any], ...] = ()
+    _filters: tuple[_FilterCondition, ...] = ()
 
     @override
-    def _with_filters(self, filters: tuple[dict[str, Any], ...]) -> UpdateBuilder:
+    def _with_filters(self, filters: tuple[_FilterCondition, ...]) -> UpdateBuilder:
         return replace(self, _filters=filters)
 
     def execute(self) -> list[dict[str, Any]]:
@@ -401,10 +412,10 @@ class DeleteBuilder(FilterBuilder):
     _client: DatabaseContext
     _database_name: str
     _table: str
-    _filters: tuple[dict[str, Any], ...] = ()
+    _filters: tuple[_FilterCondition, ...] = ()
 
     @override
-    def _with_filters(self, filters: tuple[dict[str, Any], ...]) -> DeleteBuilder:
+    def _with_filters(self, filters: tuple[_FilterCondition, ...]) -> DeleteBuilder:
         return replace(self, _filters=filters)
 
     def execute(self) -> list[dict[str, Any]]:
