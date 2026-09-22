@@ -176,12 +176,11 @@ def test_generate_rejects_a_missing_required_operation(
 def test_generated_comparison_reads_file_bytes(
     tmp_path: Path,
 ) -> None:
-    scripts_path = str(ROOT / "scripts")
-    sys.path.insert(0, scripts_path)
+    sys.path.insert(0, str(ROOT))
     try:
         script = run_path(str(ROOT / "scripts" / "check_openapi.py"))
     finally:
-        sys.path.remove(scripts_path)
+        sys.path.remove(str(ROOT))
     compared_files = script["compared_files"]
     expected = tmp_path / "expected"
     actual = tmp_path / "actual"
@@ -201,7 +200,11 @@ def test_generated_comparison_reads_file_bytes(
 
 
 def test_generated_comparison_ignores_runtime_bytecode(tmp_path: Path) -> None:
-    script = run_path(str(ROOT / "scripts" / "check_openapi.py"))
+    sys.path.insert(0, str(ROOT))
+    try:
+        script = run_path(str(ROOT / "scripts" / "check_openapi.py"))
+    finally:
+        sys.path.remove(str(ROOT))
     compared_files = script["compared_files"]
     expected = tmp_path / "expected"
     actual = tmp_path / "actual"
