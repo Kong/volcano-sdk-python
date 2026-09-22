@@ -42,25 +42,38 @@ async def test_cancelled_native_work_preserves_the_callers_cancellation() -> Non
     assert task.cancelled()
 
 
-async def test_stale_native_presence_callbacks_cannot_repopulate_removed_channels() -> (
-    None
-):
-    client = make_client()
+async def test_stale_presence_callbacks_cannot_change_a_resubscribed_channel() -> None:
+    native = FakeCentrifugeClient()
+    current = SimpleNamespace(client="current", user="user")
+    native.presence_clients = {"current": current}
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
     channel = client.realtime.channel("lobby", channel_type="presence")
+    synced = asyncio.Event()
+    channel.on("presence_sync", lambda _state: synced.set())
     try:
         await channel.subscribe()
+        await asyncio.wait_for(synced.wait(), timeout=2)
         events = channel._subscription_events
         assert events is not None
-        await client.realtime.remove_channel("lobby", channel_type="presence")
-        replacement = client.realtime.channel("lobby", channel_type="presence")
-        await replacement.subscribe()
-        context = SimpleNamespace(info=SimpleNamespace(client="stale", user="user"))
+        await client.realtime.disconnect()
+        synced.clear()
+        await channel.subscribe()
+        await asyncio.wait_for(synced.wait(), timeout=2)
+        roster = channel.get_presence_state()
+        assert tuple(roster) == ("current",)
+        assert channel._subscription_events is not events
 
-        await events.on_join(context)
-        await events.on_leave(context)
+        await events.on_join(
+            SimpleNamespace(info=SimpleNamespace(client="stale", user="other"))
+        )
+        assert channel.get_presence_state() == roster
 
-        assert channel.get_presence_state() == {}
-        assert replacement.get_presence_state() == {}
+        await events.on_leave(SimpleNamespace(info=current))
+        assert channel.get_presence_state() == roster
     finally:
         await client.realtime.disconnect()
 
