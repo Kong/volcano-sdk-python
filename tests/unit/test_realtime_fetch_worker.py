@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
-from typing import Any
 
 import pytest
 
@@ -24,7 +23,7 @@ class BlockingRowFetch:
     async def __call__(
         self,
         requests: tuple[realtime_module._PostgresFetchRequest, ...],
-    ) -> tuple[dict[str, Any], ...]:
+    ) -> tuple[dict[str, int], ...]:
         assert len(requests) == 1
         row_id = requests[0].row_id
         assert isinstance(row_id, int)
@@ -46,7 +45,7 @@ class FailingThenSuccessfulFetch:
     async def __call__(
         self,
         requests: tuple[realtime_module._PostgresFetchRequest, ...],
-    ) -> tuple[dict[str, Any], ...]:
+    ) -> tuple[dict[str, int], ...]:
         assert len(requests) == 1
         row_id = requests[0].row_id
         assert isinstance(row_id, int)
@@ -62,7 +61,7 @@ class RecordingBatchFetch:
     async def __call__(
         self,
         requests: tuple[realtime_module._PostgresFetchRequest, ...],
-    ) -> tuple[dict[str, Any], ...]:
+    ) -> tuple[dict[str, int], ...]:
         row_ids: list[int] = []
         for request in requests:
             row_id = request.row_id
@@ -71,6 +70,14 @@ class RecordingBatchFetch:
         typed_row_ids = tuple(row_ids)
         self.calls.append(typed_row_ids)
         return tuple({"id": row_id} for row_id in typed_row_ids)
+
+
+class OutcomeRecorder:
+    def __init__(self) -> None:
+        self.items: list[PostgresFetchOutcome[str]] = []
+
+    async def __call__(self, outcome: PostgresFetchOutcome[str]) -> None:
+        self.items.append(outcome)
 
 
 def fetch_job(row_id: int, *, table: str = "messages") -> PostgresFetchJob[str]:
@@ -92,10 +99,8 @@ def passthrough_job(name: str) -> PostgresFetchJob[str]:
 def test_postgres_fetch_worker_bounds_and_orders_fetches() -> None:
     async def scenario() -> None:
         fetch = BlockingRowFetch()
-        outcomes: list[PostgresFetchOutcome[str]] = []
-
-        async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
-            outcomes.append(outcome)
+        deliver = OutcomeRecorder()
+        outcomes = deliver.items
 
         worker = PostgresFetchWorker(fetch, deliver, queue_limit=1)
         await worker.enqueue(fetch_job(1))
@@ -128,10 +133,8 @@ def test_postgres_fetch_worker_bounds_and_orders_fetches() -> None:
 def test_postgres_fetch_worker_batches_compatible_rows_in_order() -> None:
     async def scenario() -> None:
         fetch = RecordingBatchFetch()
-        outcomes: list[PostgresFetchOutcome[str]] = []
-
-        async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
-            outcomes.append(outcome)
+        deliver = OutcomeRecorder()
+        outcomes = deliver.items
 
         worker = PostgresFetchWorker(
             fetch,
@@ -163,10 +166,8 @@ def test_postgres_fetch_worker_batches_compatible_rows_in_order() -> None:
 def test_postgres_fetch_worker_does_not_batch_different_tables() -> None:
     async def scenario() -> None:
         fetch = RecordingBatchFetch()
-        outcomes: list[PostgresFetchOutcome[str]] = []
-
-        async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
-            outcomes.append(outcome)
+        deliver = OutcomeRecorder()
+        outcomes = deliver.items
 
         worker = PostgresFetchWorker(
             fetch,
@@ -191,10 +192,8 @@ def test_postgres_fetch_worker_does_not_batch_different_tables() -> None:
 def test_postgres_fetch_worker_does_not_coalesce_repeated_row_ids() -> None:
     async def scenario() -> None:
         fetch = RecordingBatchFetch()
-        outcomes: list[PostgresFetchOutcome[str]] = []
-
-        async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
-            outcomes.append(outcome)
+        deliver = OutcomeRecorder()
+        outcomes = deliver.items
 
         worker = PostgresFetchWorker(
             fetch,
@@ -216,10 +215,8 @@ def test_postgres_fetch_worker_does_not_coalesce_repeated_row_ids() -> None:
 def test_postgres_fetch_worker_orders_passthrough_after_pending_fetch() -> None:
     async def scenario() -> None:
         fetch = BlockingRowFetch()
-        outcomes: list[PostgresFetchOutcome[str]] = []
-
-        async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
-            outcomes.append(outcome)
+        deliver = OutcomeRecorder()
+        outcomes = deliver.items
 
         worker = PostgresFetchWorker(fetch, deliver, queue_limit=1)
         await worker.enqueue(fetch_job(1))
@@ -243,10 +240,8 @@ def test_postgres_fetch_worker_orders_passthrough_after_pending_fetch() -> None:
 def test_postgres_fetch_worker_aborts_obsolete_jobs_without_waiting() -> None:
     async def scenario() -> None:
         fetch = BlockingRowFetch()
-        outcomes: list[PostgresFetchOutcome[str]] = []
-
-        async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
-            outcomes.append(outcome)
+        deliver = OutcomeRecorder()
+        outcomes = deliver.items
 
         worker = PostgresFetchWorker(fetch, deliver, queue_limit=1)
         await worker.enqueue(fetch_job(1))
@@ -262,8 +257,7 @@ def test_postgres_fetch_worker_aborts_obsolete_jobs_without_waiting() -> None:
 
 
 def test_postgres_fetch_worker_rejects_an_unbounded_queue() -> None:
-    async def deliver(_outcome: PostgresFetchOutcome[str]) -> None:
-        return None
+    deliver = OutcomeRecorder()
 
     with pytest.raises(ValueError, match="queue_limit must be positive"):
         PostgresFetchWorker(BlockingRowFetch(), deliver, queue_limit=0)
@@ -272,10 +266,8 @@ def test_postgres_fetch_worker_rejects_an_unbounded_queue() -> None:
 def test_postgres_fetch_worker_delivers_fallback_and_continues_after_failure() -> None:
     async def scenario() -> None:
         failure = RuntimeError("database unavailable")
-        outcomes: list[PostgresFetchOutcome[str]] = []
-
-        async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
-            outcomes.append(outcome)
+        deliver = OutcomeRecorder()
+        outcomes = deliver.items
 
         worker = PostgresFetchWorker(
             FailingThenSuccessfulFetch(failure),
@@ -326,10 +318,8 @@ def test_postgres_fetch_worker_rejects_work_after_delivery_failure() -> None:
 def test_postgres_fetch_worker_recovers_from_cancelled_close() -> None:
     async def scenario() -> None:
         fetch = BlockingRowFetch()
-        outcomes: list[PostgresFetchOutcome[str]] = []
-
-        async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
-            outcomes.append(outcome)
+        deliver = OutcomeRecorder()
+        outcomes = deliver.items
 
         worker = PostgresFetchWorker(fetch, deliver, queue_limit=1)
         await worker.enqueue(fetch_job(1))
