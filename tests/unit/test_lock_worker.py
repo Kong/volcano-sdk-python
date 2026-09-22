@@ -45,9 +45,10 @@ class StalledLocks:
     def __init__(self) -> None:
         self.entered = threading.Event()
         self.release = threading.Event()
+        self.calls: list[tuple[str, LockLease, int]] = []
 
     def renew(self, key: str, lease: LockLease, *, ttl: int) -> LockLease:
-        del key, ttl
+        self.calls.append((key, lease, ttl))
         self.entered.set()
         self.release.wait()
         return lease
@@ -211,6 +212,33 @@ def test_lock_renewer_bounds_stalled_shutdown(
         failure = guard._renewal_failure()
         assert isinstance(failure, TimeoutError)
         assert str(failure) == "lock renewal did not stop before cleanup"
+    finally:
+        locks.release.set()
+        renewer.stop()
+
+
+def test_lock_renewer_stops_after_an_in_flight_request_completes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    monkeypatch.setattr(worker_module, "_lease_now", lambda: 100.0)
+    original = lease()
+    guard = LockGuard(original, ttl=30, started_at=100.0)
+    monkeypatch.setattr(guard, "renewal_delay", lambda: 0.0)
+    locks = StalledLocks()
+    renewer = LockRenewer(locks, "build", guard, ttl=30)
+
+    renewer.start()
+    try:
+        assert locks.entered.wait(timeout=1)
+        renewer._stop.set()
+        locks.release.set()
+        renewer.stop()
+
+        assert locks.calls == [("build", original, 30)]
+        assert guard.lease is original
+        assert not guard.lost
+        assert not renewer._thread.is_alive()
     finally:
         locks.release.set()
         renewer.stop()
