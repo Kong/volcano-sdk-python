@@ -661,11 +661,23 @@ class Channel:
 
     @property
     def name(self) -> str:
-        """Return the canonical channel name sent to realtime."""
+        """Canonical channel name sent to realtime."""
         return self._name
 
     def on(self, event: str, callback: MessageCallback) -> Channel:
-        """Register a callback for messages or presence events."""
+        """Register a callback for messages or presence events.
+
+        Returns
+        -------
+        Channel
+            This channel, for chaining listener registrations.
+
+        Raises
+        ------
+        ValueError
+            The event is not supported by this channel type.
+
+        """
         allowed_events = {
             "broadcast": {"message"},
             "presence": {"message", "join", "leave", "presence_sync"},
@@ -685,7 +697,19 @@ class Channel:
         table: str,
         callback: PostgresChangeCallback,
     ) -> UnsubscribeCallback:
-        """Observe Postgres changes filtered by event, schema, and table."""
+        """Observe Postgres changes filtered by event, schema, and table.
+
+        Returns
+        -------
+        UnsubscribeCallback
+            An idempotent function that removes this listener.
+
+        Raises
+        ------
+        ValueError
+            The channel is not a Postgres channel or the event is unsupported.
+
+        """
         if self._type != "postgres":
             raise ValueError(POSTGRES_ONLY)
         if event not in {*POSTGRES_EVENTS, "*"}:
@@ -706,7 +730,16 @@ class Channel:
         return unsubscribe
 
     def on_presence_sync(self, callback: MessageCallback) -> UnsubscribeCallback:
-        """Observe immutable snapshots of a presence channel's current state."""
+        """Observe immutable snapshots of a presence channel's current state.
+
+        Requires a presence channel.
+
+        Returns
+        -------
+        UnsubscribeCallback
+            A function that removes this listener.
+
+        """
         self._ensure_presence()
         self._callbacks.setdefault("presence_sync", []).append(callback)
 
@@ -718,7 +751,16 @@ class Channel:
         return unsubscribe
 
     async def track(self, state: Mapping[str, JSONValue] | None = None) -> None:
-        """Store local presence state while server identity remains authoritative."""
+        """Store local presence state while server identity remains authoritative.
+
+        Requires a presence channel.
+
+        Raises
+        ------
+        RuntimeError
+            The channel is not subscribed.
+
+        """
         self._ensure_presence()
         if not self._subscribed:
             raise RuntimeError(CHANNEL_NOT_SUBSCRIBED)
@@ -726,13 +768,22 @@ class Channel:
         self._tracked_state = cast("Mapping[str, JSONValue]", frozen)
 
     def get_presence_state(self) -> Mapping[str, RealtimePresenceInfo]:
-        """Return an immutable snapshot of the clients currently present."""
+        """Read the clients currently present.
+
+        Requires a presence channel.
+
+        Returns
+        -------
+        Mapping[str, RealtimePresenceInfo]
+            An immutable snapshot indexed by client identifier.
+
+        """
         self._ensure_presence()
         return MappingProxyType(dict(self._presence_state))
 
     @property
     def tracked_state(self) -> Mapping[str, JSONValue]:
-        """Return an immutable snapshot of this client's local presence state."""
+        """Immutable snapshot of this client's local presence state."""
         self._ensure_presence()
         return MappingProxyType(dict(self._tracked_state))
 
@@ -1259,7 +1310,7 @@ class Realtime:
 
     @property
     def database_name(self) -> str | None:
-        """Return the database bound to lightweight Postgres changes."""
+        """Database bound to lightweight Postgres changes, or None if unbound."""
         return self._database_name
 
     def set_database_name(self, name: str | None) -> None:
@@ -1297,15 +1348,36 @@ class Realtime:
         )
 
     def on_connect(self, callback: RealtimeCallback) -> UnsubscribeCallback:
-        """Register a connection callback and return its unsubscribe function."""
+        """Register a connection callback.
+
+        Returns
+        -------
+        UnsubscribeCallback
+            An idempotent function that removes this callback.
+
+        """
         return self._register_connection_callback("connect", callback)
 
     def on_disconnect(self, callback: RealtimeCallback) -> UnsubscribeCallback:
-        """Register a disconnection callback and return its unsubscribe function."""
+        """Register a disconnection callback.
+
+        Returns
+        -------
+        UnsubscribeCallback
+            An idempotent function that removes this callback.
+
+        """
         return self._register_connection_callback("disconnect", callback)
 
     def on_error(self, callback: RealtimeCallback) -> UnsubscribeCallback:
-        """Register a transport-error callback and return its unsubscribe function."""
+        """Register a transport-error callback.
+
+        Returns
+        -------
+        UnsubscribeCallback
+            An idempotent function that removes this callback.
+
+        """
         return self._register_connection_callback("error", callback)
 
     def _register_connection_callback(
@@ -1385,7 +1457,22 @@ class Realtime:
         fetch_batch_window_ms: int = POSTGRES_BATCH_WINDOW_MS,
         fetch_max_batch_size: int = POSTGRES_MAX_BATCH_SIZE,
     ) -> Channel:
-        """Return a stable channel facade for a realtime name and configuration."""
+        """Get a stable channel facade for a realtime name and configuration.
+
+        Returns
+        -------
+        Channel
+            The existing channel for this type and name, or a newly created one.
+
+        Raises
+        ------
+        ValueError
+            The type or fetch settings are invalid, or the existing channel
+            uses different fetch settings.
+        RuntimeError
+            Removal of this channel is still in progress.
+
+        """
         channel_type = _validate_channel_type(channel_type)
         fetch_config = _postgres_fetch_config(
             auto_fetch=auto_fetch,
@@ -1413,7 +1500,7 @@ class Realtime:
 
     @property
     def is_connected(self) -> bool:
-        """Return whether the realtime transport is connected."""
+        """Whether the realtime transport is connected."""
         return self._connection is not None and self._connection.is_connected
 
     async def remove_channel(
