@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/Kong/volcano-sdk-python/compare/v0.10.1...v0.10.2) (2026-09-22)
+
+
+### Bug Fixes
+
+* retain checked durable invocation types ([#259](https://github.com/Kong/volcano-sdk-python/issues/259)) ([440da83](https://github.com/Kong/volcano-sdk-python/commit/440da8317a4255f5af1aa634e2cf90b23ec2369d))
+
 ## [0.10.1](https://github.com/Kong/volcano-sdk-python/compare/v0.10.0...v0.10.1) (2026-09-22)
 
 
