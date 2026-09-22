@@ -19,5 +19,8 @@ def counted_step(context: Context, count: int) -> None:
 
 def check_step_types(context: Context) -> None:
     assert_type(counted_step(context, 1), None)
+    assert_type(counted_step(context=context, count=1), None)
     counted_step(context, "invalid")  # type: ignore[arg-type]
+    counted_step(context=context, count="invalid")  # type: ignore[arg-type]
     counted_step("invalid", 1)  # type: ignore[arg-type]
+    given("a non-function")("invalid")  # type: ignore[arg-type]

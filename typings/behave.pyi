@@ -1,10 +1,21 @@
 from collections.abc import Callable
-from typing import Concatenate, TypeVar
+from typing import ParamSpec, Protocol
 
 from behave.runner import Context
 
-_F = TypeVar("_F", bound=Callable[Concatenate[Context, ...], None])
+_P = ParamSpec("_P")
 
-def given(step_text: str, **kwargs: object) -> Callable[[_F], _F]: ...
-def when(step_text: str, **kwargs: object) -> Callable[[_F], _F]: ...
-def then(step_text: str, **kwargs: object) -> Callable[[_F], _F]: ...
+class _StepFunction(Protocol[_P]):
+    def __call__(
+        self, context: Context, *args: _P.args, **kwargs: _P.kwargs
+    ) -> None: ...
+
+def given(
+    step_text: str, **kwargs: object
+) -> Callable[[_StepFunction[_P]], _StepFunction[_P]]: ...
+def when(
+    step_text: str, **kwargs: object
+) -> Callable[[_StepFunction[_P]], _StepFunction[_P]]: ...
+def then(
+    step_text: str, **kwargs: object
+) -> Callable[[_StepFunction[_P]], _StepFunction[_P]]: ...
