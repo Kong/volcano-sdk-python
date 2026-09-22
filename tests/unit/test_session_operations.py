@@ -4,6 +4,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from threading import Event
 
 import pytest
+from typing_extensions import override
 
 from volcano_sdk import Session, VolcanoError
 from volcano_sdk._session_operations import SessionOperations
@@ -16,6 +17,7 @@ class JoinedRefresh(Future[Session]):
         super().__init__()
         self.joined = joined
 
+    @override
     def result(self, timeout: float | None = None) -> Session:
         self.joined.set()
         return super().result(timeout)

@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Protocol, Self, cast
 
+from typing_extensions import override
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -280,6 +282,7 @@ class QueryBuilder(FilterBuilder):
         """
         return replace(self, _offset=count)
 
+    @override
     def _with_filters(self, filters: tuple[dict[str, Any], ...]) -> QueryBuilder:
         return replace(self, _filters=filters)
 
@@ -362,6 +365,7 @@ class UpdateBuilder(FilterBuilder):
     _values: dict[str, JSONValue]
     _filters: tuple[dict[str, Any], ...] = ()
 
+    @override
     def _with_filters(self, filters: tuple[dict[str, Any], ...]) -> UpdateBuilder:
         return replace(self, _filters=filters)
 
@@ -399,6 +403,7 @@ class DeleteBuilder(FilterBuilder):
     _table: str
     _filters: tuple[dict[str, Any], ...] = ()
 
+    @override
     def _with_filters(self, filters: tuple[dict[str, Any], ...]) -> DeleteBuilder:
         return replace(self, _filters=filters)
 

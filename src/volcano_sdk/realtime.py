@@ -11,6 +11,8 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
+from typing_extensions import override
+
 from ._realtime_fetch_worker import (
     PostgresFetchJob,
     PostgresFetchOutcome,
@@ -458,6 +460,7 @@ def _centrifuge_client(
 
 
 class _ProjectAwareSubscriptions(dict[str, Any]):
+    @override
     def get(self, key: str, default: Any = None) -> Any:
         subscription = super().get(key)
         if subscription is not None:

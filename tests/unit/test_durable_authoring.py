@@ -156,8 +156,8 @@ def test_operations_are_recorded_under_their_names() -> None:
         result = runner.run(input=json.dumps({}))
 
     assert result.error is None
-    assert result.get_step("charge") is not None
-    assert result.get_wait("settle") is not None
+    assert result.get_step("charge").name == "charge"
+    assert result.get_wait("settle").name == "settle"
     # Nested, not top-level: a child context owns the operations run inside it,
     # which is the scope a resumed execution replays them in.
     child = result.get_context("fulfil")
