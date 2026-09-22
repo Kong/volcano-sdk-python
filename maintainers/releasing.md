@@ -26,22 +26,31 @@ live platform acceptance.
 ## Build inputs
 
 `poe build` builds the sdist and then the wheel from that sdist. Quality and
-publication use this task. uv verifies every isolated artifact-build dependency
-against the versions and hashes in `build-constraints.txt`.
+publication use this task. uv verifies isolated build dependencies against the
+versions and hashes in `tool.uv.build-constraint-dependencies`. These native
+constraints also apply to editable installs during `uv sync` and `uv run`.
+The project and CI require uv 0.12.17.
 
 The release job installs locked dependency wheels without building an editable
-SDK. It disables implicit sync for subsequent commands. To reproduce that setup:
+SDK and disables implicit sync in subsequent commands. To reproduce that setup:
 
 ```sh
 uv sync --locked --no-install-project --no-build
 UV_NO_SYNC=true uv run --no-sync poe build
 ```
 
-To update Hatchling, change `build-system.requires` in `pyproject.toml`, then run
-`uv run --locked poe build-lock`. The pinned pip-tools generator reads the wheel
-and sdist build requirements directly from the project. Review the resulting
-constraints and run quality checks on both supported CI Python versions.
+To update Hatchling, change its version in `build-system.requires` and the
+`build` dependency group. Resolve and inspect the group's hashes without
+executing project or dependency builds:
 
+```sh
+uv lock --no-build
+uv export --locked --only-group build --no-build
+```
+
+Copy the reviewed versions and hashes into `tool.uv.build-constraint-dependencies`,
+then run `uv lock --no-build` to record them. Run quality checks on both supported
+CI Python versions. The build group also includes these tools in the audit.
 Build constraints do not pin consumers' runtime dependencies.
 
 ## Recover from a bad release

@@ -13,10 +13,9 @@ PROJECT = Path(__file__).parents[2] / "pyproject.toml"
 
 @pytest.fixture
 def shadowed_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    for module in ("pip_audit", "build"):
-        (tmp_path / f"{module}.py").write_text(
-            "raise RuntimeError('local tool executed')\n", encoding="utf-8"
-        )
+    (tmp_path / "pip_audit.py").write_text(
+        "raise RuntimeError('local tool executed')\n", encoding="utf-8"
+    )
     monkeypatch.setenv("PYTHONPATH", str(tmp_path))
     return tmp_path
 
@@ -24,19 +23,6 @@ def shadowed_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_isolated_auditor_ignores_local_module_shadowing(shadowed_tools: Path) -> None:
     result = subprocess.run(
         [sys.executable, "-I", "-m", "pip_audit", "--help"],
-        cwd=shadowed_tools,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "usage" in result.stdout.lower()
-
-
-def test_isolated_builder_ignores_local_module_shadowing(shadowed_tools: Path) -> None:
-    result = subprocess.run(
-        [sys.executable, "-I", "-m", "build", "--help"],
         cwd=shadowed_tools,
         text=True,
         capture_output=True,
