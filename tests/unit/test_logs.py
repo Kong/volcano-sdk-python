@@ -5,13 +5,13 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from transport_fixtures import RejectingTransport
 
 from volcano_sdk import ServerError, Session, VolcanoClient
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from volcano_sdk._transport import Transport
     from volcano_sdk.models import JSONValue
 
 
@@ -23,7 +23,7 @@ class FakeResponse:
     content: bytes = b""
 
 
-class FakeLogsTransport:
+class FakeLogsTransport(RejectingTransport):
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.search_response = FakeResponse(
@@ -75,7 +75,7 @@ class FakeLogsTransport:
 def logs_client(transport: FakeLogsTransport) -> VolcanoClient:
     client = VolcanoClient(
         anon_key="anon-key",
-        _transport=cast("Transport", transport),
+        _transport=transport,
     )
     client.auth.set_session(
         Session(
