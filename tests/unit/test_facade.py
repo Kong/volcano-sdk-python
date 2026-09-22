@@ -9,6 +9,7 @@ from typing import Any, BinaryIO, cast
 
 import pytest
 from state_assertions import assert_same
+from typing_extensions import override
 
 from volcano_sdk import (
     LockGuard,
@@ -275,6 +276,7 @@ class BoundedBytesIO(BytesIO):
         super().__init__(value)
         self.read_sizes: list[int] = []
 
+    @override
     def read(self, size: int | None = -1) -> bytes:
         if size is None or size < 0:
             msg = "unbounded read"
@@ -284,6 +286,7 @@ class BoundedBytesIO(BytesIO):
 
 
 class ShortReadBytesIO(BoundedBytesIO):
+    @override
     def read(self, size: int | None = -1) -> bytes:
         if size is None or size < 0:
             msg = "unbounded read"
@@ -333,6 +336,7 @@ class ReadOnlyStream:
 
 
 class FailingSeekableReader(BoundedBytesIO):
+    @override
     def read(self, size: int | None = -1) -> bytes:
         if self.tell() >= 4:
             msg = "reader failed"
@@ -345,6 +349,7 @@ class RestoreFailingBytesIO(BytesIO):
         super().__init__(value)
         self._end_was_probed = False
 
+    @override
     def seek(self, offset: int, whence: int = 0) -> int:
         if self._end_was_probed and whence == 0:
             msg = "restore failed"
@@ -659,6 +664,7 @@ def test_locks_with_lock_renews_an_unsafe_initial_lease_before_yielding(
     renewers: list[NoopRenewer] = []
 
     class SlowAcquireTransport(FakeTransport):
+        @override
         def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
             response = super().acquire_project_lock(**kwargs)
             clock[0] = 104.0
@@ -755,6 +761,7 @@ def test_locks_with_lock_preserves_body_failure_and_releases(
     release_failure = "release failed"
 
     class FailingReleaseTransport(FakeTransport):
+        @override
         def release_project_lock(self, **kwargs: Any) -> FakeResponse:
             self.calls.append(("releaseProjectLock", kwargs))
             raise RuntimeError(release_failure)

@@ -755,7 +755,7 @@ def _validate_wait_options(options: WaitUntilOptions) -> None:
 
 
 def _named(
-    name: str | Callable[..., Any],
+    name: str | Callable[..., Any] | None,
     func: Callable[..., Any] | None,
     operation: str,
 ) -> tuple[str | None, Callable[..., Any]]:

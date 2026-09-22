@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, create_autospec
 
 import pytest
 from state_assertions import assert_same
+from typing_extensions import override
 
 from volcano_sdk import (
     AuthenticationError,
@@ -212,6 +213,7 @@ class RealtimeDatabaseTransport(AuthTransport):
         self.rows = rows
         self.queries: list[dict[str, Any]] = []
 
+    @override
     def query_database_select(
         self,
         *,
@@ -249,6 +251,7 @@ class BlockingRealtimeDatabaseTransport(RealtimeDatabaseTransport):
         self.release = asyncio.Event()
         self.cancelled = asyncio.Event()
 
+    @override
     async def query_database_select_async(
         self,
         *,
@@ -445,6 +448,7 @@ class BlockingConnectCentrifugeClient(FakeCentrifugeClient):
         self.connect_started = asyncio.Event()
         self.connect_release = asyncio.Event()
 
+    @override
     async def connect(self) -> None:
         self.calls.append("connect")
         self.connect_started.set()
@@ -3379,6 +3383,7 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
     release = asyncio.Event()
 
     class BlockingSubscription(FakeSubscription):
+        @override
         async def subscribe(self) -> None:
             entered.set()
             await release.wait()

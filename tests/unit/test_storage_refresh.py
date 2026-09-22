@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 from session_fixtures import access_token
+from typing_extensions import override
 
 from volcano_sdk import (
     AuthenticationError,
@@ -320,6 +321,7 @@ def test_upload_retains_the_session_that_owned_the_source_before_reading() -> No
     client = make_client(handle)
 
     class ReplacingStream(BytesIO):
+        @override
         def read(self, size: int | None = -1) -> bytes:
             client.auth.set_session(replacement)
             return super().read(size)

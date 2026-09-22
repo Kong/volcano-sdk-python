@@ -16,6 +16,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, NoReturn
 
+from typing_extensions import override
+
 if TYPE_CHECKING:
     from socket import socket
     from socketserver import BaseServer
@@ -81,6 +83,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         self._respond()
 
+    @override
     def log_message(self, *_args: object, **_kwargs: object) -> None:
         pass
 
