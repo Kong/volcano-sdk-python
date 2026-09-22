@@ -59,6 +59,7 @@ from volcano_sdk._generated.models.get_o_auth_provider_token_response_200 import
 from volcano_sdk._generated.models.refresh_o_auth_provider_token_response_200 import (
     RefreshOAuthProviderTokenResponse200,
 )
+from volcano_sdk._generated.types import Unset
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -77,7 +78,7 @@ class _SubscriberAbortError(BaseException):
 @dataclass(frozen=True)
 class Response:
     status_code: int
-    payload: Any = None
+    payload: object = None
     content: bytes = b""
     headers: dict[str, str] | None = None
 
@@ -176,7 +177,7 @@ class OAuthTransport:
     def __init__(self) -> None:
         self.authorizations: list[tuple[str, str]] = []
         self.oauth_authorization_url = "https://api.example/auth/oauth/github/authorize"
-        self.oauth_authorization_url_calls: list[dict[str, Any]] = []
+        self.oauth_authorization_url_calls: list[dict[str, object]] = []
         self.oauth_exchange_response = Response(
             200,
             {
@@ -185,10 +186,10 @@ class OAuthTransport:
                 "user": {"id": "00000000-0000-4000-8000-000000000010"},
             },
         )
-        self.oauth_exchange_calls: list[dict[str, Any]] = []
+        self.oauth_exchange_calls: list[dict[str, object]] = []
         self.on_oauth_exchange: Callable[[], None] | None = None
         self.list_oauth_providers_response = Response(200, _linked_oauth_providers())
-        self.list_oauth_providers_calls: list[dict[str, Any]] = []
+        self.list_oauth_providers_calls: list[dict[str, object]] = []
         self.on_list_oauth_providers: Callable[[], None] | None = None
         self.link_oauth_provider_response = Response(
             200,
@@ -196,10 +197,10 @@ class OAuthTransport:
                 {"authorization_url": "https://accounts.example/link"}
             ),
         )
-        self.link_oauth_provider_calls: list[dict[str, Any]] = []
+        self.link_oauth_provider_calls: list[dict[str, object]] = []
         self.on_link_oauth_provider: Callable[[], None] | None = None
         self.unlink_oauth_provider_response = Response(204)
-        self.unlink_oauth_provider_calls: list[dict[str, Any]] = []
+        self.unlink_oauth_provider_calls: list[dict[str, object]] = []
         self.on_unlink_oauth_provider: Callable[[], None] | None = None
         self.oauth_provider_token_status_response = Response(
             200,
@@ -211,7 +212,7 @@ class OAuthTransport:
                 }
             ),
         )
-        self.oauth_provider_token_status_calls: list[dict[str, Any]] = []
+        self.oauth_provider_token_status_calls: list[dict[str, object]] = []
         self.on_oauth_provider_token_status: Callable[[], None] | None = None
         self.refresh_oauth_provider_token_response = Response(
             200,
@@ -223,7 +224,7 @@ class OAuthTransport:
                 }
             ),
         )
-        self.refresh_oauth_provider_token_calls: list[dict[str, Any]] = []
+        self.refresh_oauth_provider_token_calls: list[dict[str, object]] = []
         self.on_refresh_oauth_provider_token: Callable[[], None] | None = None
         self.call_oauth_api_response = Response(
             200,
@@ -236,7 +237,7 @@ class OAuthTransport:
                 }
             ),
         )
-        self.call_oauth_api_calls: list[dict[str, Any]] = []
+        self.call_oauth_api_calls: list[dict[str, object]] = []
         self.on_call_oauth_api: Callable[[], None] | None = None
 
     def auth_list_oauth_providers(self, **kwargs: Any) -> Response:
@@ -305,7 +306,7 @@ class StateTransport(OAuthTransport):
                 "message": "Check your email to confirm your account",
             },
         )
-        self.signup_calls: list[dict[str, Any]] = []
+        self.signup_calls: list[dict[str, object]] = []
         self.anonymous_signin_response = Response(
             201,
             {
@@ -314,63 +315,63 @@ class StateTransport(OAuthTransport):
                 "user": {"id": "00000000-0000-4000-8000-000000000099"},
             },
         )
-        self.anonymous_signin_calls: list[dict[str, Any]] = []
+        self.anonymous_signin_calls: list[dict[str, object]] = []
         self.on_anonymous_signin: Callable[[], None] | None = None
         self.anonymous_conversion_response = Response(200, _converted_user_profile())
-        self.anonymous_conversion_calls: list[dict[str, Any]] = []
+        self.anonymous_conversion_calls: list[dict[str, object]] = []
         self.on_anonymous_conversion: Callable[[], None] | None = None
         self.email_change_response = Response(
             200,
             {"message": "Confirmation email sent", "new_email": "new@example.com"},
         )
-        self.email_change_calls: list[dict[str, Any]] = []
+        self.email_change_calls: list[dict[str, object]] = []
         self.on_email_change: Callable[[], None] | None = None
         self.cancel_email_change_response = Response(200, {})
-        self.cancel_email_change_calls: list[dict[str, Any]] = []
+        self.cancel_email_change_calls: list[dict[str, object]] = []
         self.on_cancel_email_change: Callable[[], None] | None = None
         self.confirm_email_change_response = Response(
             200,
             _confirmed_email_change_profile(),
         )
-        self.confirm_email_change_calls: list[dict[str, Any]] = []
+        self.confirm_email_change_calls: list[dict[str, object]] = []
         self.on_confirm_email_change: Callable[[], None] | None = None
         self.delete_other_sessions_response = Response(204)
-        self.delete_other_sessions_calls: list[dict[str, Any]] = []
+        self.delete_other_sessions_calls: list[dict[str, object]] = []
         self.on_delete_other_sessions: Callable[[], None] | None = None
         self.delete_session_response = Response(204)
-        self.delete_session_calls: list[dict[str, Any]] = []
+        self.delete_session_calls: list[dict[str, object]] = []
         self.on_delete_session: Callable[[], None] | None = None
         self.list_sessions_response = Response(200, _sessions_page())
-        self.list_sessions_calls: list[dict[str, Any]] = []
+        self.list_sessions_calls: list[dict[str, object]] = []
         self.on_list_sessions: Callable[[], None] | None = None
         super().__init__()
         self.forgot_password_response = Response(
             200,
             {"message": "If the email exists, a password reset link has been sent."},
         )
-        self.forgot_password_calls: list[dict[str, Any]] = []
+        self.forgot_password_calls: list[dict[str, object]] = []
         self.reset_password_response = Response(
             200,
             {"message": "Password reset successful. Please sign in again."},
         )
-        self.reset_password_calls: list[dict[str, Any]] = []
+        self.reset_password_calls: list[dict[str, object]] = []
         self.confirm_email_response = Response(
             200,
             {"message": "Email confirmed successfully"},
         )
-        self.confirm_email_calls: list[dict[str, Any]] = []
+        self.confirm_email_calls: list[dict[str, object]] = []
         self.resend_confirmation_response = Response(
             200,
             {"message": "If eligible, a confirmation email has been sent."},
         )
-        self.resend_confirmation_calls: list[dict[str, Any]] = []
+        self.resend_confirmation_calls: list[dict[str, object]] = []
         self.user_response = Response(
             200,
             _user_profile(),
         )
         self.on_get_user: Callable[[], None] | None = None
         self.update_user_response = Response(200, _updated_user_profile())
-        self.update_user_calls: list[dict[str, Any]] = []
+        self.update_user_calls: list[dict[str, object]] = []
         self.on_update_user: Callable[[], None] | None = None
         self.refresh_response = Response(
             200,
@@ -383,10 +384,10 @@ class StateTransport(OAuthTransport):
         self.on_refresh: Callable[[], None] | None = None
         self.logout_response = Response(204)
         self.on_logout: Callable[[], None] | None = None
-        self.query_calls: list[dict[str, Any]] = []
-        self.insert_calls: list[dict[str, Any]] = []
-        self.update_calls: list[dict[str, Any]] = []
-        self.delete_calls: list[dict[str, Any]] = []
+        self.query_calls: list[dict[str, object]] = []
+        self.insert_calls: list[dict[str, object]] = []
+        self.update_calls: list[dict[str, object]] = []
+        self.delete_calls: list[dict[str, object]] = []
 
     def auth_signin(self, **kwargs: Any) -> Response:
         self.authorizations.append(("auth", kwargs["authorization"]))
@@ -634,7 +635,18 @@ def test_profile_operations_preserve_equivalent_session_user_ids(
         transport.anonymous_conversion_response,
         transport.confirm_email_change_response,
     ):
-        response.payload.user.id = identity
+        assert isinstance(
+            response.payload,
+            (
+                AuthGetUserResponse200,
+                AuthUpdateUserResponse200,
+                AuthConvertAnonymousResponse200,
+                AuthConfirmEmailChangeResponse200,
+            ),
+        )
+        payload_user = response.payload.user
+        assert not isinstance(payload_user, Unset)
+        payload_user.id = identity
     identifiers = {
         "uppercase": str(identity).upper(),
         "braced": "{" + str(identity) + "}",
@@ -882,9 +894,15 @@ def test_database_update_reuses_the_select_filter_vocabulary() -> None:
         "deleted_at", None
     ).execute()
 
-    operators = [
-        condition["operator"] for condition in transport.update_calls[0]["filters"]
-    ]
+    filters = transport.update_calls[0]["filters"]
+    assert isinstance(filters, list)
+    operators: list[str] = []
+    for condition in cast("list[object]", filters):
+        assert isinstance(condition, dict)
+        typed_condition = cast("dict[object, object]", condition)
+        operator = typed_condition.get("operator")
+        assert isinstance(operator, str)
+        operators.append(operator)
     assert operators == [
         "eq",
         "neq",
@@ -1462,9 +1480,13 @@ def test_sign_in_anonymously_preserves_session_when_disabled() -> None:
 
 def test_convert_anonymous_updates_the_user_without_replacing_credentials() -> None:
     transport = StateTransport()
-    transport.anonymous_signin_response.payload["user"]["id"] = (
-        "00000000-0000-4000-8000-000000000010"
-    )
+    payload = transport.anonymous_signin_response.payload
+    assert isinstance(payload, dict)
+    typed_payload = cast("dict[object, object]", payload)
+    user = typed_payload.get("user")
+    assert isinstance(user, dict)
+    typed_user = cast("dict[object, object]", user)
+    typed_user["id"] = "00000000-0000-4000-8000-000000000010"
     client = VolcanoClient(anon_key="anon", _transport=transport)
     established = client.auth.sign_in_anonymously()
 
