@@ -56,6 +56,9 @@ def local_runner(handler: Any) -> Generator[DurableFunctionTestRunner]:
     it, so the loop and its self-pipe sockets stay open. The repository turns
     warnings into errors, and an unraisable ResourceWarning cannot be filtered
     from inside the test, so the loop is closed here instead.
+
+    Yields:
+        The local runner, closed when the context exits.
     """
     runner = DurableFunctionTestRunner(handler)
     try:
@@ -68,7 +71,14 @@ def local_runner(handler: Any) -> Generator[DurableFunctionTestRunner]:
 
 
 def run_handler(handler: Any, event: object = None) -> Any:
-    """Run a durable handler to completion on the local runner."""
+    """Run a durable handler to completion on the local runner.
+
+    Returns:
+        The decoded result, or None when the handler returns no result.
+
+    Raises:
+        AssertionError: If the handler fails.
+    """
     with local_runner(handler) as runner:
         result = runner.run(input=json.dumps({} if event is None else event))
     if result.error is not None:
@@ -77,7 +87,14 @@ def run_handler(handler: Any, event: object = None) -> Any:
 
 
 def failing_handler(handler: Any, event: object = None) -> str:
-    """Run a handler expected to fail, and return the failure message."""
+    """Run a handler expected to fail.
+
+    Returns:
+        The failure message, or an empty string if it has no message.
+
+    Raises:
+        AssertionError: If the handler succeeds.
+    """
     with local_runner(handler) as runner:
         result = runner.run(input=json.dumps({} if event is None else event))
     if result.error is None:
@@ -535,13 +552,17 @@ def test_durable_is_usable_bare_and_called() -> None:
 
 
 def test_the_wrapper_keeps_the_handler_name() -> None:
-    @durable
     def order_pipeline(_event: Any, _ctx: DurableContext) -> Any:
-        """Handle an order."""
+        """Handle an order.
+
+        Returns:
+            None.
+        """
         return None
 
-    assert order_pipeline.__name__ == "order_pipeline"
-    assert order_pipeline.__doc__ == "Handle an order."
+    wrapped = durable(order_pipeline)
+    assert wrapped.__name__ == "order_pipeline"
+    assert wrapped.__doc__ == order_pipeline.__doc__
 
 
 def test_durable_refuses_something_that_is_not_callable() -> None:

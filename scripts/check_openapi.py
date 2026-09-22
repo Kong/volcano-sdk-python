@@ -11,7 +11,12 @@ from generate_openapi import DEFAULT_OUTPUT, generate
 
 
 def generated_files(root: Path) -> dict[Path, Path]:
-    """Return generated files keyed by their path relative to the output root."""
+    """Collect generated files.
+
+    Returns:
+        File paths keyed by their path relative to the output root.
+
+    """
     return {
         path.relative_to(root): path
         for path in root.rglob("*")
@@ -22,7 +27,12 @@ def generated_files(root: Path) -> dict[Path, Path]:
 
 
 def compared_files(left: Path, right: Path) -> tuple[list[str], list[str], list[str]]:
-    """Return missing, extra, and changed paths between two generated trees."""
+    """Compare two generated trees.
+
+    Returns:
+        Missing, extra, and changed paths, respectively.
+
+    """
     left_files = generated_files(left)
     right_files = generated_files(right)
     missing = [str(path) for path in sorted(left_files.keys() - right_files.keys())]
@@ -36,7 +46,12 @@ def compared_files(left: Path, right: Path) -> tuple[list[str], list[str], list[
 
 
 def main() -> None:
-    """Regenerate the client and report any checked-in drift."""
+    """Regenerate the client and report any checked-in drift.
+
+    Raises:
+        SystemExit: If checked-in files differ from regeneration.
+
+    """
     with tempfile.TemporaryDirectory(prefix="volcano-sdk-openapi-") as directory:
         generated = Path(directory) / "_generated"
         generate(generated)

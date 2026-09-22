@@ -143,11 +143,16 @@ class VolcanoClient:
 
     @property
     def current_session(self) -> Session | None:
-        """Return the authenticated session, if one exists."""
+        """The authenticated session, if one exists."""
         return self._capture_session()[1]
 
     def database(self, name: str) -> Database:
-        """Create a query facade for a project database."""
+        """Create a query facade for a project database.
+
+        Returns:
+            A query facade bound to the named database.
+
+        """
         return Database(self, name)
 
     def _anon_token(self) -> str:
