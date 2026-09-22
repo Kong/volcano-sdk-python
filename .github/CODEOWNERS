@@ -22,6 +22,7 @@ uv.lock @Kong/team-volcano
 .python-version @Kong/team-volcano
 ruff.toml @Kong/team-volcano
 .ruff.toml @Kong/team-volcano
+.shellcheckrc @Kong/team-volcano
 mypy.ini @Kong/team-volcano
 .mypy.ini @Kong/team-volcano
 pyrightconfig.json @Kong/team-volcano
@@ -46,6 +47,7 @@ poetry.lock @Kong/team-volcano
 noxfile.py @Kong/team-volcano
 Makefile @Kong/team-volcano
 .gitignore @Kong/team-volcano
+.ignore @Kong/team-volcano
 .gitattributes @Kong/team-volcano
 .pre-commit-config.yaml @Kong/team-volcano
 release-please-config.json @Kong/team-volcano
