@@ -232,6 +232,12 @@ from ._generated.models.upload_storage_object_files_body import (
     UploadStorageObjectFilesBody,
 )
 from ._generated.types import UNSET, File
+from ._log_response import (
+    activity_total,
+    response_data,
+    response_values,
+    search_metadata,
+)
 from .errors import (
     AuthenticationError,
     ConflictError,
@@ -1708,6 +1714,17 @@ class GeneratedTransport:
             )
         return self._raw_response(response)
 
+    @staticmethod
+    def _validate_log_response(
+        response: _RawHTTPResponse,
+        metadata: Callable[[Mapping[str, object]], object],
+    ) -> None:
+        if response.status_code == HTTP_OK:
+            payload = GeneratedTransport._raw_response(response).payload
+            values = response_values(payload)
+            _ = response_data(values)
+            _ = metadata(values)
+
     def search_project_logs(
         self,
         *,
@@ -1724,6 +1741,7 @@ class GeneratedTransport:
             raw_response = client.get_httpx_client().request(**request_kwargs)
             if raw_response.status_code == HTTP_UNAUTHORIZED:
                 return self._raw_response(raw_response)
+            self._validate_log_response(raw_response, search_metadata)
             response = build_log_search_response(
                 client=client,
                 response=raw_response,
@@ -1746,6 +1764,7 @@ class GeneratedTransport:
             raw_response = client.get_httpx_client().request(**request_kwargs)
             if raw_response.status_code == HTTP_UNAUTHORIZED:
                 return self._raw_response(raw_response)
+            self._validate_log_response(raw_response, activity_total)
             response = build_log_activity_response(
                 client=client,
                 response=raw_response,
