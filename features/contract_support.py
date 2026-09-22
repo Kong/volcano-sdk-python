@@ -7,8 +7,6 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from centrifuge import CentrifugeError
-
 from volcano_sdk import (
     AuthenticationError,
     ConflictError,
@@ -21,6 +19,7 @@ from volcano_sdk import (
     VolcanoClient,
     VolcanoError,
 )
+from volcano_sdk.realtime import CENTRIFUGE_ERROR
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -51,7 +50,7 @@ DURABLE_POLL_TIMEOUT_SECONDS = 300
 OWNER_SESSION_PLACEHOLDER = "sdk-contract-platform-token-has-no-auth-session"
 
 CONTRACT_EXCEPTIONS = (
-    CentrifugeError,
+    CENTRIFUGE_ERROR,
     KeyError,
     OSError,
     RuntimeError,

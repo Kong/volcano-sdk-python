@@ -4,7 +4,7 @@ import json
 import os
 import stat
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from contract_support import ContractWorld
 
@@ -15,7 +15,7 @@ FIXTURE_OBJECT_ERROR = "VOLCANO_SDK_CONTRACT_FIXTURE must contain a JSON object"
 FIXTURE_REQUIRED_ERROR = "VOLCANO_SDK_CONTRACT_FIXTURE is required"
 
 
-def load_fixture(path: Path) -> dict[str, Any]:
+def load_fixture(path: Path) -> dict[str, object]:
     if not path.is_absolute():
         raise ValueError(FIXTURE_ABSOLUTE_PATH_ERROR)
     mode = stat.S_IMODE(path.stat().st_mode)
@@ -24,7 +24,8 @@ def load_fixture(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise TypeError(FIXTURE_OBJECT_ERROR)
-    return value
+    # JSON objects have string keys; the shape check above rejects other values.
+    return cast("dict[str, object]", value)
 
 
 def before_all(context: Any) -> None:
