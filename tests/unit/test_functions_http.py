@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from socket import socket
@@ -29,13 +29,13 @@ from volcano_sdk import NotFoundError, VolcanoClient
 FUNCTION_ID = "00000000-0000-4000-8000-000000000040"
 
 # (status, payload) or (status, payload, extra response headers).
-Responder = Callable[[str], "tuple[int, Any] | tuple[int, Any, dict[str, str]]"]
+Responder = Callable[[str], "tuple[int, object] | tuple[int, object, dict[str, str]]"]
 
 
 @dataclass
 class RecordedRequest:
     path: str
-    body: Any
+    body: object
     authorization: str | None
 
 
@@ -134,7 +134,7 @@ class _Server:
 def function_server() -> Iterator[tuple[_Server, Recorder]]:
     recorder = Recorder()
 
-    def respond(_path: str) -> tuple[int, Any]:
+    def respond(_path: str) -> tuple[int, object]:
         return 200, {"ok": True}
 
     server = _Server(respond, recorder)
@@ -146,11 +146,11 @@ def function_server() -> Iterator[tuple[_Server, Recorder]]:
 
 def _api_server(
     recorder: Recorder,
-    resolve_payload: Any,
+    resolve_payload: object,
     status: int = 200,
     resolve_delay: float = 0.0,
 ) -> _Server:
-    def respond(path: str) -> tuple[int, Any]:
+    def respond(path: str) -> tuple[int, object]:
         if path.startswith("/functions/resolve"):
             if resolve_delay:
                 time.sleep(resolve_delay)
@@ -272,7 +272,7 @@ def test_a_recreated_function_is_resolved_again_after_a_platform_404() -> None:
     api_requests = Recorder()
     invoked: list[str] = []
 
-    def respond(path: str) -> tuple[int, Any] | tuple[int, Any, dict[str, str]]:
+    def respond(path: str) -> tuple[int, object] | tuple[int, object, dict[str, str]]:
         if path.startswith("/functions/resolve"):
             return 200, {
                 "name": "send-welcome",
@@ -305,7 +305,7 @@ def test_a_recreated_function_is_resolved_again_after_a_platform_404() -> None:
 def test_a_function_authored_404_is_returned_without_invoking_twice() -> None:
     api_requests = Recorder()
 
-    def respond(path: str) -> tuple[int, Any] | tuple[int, Any, dict[str, str]]:
+    def respond(path: str) -> tuple[int, object] | tuple[int, object, dict[str, str]]:
         if path.startswith("/functions/resolve"):
             return 200, {
                 "name": "send-welcome",
