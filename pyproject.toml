@@ -163,10 +163,13 @@ reportPrivateUsage = false
 [tool.ruff]
 required-version = "==0.16.4"
 target-version = "py311"
+output-prefer-rule-codes = true
 extend-exclude = ["src/volcano_sdk/_generated"]
 
 [tool.ruff.lint]
-select = ["ALL"]
+preview = true
+explicit-preview-rules = true
+select = ["ALL", "PLW0717"]
 ignore = [
   # The repository license covers source files without per-file headers.
   "CPY001",

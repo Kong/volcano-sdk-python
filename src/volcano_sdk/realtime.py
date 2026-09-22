@@ -1695,18 +1695,30 @@ class Realtime:
                     subscription = await self._prepare_subscription(channel, generation)
                     if channel._subscribed:
                         return
-                    channel._paused = False
-                    await subscription.subscribe()
-                channel._readiness_task = asyncio.create_task(
-                    _wait_subscription(channel, subscription)
-                )
-                try:
-                    await channel._readiness_task
-                finally:
-                    channel._readiness_task = None
+                    await self._resume_subscription(channel, subscription)
+                await self._wait_subscription_readiness(channel, subscription)
             except BaseException as error:
                 await self._cleanup_failed_subscription(channel, subscription, error)
                 raise
+
+    @staticmethod
+    async def _resume_subscription(
+        channel: Channel, subscription: CentrifugeSubscription
+    ) -> None:
+        channel._paused = False
+        await subscription.subscribe()
+
+    @staticmethod
+    async def _wait_subscription_readiness(
+        channel: Channel, subscription: CentrifugeSubscription
+    ) -> None:
+        channel._readiness_task = asyncio.create_task(
+            _wait_subscription(channel, subscription)
+        )
+        try:
+            await channel._readiness_task
+        finally:
+            channel._readiness_task = None
 
     async def _cleanup_failed_subscription(
         self,

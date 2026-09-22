@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
     from behave.runner import Context
 
+    from volcano_sdk.realtime import Channel
     from volcano_sdk.storage import StorageBucket
 
 ACCESS_TOKEN_CLOCK_TICK_SECONDS = 1.1
@@ -1150,37 +1151,39 @@ def replacement_lock_fence_increases(context: Context) -> None:
 def two_realtime_clients(context: Context) -> None:
     world = _world(context)
     try:
-        clients = [
-            world.client,
-            type(world.client)(
-                api_url=world.fixture["api_url"],
-                anon_key=world.fixture["anon_key"],
-            ),
-        ]
-        for client in clients:
-            client.auth.sign_in(
-                email=world.fixture["user_email"],
-                password=world.fixture["user_password"],
-            )
-        world.realtime_clients = clients
-        subscriber = clients[0].realtime.channel(world.realtime_channel)
-        publisher = clients[1].realtime.channel(world.realtime_channel)
-        world.subscriber = subscriber
-        world.publisher = publisher
-
-        async def subscribe() -> None:
-            await asyncio.gather(
-                subscriber.subscribe(),
-                publisher.subscribe(),
-            )
-
-        world.run(subscribe())
+        subscriber, publisher = _realtime_pair(world)
+        world.run(_subscribe_pair(subscriber, publisher))
     except CONTRACT_EXCEPTIONS as error:
         world.last_outcome = Outcome(
             ok=False,
             category=classify_error(error),
             error=error,
         )
+
+
+def _realtime_pair(world: ContractWorld) -> tuple[Channel, Channel]:
+    clients = [
+        world.client,
+        type(world.client)(
+            api_url=world.fixture["api_url"],
+            anon_key=world.fixture["anon_key"],
+        ),
+    ]
+    for client in clients:
+        client.auth.sign_in(
+            email=world.fixture["user_email"],
+            password=world.fixture["user_password"],
+        )
+    world.realtime_clients = clients
+    subscriber = clients[0].realtime.channel(world.realtime_channel)
+    publisher = clients[1].realtime.channel(world.realtime_channel)
+    world.subscriber = subscriber
+    world.publisher = publisher
+    return subscriber, publisher
+
+
+async def _subscribe_pair(subscriber: Channel, publisher: Channel) -> None:
+    await asyncio.gather(subscriber.subscribe(), publisher.subscribe())
 
 
 async def publish_contract_message(world: ContractWorld) -> Any:
