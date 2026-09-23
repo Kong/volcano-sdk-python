@@ -23,13 +23,17 @@ It records each unchanged artifact's SHA256 before the release job uploads it.
 This package/example check does not replace registry installation or approved
 live platform acceptance.
 
-`poe quality` also recreates two [tox package environments](https://tox.wiki/en/latest/how-to/usage.html#use-extras)
-from a built wheel: one without extras, and one with `durable`. The small
+`poe quality` also recreates three [tox package environments](https://tox.wiki/en/latest/how-to/usage.html#use-extras)
+from a built wheel: one without extras, one with `durable`, and one that checks
+the installed wheel's complete public types with the durable extra. The small
 `tests/package/optional_dependency.py` smoke test checks that the base install
 omits the runtime and that the extra can load the engine adapter. Tox installs
 extras but cannot assert their absence or exercise the SDK's runtime bridge;
 Twine checks artifact metadata, and `uv pip check` checks dependency metadata,
 not that bridge. This is why the semantic assertions remain in a test file.
+The type environment uses basedpyright's `--verifytypes --warnings` with no
+`--ignoreexternal`, from an isolated project directory. This checks the wheel
+consumers receive rather than editable source or repository-only stubs.
 The release build job still checks only its own preserved wheel and sdist;
 the tox environments never receive its artifacts or publishing credentials.
 

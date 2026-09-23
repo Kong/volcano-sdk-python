@@ -131,6 +131,24 @@ class DurableRuntimeMissingError(Exception):
         self.__cause__ = cause
 
 
+class _DurableEngine(Protocol):
+    """The operations the Volcano facade needs from the optional runtime."""
+
+    def seconds(self, value: int) -> object: ...
+
+    def step_options(self, *, retry: Retry, at_most_once: bool) -> object: ...
+
+    def wait_condition_options(self, options: WaitUntilOptions) -> object: ...
+
+    def map_options(self, options: BatchOptions | None) -> object: ...
+
+    def parallel_options(self, options: BatchOptions | None) -> object: ...
+
+    def named_branch(
+        self, run: Callable[[object], object], name: str | None
+    ) -> object: ...
+
+
 class _Engine:
     """The durable protocol, from the AWS durable execution SDK.
 
@@ -185,6 +203,101 @@ class _Engine:
         if cls._loaded is None:
             cls._loaded = cls()
         return cls._loaded
+
+    def seconds(self, value: int) -> EngineDuration:
+        """Build the runtime's duration from whole seconds."""
+        return self.duration.from_seconds(value)
+
+    def step_options(self, *, retry: Retry, at_most_once: bool) -> StepConfig:
+        """Build the runtime's step options."""
+        config: dict[str, Any] = {}
+        if at_most_once:
+            config["step_semantics"] = self.step_semantics.AT_MOST_ONCE_PER_RETRY
+        strategy = self._retry_strategy(retry)
+        if strategy is not None:
+            config["retry_strategy"] = strategy
+        return self.step_config(**config)
+
+    def _retry_strategy(self, retry: object) -> Any:
+        if retry is None or retry is True:
+            return None
+        # False disables the runtime's default retry policy for this step.
+        if retry is False:
+            return self._never_retry()
+        if isinstance(retry, RetryOptions):
+            return self.create_retry_strategy(
+                self.retry_strategy_config(**self._retry_kwargs(retry))
+            )
+        if callable(retry):
+            return retry
+        raise TypeError(_INVALID_RETRY)
+
+    def _never_retry(self) -> Callable[[Exception, int], RetryDecision]:
+        no_delay = self.seconds(0)
+
+        def never_retry(_error: Exception, _attempt: int) -> RetryDecision:
+            return self.retry_decision(should_retry=False, delay=no_delay)
+
+        return never_retry
+
+    def _retry_kwargs(self, retry: RetryOptions) -> dict[str, Any]:
+        return _engine_kwargs(
+            max_attempts=retry.attempts,
+            initial_delay=self._optional_duration(retry.initial_delay, "initial_delay"),
+            max_delay=self._optional_duration(retry.max_delay, "max_delay"),
+            backoff_rate=retry.backoff_rate,
+            retryable_errors=(None if retry.retry_on is None else list(retry.retry_on)),
+            retryable_error_types=(
+                None if retry.retry_on_types is None else list(retry.retry_on_types)
+            ),
+        )
+
+    def _optional_duration(
+        self, value: Duration | None, field_name: str
+    ) -> EngineDuration | None:
+        return None if value is None else self.seconds(_to_seconds(value, field_name))
+
+    def wait_condition_options(self, options: WaitUntilOptions) -> object:
+        """Build the runtime's polling options."""
+        until = options.until
+
+        def keep_polling(state: Any) -> bool:
+            return not until(state)
+
+        strategy = self.wait_strategy_config(
+            **_engine_kwargs(
+                should_continue_polling=keep_polling,
+                max_attempts=options.max_attempts,
+                initial_delay=self._optional_duration(options.interval, "interval"),
+                max_delay=self._optional_duration(options.max_interval, "max_interval"),
+                backoff_rate=options.backoff_rate,
+            )
+        )
+        return self.wait_for_condition_config(
+            wait_strategy=self.create_wait_strategy(strategy),
+            initial_state=options.initial_state,
+        )
+
+    def _batch_options(self, options: BatchOptions | None) -> dict[str, Any]:
+        resolved = BatchOptions() if options is None else options
+        config = _engine_kwargs(max_concurrency=resolved.concurrency)
+        if resolved.min_succeeded is not None:
+            config["completion_config"] = self.completion_config(
+                min_successful=resolved.min_succeeded
+            )
+        return config
+
+    def map_options(self, options: BatchOptions | None) -> object:
+        """Build the runtime's map options."""
+        return self.map_config(**self._batch_options(options))
+
+    def parallel_options(self, options: BatchOptions | None) -> ParallelConfig:
+        """Build the runtime's parallel options."""
+        return self.parallel_config(**self._batch_options(options))
+
+    def named_branch(self, run: Callable[[object], object], name: str | None) -> object:
+        """Build a named runtime branch."""
+        return self.parallel_branch(func=run, name=name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -436,7 +549,7 @@ class DurableContext:
 
     __slots__ = ("_context", "_engine", "log")
 
-    def __init__(self, context: Any, engine: _Engine) -> None:
+    def __init__(self, context: Any, engine: _DurableEngine) -> None:
         """Wrap an engine context."""
         self._context = context
         self._engine = engine
@@ -478,7 +591,7 @@ class DurableContext:
             self._context.step(
                 run,
                 step_name,
-                self._step_config(retry=retry, at_most_once=at_most_once),
+                self._engine.step_options(retry=retry, at_most_once=at_most_once),
             ),
         )
 
@@ -543,29 +656,13 @@ class DurableContext:
         check_func = _callable(check, "wait_until")
         _validate_wait_options(options)
         engine = self._engine
-        until = options.until
-
-        def keep_polling(state: Any) -> bool:
-            return not until(state)
 
         def check_state(state: Any, scope: Any) -> Any:
             return check_func(state, StepScope(scope.logger, scope.attempt))
 
-        strategy = engine.wait_strategy_config(
-            **_engine_kwargs(
-                should_continue_polling=keep_polling,
-                max_attempts=options.max_attempts,
-                initial_delay=self._optional_duration(options.interval, "interval"),
-                max_delay=self._optional_duration(options.max_interval, "max_interval"),
-                backoff_rate=options.backoff_rate,
-            )
-        )
         return self._context.wait_for_condition(
             check_state,
-            engine.wait_for_condition_config(
-                wait_strategy=engine.create_wait_strategy(strategy),
-                initial_state=options.initial_state,
-            ),
+            engine.wait_condition_options(options),
             name,
         )
 
@@ -601,7 +698,7 @@ class DurableContext:
                 list(items),
                 run,
                 name,
-                engine.map_config(**self._batch_config(options)),
+                engine.map_options(options),
             )
         )
 
@@ -623,7 +720,7 @@ class DurableContext:
             self._context.parallel(
                 [self._branch(branch) for branch in branches],
                 name,
-                engine.parallel_config(**self._batch_config(options)),
+                engine.parallel_options(options),
             )
         )
 
@@ -650,7 +747,7 @@ class DurableContext:
             def run_named(context: Any) -> Any:
                 return named(DurableContext(context, engine))
 
-            return engine.parallel_branch(func=run_named, name=branch.name)
+            return engine.named_branch(run_named, branch.name)
         require_callable(branch, _INVALID_BRANCH)
         bare = branch
 
@@ -659,72 +756,7 @@ class DurableContext:
 
         return run_bare
 
-    def _batch_config(self, options: BatchOptions | None) -> dict[str, Any]:
-        resolved = BatchOptions() if options is None else options
-        config = _engine_kwargs(max_concurrency=resolved.concurrency)
-        if resolved.min_succeeded is not None:
-            config["completion_config"] = self._engine.completion_config(
-                min_successful=resolved.min_succeeded
-            )
-        return config
-
-    def _step_config(self, *, retry: Retry, at_most_once: bool) -> StepConfig:
-        engine = self._engine
-        config: dict[str, Any] = {}
-        if at_most_once:
-            config["step_semantics"] = engine.step_semantics.AT_MOST_ONCE_PER_RETRY
-        strategy = self._retry_strategy(retry)
-        if strategy is not None:
-            config["retry_strategy"] = strategy
-        return engine.step_config(**config)
-
-    def _retry_strategy(self, retry: object) -> Any:
-        engine = self._engine
-        if retry is None or retry is True:
-            return None
-        # retry=False means "fail on the first error", which is not the same as
-        # leaving retry unset: the platform retries by default, and a step that
-        # is not safe to repeat wants the opposite.
-        if retry is False:
-            return self._never_retry()
-        if isinstance(retry, RetryOptions):
-            return engine.create_retry_strategy(
-                engine.retry_strategy_config(**self._retry_kwargs(retry))
-            )
-        if callable(retry):
-            return retry
-        raise TypeError(_INVALID_RETRY)
-
-    def _never_retry(self) -> Callable[[Exception, int], RetryDecision]:
-        engine = self._engine
-        no_delay = engine.duration.from_seconds(0)
-
-        def never_retry(_error: Exception, _attempt: int) -> RetryDecision:
-            return engine.retry_decision(should_retry=False, delay=no_delay)
-
-        return never_retry
-
-    def _retry_kwargs(self, retry: RetryOptions) -> dict[str, Any]:
-        return _engine_kwargs(
-            max_attempts=retry.attempts,
-            initial_delay=self._optional_duration(retry.initial_delay, "initial_delay"),
-            max_delay=self._optional_duration(retry.max_delay, "max_delay"),
-            backoff_rate=retry.backoff_rate,
-            retryable_errors=(None if retry.retry_on is None else list(retry.retry_on)),
-            retryable_error_types=(
-                None if retry.retry_on_types is None else list(retry.retry_on_types)
-            ),
-        )
-
-    def _optional_duration(
-        self, value: Duration | None, field_name: str
-    ) -> EngineDuration | None:
-        return None if value is None else self._duration(value, field_name)
-
-    def _duration(self, value: object, field_name: str) -> EngineDuration:
-        return self._engine.duration.from_seconds(_to_seconds(value, field_name))
-
-    def _wait_duration(self, value: object) -> EngineDuration:
+    def _wait_duration(self, value: object) -> object:
         seconds = _to_seconds(value, "wait")
         if seconds < _MIN_WAIT_SECONDS:
             message = f"wait must be at least {_MIN_WAIT_SECONDS} second"
@@ -732,7 +764,7 @@ class DurableContext:
         if seconds > _MAX_WAIT_SECONDS:
             message = f"wait must be at most {_MAX_WAIT_SECONDS} seconds (366 days)"
             raise TypeError(message)
-        return self._engine.duration.from_seconds(seconds)
+        return self._engine.seconds(seconds)
 
 
 @overload
