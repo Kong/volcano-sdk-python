@@ -63,6 +63,7 @@ dev = [
   "coverage==7.16.1",
   "pytest-cov==7.1.0",
   "types-behave==1.3.0.20260408",
+  "tox==4.62.0",
 ]
 
 [tool.uv]
@@ -246,7 +247,7 @@ exclude_lines = [
 partial_branches = []
 
 [tool.poe.tasks]
-quality = ["audit", "generated", "lint", "format-check", "types", "test", "coverage", "contract-check", "package-check"]
+quality = ["audit", "generated", "lint", "format-check", "types", "test", "coverage", "contract-check", "package-check", "package-extras"]
 build = "uv build --no-sources --require-hashes"
 audit = "bash scripts/audit_dependencies.sh"
 generated = "python -m scripts.check_openapi"
@@ -275,3 +276,17 @@ trap 'rm -rf "$package_dir"' EXIT
 poe build --out-dir "$package_dir"
 bash scripts/check_package.sh "" "$package_dir"
 """
+
+[tool.poe.tasks.package-extras]
+cmd = "tox run --recreate -e package-base,package-durable"
+
+[tool.tox]
+env_list = ["package-base", "package-durable"]
+
+[tool.tox.env_run_base]
+package = "wheel"
+commands = [["python", "-I", "tests/package/optional_dependency.py", "base"]]
+
+[tool.tox.env.package-durable]
+extras = ["durable"]
+commands = [["python", "-I", "tests/package/optional_dependency.py", "durable"]]
