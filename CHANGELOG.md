@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/Kong/volcano-sdk-python/compare/v0.11.1...v0.11.2) (2026-09-23)
+
+
+### Bug Fixes
+
+* **test:** allow pytest discovery without weakening execution gate ([#324](https://github.com/Kong/volcano-sdk-python/issues/324)) ([ab3d9c5](https://github.com/Kong/volcano-sdk-python/commit/ab3d9c56e03ddf57e15225df623de40d66e12c06))
+
 ## [0.11.1](https://github.com/Kong/volcano-sdk-python/compare/v0.11.0...v0.11.1) (2026-09-23)
 
 
