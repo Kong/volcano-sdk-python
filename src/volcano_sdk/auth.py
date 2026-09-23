@@ -778,7 +778,9 @@ class Auth:
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast("AuthListOAuthProvidersTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthListOAuthProvidersTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
             lambda access_token: invoke(
                 transport.auth_list_oauth_providers,
@@ -884,7 +886,9 @@ class Auth:
         """
         _validate_oauth_callback_state(state, expected_state)
         generation, _ = self._client._capture_session()
-        transport = cast("AuthOAuthExchangeTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthOAuthExchangeTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_oauth_exchange,
             authorization=self._client._anon_token(),
@@ -910,7 +914,9 @@ class Auth:
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast("AuthLinkOAuthProviderTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthLinkOAuthProviderTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
             lambda access_token: invoke(
                 transport.auth_link_oauth_provider,
@@ -1043,7 +1049,9 @@ class Auth:
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast("AuthCallOAuthAPITransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthCallOAuthAPITransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         request_body = deepcopy(dict(body)) if body is not None else None
         response = self._session_request(
             lambda access_token: invoke(
