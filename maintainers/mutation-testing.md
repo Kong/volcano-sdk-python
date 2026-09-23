@@ -1,24 +1,26 @@
 # Mutation testing
 
-`uv run --locked poe mutation` runs mutmut against the handwritten lock runtime
-with the full unit-test suite. The native `[tool.mutmut]` configuration selects
-`locks.py` and its three renewal/guard modules; it does not mutate the generated
-OpenAPI client. This is the first subsystem in a staged rollout, not a passing
-repository-wide mutation gate.
+`uv run --locked poe quality` includes the mutation gate. CI runs its other
+native checks in the Python matrix and runs `poe mutation` once on Python 3.12;
+the required `Quality Gate` needs both jobs. Mutmut 3.8.0 instruments every
+handwritten SDK module while excluding the generated OpenAPI client. The PR
+gate runs every mutant in whole changed modules and the four critical lock
+modules. It compares PRs against their actual base, pushes against the prior
+commit, and merge groups against their base commit. Local uncommitted and
+untracked runtime modules are included too.
 
-`poe mutation` exports and checks mutmut's native CI stats. Mutmut itself exits
-successfully when mutants survive, so the Poe result check requires a nonempty
-run with every mutant killed. Inspect `mutants/mutmut-cicd-stats.json` to keep
-`survived`, `no_tests`, `timeout`,
-`suspicious`, `segfault`, and interrupted counts separate. A timeout or crash
-does not prove that a test detected a defect. Mutmut caches results in the
-ignored `mutants/` directory; use a fresh directory when certifying a full run.
+The small shell adapter selects native mutmut dotted-name patterns. The result
+checker reads mutmut's pinned JSON metadata because mutmut exits successfully
+when mutants survive and labels pytest internal-error exit code 3 as a kill.
+`reports/mutation.json` keeps survivors, uncovered mutants, crashes, timeouts,
+and incomplete results separate. Any outcome other than a test kill fails.
+Modules with no mutatable functions are listed explicitly; the selected lock
+modules ensure the gate never passes an empty mutation run. Mutmut caches work
+under ignored `mutants/`; dependency changes force a rerun.
 
-Mutmut 3.8.0's stats collection currently fails an unrelated storage read-size
-assertion when it instruments the entire SDK at once. The copied, unmutated
-source passes the full unit suite. The lock selection keeps this first
-mutation pass reproducible while the broader instrumentation issue is resolved.
-The selected source paths must expand to every handwritten runtime module
-before mutation becomes a required quality task.
+The weekly `Full Mutation Audit` runs all handwritten modules and uploads the
+same report. It is separate from the PR gate because full-repository mutation
+is too expensive on every change. It reports unresolved mutants as failures,
+without a grandfathered baseline.
 
 Reference: [mutmut configuration and workflow](https://mutmut.readthedocs.io/en/latest/).

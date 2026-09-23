@@ -302,7 +302,7 @@ max-complexity = 5
 
 [tool.pytest.ini_options]
 minversion = "9.1.1"
-pythonpath = ["features"]
+pythonpath = [".", "features"]
 strict = true
 empty_parameter_set_mark = "fail_at_collect"
 asyncio_mode = "auto"
@@ -330,13 +330,8 @@ partial_branches = []
 [tool.mutmut]
 source_paths = ["src/volcano_sdk"]
 pytest_add_cli_args_test_selection = ["tests/unit"]
-only_mutate = [
-  "src/volcano_sdk/locks.py",
-  "src/volcano_sdk/_lock_guard.py",
-  "src/volcano_sdk/_lock_renewer.py",
-  "src/volcano_sdk/_lock_worker.py",
-]
 do_not_mutate = ["src/volcano_sdk/_generated/*"]
+on_dependency_change = "rerun"
 also_copy = [
   "features",
   "tests/fixtures",
@@ -347,7 +342,9 @@ also_copy = [
 ]
 
 [tool.poe.tasks]
-quality = ["audit", "generated", "lint", "format-check", "types", "test", "coverage", "contract-check", "package-check", "package-extras"]
+quality = ["checks", "mutation"]
+checks = ["policy", "audit", "generated", "lint", "format-check", "types", "test", "coverage", "contract-check", "package-check", "package-extras"]
+policy = "bash scripts/quality_policy.sh"
 build = "uv build --no-sources --require-hashes"
 audit = "bash scripts/audit_dependencies.sh"
 generated = "python -m scripts.check_openapi"
@@ -358,13 +355,7 @@ mypy = "mypy"
 basedpyright = "basedpyright"
 test = "pytest tests/unit -q --junitxml=reports/unit.xml"
 coverage = "uv run --locked --isolated --python 3.12 pytest tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:reports/coverage.json --junitxml=reports/coverage-unit.xml"
-mutation = ["mutation-run", "mutation-check"]
-
-[tool.poe.tasks.mutation-run]
-sequence = [{ cmd = "mutmut run" }, { cmd = "mutmut export-cicd-stats" }]
-
-[tool.poe.tasks.mutation-check]
-cmd = '''python -c "import json,sys; from pathlib import Path; stats=json.loads(Path('mutants/mutmut-cicd-stats.json').read_text()); print(stats); sys.exit(not (stats['total'] > 0 and stats['killed'] == stats['total']))"'''
+mutation = "bash scripts/mutation.sh"
 
 [tool.poe.tasks.contract-check]
 sequence = [
