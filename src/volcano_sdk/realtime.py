@@ -92,7 +92,7 @@ def _empty_presence_data() -> Mapping[str, JSONValue]:
     return MappingProxyType({})
 
 
-def _consume_presence_result(task: asyncio.Task[Any]) -> None:
+def _consume_presence_result(task: asyncio.Task[object]) -> None:
     if not task.cancelled():
         _ = task.exception()
 
@@ -348,7 +348,7 @@ class CentrifugeSubscription(Protocol):
         """Wait for acknowledgement using the client request timeout."""
         ...
 
-    async def publish(self, data: Any) -> Any:
+    async def publish(self, data: object) -> object:
         """Publish a payload to the remote channel."""
         ...
 
@@ -356,7 +356,7 @@ class CentrifugeSubscription(Protocol):
         """Unsubscribe from the remote channel."""
         ...
 
-    async def presence(self) -> Any:
+    async def presence(self) -> object:
         """Return the clients currently present on the channel."""
         ...
 
@@ -390,7 +390,10 @@ def _finish_unsubscribe(
 class CentrifugeConnection(Protocol):
     """Centrifuge connection operations used by the SDK."""
 
-    state: Any
+    @property
+    def state(self) -> object:
+        """Return the native connection state."""
+        ...
 
     async def connect(self) -> None:
         """Open the remote connection."""
@@ -404,14 +407,14 @@ class CentrifugeConnection(Protocol):
         self,
         name: str,
         *,
-        events: Any,
+        events: object,
         join_leave: bool = False,
         recoverable: bool = False,
     ) -> CentrifugeSubscription:
         """Create a subscription for a remote channel."""
         ...
 
-    def remove_subscription(self, subscription: Any) -> None:
+    def remove_subscription(self, subscription: CentrifugeSubscription) -> None:
         """Remove an unsubscribed channel from the connection registry."""
         ...
 
@@ -423,7 +426,7 @@ class CentrifugeFactory(Protocol):
         self,
         address: str,
         *,
-        events: Any,
+        events: object,
         token: str,
         get_token: Callable[[], Awaitable[str]],
     ) -> CentrifugeConnection:
@@ -438,7 +441,7 @@ class CentrifugeConstructor(Protocol):
         self,
         address: str,
         *,
-        events: Any,
+        events: object,
         token: str,
         get_token: Callable[[], Awaitable[str]],
     ) -> object:
@@ -449,7 +452,7 @@ class CentrifugeConstructor(Protocol):
 class Publication(Protocol):
     """Publication payload received from Centrifuge."""
 
-    data: Any
+    data: object
 
 
 class PublicationContext(Protocol):
@@ -458,10 +461,25 @@ class PublicationContext(Protocol):
     pub: Publication
 
 
+def _native_attribute(value: object, name: str, default: object = None) -> object:
+    return cast("object", getattr(value, name, default))
+
+
+def _native_presence_clients(value: object) -> Mapping[str, object] | None:
+    if not isinstance(value, Mapping):
+        return None
+    clients: dict[str, object] = {}
+    for client_id, info in cast("Mapping[object, object]", value).items():
+        if not isinstance(client_id, str):
+            return None
+        clients[client_id] = info
+    return clients
+
+
 def _centrifuge_client(
     address: str,
     *,
-    events: Any,
+    events: object,
     token: str,
     get_token: Callable[[], Awaitable[str]],
 ) -> CentrifugeConnection:
@@ -524,13 +542,13 @@ class _VolcanoCentrifugeConnection:
     @property
     def is_connected(self) -> bool:
         state = self._connection.state
-        return getattr(state, "value", None) == "connected"
+        return _native_attribute(state, "value") == "connected"
 
     def new_subscription(
         self,
         name: str,
         *,
-        events: Any,
+        events: object,
         join_leave: bool = False,
         recoverable: bool = False,
     ) -> CentrifugeSubscription:
@@ -564,12 +582,12 @@ class _ChannelEvents:
             return
         await self._channel._emit("message", ctx.pub.data)
 
-    async def on_subscribing(self, ctx: Any) -> None:
+    async def on_subscribing(self, ctx: object) -> None:
         del ctx
         if self._is_current():
             await self._channel._transport_lost()
 
-    async def on_subscribed(self, ctx: Any) -> None:
+    async def on_subscribed(self, ctx: object) -> None:
         del ctx
         if not self._is_current() or self._channel._paused:
             return
@@ -578,20 +596,20 @@ class _ChannelEvents:
         if self._channel._type == "presence":
             self._channel._schedule_presence_sync()
 
-    async def on_unsubscribed(self, ctx: Any) -> None:
+    async def on_unsubscribed(self, ctx: object) -> None:
         del ctx
         if self._is_current():
             await self._channel._transport_lost()
 
-    async def on_join(self, ctx: Any) -> None:
+    async def on_join(self, ctx: object) -> None:
         if self._is_current():
-            await self._channel._presence_join(getattr(ctx, "info", None))
+            await self._channel._presence_join(_native_attribute(ctx, "info"))
 
-    async def on_leave(self, ctx: Any) -> None:
+    async def on_leave(self, ctx: object) -> None:
         if self._is_current():
-            await self._channel._presence_leave(getattr(ctx, "info", None))
+            await self._channel._presence_leave(_native_attribute(ctx, "info"))
 
-    async def on_error(self, ctx: Any) -> None:
+    async def on_error(self, ctx: object) -> None:
         del ctx
 
 
@@ -599,64 +617,69 @@ class _ClientEvents:
     def __init__(self, realtime: Realtime) -> None:
         self._realtime: Realtime = realtime
 
-    async def on_connecting(self, ctx: Any) -> None:
+    async def on_connecting(self, ctx: object) -> None:
         del ctx
 
-    async def on_connected(self, ctx: Any) -> None:
+    async def on_connected(self, ctx: object) -> None:
+        client = _native_attribute(ctx, "client")
         self._realtime._enqueue_connection_callbacks(
             "connect",
-            RealtimeConnectContext(client=getattr(ctx, "client", None)),
+            RealtimeConnectContext(client=client if isinstance(client, str) else None),
         )
 
-    async def on_disconnected(self, ctx: Any) -> None:
+    async def on_disconnected(self, ctx: object) -> None:
+        code = _native_attribute(ctx, "code")
+        reason = _native_attribute(ctx, "reason")
         self._realtime._enqueue_connection_callbacks(
             "disconnect",
             RealtimeDisconnectContext(
-                code=getattr(ctx, "code", None),
-                reason=getattr(ctx, "reason", None),
+                code=code if isinstance(code, int) else None,
+                reason=reason if isinstance(reason, str) else None,
             ),
         )
 
-    async def on_error(self, ctx: Any) -> None:
-        error = getattr(ctx, "error", None)
+    async def on_error(self, ctx: object) -> None:
+        code = _native_attribute(ctx, "code")
+        error = _native_attribute(ctx, "error")
         self._realtime._enqueue_connection_callbacks(
             "error",
             RealtimeErrorContext(
-                code=getattr(ctx, "code", None),
+                code=code if isinstance(code, int) else None,
                 message=str(error) if error is not None else None,
                 error=error if isinstance(error, Exception) else None,
             ),
         )
 
-    async def on_subscribed(self, ctx: Any) -> None:
+    async def on_subscribed(self, ctx: object) -> None:
         del ctx
 
-    async def on_subscribing(self, ctx: Any) -> None:
+    async def on_subscribing(self, ctx: object) -> None:
         del ctx
 
-    async def on_unsubscribed(self, ctx: Any) -> None:
+    async def on_unsubscribed(self, ctx: object) -> None:
         del ctx
 
-    async def on_publication(self, ctx: Any) -> None:
+    async def on_publication(self, ctx: object) -> None:
         del ctx
 
-    async def on_join(self, ctx: Any) -> None:
+    async def on_join(self, ctx: object) -> None:
         del ctx
 
-    async def on_leave(self, ctx: Any) -> None:
+    async def on_leave(self, ctx: object) -> None:
         del ctx
 
 
-def _presence_info(info: Any) -> RealtimePresenceInfo:
-    data = getattr(info, "conn_info", None)
+def _presence_info(info: object) -> RealtimePresenceInfo:
+    data = _native_attribute(info, "conn_info")
+    user = _native_attribute(info, "user")
     typed_data = (
         cast("Mapping[str, JSONValue]", data)
         if isinstance(data, Mapping)
         else _empty_presence_data()
     )
     return RealtimePresenceInfo(
-        client=str(getattr(info, "client", "")),
-        user=getattr(info, "user", None),
+        client=str(_native_attribute(info, "client", "")),
+        user=user if isinstance(user, str) else None,
         data=typed_data,
     )
 
@@ -1160,7 +1183,7 @@ class Channel:
         if inspect.isawaitable(result):
             await result
 
-    def _replace_presence(self, clients: Mapping[str, Any]) -> None:
+    def _replace_presence(self, clients: Mapping[str, object]) -> None:
         self._presence_state = {
             client_id: _presence_info(info) for client_id, info in clients.items()
         }
@@ -1170,7 +1193,7 @@ class Channel:
             self._presence_syncing = True
             self._presence_events.clear()
 
-    async def _complete_presence_sync(self, clients: Mapping[str, Any]) -> None:
+    async def _complete_presence_sync(self, clients: Mapping[str, object]) -> None:
         async with self._presence_lock:
             if not self._subscribed:
                 self._discard_presence_sync()
@@ -1207,7 +1230,7 @@ class Channel:
         else:
             _ = self._presence_state.pop(presence.client, None)
 
-    async def _presence_join(self, info: Any) -> None:
+    async def _presence_join(self, info: object) -> None:
         if self._type != "presence" or info is None:
             return
         async with self._presence_lock:
@@ -1220,7 +1243,7 @@ class Channel:
             await self._emit("join", presence)
             await self._emit("presence_sync", self.get_presence_state())
 
-    async def _presence_leave(self, info: Any) -> None:
+    async def _presence_leave(self, info: object) -> None:
         if self._type != "presence" or info is None:
             return
         async with self._presence_lock:
@@ -1789,9 +1812,9 @@ class Realtime:
         finally:
             if not query_succeeded:
                 await channel._abort_presence_sync()
-        clients = getattr(result, "clients", None)
-        if isinstance(clients, Mapping):
-            await channel._complete_presence_sync(cast("Mapping[str, Any]", clients))
+        clients = _native_presence_clients(_native_attribute(result, "clients"))
+        if clients is not None:
+            await channel._complete_presence_sync(clients)
         else:
             await channel._abort_presence_sync()
 
@@ -1802,7 +1825,7 @@ class Realtime:
             subscription = channel._subscription
             if not channel._subscribed or subscription is None:
                 raise RuntimeError(CHANNEL_NOT_SUBSCRIBED)
-            await subscription.publish(data)
+            _ = await subscription.publish(data)
 
     async def _unsubscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
