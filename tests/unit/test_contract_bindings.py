@@ -633,6 +633,9 @@ def test_log_contract_rejects_duplicate_and_wrong_resource_events() -> None:
     }
     with pytest.raises(AssertionError):
         contract.verify_events(events)
+    malformed_event: dict[str, object] = {**events[1], "resource": None}
+    with pytest.raises(AssertionError):
+        contract.verify_events([events[0], malformed_event, events[2]])
 
 
 def test_log_activity_contract_rejects_wrong_resource_counts() -> None:
@@ -659,6 +662,9 @@ def test_log_activity_contract_rejects_wrong_resource_counts() -> None:
     )
     contract.verify_activity(response)
     response.data[0]["counts"]["resource_ids"] = {"another-function": 1}
+    with pytest.raises(AssertionError):
+        contract.verify_activity(response)
+    response.data[0]["counts"]["resource_ids"] = None
     with pytest.raises(AssertionError):
         contract.verify_activity(response)
 

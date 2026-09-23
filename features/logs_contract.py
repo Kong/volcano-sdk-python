@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 from uuid import uuid4
 
 from volcano_sdk import VolcanoClient
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable
 
     from contract_support import ContractWorld
 
@@ -41,6 +42,33 @@ def event_id(event: Mapping[str, JSONValue]) -> str:
     identity = event["id"]
     assert isinstance(identity, str)
     return identity
+
+
+def mapping_field(
+    value: Mapping[str, JSONValue], field: str
+) -> Mapping[str, JSONValue]:
+    nested = value[field]
+    assert isinstance(nested, Mapping)
+    return nested
+
+
+def event_ordinal(event: Mapping[str, JSONValue]) -> int:
+    ordinal = mapping_field(event, "body")["ordinal"]
+    assert isinstance(ordinal, int)
+    return ordinal
+
+
+def bucket_count(bucket: Mapping[str, JSONValue], category: str, key: str) -> int:
+    counts = mapping_field(bucket, "counts")
+    value = mapping_field(counts, category).get(key, 0)
+    assert isinstance(value, int)
+    return value
+
+
+def bucket_total(bucket: Mapping[str, JSONValue]) -> int:
+    total = bucket["total"]
+    assert isinstance(total, int)
+    return total
 
 
 class LogContract:
@@ -108,37 +136,38 @@ class LogContract:
             120,
         )
 
-    def verify_events(self, events: Any) -> None:
+    def verify_events(self, events: list[Mapping[str, JSONValue]]) -> None:
         assert len(events) == LOG_EVENT_COUNT
-        assert len({event["id"] for event in events}) == LOG_EVENT_COUNT
-        assert sorted(event["body"]["ordinal"] for event in events) == [0, 1, 2]
+        assert len({event_id(event) for event in events}) == LOG_EVENT_COUNT
+        assert sorted(event_ordinal(event) for event in events) == [0, 1, 2]
         timestamps: list[datetime] = []
         for event in events:
             assert event["id"]
-            assert event["body"] == {
+            body = mapping_field(event, "body")
+            assert body == {
                 "marker": self.marker,
-                "ordinal": event["body"]["ordinal"],
+                "ordinal": event_ordinal(event),
             }
-            assert event["resource"]["type"] == "function"
-            assert event["resource"]["id"] == self.world.fixture["function_id"]
+            resource = mapping_field(event, "resource")
+            assert resource["type"] == "function"
+            assert resource["id"] == self.world.fixture["function_id"]
             assert event["level"] == "info"
-            timestamps.append(datetime.fromisoformat(event["timestamp"]))
+            timestamp = event["timestamp"]
+            assert isinstance(timestamp, str)
+            timestamps.append(datetime.fromisoformat(timestamp))
         assert timestamps == sorted(timestamps, reverse=True)
 
-    def verify_activity(self, response: Any) -> None:
+    def verify_activity(self, response: LogActivityResponse) -> None:
         assert response.total == 1
         assert len(response.data) == ACTIVITY_BUCKET_COUNT
-        assert sum(bucket["total"] for bucket in response.data) == 1
+        assert sum(bucket_total(bucket) for bucket in response.data) == 1
         assert (
             sum(
-                bucket["counts"]["resource_ids"].get(
-                    self.world.fixture["function_id"], 0
-                )
+                bucket_count(bucket, "resource_ids", self.world.fixture["function_id"])
                 for bucket in response.data
             )
             == 1
         )
         assert (
-            sum(bucket["counts"]["levels"].get("info", 0) for bucket in response.data)
-            == 1
+            sum(bucket_count(bucket, "levels", "info") for bucket in response.data) == 1
         )
