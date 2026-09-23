@@ -344,7 +344,8 @@ also_copy = [
 
 [tool.poe.tasks]
 quality = ["checks", "mutation"]
-checks = ["audit", "generated", "lint", "format-check", "types", "test", "coverage", "contract-check", "package-check", "package-extras"]
+checks = ["policy", "audit", "generated", "lint", "format-check", "types", "test", "coverage", "contract-check", "package-check", "package-extras"]
+policy = "bash scripts/check_quality_policy.sh"
 build = "uv build --no-sources --require-hashes"
 audit = "bash scripts/audit_dependencies.sh"
 generated = "python -m scripts.check_openapi"
