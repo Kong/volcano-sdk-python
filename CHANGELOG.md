@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/Kong/volcano-sdk-python/compare/v0.12.0...v0.13.0) (2026-09-23)
+
+
+### Features
+
+* **quality:** type-check Python auth state tests without Any ([#345](https://github.com/Kong/volcano-sdk-python/issues/345)) ([acd2352](https://github.com/Kong/volcano-sdk-python/commit/acd235251b00c871297eff7ba1ab94e1ea9ee02c))
+
 ## [0.12.0](https://github.com/Kong/volcano-sdk-python/compare/v0.11.3...v0.12.0) (2026-09-23)
 
 
