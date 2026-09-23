@@ -86,6 +86,18 @@ def logs_client(transport: FakeLogsTransport) -> VolcanoClient:
     return client
 
 
+def test_logs_requires_a_transport_with_log_methods() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=RejectingTransport())
+    client.auth.set_session(
+        Session(
+            access_token="access-token", refresh_token="refresh-token", user_id="user-1"
+        )
+    )
+
+    with pytest.raises(TypeError, match="Transport does not support project logs"):
+        client.logs.search("project-1", {"resource": {"type": "function"}})
+
+
 def test_logs_search_returns_an_immutable_page() -> None:
     transport = FakeLogsTransport()
     request: Mapping[str, JSONValue] = {

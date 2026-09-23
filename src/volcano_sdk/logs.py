@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ._log_response import (
     activity_total,
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 _INVALID_PROJECT_ID = "project_id must be a non-empty string"
 _INVALID_LOG_REQUEST = "Log request must be a mapping"
+_INVALID_LOG_TRANSPORT = "Transport does not support project logs"
 
 
 class LogsContext(Protocol):
@@ -28,6 +29,7 @@ class LogsContext(Protocol):
     auth: Auth
 
 
+@runtime_checkable
 class LogsTransport(Protocol):
     """Transport operations required by the logs facade."""
 
@@ -57,7 +59,13 @@ class Logs:
 
     def __init__(self, client: LogsContext) -> None:
         """Bind log reads to a Volcano client."""
-        self._client = client
+        self._client: LogsContext = client
+
+    def _logs_transport(self) -> LogsTransport:
+        transport = self._client._transport
+        if not isinstance(transport, LogsTransport):
+            raise TypeError(_INVALID_LOG_TRANSPORT)
+        return transport
 
     def search(
         self,
@@ -73,7 +81,7 @@ class Logs:
 
         """
         project_id, request = _log_request(project_id, request)
-        transport = cast("LogsTransport", self._client._transport)
+        transport = self._logs_transport()
         response = self._client.auth._session_request(
             lambda token: invoke(
                 transport.search_project_logs,
@@ -98,7 +106,7 @@ class Logs:
 
         """
         project_id, request = _log_request(project_id, request)
-        transport = cast("LogsTransport", self._client._transport)
+        transport = self._logs_transport()
         response = self._client.auth._session_request(
             lambda token: invoke(
                 transport.get_project_log_activity,
