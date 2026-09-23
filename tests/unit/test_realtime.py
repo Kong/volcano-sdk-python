@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import importlib
 import json
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast
-from unittest.mock import AsyncMock, create_autospec
+from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, cast
+from unittest.mock import AsyncMock
 
 import pytest
+from centrifuge import CentrifugeError, ClientState, Subscription, SubscriptionState
+from centrifuge import Client as NativeClient
 from fixtures.invalid_arguments import (
     fractional_fetch_window,
+    remove_unsupported_realtime_channel_type,
     unsupported_postgres_change_event,
+    unsupported_realtime_channel_type,
 )
 from state_assertions import assert_same
 from transport_fixtures import RejectingTransport
@@ -31,7 +34,7 @@ from volcano_sdk import (
 from volcano_sdk import realtime as realtime_module
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Mapping
 
 UNEXPECTED_TRANSPORT_CALL = "unexpected transport operation"
 
@@ -41,12 +44,55 @@ class FetchOptions(TypedDict, total=False):
     fetch_max_batch_size: int
 
 
-def centrifuge_error(message: str) -> Exception:
-    error_type = cast(
-        "type[Exception]",
-        importlib.import_module("centrifuge").CentrifugeError,
+class RecordedFactoryArguments(TypedDict):
+    address: str
+    events: object
+    token: str
+    get_token: Callable[[], Awaitable[str]]
+
+
+@dataclass(frozen=True)
+class FakeConnectionState:
+    value: str
+
+
+@dataclass
+class FakePublication:
+    data: object
+
+
+@dataclass
+class FakePublicationContext:
+    pub: realtime_module.Publication
+
+
+def _is_string_keyed_dict(value: object) -> TypeGuard[dict[str, object]]:
+    return isinstance(value, dict) and all(
+        isinstance(key, str) for key in cast("dict[object, object]", value)
     )
-    return error_type(message)
+
+
+def _command_section(command: dict[str, object], name: str) -> dict[str, object]:
+    value = command[name]
+    if not _is_string_keyed_dict(value):
+        message = f"invalid native {name} command"
+        raise AssertionError(message)
+    return value
+
+
+def _ignore_presence_state(_state: Mapping[str, RealtimePresenceInfo]) -> None:
+    return
+
+
+def _record_channel_hit(received: list[str], name: str) -> Callable[[object], None]:
+    def record(_data: object) -> None:
+        received.append(name)
+
+    return record
+
+
+def centrifuge_error(message: str) -> Exception:
+    return CentrifugeError(message)
 
 
 def test_realtime_database_binding_can_be_replaced_and_cleared() -> None:
@@ -122,7 +168,7 @@ def test_realtime_fetch_validates_postgres_row_values(
         assert asyncio.run(client.realtime._fetch_postgres_rows((request,))) == (row,)
     else:
         with pytest.raises(TypeError, match="non-JSON value"):
-            asyncio.run(client.realtime._fetch_postgres_rows((request,)))
+            _ = asyncio.run(client.realtime._fetch_postgres_rows((request,)))
 
 
 def test_realtime_fetch_requires_async_select_transport() -> None:
@@ -135,7 +181,7 @@ def test_realtime_fetch_requires_async_select_transport() -> None:
     )
 
     with pytest.raises(TypeError, match="does not support realtime Postgres row fetch"):
-        asyncio.run(client.realtime._fetch_postgres_rows((request,)))
+        _ = asyncio.run(client.realtime._fetch_postgres_rows((request,)))
 
 
 def test_realtime_row_fetch_returns_none_when_the_row_is_absent() -> None:
@@ -164,7 +210,7 @@ class Response:
 
 class AuthTransport:
     def __init__(self) -> None:
-        self.access_token = "access-1"
+        self.access_token: str = "access-1"
 
     def auth_signin(
         self,
@@ -273,7 +319,7 @@ class AuthTransport:
 class RealtimeDatabaseTransport(AuthTransport):
     def __init__(self, rows: list[dict[str, object]]) -> None:
         super().__init__()
-        self.rows = rows
+        self.rows: list[dict[str, object]] = rows
         self.queries: list[dict[str, object]] = []
 
     @override
@@ -320,9 +366,9 @@ def _query_filter_value(query: dict[str, object]) -> object:
 class BlockingRealtimeDatabaseTransport(RealtimeDatabaseTransport):
     def __init__(self) -> None:
         super().__init__([{"id": 42, "body": "fetched"}])
-        self.started = asyncio.Event()
-        self.release = asyncio.Event()
-        self.cancelled = asyncio.Event()
+        self.started: asyncio.Event = asyncio.Event()
+        self.release: asyncio.Event = asyncio.Event()
+        self.cancelled: asyncio.Event = asyncio.Event()
 
     @override
     async def query_database_select_async(
@@ -334,7 +380,7 @@ class BlockingRealtimeDatabaseTransport(RealtimeDatabaseTransport):
     ) -> Response:
         self.started.set()
         try:
-            await self.release.wait()
+            _ = await self.release.wait()
         except asyncio.CancelledError:
             self.cancelled.set()
             raise
@@ -349,34 +395,45 @@ class FakeSubscription:
     def __init__(
         self,
         name: str,
-        events: Any,
+        events: object,
         *,
         join_leave: bool,
         recoverable: bool,
     ) -> None:
-        self.name = name
-        self.events = events
-        self.join_leave = join_leave
-        self.recoverable = recoverable
-        self.calls: list[tuple[str, Any]] = []
-        self.presence_clients: dict[str, Any] = {}
+        if events is not None and not isinstance(
+            events, realtime_module._ChannelEvents
+        ):
+            message = "expected SDK channel events"
+            raise TypeError(message)
+        self.name: str = name
+        self.events: realtime_module._ChannelEvents | None = events
+        self.join_leave: bool = join_leave
+        self.recoverable: bool = recoverable
+        self.calls: list[tuple[str, object]] = []
+        self.presence_clients: dict[str, object] = {}
         self.presence_error: Exception | None = None
         self.presence_entered: asyncio.Event | None = None
         self.presence_release: asyncio.Event | None = None
-        self.inside_subscribed_handler = False
-        self.subscribed = asyncio.Event()
+        self.inside_subscribed_handler: bool = False
+        self.subscribed: asyncio.Event = asyncio.Event()
         self.unsubscribe_error: Exception | None = None
         self.unsubscribe_entered: asyncio.Event | None = None
         self.unsubscribe_release: asyncio.Event | None = None
+
+    def _events(self) -> realtime_module._ChannelEvents:
+        if self.events is None:
+            message = "detached test subscription has no events"
+            raise AssertionError(message)
+        return self.events
 
     async def subscribe(self) -> None:
         self.calls.append(("subscribe", None))
         await self.emit_subscribed()
 
     async def ready(self) -> None:
-        await self.subscribed.wait()
+        _ = await self.subscribed.wait()
 
-    async def publish(self, data: Any) -> None:
+    async def publish(self, data: object) -> None:
         self.calls.append(("publish", data))
 
     async def unsubscribe(self) -> None:
@@ -384,14 +441,14 @@ class FakeSubscription:
         if self.unsubscribe_entered is not None:
             self.unsubscribe_entered.set()
         if self.unsubscribe_release is not None:
-            await self.unsubscribe_release.wait()
+            _ = await self.unsubscribe_release.wait()
         if self.unsubscribe_error is not None:
             raise self.unsubscribe_error
-        await self.events.on_unsubscribed(
+        await self._events().on_unsubscribed(
             SimpleNamespace(code=0, reason="unsubscribe called")
         )
 
-    async def presence(self) -> Any:
+    async def presence(self) -> object:
         if self.inside_subscribed_handler:
             message = "presence must run outside the subscription callback"
             raise AssertionError(message)
@@ -402,14 +459,14 @@ class FakeSubscription:
         if self.presence_entered is not None:
             self.presence_entered.set()
         if self.presence_release is not None:
-            await self.presence_release.wait()
+            _ = await self.presence_release.wait()
         return SimpleNamespace(clients=clients)
 
     async def emit_subscribed(self) -> None:
         self.subscribed.set()
         self.inside_subscribed_handler = True
         try:
-            await self.events.on_subscribed(
+            await self._events().on_subscribed(
                 SimpleNamespace(
                     channel=self.name,
                     recoverable=self.recoverable,
@@ -425,28 +482,39 @@ class FakeSubscription:
 
     async def emit_subscribing(self) -> None:
         self.subscribed.clear()
-        await self.events.on_subscribing(SimpleNamespace(code=0, reason="reconnecting"))
-
-    async def emit(self, data: Any) -> None:
-        await self.events.on_publication(
-            SimpleNamespace(pub=SimpleNamespace(data=data))
+        await self._events().on_subscribing(
+            SimpleNamespace(code=0, reason="reconnecting")
         )
 
-    async def emit_join(self, info: Any) -> None:
-        self.presence_clients[str(info.client)] = info
-        await self.events.on_join(SimpleNamespace(info=info))
+    async def emit(self, data: object) -> None:
+        await self._events().on_publication(
+            FakePublicationContext(pub=FakePublication(data=data))
+        )
 
-    async def emit_leave(self, info: Any) -> None:
-        self.presence_clients.pop(str(info.client), None)
-        await self.events.on_leave(SimpleNamespace(info=info))
+    async def emit_join(self, info: object) -> None:
+        client = realtime_module._native_attribute(info, "client")
+        if not isinstance(client, str):
+            message = "expected presence client ID"
+            raise TypeError(message)
+        self.presence_clients[client] = info
+        await self._events().on_join(SimpleNamespace(info=info))
+
+    async def emit_leave(self, info: object) -> None:
+        client = realtime_module._native_attribute(info, "client")
+        if not isinstance(client, str):
+            message = "expected presence client ID"
+            raise TypeError(message)
+        _ = self.presence_clients.pop(client, None)
+        await self._events().on_leave(SimpleNamespace(info=info))
 
 
 class FakeCentrifugeClient:
-    def __init__(self, events: Any = None) -> None:
+    def __init__(self, events: object = None) -> None:
         self.calls: list[str] = []
-        self.events = events
-        self.state = SimpleNamespace(value="disconnected")
-        self.presence_clients: dict[str, Any] = {}
+        self.events: realtime_module._ClientEvents | None = None
+        self.set_events(events)
+        self.state: FakeConnectionState = FakeConnectionState(value="disconnected")
+        self.presence_clients: dict[str, object] = {}
         self.presence_error: Exception | None = None
         self.presence_entered: asyncio.Event | None = None
         self.presence_release: asyncio.Event | None = None
@@ -455,9 +523,15 @@ class FakeCentrifugeClient:
         self.subscription: FakeSubscription | None = None
         self._subs: dict[str, FakeSubscription] = {}
 
+    def set_events(self, events: object) -> None:
+        if events is not None and not isinstance(events, realtime_module._ClientEvents):
+            message = "expected SDK connection events"
+            raise TypeError(message)
+        self.events = events
+
     async def connect(self) -> None:
         self.calls.append("connect")
-        self.state = SimpleNamespace(value="connected")
+        self.state = FakeConnectionState(value="connected")
         if self.events is not None:
             await self.events.on_connected(SimpleNamespace(client="client-123"))
 
@@ -467,7 +541,7 @@ class FakeCentrifugeClient:
             self.disconnect_probe()
         if self.disconnect_error is not None:
             raise self.disconnect_error
-        self.state = SimpleNamespace(value="disconnected")
+        self.state = FakeConnectionState(value="disconnected")
         self._subs.clear()
         if self.events is not None:
             await self.events.on_disconnected(
@@ -482,7 +556,7 @@ class FakeCentrifugeClient:
         self,
         name: str,
         *,
-        events: Any,
+        events: object,
         join_leave: bool = False,
         recoverable: bool = False,
     ) -> FakeSubscription:
@@ -503,13 +577,13 @@ class FakeCentrifugeClient:
         self._subs[name] = self.subscription
         return self.subscription
 
-    def remove_subscription(self, subscription: Any) -> None:
+    def remove_subscription(self, subscription: object) -> None:
         name = next(
             name for name, candidate in self._subs.items() if candidate is subscription
         )
         del self._subs[name]
 
-    async def emit_wire_publication(self, name: str, data: Any) -> None:
+    async def emit_wire_publication(self, name: str, data: object) -> None:
         subscription = self._subs.get(name)
         if subscription is not None:
             await subscription.emit(data)
@@ -518,15 +592,15 @@ class FakeCentrifugeClient:
 class BlockingConnectCentrifugeClient(FakeCentrifugeClient):
     def __init__(self) -> None:
         super().__init__()
-        self.connect_started = asyncio.Event()
-        self.connect_release = asyncio.Event()
+        self.connect_started: asyncio.Event = asyncio.Event()
+        self.connect_release: asyncio.Event = asyncio.Event()
 
     @override
     async def connect(self) -> None:
         self.calls.append("connect")
         self.connect_started.set()
-        await self.connect_release.wait()
-        self.state = SimpleNamespace(value="connected")
+        _ = await self.connect_release.wait()
+        self.state: FakeConnectionState = FakeConnectionState(value="connected")
         if self.events is not None:
             await self.events.on_connected(SimpleNamespace(client="client-123"))
 
@@ -539,31 +613,54 @@ class FakeCentrifugeFactory:
         self,
         address: str,
         *,
-        events: Any,
+        events: object,
         token: str,
         get_token: Callable[[], Awaitable[str]],
     ) -> FakeCentrifugeClient:
         del address, token, get_token
-        self.client.events = events
+        self.client.set_events(events)
         return self.client
+
+
+class SDKNativeClient(NativeClient):
+    """Adapt the native keyword names to the SDK's private connection protocol."""
+
+    @override
+    def new_subscription(
+        self,
+        name: str,
+        events: object | None = None,
+        *,
+        join_leave: bool = False,
+        recoverable: bool = False,
+    ) -> Subscription:
+        return super().new_subscription(
+            name, events=events, join_leave=join_leave, recoverable=recoverable
+        )
+
+    @override
+    def remove_subscription(self, subscription: object) -> None:
+        if not isinstance(subscription, Subscription):
+            message = "expected native subscription"
+            raise TypeError(message)
+        super().remove_subscription(subscription)
 
 
 class ControlledCentrifugeFactory:
     """Run native subscription logic with commands acknowledged by the test."""
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        centrifuge = importlib.import_module("centrifuge")
-        self.client = centrifuge.Client(
+        self.client: SDKNativeClient = SDKNativeClient(
             "ws://localhost/realtime/v1/websocket",
             loop=asyncio.get_running_loop(),
         )
-        self.commands: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        self.commands: asyncio.Queue[dict[str, object]] = asyncio.Queue()
 
         def connect() -> None:
-            self.client.state = centrifuge.ClientState.CONNECTED
+            self.client.state = ClientState.CONNECTED
             self.client._connected_future.set_result(True)
 
-        def send_commands(commands: list[dict[str, Any]]) -> None:
+        def send_commands(commands: list[dict[str, object]]) -> None:
             for command in commands:
                 self.commands.put_nowait(command)
 
@@ -578,15 +675,29 @@ class ControlledCentrifugeFactory:
             AsyncMock(spec_set=self.client._send_commands, side_effect=send_commands),
         )
 
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        del args
-        self.client.events = kwargs["events"]
+    def __call__(
+        self,
+        address: str,
+        *,
+        events: object,
+        token: str,
+        get_token: Callable[[], Awaitable[str]],
+    ) -> SDKNativeClient:
+        del address, token, get_token
+        self.client.events = events
         return self.client
 
-    async def command(self) -> dict[str, Any]:
+    async def command(self) -> dict[str, object]:
         return await asyncio.wait_for(self.commands.get(), timeout=0.2)
 
-    async def reply(self, command: dict[str, Any], **result: Any) -> None:
+    def subscription(self, channel: str) -> Subscription:
+        subscription = self.client.get_subscription(channel)
+        if subscription is None:
+            message = f"missing native subscription: {channel}"
+            raise AssertionError(message)
+        return subscription
+
+    async def reply(self, command: dict[str, object], **result: object) -> None:
         await self.client._process_reply({"id": command["id"], **result})
 
 
@@ -601,10 +712,10 @@ def test_realtime_native_dispatch_routes_project_prefixed_publications(
             _transport=AuthTransport(),
             _realtime_client_factory=factory,
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
-        received: list[Any] = []
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
+        received: list[object] = []
         channel = client.realtime.channel("room", channel_type=channel_type)
-        channel.on("message", received.append)
+        _ = channel.on("message", received.append)
         subscribing = asyncio.create_task(channel.subscribe())
         await factory.reply(await factory.command(), subscribe={})
         if channel_type == "presence":
@@ -639,16 +750,16 @@ def test_realtime_native_dispatch_routes_user_scoped_postgres_publications(
             _transport=AuthTransport(),
             _realtime_client_factory=factory,
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
-        received: list[Any] = []
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
+        received: list[PostgresChange] = []
         delivered = asyncio.Event()
 
-        def on_insert(change: Any) -> None:
+        def on_insert(change: PostgresChange) -> None:
             received.append(change)
             delivered.set()
 
         channel = client.realtime.channel("public:messages", channel_type="postgres")
-        channel.on_postgres_changes(
+        _ = channel.on_postgres_changes(
             "INSERT", schema="public", table="messages", callback=on_insert
         )
         subscribing = asyncio.create_task(channel.subscribe())
@@ -670,7 +781,7 @@ def test_realtime_native_dispatch_routes_user_scoped_postgres_publications(
                     }
                 }
             )
-            await asyncio.wait_for(delivered.wait(), timeout=0.2)
+            _ = await asyncio.wait_for(delivered.wait(), timeout=0.2)
             assert len(received) == 1
             assert received[0].record == payload["record"]
             assert received[0].type == "INSERT"
@@ -686,7 +797,7 @@ async def start_native_presence_refresh(
     VolcanoClient,
     realtime_module.Channel,
     ControlledCentrifugeFactory,
-    dict[str, Any],
+    dict[str, object],
 ]:
     factory = ControlledCentrifugeFactory(monkeypatch)
     client = VolcanoClient(
@@ -694,7 +805,7 @@ async def start_native_presence_refresh(
         _transport=AuthTransport(),
         _realtime_client_factory=factory,
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     channel = client.realtime.channel("lobby", channel_type="presence")
     subscribing = asyncio.create_task(channel.subscribe())
     command = await factory.command()
@@ -703,7 +814,7 @@ async def start_native_presence_refresh(
     await factory.reply(command, presence={"presence": {}})
     await subscribing
     await channel._wait_presence_sync()
-    subscription = factory.client.get_subscription(channel.name)
+    subscription = factory.subscription(channel.name)
     await subscription._move_subscribing(1, "transport closed")
     command = await factory.command()
     await factory.reply(command, subscribe={})
@@ -723,7 +834,11 @@ def test_realtime_stopped_presence_query_accepts_late_native_reply(
         )
         healthy = client.realtime.channel("healthy")
         received = asyncio.Event()
-        healthy.on("message", lambda _message: received.set())
+
+        def mark_received(_message: object) -> None:
+            received.set()
+
+        _ = healthy.on("message", mark_received)
         subscribing = asyncio.create_task(healthy.subscribe())
         command = await factory.command()
         await factory.reply(command, subscribe={})
@@ -753,12 +868,12 @@ def test_realtime_stopped_presence_query_accepts_late_native_reply(
             await factory.client._process_reply(
                 {"push": {"channel": healthy.name, "pub": {"data": "healthy"}}}
             )
-            await asyncio.wait_for(received.wait(), timeout=0.2)
+            _ = await asyncio.wait_for(received.wait(), timeout=0.2)
         finally:
             # Let a failed assertion finish the unsubscribe before closing the client.
             if not stopping.done():
                 await factory.reply(command, unsubscribe={})
-            await asyncio.gather(stopping, return_exceptions=True)
+            _ = await asyncio.gather(stopping, return_exceptions=True)
             await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -785,10 +900,10 @@ def test_realtime_cancelled_pause_keeps_native_subscription_resumable(
         client, channel, factory, presence = await start_native_presence_refresh(
             monkeypatch
         )
-        subscription = factory.client.get_subscription(channel.name)
+        subscription = factory.subscription(channel.name)
         pausing = asyncio.create_task(channel.unsubscribe())
         await asyncio.sleep(0)
-        pausing.cancel()
+        _ = pausing.cancel()
         await factory.reply(await factory.command(), unsubscribe={})
         with pytest.raises(asyncio.CancelledError):
             await pausing
@@ -806,10 +921,10 @@ def test_realtime_cancelled_pause_keeps_native_subscription_resumable(
             await resuming
             await channel._wait_presence_sync()
             assert_same(channel._subscribed, expected=True)
-            assert factory.client.get_subscription(channel.name) is subscription
+            assert factory.subscription(channel.name) is subscription
         finally:
             await client.realtime.disconnect()
-            await asyncio.gather(resuming, return_exceptions=True)
+            _ = await asyncio.gather(resuming, return_exceptions=True)
 
     asyncio.run(scenario())
 
@@ -822,20 +937,20 @@ def test_realtime_repeated_pause_retains_presence_clear_notification(
             monkeypatch
         )
         entered, release = asyncio.Event(), asyncio.Event()
-        snapshots: list[Any] = []
+        snapshots: list[Mapping[str, RealtimePresenceInfo]] = []
 
-        async def receive(state: Any) -> None:
+        async def receive(state: Mapping[str, RealtimePresenceInfo]) -> None:
             snapshots.append(state)
             if state:
                 entered.set()
-                await release.wait()
+                _ = await release.wait()
 
-        channel.on_presence_sync(receive)
+        _ = channel.on_presence_sync(receive)
         await factory.reply(
             presence,
             presence={"presence": {"peer": {"client": "peer", "user": "peer"}}},
         )
-        await asyncio.wait_for(entered.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(entered.wait(), timeout=0.2)
         try:
             pausing = asyncio.create_task(channel.unsubscribe())
             command = await factory.command()
@@ -923,14 +1038,14 @@ def test_realtime_reuses_channels_with_the_same_fetch_configuration() -> None:
 
 def test_realtime_rejects_conflicting_channel_fetch_configuration() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
-    client.realtime.channel(
+    _ = client.realtime.channel(
         "public:messages",
         channel_type="postgres",
         auto_fetch=False,
     )
 
     with pytest.raises(ValueError, match="fetch configuration"):
-        client.realtime.channel(
+        _ = client.realtime.channel(
             "public:messages",
             channel_type="postgres",
             auto_fetch=True,
@@ -954,7 +1069,7 @@ def test_realtime_rejects_invalid_channel_fetch_configuration(
     client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
 
     with pytest.raises(ValueError, match=message):
-        client.realtime.channel(
+        _ = client.realtime.channel(
             "public:messages",
             channel_type="postgres",
             **options,
@@ -975,7 +1090,7 @@ def test_realtime_postgres_delivery_identity_changes_on_reauthentication() -> No
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel(
@@ -987,7 +1102,7 @@ def test_realtime_postgres_delivery_identity_changes_on_reauthentication() -> No
 
         assert channel._postgres_delivery_is_current(identity)
 
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
 
         identity_after_reauthentication = channel._capture_postgres_delivery_identity()
         assert not channel._postgres_delivery_is_current(identity)
@@ -1006,7 +1121,7 @@ def test_realtime_postgres_delivery_identity_changes_on_resubscription() -> None
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel(
@@ -1038,13 +1153,13 @@ def test_realtime_rejects_new_subscriptions_after_session_changes() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         broadcast = client.realtime.channel("updates")
         await broadcast.subscribe()
 
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         postgres = client.realtime.channel(
             "public:messages",
             channel_type="postgres",
@@ -1065,9 +1180,9 @@ async def test_realtime_drops_queued_postgres_callbacks_from_an_old_epoch() -> N
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
-    def insert(record_id: int) -> dict[str, Any]:
+    def insert(record_id: int) -> dict[str, object]:
         return {
             "type": "INSERT",
             "schema": "public",
@@ -1085,16 +1200,18 @@ async def test_realtime_drops_queued_postgres_callbacks_from_an_old_epoch() -> N
         channel_type="postgres",
     )
 
-    async def on_insert(change: Any) -> None:
+    async def on_insert(change: PostgresChange) -> None:
+        assert change.record is not None
         record_id = change.record["id"]
+        assert isinstance(record_id, int)
         if record_id == 1:
             first_started.set()
-            await release_first.wait()
+            _ = await release_first.wait()
         received.append(record_id)
         if record_id == 3:
             third_received.set()
 
-    channel.on_postgres_changes(
+    _ = channel.on_postgres_changes(
         "INSERT",
         schema="public",
         table="messages",
@@ -1105,7 +1222,7 @@ async def test_realtime_drops_queued_postgres_callbacks_from_an_old_epoch() -> N
     assert subscription is not None
 
     await subscription.emit(insert(1))
-    await first_started.wait()
+    _ = await first_started.wait()
     first_worker = channel._postgres_worker
     assert first_worker is not None
     await subscription.emit(insert(2))
@@ -1115,7 +1232,7 @@ async def test_realtime_drops_queued_postgres_callbacks_from_an_old_epoch() -> N
     release_first.set()
     await subscription.emit_subscribed()
     await subscription.emit(insert(3))
-    await asyncio.wait_for(third_received.wait(), timeout=0.2)
+    _ = await asyncio.wait_for(third_received.wait(), timeout=0.2)
 
     assert received == [1, 3]
     assert channel._postgres_worker is not first_worker
@@ -1129,19 +1246,19 @@ def test_realtime_only_queues_changes_with_an_interested_listener() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         @dataclass
         class UnhashableListener:
-            changes: list[Any]
+            changes: list[PostgresChange]
             received: asyncio.Event
 
-            def __call__(self, change: Any) -> None:
+            def __call__(self, change: PostgresChange) -> None:
                 self.changes.append(change)
                 self.received.set()
 
-        def publication(event: str, table: str) -> dict[str, Any]:
+        def publication(event: str, table: str) -> dict[str, object]:
             return {
                 "type": event,
                 "schema": "public",
@@ -1150,8 +1267,8 @@ def test_realtime_only_queues_changes_with_an_interested_listener() -> None:
                 "timestamp": "2026-09-03T12:00:00Z",
             }
 
-        filtered: list[Any] = []
-        unfiltered: list[Any] = []
+        filtered: list[PostgresChange] = []
+        unfiltered: list[PostgresChange] = []
         unfiltered_received = asyncio.Event()
         channel = client.realtime.channel(
             "public:messages",
@@ -1177,9 +1294,9 @@ def test_realtime_only_queues_changes_with_an_interested_listener() -> None:
 
         assert_same(channel._postgres_worker, expected=None)
 
-        channel.on("*", UnhashableListener(unfiltered, unfiltered_received))
+        _ = channel.on("*", UnhashableListener(unfiltered, unfiltered_received))
         await subscription.emit(publication("UPDATE", "other"))
-        await asyncio.wait_for(unfiltered_received.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(unfiltered_received.wait(), timeout=0.2)
 
         assert filtered == []
         assert len(unfiltered) == 1
@@ -1196,7 +1313,7 @@ def test_realtime_captures_supported_postgres_fetch_request() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     client.realtime.set_database_name("app")
 
     async def scenario() -> None:
@@ -1275,22 +1392,22 @@ def test_realtime_fetches_lightweight_postgres_rows(schema: str) -> None:
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     client.realtime.set_database_name("app")
 
     async def scenario() -> None:
-        changes: list[Any] = []
+        changes: list[PostgresChange] = []
         received = asyncio.Event()
         channel = client.realtime.channel(
             f"{schema}:messages",
             channel_type="postgres",
         )
 
-        def on_insert(change: Any) -> None:
+        def on_insert(change: PostgresChange) -> None:
             changes.append(change)
             received.set()
 
-        channel.on_postgres_changes(
+        _ = channel.on_postgres_changes(
             "INSERT",
             schema=schema,
             table="messages",
@@ -1310,7 +1427,7 @@ def test_realtime_fetches_lightweight_postgres_rows(schema: str) -> None:
                 "timestamp": "2026-09-03T12:00:00Z",
             }
         )
-        await asyncio.wait_for(received.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(received.wait(), timeout=0.2)
 
         assert changes[0].record == {"id": 42, "body": "fetched"}
         assert changes[0].id is None
@@ -1344,23 +1461,23 @@ def test_realtime_batches_compatible_lightweight_postgres_rows() -> None:
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     client.realtime.set_database_name("app")
 
     async def scenario() -> None:
-        changes: list[Any] = []
+        changes: list[PostgresChange] = []
         received = asyncio.Event()
         channel = client.realtime.channel(
             "public:messages",
             channel_type="postgres",
         )
 
-        def on_insert(change: Any) -> None:
+        def on_insert(change: PostgresChange) -> None:
             changes.append(change)
             if len(changes) == 2:
                 received.set()
 
-        channel.on_postgres_changes(
+        _ = channel.on_postgres_changes(
             "INSERT",
             schema="public",
             table="messages",
@@ -1382,7 +1499,7 @@ def test_realtime_batches_compatible_lightweight_postgres_rows() -> None:
                     "timestamp": "2026-09-03T12:00:00Z",
                 }
             )
-        await asyncio.wait_for(received.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(received.wait(), timeout=0.2)
 
         assert [change.record for change in changes] == [
             {"id": 42, "body": "first"},
@@ -1423,11 +1540,11 @@ def test_realtime_honors_channel_fetch_max_batch_size() -> None:
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     client.realtime.set_database_name("app")
 
     async def scenario() -> None:
-        changes: list[Any] = []
+        changes: list[PostgresChange] = []
         received = asyncio.Event()
         channel = client.realtime.channel(
             "public:messages",
@@ -1435,12 +1552,12 @@ def test_realtime_honors_channel_fetch_max_batch_size() -> None:
             fetch_max_batch_size=1,
         )
 
-        def on_insert(change: Any) -> None:
+        def on_insert(change: PostgresChange) -> None:
             changes.append(change)
             if len(changes) == 2:
                 received.set()
 
-        channel.on_postgres_changes(
+        _ = channel.on_postgres_changes(
             "INSERT",
             schema="public",
             table="messages",
@@ -1461,7 +1578,7 @@ def test_realtime_honors_channel_fetch_max_batch_size() -> None:
                     "timestamp": "2026-09-03T12:00:00Z",
                 }
             )
-        await asyncio.wait_for(received.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(received.wait(), timeout=0.2)
 
         query_ids = [_query_filter_value(query) for query in transport.queries]
         assert query_ids == [[42], [43]]
@@ -1478,11 +1595,11 @@ def test_realtime_can_disable_lightweight_postgres_row_fetching() -> None:
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     client.realtime.set_database_name("app")
 
     async def scenario() -> None:
-        changes: list[Any] = []
+        changes: list[PostgresChange] = []
         received = asyncio.Event()
         channel = client.realtime.channel(
             "public:messages",
@@ -1490,11 +1607,11 @@ def test_realtime_can_disable_lightweight_postgres_row_fetching() -> None:
             auto_fetch=False,
         )
 
-        def on_insert(change: Any) -> None:
+        def on_insert(change: PostgresChange) -> None:
             changes.append(change)
             received.set()
 
-        channel.on_postgres_changes(
+        _ = channel.on_postgres_changes(
             "INSERT",
             schema="public",
             table="messages",
@@ -1514,7 +1631,7 @@ def test_realtime_can_disable_lightweight_postgres_row_fetching() -> None:
                 "timestamp": "2026-09-03T12:00:00Z",
             }
         )
-        await asyncio.wait_for(received.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(received.wait(), timeout=0.2)
 
         assert changes[0].record is None
         assert changes[0].id == 42
@@ -1532,12 +1649,12 @@ def test_realtime_delivers_lightweight_fallback_when_row_is_absent() -> None:
         _transport=RealtimeDatabaseTransport([]),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     client.realtime.set_database_name("app")
 
     async def scenario() -> None:
-        changes: list[Any] = []
-        errors: list[dict[str, Any]] = []
+        changes: list[PostgresChange] = []
+        errors: list[dict[str, object]] = []
         received = asyncio.Event()
         asyncio.get_running_loop().set_exception_handler(
             lambda _loop, context: errors.append(context)
@@ -1547,11 +1664,11 @@ def test_realtime_delivers_lightweight_fallback_when_row_is_absent() -> None:
             channel_type="postgres",
         )
 
-        def on_update(change: Any) -> None:
+        def on_update(change: PostgresChange) -> None:
             changes.append(change)
             received.set()
 
-        channel.on_postgres_changes(
+        _ = channel.on_postgres_changes(
             "UPDATE",
             schema="public",
             table="messages",
@@ -1571,7 +1688,7 @@ def test_realtime_delivers_lightweight_fallback_when_row_is_absent() -> None:
                 "timestamp": "2026-09-03T12:00:00Z",
             }
         )
-        await asyncio.wait_for(received.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(received.wait(), timeout=0.2)
 
         assert changes[0].record is None
         assert changes[0].id == 404
@@ -1591,7 +1708,7 @@ def test_realtime_unsubscribe_does_not_wait_for_obsolete_row_fetches() -> None:
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     client.realtime.set_database_name("app")
 
     async def scenario() -> None:
@@ -1599,7 +1716,7 @@ def test_realtime_unsubscribe_does_not_wait_for_obsolete_row_fetches() -> None:
             "public:messages",
             channel_type="postgres",
         )
-        channel.on_postgres_changes(
+        _ = channel.on_postgres_changes(
             "INSERT",
             schema="public",
             table="messages",
@@ -1619,7 +1736,7 @@ def test_realtime_unsubscribe_does_not_wait_for_obsolete_row_fetches() -> None:
                 "timestamp": "2026-09-03T12:00:00Z",
             }
         )
-        await asyncio.wait_for(transport.started.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(transport.started.wait(), timeout=0.2)
 
         await asyncio.wait_for(channel.unsubscribe(), timeout=0.2)
         assert transport.cancelled.is_set()
@@ -1635,7 +1752,7 @@ def test_realtime_disconnect_invalidates_channels_before_clearing_auth() -> None
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel(
@@ -1656,7 +1773,7 @@ def test_realtime_disconnect_invalidates_channels_before_clearing_auth() -> None
 
         assert observed
         with pytest.raises(RuntimeError, match="no session binding"):
-            client.realtime._connection_token()
+            _ = client.realtime._connection_token()
 
     asyncio.run(scenario())
 
@@ -1668,14 +1785,14 @@ def test_realtime_routes_immutable_rls_scoped_postgres_changes() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
-        updates: list[Any] = []
-        inserts: list[Any] = []
+        updates: list[PostgresChange] = []
+        inserts: list[PostgresChange] = []
         received = asyncio.Event()
 
-        def on_update(change: Any) -> None:
+        def on_update(change: PostgresChange) -> None:
             updates.append(change)
             received.set()
 
@@ -1683,13 +1800,13 @@ def test_realtime_routes_immutable_rls_scoped_postgres_changes() -> None:
             "public:messages",
             channel_type="postgres",
         )
-        channel.on_postgres_changes(
+        _ = channel.on_postgres_changes(
             "UPDATE",
             schema="public",
             table="messages",
             callback=on_update,
         )
-        channel.on_postgres_changes(
+        _ = channel.on_postgres_changes(
             "INSERT",
             schema="public",
             table="messages",
@@ -1708,7 +1825,7 @@ def test_realtime_routes_immutable_rls_scoped_postgres_changes() -> None:
                 "timestamp": "2026-09-02T12:00:00Z",
             },
         )
-        await asyncio.wait_for(received.wait(), timeout=0.1)
+        _ = await asyncio.wait_for(received.wait(), timeout=0.1)
 
         change = updates[0]
         assert change.type == "UPDATE"
@@ -1720,7 +1837,7 @@ def test_realtime_routes_immutable_rls_scoped_postgres_changes() -> None:
         assert change.timestamp == "2026-09-02T12:00:00Z"
         assert inserts == []
         with pytest.raises(TypeError):
-            cast("dict[str, Any]", change.record)["body"] = "mutated"
+            cast("dict[str, object]", change.record)["body"] = "mutated"
 
         await official.emit_wire_publication(
             "project-id:postgres:public:messages:extra:user-id",
@@ -1750,7 +1867,7 @@ async def test_realtime_drops_malformed_records_before_delivering_valid_changes(
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     changes: list[PostgresChange] = []
     received = asyncio.Event()
 
@@ -1760,7 +1877,7 @@ async def test_realtime_drops_malformed_records_before_delivering_valid_changes(
             received.set()
 
     channel = client.realtime.channel("public:messages", channel_type="postgres")
-    channel.on_postgres_changes(
+    _ = channel.on_postgres_changes(
         "*", schema="public", table="messages", callback=on_change
     )
     payload: dict[str, object] = {
@@ -1776,7 +1893,7 @@ async def test_realtime_drops_malformed_records_before_delivering_valid_changes(
         await channel.subscribe()
         await official.emit_wire_publication(wire_channel, invalid_payload)
         await official.emit_wire_publication(wire_channel, payload)
-        await asyncio.wait_for(received.wait(), timeout=1)
+        _ = await asyncio.wait_for(received.wait(), timeout=1)
         assert len(changes) == 1
         assert changes[0].record == {"id": "valid"}
     finally:
@@ -1790,13 +1907,13 @@ def test_realtime_preserves_lightweight_postgres_metadata() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
-        changes: list[Any] = []
+        changes: list[PostgresChange] = []
         received = asyncio.Event()
 
-        def on_insert(change: Any) -> None:
+        def on_insert(change: PostgresChange) -> None:
             changes.append(change)
             received.set()
 
@@ -1804,7 +1921,7 @@ def test_realtime_preserves_lightweight_postgres_metadata() -> None:
             "public:messages",
             channel_type="postgres",
         )
-        channel.on_postgres_changes(
+        _ = channel.on_postgres_changes(
             "INSERT",
             schema="public",
             table="messages",
@@ -1822,7 +1939,7 @@ def test_realtime_preserves_lightweight_postgres_metadata() -> None:
                 "timestamp": "2026-09-02T12:00:00Z",
             },
         )
-        await asyncio.wait_for(received.wait(), timeout=0.1)
+        _ = await asyncio.wait_for(received.wait(), timeout=0.1)
 
         assert changes[0].id == 42
         assert changes[0].mode == "lightweight"
@@ -1839,22 +1956,22 @@ def test_realtime_normalizes_lightweight_postgres_deletes() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
-        changes: list[Any] = []
+        changes: list[PostgresChange] = []
         received = asyncio.Event()
         channel = client.realtime.channel(
             "public:messages",
             channel_type="postgres",
         )
 
-        def on_delete(change: Any) -> None:
+        def on_delete(change: PostgresChange) -> None:
             changes.append(change)
             if len(changes) == 2:
                 received.set()
 
-        channel.on_postgres_changes(
+        _ = channel.on_postgres_changes(
             "DELETE",
             schema="public",
             table="messages",
@@ -1876,7 +1993,7 @@ def test_realtime_normalizes_lightweight_postgres_deletes() -> None:
             "project-id:postgres:public:messages:user-id",
             {**common, "id": 43, "old_record": {"id": 43, "body": "old"}},
         )
-        await asyncio.wait_for(received.wait(), timeout=0.1)
+        _ = await asyncio.wait_for(received.wait(), timeout=0.1)
 
         assert changes[0].old_record == {"id": 42}
         assert changes[1].old_record == {"id": 43, "body": "old"}
@@ -1896,7 +2013,7 @@ def test_realtime_validates_postgres_change_operations() -> None:
     )
 
     with pytest.raises(ValueError, match="only available for postgres"):
-        broadcast.on_postgres_changes(
+        _ = broadcast.on_postgres_changes(
             "*",
             schema="public",
             table="messages",
@@ -1919,22 +2036,22 @@ def test_realtime_presence_sync_tracks_initial_join_and_leave_state() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("lobby", channel_type="presence")
-        sync_states: list[Any] = []
+        sync_states: list[Mapping[str, RealtimePresenceInfo]] = []
         joins: list[RealtimePresenceInfo] = []
         leaves: list[RealtimePresenceInfo] = []
         synced = asyncio.Event()
 
-        def on_sync(state: Any) -> None:
+        def on_sync(state: Mapping[str, RealtimePresenceInfo]) -> None:
             sync_states.append(state)
             synced.set()
 
         stop_sync = channel.on_presence_sync(on_sync)
-        channel.on("join", joins.append)
-        channel.on("leave", leaves.append)
+        _ = channel.on("join", joins.append)
+        _ = channel.on("leave", leaves.append)
 
         official.presence_clients = {
             "alice-client": SimpleNamespace(
@@ -1945,7 +2062,7 @@ def test_realtime_presence_sync_tracks_initial_join_and_leave_state() -> None:
         }
         await channel.subscribe()
         assert official.subscription is not None
-        await asyncio.wait_for(synced.wait(), timeout=0.1)
+        _ = await asyncio.wait_for(synced.wait(), timeout=0.1)
         assert channel.get_presence_state() == {
             "alice-client": RealtimePresenceInfo(
                 client="alice-client",
@@ -1963,7 +2080,7 @@ def test_realtime_presence_sync_tracks_initial_join_and_leave_state() -> None:
             conn_info={"display_name": "Bob"},
         )
         await official.subscription.emit_join(bob)
-        await asyncio.wait_for(synced.wait(), timeout=0.1)
+        _ = await asyncio.wait_for(synced.wait(), timeout=0.1)
         assert joins == [
             RealtimePresenceInfo(
                 client="bob-client",
@@ -1978,7 +2095,7 @@ def test_realtime_presence_sync_tracks_initial_join_and_leave_state() -> None:
 
         synced.clear()
         await official.subscription.emit_leave(bob)
-        await asyncio.wait_for(synced.wait(), timeout=0.1)
+        _ = await asyncio.wait_for(synced.wait(), timeout=0.1)
         assert leaves == joins
         assert set(channel.get_presence_state()) == {"alice-client"}
 
@@ -2001,12 +2118,12 @@ def test_realtime_presence_subscribe_waits_for_initial_roster() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("lobby", channel_type="presence")
         subscribing = asyncio.create_task(channel.subscribe())
-        await presence_entered.wait()
+        _ = await presence_entered.wait()
         assert not subscribing.done()
 
         presence_release.set()
@@ -2023,7 +2140,7 @@ def test_realtime_presence_resyncs_after_resubscription() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("lobby", channel_type="presence")
@@ -2039,7 +2156,7 @@ def test_realtime_presence_resyncs_after_resubscription() -> None:
         official.subscription.presence_entered = asyncio.Event()
 
         await official.subscription.emit_subscribed()
-        await official.subscription.presence_entered.wait()
+        _ = await official.subscription.presence_entered.wait()
         await asyncio.wait_for(channel._wait_presence_sync(), timeout=0.2)
 
         assert set(channel.get_presence_state()) == {"carol-client"}
@@ -2060,7 +2177,7 @@ def test_realtime_presence_clears_while_resubscribing() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("lobby", channel_type="presence")
@@ -2085,7 +2202,7 @@ def test_realtime_presence_replays_a_resync_requested_during_a_query() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("lobby", channel_type="presence")
@@ -2095,7 +2212,7 @@ def test_realtime_presence_replays_a_resync_requested_during_a_query() -> None:
         official.subscription.presence_release = asyncio.Event()
 
         await official.subscription.emit_subscribed()
-        await official.subscription.presence_entered.wait()
+        _ = await official.subscription.presence_entered.wait()
         await official.subscription.emit_subscribed()
         official.subscription.presence_clients = {
             "carol-client": SimpleNamespace(
@@ -2119,7 +2236,7 @@ def test_realtime_presence_resync_replays_concurrent_join_and_leave() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("lobby", channel_type="presence")
@@ -2131,14 +2248,14 @@ def test_realtime_presence_resync_replays_concurrent_join_and_leave() -> None:
         official.subscription.presence_release = asyncio.Event()
 
         resync = asyncio.create_task(official.subscription.emit_subscribed())
-        await official.subscription.presence_entered.wait()
+        _ = await official.subscription.presence_entered.wait()
         bob = SimpleNamespace(client="bob-client", user="bob", conn_info={})
         join = asyncio.create_task(official.subscription.emit_join(bob))
         leave = asyncio.create_task(official.subscription.emit_leave(carol))
         await asyncio.wait_for(asyncio.shield(join), timeout=0.1)
         await asyncio.wait_for(asyncio.shield(leave), timeout=0.1)
         official.subscription.presence_release.set()
-        await asyncio.gather(resync, join, leave)
+        _ = await asyncio.gather(resync, join, leave)
 
         assert set(channel.get_presence_state()) == {"bob-client"}
         await client.realtime.disconnect()
@@ -2153,7 +2270,7 @@ def test_realtime_track_exposes_immutable_local_state() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("lobby", channel_type="presence")
@@ -2183,25 +2300,25 @@ def test_realtime_unsubscribe_clears_presence_state() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("lobby", channel_type="presence")
-        states: list[Any] = []
+        states: list[Mapping[str, RealtimePresenceInfo]] = []
         cleared = asyncio.Event()
 
-        def on_sync(state: Any) -> None:
+        def on_sync(state: Mapping[str, RealtimePresenceInfo]) -> None:
             states.append(state)
             if not state:
                 cleared.set()
 
-        channel.on_presence_sync(on_sync)
+        _ = channel.on_presence_sync(on_sync)
         await channel.subscribe()
         assert official.subscription is not None
         await channel.track({"status": "online"})
 
         await channel.unsubscribe()
-        await asyncio.wait_for(cleared.wait(), timeout=0.1)
+        _ = await asyncio.wait_for(cleared.wait(), timeout=0.1)
 
         assert channel.get_presence_state() == {}
         assert channel.tracked_state == {}
@@ -2224,7 +2341,7 @@ async def test_realtime_presence_sync_coalesces_latest_backpressured_state() -> 
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     channel = client.realtime.channel("lobby", channel_type="presence")
     blocked = asyncio.Event()
@@ -2232,21 +2349,21 @@ async def test_realtime_presence_sync_coalesces_latest_backpressured_state() -> 
     observed_sizes: list[int] = []
     completed = asyncio.Event()
 
-    async def on_sync(state: Any) -> None:
+    async def on_sync(state: Mapping[str, RealtimePresenceInfo]) -> None:
         observed_sizes.append(len(state))
         if len(state) == 140:
             completed.set()
         if len(state) == 1:
             blocked.set()
-            await release.wait()
+            _ = await release.wait()
 
-    channel.on_presence_sync(on_sync)
+    _ = channel.on_presence_sync(on_sync)
     await channel.subscribe()
     assert official.subscription is not None
     await official.subscription.emit_join(
         SimpleNamespace(client="client-0", user="user-0", conn_info={})
     )
-    await blocked.wait()
+    _ = await blocked.wait()
     for index in range(1, 140):
         await official.subscription.emit_join(
             SimpleNamespace(
@@ -2256,7 +2373,7 @@ async def test_realtime_presence_sync_coalesces_latest_backpressured_state() -> 
             )
         )
     release.set()
-    await asyncio.wait_for(completed.wait(), timeout=0.2)
+    _ = await asyncio.wait_for(completed.wait(), timeout=0.2)
 
     assert observed_sizes[-1] == 140
     await client.realtime.disconnect()
@@ -2267,10 +2384,10 @@ def test_realtime_newer_queued_snapshot_discards_older_pending_snapshot() -> Non
 
     async def scenario() -> None:
         channel = client.realtime.channel("lobby", channel_type="presence")
-        channel.on_presence_sync(lambda _state: None)
+        _ = channel.on_presence_sync(_ignore_presence_state)
 
         async def wait_forever() -> None:
-            await asyncio.Event().wait()
+            _ = await asyncio.Event().wait()
 
         blocker = asyncio.create_task(wait_forever())
         channel._callback_task = blocker
@@ -2283,16 +2400,16 @@ def test_realtime_newer_queued_snapshot_discards_older_pending_snapshot() -> Non
             )
 
         await channel._emit("presence_sync", {"version": 1})
-        channel._callback_queue.get_nowait()
+        _ = channel._callback_queue.get_nowait()
         channel._callback_queue.task_done()
         await channel._emit("presence_sync", {"version": 2})
-        queued: list[Any] = []
+        queued: list[object] = []
         while not channel._callback_queue.empty():
             queued.append(channel._callback_queue.get_nowait().data)
             channel._callback_queue.task_done()
         channel._enqueue_pending_presence_sync()
-        blocker.cancel()
-        await asyncio.gather(blocker, return_exceptions=True)
+        _ = blocker.cancel()
+        _ = await asyncio.gather(blocker, return_exceptions=True)
 
         assert queued[-1] == {"version": 2}
         assert channel._callback_queue.empty()
@@ -2305,7 +2422,7 @@ def test_realtime_presence_operations_reject_broadcast_channels() -> None:
     channel = client.realtime.channel("contract")
 
     with pytest.raises(ValueError, match="presence channels"):
-        channel.on_presence_sync(lambda _state: None)
+        _ = channel.on_presence_sync(_ignore_presence_state)
 
     async def scenario() -> None:
         with pytest.raises(ValueError, match="presence channels"):
@@ -2316,17 +2433,13 @@ def test_realtime_presence_operations_reject_broadcast_channels() -> None:
 
 def test_realtime_rejects_unsupported_channel_types() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
-    unsupported = cast("Any", "presense")
 
     with pytest.raises(ValueError, match="channel type"):
-        client.realtime.channel("contract", channel_type=unsupported)
+        unsupported_realtime_channel_type(client.realtime)
 
     async def scenario() -> None:
         with pytest.raises(ValueError, match="channel type"):
-            await client.realtime.remove_channel(
-                "contract",
-                channel_type=unsupported,
-            )
+            await remove_unsupported_realtime_channel_type(client.realtime)
 
     asyncio.run(scenario())
 
@@ -2358,7 +2471,7 @@ def test_realtime_reports_presence_query_failures() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     errors: list[RealtimeErrorContext] = []
     presence_error = centrifuge_error("presence unavailable")
 
@@ -2369,7 +2482,7 @@ def test_realtime_reports_presence_query_failures() -> None:
             errors.append(context)
             reported.set()
 
-        client.realtime.on_error(on_error)
+        _ = client.realtime.on_error(on_error)
         channel = client.realtime.channel(
             "lobby",
             channel_type="presence",
@@ -2379,7 +2492,7 @@ def test_realtime_reports_presence_query_failures() -> None:
         assert official.subscription is not None
         official.subscription.presence_error = presence_error
         await official.subscription.emit_subscribed()
-        await asyncio.wait_for(reported.wait(), timeout=0.1)
+        _ = await asyncio.wait_for(reported.wait(), timeout=0.1)
         assert channel.get_presence_state() == {}
         await client.realtime.disconnect()
 
@@ -2393,20 +2506,22 @@ def test_realtime_reports_presence_query_failures() -> None:
 def test_realtime_wraps_official_client_without_exposing_it() -> None:
     transport = AuthTransport()
     official = FakeCentrifugeClient()
-    factory_arguments: dict[str, Any] = {}
+    factory_arguments: list[RecordedFactoryArguments] = []
 
     def factory(
         address: str,
         *,
-        events: Any,
+        events: object,
         token: str,
         get_token: Callable[[], Awaitable[str]],
     ) -> FakeCentrifugeClient:
-        factory_arguments.update(
-            address=address,
-            events=events,
-            token=token,
-            get_token=get_token,
+        factory_arguments.append(
+            {
+                "address": address,
+                "events": events,
+                "token": token,
+                "get_token": get_token,
+            }
         )
         return official
 
@@ -2416,7 +2531,7 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
         _transport=transport,
         _realtime_client_factory=factory,
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     received: list[dict[str, str]] = []
 
     async def scenario() -> None:
@@ -2450,20 +2565,22 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
             generation,
             event="TOKEN_REFRESHED",
         )
-        assert await factory_arguments["get_token"]() == "access-2"
+        assert factory_arguments
+        assert await factory_arguments[0]["get_token"]() == "access-2"
         transport.access_token = "access-3"
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         with pytest.raises(RuntimeError, match="session changed"):
-            await factory_arguments["get_token"]()
+            _ = await factory_arguments[0]["get_token"]()
         assert client.realtime._connection_token() == "access-2"
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
 
-    assert factory_arguments["address"] == (
+    assert len(factory_arguments) == 1
+    assert factory_arguments[0]["address"] == (
         "wss://api.test.volcano.dev/realtime/v1/websocket?apikey=anon%20key"
     )
-    assert factory_arguments["token"] == "access-1"
+    assert factory_arguments[0]["token"] == "access-1"
     assert official.calls == ["connect", "channel:broadcast:contract", "disconnect"]
     assert official.subscription is not None
     assert official.subscription.calls == [
@@ -2481,7 +2598,7 @@ def test_realtime_broadcast_resubscribe_retains_recoverable_subscription() -> No
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("room")
@@ -2514,12 +2631,12 @@ def test_realtime_paused_channel_ignores_wire_publications(
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
-        received: list[Any] = []
+        received: list[object] = []
         channel = client.realtime.channel("room", channel_type=channel_type)
-        channel.on("message", received.append)
+        _ = channel.on("message", received.append)
         await channel.subscribe()
         await channel.unsubscribe()
         try:
@@ -2550,23 +2667,23 @@ def test_realtime_discards_queued_messages_when_delivery_is_paused(
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
-        received: list[Any] = []
+        received: list[object] = []
         entered, release = asyncio.Event(), asyncio.Event()
 
-        async def receive(message: Any) -> None:
+        async def receive(message: object) -> None:
             received.append(message)
             entered.set()
-            await release.wait()
+            _ = await release.wait()
 
         channel = client.realtime.channel("room")
-        channel.on("message", receive)
+        _ = channel.on("message", receive)
         await channel.subscribe()
         try:
             await official.emit_wire_publication(channel.name, "active")
-            await asyncio.wait_for(entered.wait(), timeout=0.2)
+            _ = await asyncio.wait_for(entered.wait(), timeout=0.2)
             await official.emit_wire_publication(channel.name, "queued")
             await channel.unsubscribe()
             if resume:
@@ -2589,28 +2706,28 @@ def test_realtime_discards_queued_presence_events_on_pause(*, resume: bool) -> N
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         entered, release = asyncio.Event(), asyncio.Event()
-        received: list[Any] = []
-        snapshots: list[Any] = []
+        received: list[object] = []
+        snapshots: list[Mapping[str, RealtimePresenceInfo]] = []
 
-        async def block(_message: Any) -> None:
+        async def block(_message: object) -> None:
             entered.set()
-            await release.wait()
+            _ = await release.wait()
 
         channel = client.realtime.channel("lobby", channel_type="presence")
-        channel.on("message", block)
-        channel.on("join", received.append).on("leave", received.append)
-        channel.on_presence_sync(snapshots.append)
+        _ = channel.on("message", block)
+        _ = channel.on("join", received.append).on("leave", received.append)
+        _ = channel.on_presence_sync(snapshots.append)
         await channel.subscribe()
         await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
         snapshots.clear()
         assert official.subscription is not None
         try:
             await official.subscription.emit("active")
-            await asyncio.wait_for(entered.wait(), timeout=0.2)
+            _ = await asyncio.wait_for(entered.wait(), timeout=0.2)
             info = SimpleNamespace(client="peer", user="user", conn_info={})
             await official.subscription.emit_join(info)
             await official.subscription.emit_leave(info)
@@ -2636,23 +2753,23 @@ def test_realtime_explicit_pause_frees_queue_capacity_for_recovered_messages() -
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         entered, release = asyncio.Event(), asyncio.Event()
-        received: list[Any] = []
+        received: list[object] = []
 
-        async def receive(message: Any) -> None:
+        async def receive(message: object) -> None:
             received.append(message)
             entered.set()
-            await release.wait()
+            _ = await release.wait()
 
         channel = client.realtime.channel("room").on("message", receive)
         await channel.subscribe()
         assert official.subscription is not None
         try:
             await official.subscription.emit("active")
-            await asyncio.wait_for(entered.wait(), timeout=0.2)
+            _ = await asyncio.wait_for(entered.wait(), timeout=0.2)
             for _ in range(channel._callback_queue.maxsize):
                 await official.subscription.emit("obsolete")
             await channel.unsubscribe()
@@ -2681,14 +2798,14 @@ def test_realtime_reconnect_preserves_messages_already_accepted_by_centrifuge(
             _transport=AuthTransport(),
             _realtime_client_factory=factory,
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         entered, release = asyncio.Event(), asyncio.Event()
-        received: list[Any] = []
+        received: list[object] = []
 
-        async def receive(message: Any) -> None:
+        async def receive(message: object) -> None:
             received.append(message)
             entered.set()
-            await release.wait()
+            _ = await release.wait()
 
         channel = client.realtime.channel("room", channel_type=channel_type).on(
             "message", receive
@@ -2703,13 +2820,14 @@ def test_realtime_reconnect_preserves_messages_already_accepted_by_centrifuge(
             await factory.reply(presence, presence={"presence": {}})
         await asyncio.wait_for(subscribing, timeout=0.2)
         subscription = official.get_subscription(channel.name)
+        assert subscription is not None
         try:
             await subscription._process_publication({"offset": 1, "data": 1})
-            await asyncio.wait_for(entered.wait(), timeout=0.2)
+            _ = await asyncio.wait_for(entered.wait(), timeout=0.2)
             await subscription._process_publication({"offset": 2, "data": 2})
             await subscription._move_subscribing(1, "transport closed")
             command = await factory.command()
-            assert command["subscribe"]["offset"] == 2
+            assert _command_section(command, "subscribe")["offset"] == 2
             await factory.reply(
                 command,
                 subscribe={
@@ -2734,10 +2852,11 @@ def test_realtime_reconnect_preserves_messages_already_accepted_by_centrifuge(
     asyncio.run(scenario())
 
 
-def test_centrifuge_preserves_recovery_position_across_unsubscribe() -> None:
+def test_centrifuge_preserves_recovery_position_across_unsubscribe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async def scenario() -> None:
-        centrifuge = importlib.import_module("centrifuge")
-        client = centrifuge.Client(
+        client = NativeClient(
             "ws://localhost/realtime/v1/websocket",
             loop=asyncio.get_running_loop(),
         )
@@ -2745,16 +2864,16 @@ def test_centrifuge_preserves_recovery_position_across_unsubscribe() -> None:
         subscription._recover = True
         subscription._epoch = "stream-epoch"
         subscription._offset = 41
-        subscription.state = centrifuge.SubscriptionState.SUBSCRIBED
+        subscription.state = SubscriptionState.SUBSCRIBED
 
         unsubscribe = AsyncMock(spec_set=client._unsubscribe, return_value=None)
-        client._unsubscribe = unsubscribe
+        monkeypatch.setattr(client, "_unsubscribe", unsubscribe)
 
         await subscription.unsubscribe()
         unsubscribe.assert_awaited_once_with("broadcast:room")
         command = client._construct_subscribe_command(subscription, 1)
 
-        subscribe = command["subscribe"]
+        subscribe = _command_section(command, "subscribe")
         assert subscribe["channel"] == "broadcast:room"
         assert subscribe["recoverable"] is True
         assert subscribe["recover"] is True
@@ -2772,13 +2891,13 @@ def test_realtime_rejects_a_session_change_during_connect() -> None:
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         subscribing = asyncio.create_task(client.realtime.channel("room").subscribe())
-        await official.connect_started.wait()
+        _ = await official.connect_started.wait()
         transport.access_token = "access-2"
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         official.connect_release.set()
 
         with pytest.raises(RuntimeError, match="session changed"):
@@ -2798,13 +2917,13 @@ def test_realtime_retains_a_provisional_connection_when_cleanup_fails() -> None:
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         subscribing = asyncio.create_task(client.realtime.channel("room").subscribe())
-        await official.connect_started.wait()
+        _ = await official.connect_started.wait()
         transport.access_token = "access-2"
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         cleanup_error = centrifuge_error("disconnect failed")
         official.disconnect_error = cleanup_error
         official.connect_release.set()
@@ -2831,7 +2950,7 @@ def test_realtime_connection_callbacks_receive_immutable_contexts() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         connected: list[RealtimeConnectContext] = []
@@ -2857,16 +2976,16 @@ def test_realtime_connection_callbacks_receive_immutable_contexts() -> None:
         disconnect_callback = AsyncMock(
             spec_set=on_disconnected, side_effect=on_disconnected
         )
-        client.realtime.on_disconnect(disconnect_callback)
+        _ = client.realtime.on_disconnect(disconnect_callback)
         stop_error = client.realtime.on_error(on_error)
 
         await client.realtime.channel("contract").subscribe()
-        await asyncio.wait_for(connected_event.wait(), timeout=0.1)
+        _ = await asyncio.wait_for(connected_event.wait(), timeout=0.1)
         assert connected == [RealtimeConnectContext(client="client-123")]
 
         error = RuntimeError("socket failed")
         await official.emit_error(7, error)
-        await asyncio.wait_for(error_event.wait(), timeout=0.1)
+        _ = await asyncio.wait_for(error_event.wait(), timeout=0.1)
         assert errors == [
             RealtimeErrorContext(code=7, message="socket failed", error=error)
         ]
@@ -2875,7 +2994,7 @@ def test_realtime_connection_callbacks_receive_immutable_contexts() -> None:
         stop_connect()
         stop_error()
         await client.realtime.disconnect()
-        await asyncio.wait_for(disconnected_event.wait(), timeout=0.1)
+        _ = await asyncio.wait_for(disconnected_event.wait(), timeout=0.1)
         assert disconnected == [
             RealtimeDisconnectContext(code=0, reason="disconnect called")
         ]
@@ -2891,7 +3010,7 @@ def test_realtime_connection_callbacks_do_not_block_transport_events() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         callback_started = asyncio.Event()
@@ -2899,14 +3018,14 @@ def test_realtime_connection_callbacks_do_not_block_transport_events() -> None:
 
         async def on_connect(_context: RealtimeConnectContext) -> None:
             callback_started.set()
-            await callback_release.wait()
+            _ = await callback_release.wait()
 
-        client.realtime.on_connect(on_connect)
+        _ = client.realtime.on_connect(on_connect)
         await asyncio.wait_for(
             client.realtime.channel("contract").subscribe(),
             timeout=0.1,
         )
-        await asyncio.wait_for(callback_started.wait(), timeout=0.1)
+        _ = await asyncio.wait_for(callback_started.wait(), timeout=0.1)
         callback_release.set()
         await client.realtime.disconnect()
 
@@ -2921,7 +3040,7 @@ def test_realtime_reports_connection_state_and_removes_one_channel() -> None:
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("contract")
@@ -2951,13 +3070,13 @@ def test_realtime_connection_state_tracks_transport_disconnects() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         await client.realtime.channel("contract").subscribe()
         assert_same(client.realtime.is_connected, expected=True)
 
-        official.state = SimpleNamespace(value="connecting")
+        official.state = FakeConnectionState(value="connecting")
 
         assert_same(client.realtime.is_connected, expected=False)
         await client.realtime.disconnect()
@@ -2972,7 +3091,7 @@ def test_realtime_retains_channel_when_removal_fails() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("contract")
@@ -3000,7 +3119,7 @@ def test_realtime_continues_removing_channels_after_one_failure() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         first = client.realtime.channel("first")
@@ -3027,7 +3146,7 @@ def test_realtime_rejects_channel_lookup_during_removal() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("contract")
@@ -3036,10 +3155,10 @@ def test_realtime_rejects_channel_lookup_during_removal() -> None:
         official.subscription.unsubscribe_entered = asyncio.Event()
         official.subscription.unsubscribe_release = asyncio.Event()
         removing = asyncio.create_task(client.realtime.remove_channel("contract"))
-        await official.subscription.unsubscribe_entered.wait()
+        _ = await official.subscription.unsubscribe_entered.wait()
 
         with pytest.raises(RuntimeError, match="removal is in progress"):
-            client.realtime.channel("contract")
+            _ = client.realtime.channel("contract")
 
         official.subscription.unsubscribe_release.set()
         await removing
@@ -3058,22 +3177,22 @@ def test_realtime_can_remove_all_channels_from_a_message_callback() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         removed = asyncio.Event()
         channel = client.realtime.channel("contract")
 
-        async def remove_channels(_: Any) -> None:
+        async def remove_channels(_: object) -> None:
             await client.realtime.remove_all_channels()
             removed.set()
 
-        channel.on("message", remove_channels)
+        _ = channel.on("message", remove_channels)
         await channel.subscribe()
         assert official.subscription is not None
         await official.subscription.emit({"event": "message"})
 
-        await asyncio.wait_for(removed.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(removed.wait(), timeout=0.2)
         replacement = client.realtime.channel("contract")
         assert replacement is not channel
         await replacement.subscribe()
@@ -3090,7 +3209,7 @@ def test_realtime_removes_all_channels_without_disconnecting() -> None:
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         first = client.realtime.channel("first")
@@ -3121,19 +3240,19 @@ def test_realtime_callbacks_run_outside_the_message_processor() -> None:
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("contract")
         started = asyncio.Event()
         release = asyncio.Event()
 
-        async def callback(data: Any) -> None:
+        async def callback(data: object) -> None:
             del data
             started.set()
-            await release.wait()
+            _ = await release.wait()
 
-        channel.on("message", callback)
+        _ = channel.on("message", callback)
         await channel.subscribe()
         await asyncio.wait_for(
             official.emit_wire_publication(
@@ -3142,7 +3261,7 @@ def test_realtime_callbacks_run_outside_the_message_processor() -> None:
             ),
             timeout=0.1,
         )
-        await asyncio.wait_for(started.wait(), timeout=0.1)
+        _ = await asyncio.wait_for(started.wait(), timeout=0.1)
         release.set()
         await client.realtime.disconnect()
 
@@ -3157,15 +3276,15 @@ def test_realtime_routes_overlapping_channel_suffixes_to_the_longest_match() -> 
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         received: list[str] = []
         short = client.realtime.channel("foo").on(
-            "message", lambda _data: received.append("short")
+            "message", _record_channel_hit(received, "short")
         )
         long = client.realtime.channel("x:broadcast:foo").on(
-            "message", lambda _data: received.append("long")
+            "message", _record_channel_hit(received, "long")
         )
         await short.subscribe()
         await long.subscribe()
@@ -3194,12 +3313,12 @@ def test_realtime_opens_one_connection_when_first_used_concurrently(
 
     async def connect() -> None:
         entered.set()
-        await release.wait()
+        _ = await release.wait()
         official.calls.append("connect")
 
     monkeypatch.setattr(official, "connect", connect)
 
-    def factory(*args: Any, **kwargs: Any) -> FakeCentrifugeClient:
+    def factory(*args: object, **kwargs: object) -> FakeCentrifugeClient:
         nonlocal created
         del args, kwargs
         created += 1
@@ -3210,11 +3329,11 @@ def test_realtime_opens_one_connection_when_first_used_concurrently(
         _transport=transport,
         _realtime_client_factory=factory,
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         first = asyncio.create_task(client.realtime._connect())
-        await entered.wait()
+        _ = await entered.wait()
         second = asyncio.create_task(client.realtime._connect())
         await asyncio.sleep(0)
         release.set()
@@ -3233,11 +3352,11 @@ async def test_realtime_callback_failure_does_not_stop_later_callbacks() -> None
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     channel = client.realtime.channel("contract")
     received: list[str] = []
-    errors: list[dict[str, Any]] = []
+    errors: list[dict[str, object]] = []
     loop = asyncio.get_running_loop()
     previous_handler = loop.get_exception_handler()
     loop.set_exception_handler(lambda _loop, context: errors.append(context))
@@ -3249,7 +3368,7 @@ async def test_realtime_callback_failure_does_not_stop_later_callbacks() -> None
         received.append(data["value"])
 
     try:
-        channel.on("message", callback)
+        _ = channel.on("message", callback)
         await channel.subscribe()
         await official.emit_wire_publication(
             "broadcast:contract",
@@ -3279,7 +3398,7 @@ def test_realtime_callback_can_disconnect_its_own_client() -> None:
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("contract")
@@ -3295,12 +3414,12 @@ def test_realtime_callback_can_disconnect_its_own_client() -> None:
             else:
                 disconnected.set()
 
-        channel.on("message", callback)
+        _ = channel.on("message", callback)
         await channel.subscribe()
         await official.emit_wire_publication(
             "broadcast:contract", {"event": "message", "value": "first"}
         )
-        await asyncio.wait_for(disconnected.wait(), timeout=0.1)
+        _ = await asyncio.wait_for(disconnected.wait(), timeout=0.1)
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -3324,7 +3443,7 @@ def test_realtime_disconnect_excludes_a_concurrent_first_connect(
 
     async def connect() -> None:
         entered.set()
-        await release.wait()
+        _ = await release.wait()
         official.calls.append("connect")
 
     monkeypatch.setattr(official, "connect", connect)
@@ -3333,12 +3452,12 @@ def test_realtime_disconnect_excludes_a_concurrent_first_connect(
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("contract")
         subscribing = asyncio.create_task(channel.subscribe())
-        await entered.wait()
+        _ = await entered.wait()
         disconnecting = asyncio.create_task(client.realtime.disconnect())
         await asyncio.sleep(0)
         release.set()
@@ -3367,7 +3486,7 @@ def test_realtime_disconnect_resets_channels_after_transport_failure(
     disconnect = AsyncMock(spec_set=first.disconnect, side_effect=failing_disconnect)
     monkeypatch.setattr(first, "disconnect", disconnect)
 
-    def factory(*args: Any, **kwargs: Any) -> FakeCentrifugeClient:
+    def factory(*args: object, **kwargs: object) -> FakeCentrifugeClient:
         del args, kwargs
         return next(clients)
 
@@ -3376,7 +3495,7 @@ def test_realtime_disconnect_resets_channels_after_transport_failure(
         _transport=transport,
         _realtime_client_factory=factory,
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         channel = client.realtime.channel("contract")
@@ -3403,7 +3522,7 @@ def test_realtime_disconnect_closes_transport_when_channel_reset_is_cancelled(
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         first = client.realtime.channel("first")
@@ -3416,7 +3535,7 @@ def test_realtime_disconnect_closes_transport_when_channel_reset_is_cancelled(
 
         async def blocking_reset() -> None:
             reset_started.set()
-            await asyncio.Event().wait()
+            _ = await asyncio.Event().wait()
 
         async def observe_second_reset() -> None:
             nonlocal second_reset
@@ -3426,8 +3545,8 @@ def test_realtime_disconnect_closes_transport_when_channel_reset_is_cancelled(
         monkeypatch.setattr(first, "_reset", blocking_reset)
         monkeypatch.setattr(second, "_reset", observe_second_reset)
         disconnecting = asyncio.create_task(client.realtime.disconnect())
-        await reset_started.wait()
-        disconnecting.cancel()
+        _ = await reset_started.wait()
+        _ = disconnecting.cancel()
 
         with pytest.raises(asyncio.CancelledError):
             await disconnecting
@@ -3458,13 +3577,13 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
         @override
         async def subscribe(self) -> None:
             entered.set()
-            await release.wait()
+            _ = await release.wait()
             await super().subscribe()
 
     def new_subscription(
         name: str,
         *,
-        events: Any,
+        events: object,
         join_leave: bool = False,
         recoverable: bool = False,
     ) -> FakeSubscription:
@@ -3484,13 +3603,13 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
-        await client.realtime._connect()
+        _ = await client.realtime._connect()
         channel = client.realtime.channel("contract")
         subscribing = asyncio.create_task(channel.subscribe())
-        await entered.wait()
+        _ = await entered.wait()
         disconnecting = asyncio.create_task(client.realtime.disconnect())
         await asyncio.sleep(0)
         assert "disconnect" not in official.calls
@@ -3514,7 +3633,7 @@ def test_realtime_disconnect_snapshots_channels_before_resetting(
         _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         first = client.realtime.channel("first")
@@ -3525,12 +3644,12 @@ def test_realtime_disconnect_snapshots_channels_before_resetting(
 
         async def blocking_reset() -> None:
             entered.set()
-            await release.wait()
+            _ = await release.wait()
             await original_reset()
 
         monkeypatch.setattr(first, "_reset", blocking_reset)
         disconnecting = asyncio.create_task(client.realtime.disconnect())
-        await entered.wait()
+        _ = await entered.wait()
         second = client.realtime.channel("second")
         release.set()
         await disconnecting
@@ -3549,7 +3668,7 @@ def test_realtime_shutdown_does_not_cancel_or_wait_for_application_work(
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         started, release, completed = (asyncio.Event() for _ in range(3))
@@ -3558,14 +3677,14 @@ def test_realtime_shutdown_does_not_cancel_or_wait_for_application_work(
         async def receive(message: str) -> None:
             received.append(message)
             started.set()
-            await release.wait()
-            await asyncio.gather(client.realtime.disconnect())
+            _ = await release.wait()
+            _ = await asyncio.gather(client.realtime.disconnect())
             completed.set()
 
         channel = client.realtime.channel("room").on("message", receive)
         await channel.subscribe()
         await official.emit_wire_publication(channel.name, "running")
-        await started.wait()
+        _ = await started.wait()
         await official.emit_wire_publication(channel.name, "queued")
         operations = {
             "remove": lambda: client.realtime.remove_channel("room"),
@@ -3577,7 +3696,7 @@ def test_realtime_shutdown_does_not_cancel_or_wait_for_application_work(
             await asyncio.wait_for(operations[operation](), timeout=0.2)
             assert not completed.is_set()
             release.set()
-            await asyncio.wait_for(completed.wait(), timeout=0.2)
+            _ = await asyncio.wait_for(completed.wait(), timeout=0.2)
             await channel._callback_queue.join()
             assert received == ["running"]
             await asyncio.sleep(0)
@@ -3596,7 +3715,7 @@ def test_realtime_reconnect_serializes_delivery_after_running_callback() -> None
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         started, release = asyncio.Event(), asyncio.Event()
@@ -3606,13 +3725,13 @@ def test_realtime_reconnect_serializes_delivery_after_running_callback() -> None
             received.append(message)
             if message == "first":
                 started.set()
-                await release.wait()
+                _ = await release.wait()
                 received.append("finished")
 
         channel = client.realtime.channel("room").on("message", receive)
         await channel.subscribe()
         await official.emit_wire_publication(channel.name, "first")
-        await started.wait()
+        _ = await started.wait()
         try:
             for _ in range(2):
                 await client.realtime.disconnect()
@@ -3640,20 +3759,20 @@ def test_realtime_callback_child_tasks_can_stop_delivery() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         completed = asyncio.Event()
 
-        async def receive(_message: Any) -> None:
-            await asyncio.gather(client.realtime.remove_channel("room"))
+        async def receive(_message: object) -> None:
+            _ = await asyncio.gather(client.realtime.remove_channel("room"))
             await asyncio.wait_for(client.realtime.disconnect(), timeout=0.2)
             completed.set()
 
         channel = client.realtime.channel("room").on("message", receive)
         await channel.subscribe()
         await official.emit_wire_publication(channel.name, "message")
-        await asyncio.wait_for(completed.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(completed.wait(), timeout=0.2)
 
     asyncio.run(scenario())
 
@@ -3665,7 +3784,7 @@ def test_realtime_event_loop_shutdown_does_not_start_queued_callbacks() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     received: list[str] = []
     channel = client.realtime.channel("room")
 
@@ -3675,12 +3794,12 @@ def test_realtime_event_loop_shutdown_does_not_start_queued_callbacks() -> None:
         async def receive(message: str) -> None:
             received.append(message)
             started.set()
-            await asyncio.Event().wait()
+            _ = await asyncio.Event().wait()
 
-        channel.on("message", receive)
+        _ = channel.on("message", receive)
         await channel.subscribe()
         await official.emit_wire_publication(channel.name, "running")
-        await started.wait()
+        _ = await started.wait()
         await official.emit_wire_publication(channel.name, "queued")
 
     asyncio.run(scenario())
@@ -3695,7 +3814,7 @@ def test_realtime_callback_workers_finish_when_idle() -> None:
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         received: list[str] = []
@@ -3721,11 +3840,11 @@ def test_realtime_callback_cancellation_does_not_cancel_later_delivery() -> None
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         received: list[str] = []
-        errors: list[dict[str, Any]] = []
+        errors: list[dict[str, object]] = []
         loop = asyncio.get_running_loop()
         previous_handler = loop.get_exception_handler()
         loop.set_exception_handler(lambda _loop, context: errors.append(context))
@@ -3734,7 +3853,7 @@ def test_realtime_callback_cancellation_does_not_cancel_later_delivery() -> None
             if message == "cancel":
                 task = asyncio.current_task()
                 assert task is not None
-                task.cancel()
+                _ = task.cancel()
                 await asyncio.sleep(0)
             received.append(message)
 
@@ -3764,19 +3883,23 @@ def test_realtime_worker_registration_precedes_callback_execution(
             _transport=AuthTransport(),
             _realtime_client_factory=factory,
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         received: list[str] = []
         release = asyncio.Event()
         channel = client.realtime.channel("room", channel_type="presence")
 
-        async def receive(_message: Any) -> None:
+        async def receive(_message: object) -> None:
             received.append("message started")
             await channel.unsubscribe()
-            await release.wait()
+            _ = await release.wait()
             received.append("message finished")
 
-        channel.on("message", receive)
-        channel.on_presence_sync(lambda _state: received.append("presence"))
+        _ = channel.on("message", receive)
+
+        def on_sync(_state: Mapping[str, RealtimePresenceInfo]) -> None:
+            received.append("presence")
+
+        _ = channel.on_presence_sync(on_sync)
         subscribing = asyncio.create_task(channel.subscribe())
         await factory.reply(await factory.command(), subscribe={})
         await factory.reply(await factory.command(), presence={"presence": {}})
@@ -3790,7 +3913,7 @@ def test_realtime_worker_registration_precedes_callback_execution(
         # Python 3.11 uses deferred tasks; later runtimes also support eager tasks.
         loop.set_task_factory(getattr(asyncio, "eager_task_factory", None))
         try:
-            subscription = factory.client.get_subscription(channel.name)
+            subscription = factory.subscription(channel.name)
             await subscription._process_publication({"data": "message"})
             command = await factory.command()
             assert "unsubscribe" in command
@@ -3818,7 +3941,7 @@ def test_realtime_subscribe_waits_for_server_acknowledgement(
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         requested = asyncio.Event()
@@ -3834,7 +3957,7 @@ def test_realtime_subscribe_waits_for_server_acknowledgement(
             for _ in range(2):
                 requested.clear()
                 subscribing = asyncio.create_task(channel.subscribe())
-                await asyncio.wait_for(requested.wait(), timeout=0.2)
+                _ = await asyncio.wait_for(requested.wait(), timeout=0.2)
                 assert not subscribing.done()
                 assert official.subscription is not None
                 await official.subscription.emit_subscribed()
@@ -3863,13 +3986,18 @@ def test_realtime_subscribe_releases_connection_lock_after_readiness_failure(
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     error = (
         asyncio.CancelledError() if cancelled else centrifuge_error("ready timed out")
     )
 
-    ready = create_autospec(FakeSubscription.ready, spec_set=True, side_effect=error)
-    monkeypatch.setattr(FakeSubscription, "ready", ready)
+    readiness_calls: list[FakeSubscription] = []
+
+    async def fail_ready(subscription: FakeSubscription) -> None:
+        readiness_calls.append(subscription)
+        raise error
+
+    monkeypatch.setattr(FakeSubscription, "ready", fail_ready)
 
     async def scenario() -> None:
         channel = client.realtime.channel("contract")
@@ -3881,7 +4009,7 @@ def test_realtime_subscribe_releases_connection_lock_after_readiness_failure(
 
     asyncio.run(scenario())
 
-    ready.assert_awaited_once_with(official.subscription)
+    assert readiness_calls == [official.subscription]
 
 
 @pytest.mark.parametrize("cancelled", [False, True])
@@ -3895,18 +4023,18 @@ async def test_realtime_failed_readiness_cannot_activate_later(
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     requested = asyncio.Event()
     fail = asyncio.Event()
-    received: list[Any] = []
+    received: list[object] = []
 
     async def subscribe(subscription: FakeSubscription) -> None:
         await subscription.emit_subscribing()
         requested.set()
 
     async def ready(_subscription: FakeSubscription) -> None:
-        await fail.wait()
+        _ = await fail.wait()
         message = "ready timed out"
         raise centrifuge_error(message)
 
@@ -3915,13 +4043,13 @@ async def test_realtime_failed_readiness_cannot_activate_later(
         patch.setattr(FakeSubscription, "subscribe", subscribe)
         patch.setattr(FakeSubscription, "ready", ready)
         subscribing = asyncio.create_task(channel.subscribe())
-        await asyncio.wait_for(requested.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(requested.wait(), timeout=0.2)
         stale = official.subscription
         assert stale is not None
         if cleanup_fails:
             stale.unsubscribe_error = centrifuge_error("cleanup failed")
         if cancelled:
-            subscribing.cancel()
+            _ = subscribing.cancel()
         else:
             fail.set()
         error = asyncio.CancelledError if cancelled else type(centrifuge_error(""))
@@ -3955,7 +4083,7 @@ async def test_realtime_removal_can_overlap_readiness_rollback(
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     requested, unsubscribed, release = (
         asyncio.Event(),
@@ -3968,7 +4096,7 @@ async def test_realtime_removal_can_overlap_readiness_rollback(
         requested.set()
 
     async def ready(_subscription: FakeSubscription) -> None:
-        await unsubscribed.wait()
+        _ = await unsubscribed.wait()
         message = "subscription unsubscribed"
         raise centrifuge_error(message)
 
@@ -3977,17 +4105,17 @@ async def test_realtime_removal_can_overlap_readiness_rollback(
             return
         # Centrifuge marks the subscription unsubscribed before awaiting its reply.
         unsubscribed.set()
-        await release.wait()
+        _ = await release.wait()
 
     monkeypatch.setattr(FakeSubscription, "subscribe", subscribe)
     monkeypatch.setattr(FakeSubscription, "ready", ready)
     monkeypatch.setattr(FakeSubscription, "unsubscribe", unsubscribe)
     channel = client.realtime.channel("pending")
     subscribing = asyncio.create_task(channel.subscribe())
-    await asyncio.wait_for(requested.wait(), timeout=0.2)
+    _ = await asyncio.wait_for(requested.wait(), timeout=0.2)
     removing = asyncio.create_task(client.realtime.remove_channel("pending"))
     try:
-        await asyncio.wait_for(unsubscribed.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(unsubscribed.wait(), timeout=0.2)
         release.set()
         with pytest.raises(type(centrifuge_error("")), match="unsubscribed"):
             await asyncio.wait_for(subscribing, timeout=0.2)
@@ -3995,7 +4123,7 @@ async def test_realtime_removal_can_overlap_readiness_rollback(
         assert client.realtime.channel("pending") is not channel
     finally:
         release.set()
-        await asyncio.gather(subscribing, removing, return_exceptions=True)
+        _ = await asyncio.gather(subscribing, removing, return_exceptions=True)
         await client.realtime.disconnect()
 
 
@@ -4009,7 +4137,7 @@ def test_realtime_pending_readiness_does_not_block_other_operations(
         _transport=AuthTransport(),
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
         requested = asyncio.Event()
@@ -4023,7 +4151,7 @@ def test_realtime_pending_readiness_does_not_block_other_operations(
         monkeypatch.setattr(FakeSubscription, "subscribe", subscribe)
         pending = client.realtime.channel("pending")
         subscribing = asyncio.create_task(pending.subscribe())
-        await asyncio.wait_for(requested.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(requested.wait(), timeout=0.2)
         try:
             operations = {
                 "send": lambda: healthy.send("healthy"),
@@ -4044,8 +4172,8 @@ def test_realtime_pending_readiness_does_not_block_other_operations(
                 await asyncio.wait_for(subscribing, timeout=0.2)
                 await pending.send("ready")
         finally:
-            subscribing.cancel()
-            await asyncio.gather(subscribing, return_exceptions=True)
+            _ = subscribing.cancel()
+            _ = await asyncio.gather(subscribing, return_exceptions=True)
             await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -4063,7 +4191,7 @@ def test_realtime_native_subscription_waits_for_acknowledgement(
             _transport=AuthTransport(),
             _realtime_client_factory=factory,
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         channel = client.realtime.channel("room", channel_type=channel_type)
         subscribing = asyncio.create_task(channel.subscribe())
         try:
@@ -4080,12 +4208,12 @@ def test_realtime_native_subscription_waits_for_acknowledgement(
             if channel_type == "broadcast":
                 sending = asyncio.create_task(channel.send("ready"))
                 command = await factory.command()
-                assert command["publish"]["data"] == "ready"
+                assert _command_section(command, "publish")["data"] == "ready"
                 await factory.reply(command, publish={})
                 await asyncio.wait_for(sending, timeout=0.2)
         finally:
             await client.realtime.disconnect()
-            await asyncio.gather(subscribing, return_exceptions=True)
+            _ = await asyncio.gather(subscribing, return_exceptions=True)
 
     asyncio.run(scenario())
 
@@ -4103,15 +4231,15 @@ def test_realtime_native_failed_readiness_stops_late_acknowledgement_and_allows_
             _transport=AuthTransport(),
             _realtime_client_factory=factory,
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
-        received: list[Any] = []
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
+        received: list[object] = []
         channel = client.realtime.channel("room").on("message", received.append)
         subscribing = asyncio.create_task(channel.subscribe())
         try:
             original_command = await factory.command()
-            original_subscription = factory.client.get_subscription(channel.name)
+            original_subscription = factory.subscription(channel.name)
             if cancelled:
-                subscribing.cancel()
+                _ = subscribing.cancel()
             stopping = await factory.command()
             assert "unsubscribe" in stopping
             await factory.reply(original_command, subscribe={})
@@ -4132,14 +4260,14 @@ def test_realtime_native_failed_readiness_stops_late_acknowledgement_and_allows_
             command = await factory.command()
             await factory.reply(command, subscribe={})
             await asyncio.wait_for(subscribing, timeout=0.2)
-            subscription = factory.client.get_subscription(channel.name)
+            subscription = factory.subscription(channel.name)
             assert subscription is not original_subscription
             await subscription._process_publication({"data": "retry"})
             await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
             assert received == ["retry"]
         finally:
             await client.realtime.disconnect()
-            await asyncio.gather(subscribing, return_exceptions=True)
+            _ = await asyncio.gather(subscribing, return_exceptions=True)
 
     asyncio.run(scenario())
 
@@ -4155,12 +4283,12 @@ def test_realtime_cancelled_subscribe_settles_late_presence_reply(
             _transport=AuthTransport(),
             _realtime_client_factory=factory,
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         channel = client.realtime.channel("room", channel_type="presence")
         subscribing = asyncio.create_task(channel.subscribe())
         await factory.reply(await factory.command(), subscribe={})
         presence = await factory.command()
-        subscribing.cancel()
+        _ = subscribing.cancel()
         stopping = await factory.command()
         assert "unsubscribe" in stopping
         try:
@@ -4187,7 +4315,7 @@ def test_realtime_cancelled_subscribe_settles_late_presence_reply(
             assert_same(channel._subscribed, expected=True)
         finally:
             await client.realtime.disconnect()
-            await asyncio.gather(subscribing, return_exceptions=True)
+            _ = await asyncio.gather(subscribing, return_exceptions=True)
 
     asyncio.run(scenario())
 
@@ -4202,36 +4330,36 @@ def test_realtime_removed_channel_does_not_cancel_callback_subscription(
             _transport=AuthTransport(),
             _realtime_client_factory=factory,
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         active = client.realtime.channel("active")
         pending = client.realtime.channel("pending")
         completed = asyncio.Event()
 
-        async def receive(_message: Any) -> None:
+        async def receive(_message: object) -> None:
             await pending.subscribe()
             completed.set()
 
-        active.on("message", receive)
+        _ = active.on("message", receive)
         subscribing = asyncio.create_task(active.subscribe())
         await factory.reply(await factory.command(), subscribe={})
         await subscribing
-        subscription = factory.client.get_subscription(active.name)
+        subscription = factory.subscription(active.name)
         await subscription._process_publication({"data": "subscribe"})
         pending_command = await factory.command()
         removing = asyncio.create_task(client.realtime.remove_channel("active"))
         try:
             command = await factory.command()
-            assert command["unsubscribe"]["channel"] == active.name
+            assert _command_section(command, "unsubscribe")["channel"] == active.name
             await factory.reply(command, unsubscribe={})
             await asyncio.wait_for(removing, timeout=0.2)
             assert not completed.is_set()
             await factory.reply(pending_command, subscribe={})
-            await asyncio.wait_for(completed.wait(), timeout=0.2)
+            _ = await asyncio.wait_for(completed.wait(), timeout=0.2)
             assert pending._subscribed
             assert client.realtime.channel("active") is not active
         finally:
             await client.realtime.disconnect()
-            await asyncio.gather(removing, return_exceptions=True)
+            _ = await asyncio.gather(removing, return_exceptions=True)
 
     asyncio.run(scenario())
 
@@ -4246,7 +4374,7 @@ def test_realtime_pause_during_readiness_retains_native_recovery(
             _transport=AuthTransport(),
             _realtime_client_factory=factory,
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         channel = client.realtime.channel("room")
         subscribing = asyncio.create_task(channel.subscribe())
         await factory.reply(
@@ -4254,13 +4382,13 @@ def test_realtime_pause_during_readiness_retains_native_recovery(
             subscribe={"recoverable": True, "offset": 10, "epoch": "stream"},
         )
         await subscribing
-        subscription = factory.client.get_subscription(channel.name)
+        subscription = factory.subscription(channel.name)
         pausing = asyncio.create_task(channel.unsubscribe())
         await factory.reply(await factory.command(), unsubscribe={})
         await pausing
         subscribing = asyncio.create_task(channel.subscribe())
         pending_command = await factory.command()
-        assert pending_command["subscribe"]["offset"] == 10
+        assert _command_section(pending_command, "subscribe")["offset"] == 10
         pausing = asyncio.create_task(channel.unsubscribe())
         command = await factory.command()
         try:
@@ -4272,12 +4400,12 @@ def test_realtime_pause_during_readiness_retains_native_recovery(
             assert channel._subscription is subscription
             subscribing = asyncio.create_task(channel.subscribe())
             command = await factory.command()
-            assert command["subscribe"]["offset"] == 10
+            assert _command_section(command, "subscribe")["offset"] == 10
             await factory.reply(command, subscribe={})
             await asyncio.wait_for(subscribing, timeout=0.2)
         finally:
             await client.realtime.disconnect()
-            await asyncio.gather(subscribing, pausing, return_exceptions=True)
+            _ = await asyncio.gather(subscribing, pausing, return_exceptions=True)
 
     asyncio.run(scenario())
 
@@ -4293,7 +4421,7 @@ def test_realtime_failed_removal_clears_presence(
             _transport=AuthTransport(),
             _realtime_client_factory=factory,
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         channel = client.realtime.channel("room", channel_type="presence")
         subscribing = asyncio.create_task(channel.subscribe())
         await factory.reply(await factory.command(), subscribe={})
@@ -4308,7 +4436,7 @@ def test_realtime_failed_removal_clears_presence(
             if remove_all
             else client.realtime.remove_channel("room", channel_type="presence")
         )
-        await factory.command()
+        _ = await factory.command()
         try:
             await factory.client.disconnect()
             with pytest.raises(realtime_module.CENTRIFUGE_ERROR):
@@ -4318,7 +4446,7 @@ def test_realtime_failed_removal_clears_presence(
             assert_same(channel._subscribed, expected=False)
         finally:
             await client.realtime.disconnect()
-            await asyncio.gather(removing, return_exceptions=True)
+            _ = await asyncio.gather(removing, return_exceptions=True)
 
     asyncio.run(scenario())
 
@@ -4333,18 +4461,26 @@ def test_realtime_disconnect_cancels_readiness_and_allows_immediate_retry(
         second = ControlledCentrifugeFactory(monkeypatch)
         factories = iter((first, second))
 
-        def factory(*args: Any, **kwargs: Any) -> Any:
-            return next(factories)(*args, **kwargs)
+        def factory(
+            address: str,
+            *,
+            events: object,
+            token: str,
+            get_token: Callable[[], Awaitable[str]],
+        ) -> SDKNativeClient:
+            return next(factories)(
+                address, events=events, token=token, get_token=get_token
+            )
 
         client = VolcanoClient(
             anon_key="anon-key",
             _transport=AuthTransport(),
             _realtime_client_factory=factory,
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         channel = client.realtime.channel("room", channel_type=channel_type)
         subscribing = asyncio.create_task(channel.subscribe())
-        await first.command()
+        _ = await first.command()
         retrying: asyncio.Task[None] | None = None
         try:
             await client.realtime.disconnect()
@@ -4359,11 +4495,11 @@ def test_realtime_disconnect_cancels_readiness_and_allows_immediate_retry(
             await asyncio.wait_for(retrying, timeout=0.2)
             assert_same(channel._subscribed, expected=True)
         finally:
-            subscribing.cancel()
+            _ = subscribing.cancel()
             if retrying is not None:
-                retrying.cancel()
-                await asyncio.gather(retrying, return_exceptions=True)
-            await asyncio.gather(subscribing, return_exceptions=True)
+                _ = retrying.cancel()
+                _ = await asyncio.gather(retrying, return_exceptions=True)
+            _ = await asyncio.gather(subscribing, return_exceptions=True)
             await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -4381,7 +4517,7 @@ def test_realtime_cancelled_local_removal_clears_presence(*, remove_all: bool) -
             _transport=AuthTransport(),
             _realtime_client_factory=FakeCentrifugeFactory(official),
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         channel = client.realtime.channel("room", channel_type="presence")
         await channel.subscribe()
         await channel.track({"status": "online"})
@@ -4395,8 +4531,8 @@ def test_realtime_cancelled_local_removal_clears_presence(*, remove_all: bool) -
             else client.realtime.remove_channel("room", channel_type="presence")
         )
         try:
-            await subscription.unsubscribe_entered.wait()
-            removing.cancel()
+            _ = await subscription.unsubscribe_entered.wait()
+            _ = removing.cancel()
             subscription.unsubscribe_release.set()
             with pytest.raises(asyncio.CancelledError):
                 await removing
@@ -4405,7 +4541,7 @@ def test_realtime_cancelled_local_removal_clears_presence(*, remove_all: bool) -
             assert_same(channel._subscribed, expected=False)
         finally:
             await client.realtime.disconnect()
-            await asyncio.gather(removing, return_exceptions=True)
+            _ = await asyncio.gather(removing, return_exceptions=True)
 
     asyncio.run(scenario())
 
@@ -4421,7 +4557,7 @@ def test_realtime_repeated_subscribe_does_not_stop_active_delivery(
             _transport=AuthTransport(),
             _realtime_client_factory=factory,
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         channel = client.realtime.channel("room", channel_type=channel_type)
         subscribing = asyncio.create_task(channel.subscribe())
         await factory.reply(await factory.command(), subscribe={})
@@ -4438,7 +4574,7 @@ def test_realtime_repeated_subscribe_does_not_stop_active_delivery(
             assert_same(channel._subscribed, expected=True)
         finally:
             await client.realtime.disconnect()
-            await asyncio.gather(subscribing, return_exceptions=True)
+            _ = await asyncio.gather(subscribing, return_exceptions=True)
 
     asyncio.run(scenario())
 
@@ -4451,18 +4587,24 @@ async def test_realtime_stop_invalidates_queued_subscribe_calls(
     second = ControlledCentrifugeFactory(monkeypatch)
     factories = iter((first, second))
 
-    def factory(*args: Any, **kwargs: Any) -> Any:
-        return next(factories)(*args, **kwargs)
+    def factory(
+        address: str,
+        *,
+        events: object,
+        token: str,
+        get_token: Callable[[], Awaitable[str]],
+    ) -> SDKNativeClient:
+        return next(factories)(address, events=events, token=token, get_token=get_token)
 
     client = VolcanoClient(
         anon_key="anon-key",
         _transport=AuthTransport(),
         _realtime_client_factory=factory,
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     channel = client.realtime.channel("room")
     subscribing = asyncio.create_task(channel.subscribe())
-    await first.command()
+    _ = await first.command()
     queued = asyncio.create_task(channel.subscribe())
     await asyncio.sleep(0)
     assert not queued.done()
@@ -4489,8 +4631,8 @@ async def test_realtime_stop_invalidates_queued_subscribe_calls(
     finally:
         for task in (subscribing, queued, stopping, retrying):
             if task is not None:
-                task.cancel()
-                await asyncio.gather(task, return_exceptions=True)
+                _ = task.cancel()
+                _ = await asyncio.gather(task, return_exceptions=True)
         await client.realtime.disconnect()
 
 
@@ -4504,10 +4646,10 @@ def test_realtime_repeated_pause_invalidates_intervening_subscribe(
             _transport=AuthTransport(),
             _realtime_client_factory=factory,
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         channel = client.realtime.channel("room")
         first = asyncio.create_task(channel.subscribe())
-        await factory.command()
+        _ = await factory.command()
         pause = asyncio.create_task(channel.unsubscribe())
         await asyncio.sleep(0)
         queued = asyncio.create_task(channel.subscribe())
@@ -4525,8 +4667,8 @@ def test_realtime_repeated_pause_invalidates_intervening_subscribe(
         finally:
             await client.realtime.disconnect()
             for task in (first, queued, pause, last_pause):
-                task.cancel()
-                await asyncio.gather(task, return_exceptions=True)
+                _ = task.cancel()
+                _ = await asyncio.gather(task, return_exceptions=True)
 
     asyncio.run(scenario())
 
@@ -4542,7 +4684,7 @@ async def test_realtime_cancelled_unsubscribe_keeps_native_replies_valid(
         _transport=AuthTransport(),
         _realtime_client_factory=factory,
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     channel = client.realtime.channel("room")
     subscribing = asyncio.create_task(channel.subscribe())
     await factory.reply(await factory.command(), subscribe={})
@@ -4554,9 +4696,9 @@ async def test_realtime_cancelled_unsubscribe_keeps_native_replies_valid(
     }
     stopping = asyncio.create_task(operations[operation]())
     command = await factory.command()
-    stopping.cancel()
+    _ = stopping.cancel()
     await asyncio.sleep(0)
-    stopping.cancel()
+    _ = stopping.cancel()
     await asyncio.sleep(0)
     retrying: asyncio.Task[None] | None = None
     try:
@@ -4581,7 +4723,7 @@ async def test_realtime_cancelled_unsubscribe_keeps_native_replies_valid(
             await factory.reply(await factory.command(), publish={})
             await asyncio.wait_for(publishing, timeout=0.2)
     finally:
-        await asyncio.gather(stopping, return_exceptions=True)
+        _ = await asyncio.gather(stopping, return_exceptions=True)
         await client.realtime.disconnect()
 
 
@@ -4595,15 +4737,15 @@ def test_realtime_cancelled_unsubscribe_settles_on_native_timeout(
             _transport=AuthTransport(),
             _realtime_client_factory=factory,
         )
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
         channel = client.realtime.channel("room")
         subscribing = asyncio.create_task(channel.subscribe())
         await factory.reply(await factory.command(), subscribe={})
         await subscribing
         factory.client._timeout = 0.01
         stopping = asyncio.create_task(channel.unsubscribe())
-        await factory.command()
-        stopping.cancel()
+        _ = await factory.command()
+        _ = stopping.cancel()
         try:
             with pytest.raises(asyncio.CancelledError):
                 await asyncio.wait_for(stopping, timeout=0.2)
@@ -4626,7 +4768,7 @@ def test_realtime_binds_bootstrap_refresh_without_profile(
         return f"header.{payload}.signature"
 
     class BootstrapTransport(AuthTransport):
-        def auth_refresh(self, **_arguments: Any) -> Response:
+        def auth_refresh(self, **_arguments: object) -> Response:
             return Response(
                 200,
                 {
@@ -4654,13 +4796,13 @@ def test_realtime_binds_bootstrap_refresh_without_profile(
             assert client.current_session is not None
             assert client.current_session.user_id is None
             if same_session:
-                client.auth.refresh_session()
+                _ = client.auth.refresh_session()
                 await client.realtime.channel("another").subscribe()
             else:
                 with pytest.raises(
                     AuthenticationError, match="different server session"
                 ):
-                    client.auth.refresh_session()
+                    _ = client.auth.refresh_session()
             assert client.current_session.access_token == token(
                 "00000000-0000-4000-8000-000000000001"
             )
