@@ -35,6 +35,7 @@ from ._transport import (
     invoke_async,
     response_payload,
 )
+from .database import _database_rows
 from .models import JSONValue, _freeze_json
 
 if TYPE_CHECKING:
@@ -1391,8 +1392,7 @@ class Realtime:
                 "limit": len(row_ids),
             },
         )
-        payload = response_payload(response, 200)
-        rows = list(payload["data"])
+        rows = _database_rows(response_payload(response, 200))
         return tuple(
             next(
                 (row for row in rows if row.get("id") == request.row_id),
