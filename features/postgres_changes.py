@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from contract_support import ContractWorld
 
@@ -17,12 +17,12 @@ if TYPE_CHECKING:
 
 class ChangeObserver:
     def __init__(self, channel: Channel, table: str, row_id: JSONValue) -> None:
-        self.row_id = row_id
+        self.row_id: JSONValue = row_id
         self.events: list[PostgresChange] = []
         self.queue: asyncio.Queue[PostgresChange] = asyncio.Queue()
         self.inserts: list[PostgresChange] = []
         self.wrong_table: list[PostgresChange] = []
-        self.stops = [
+        self.stops: list[Callable[[], None]] = [
             channel.on_postgres_changes(
                 "*", schema="public", table=table, callback=self.record
             ),
@@ -72,7 +72,7 @@ def verify_change(
     automatic: bool,
 ) -> None:
     assert (event.type, event.schema, event.table) == (kind, "public", table)
-    datetime.fromisoformat(event.timestamp)
+    _ = datetime.fromisoformat(event.timestamp)
     if automatic:
         assert event.record == row
         assert event.id is None
@@ -84,7 +84,7 @@ def verify_change(
 
 
 def remove_row(table: QueryBuilder, row_id: JSONValue) -> None:
-    table.delete().eq("id", row_id).execute()
+    _ = table.delete().eq("id", row_id).execute()
 
 
 async def verify_postgres_changes(world: ContractWorld) -> list[str]:
@@ -99,7 +99,7 @@ async def verify_postgres_changes(world: ContractWorld) -> list[str]:
     channels = postgres_channels(world, table_name)
     observers = [ChangeObserver(channel, table_name, row["id"]) for channel in channels]
     try:
-        await asyncio.gather(*(channel.subscribe() for channel in channels))
+        _ = await asyncio.gather(*(channel.subscribe() for channel in channels))
         for index, kind in enumerate(["INSERT", "UPDATE"]):
             expected = {**row, "value": "inserted" if index == 0 else "updated"}
             operation = (
@@ -120,7 +120,7 @@ async def verify_postgres_changes(world: ContractWorld) -> list[str]:
     finally:
         for observer in observers:
             observer.close()
-        await asyncio.gather(*(channel.unsubscribe() for channel in channels))
+        _ = await asyncio.gather(*(channel.unsubscribe() for channel in channels))
     return ["INSERT", "UPDATE"]
 
 

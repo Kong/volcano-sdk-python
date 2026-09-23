@@ -73,14 +73,14 @@ def bucket_total(bucket: Mapping[str, JSONValue]) -> int:
 
 class LogContract:
     def __init__(self, world: ContractWorld) -> None:
-        self.world = world
-        self.client = VolcanoClient(
+        self.world: ContractWorld = world
+        self.client: VolcanoClient = VolcanoClient(
             api_url=world.fixture["api_url"],
             anon_key=world.fixture["anon_key"],
             access_token=world.fixture["logs_access_token"],
             timeout=10,
         )
-        self.marker = f"sdklogs{uuid4().hex}"
+        self.marker: str = f"sdklogs{uuid4().hex}"
         self.request: dict[str, JSONValue] = {
             "resource": {"type": "function", "ids": [world.fixture["function_id"]]},
             "q": self.marker,

@@ -31,12 +31,12 @@ async def verify_broadcast_pause(world: ContractWorld) -> object:
         delivered.append(message)
         received.put_nowait(message)
 
-    subscriber.on("message", on_message)
+    _ = subscriber.on("message", on_message)
     baseline = {
         **world.realtime_message,
         "value": world.realtime_message["value"] + "-baseline",
     }
-    await _publish_and_receive(publisher, received, baseline)
+    _ = await _publish_and_receive(publisher, received, baseline)
     await subscriber.unsubscribe()
     delivered.clear()
     await publisher.send(

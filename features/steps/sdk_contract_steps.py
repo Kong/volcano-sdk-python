@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import replace
 from datetime import datetime
-from typing import TYPE_CHECKING, TypedDict, TypeVar, cast
+from typing import TYPE_CHECKING, TypedDict, TypeGuard, TypeVar, cast
 from uuid import uuid4
 
 import httpx
@@ -27,6 +28,7 @@ from volcano_sdk import (
     FunctionResponse,
     LockLease,
     LockState,
+    LogActivityResponse,
     NotFoundError,
     Session,
     SessionPage,
@@ -45,6 +47,8 @@ if TYPE_CHECKING:
 
     from behave.runner import Context
 
+    from volcano_sdk.database import QueryBuilder
+    from volcano_sdk.models import JSONValue
     from volcano_sdk.realtime import Channel
     from volcano_sdk.storage import StorageBucket
 
@@ -54,6 +58,7 @@ MULTIPART_PART_COUNT = 2
 DURABLE_START_COUNT = 2
 STORAGE_LIFECYCLE_DOWNLOAD_COUNT = 4
 REJECTED_BEARER = "sdk-contract-rejected-access-token"
+PRESENCE_ROSTERS_SUFFIX = "and the original handler observes membership changes"
 _ValueT = TypeVar("_ValueT")
 
 
@@ -114,9 +119,15 @@ def uploaded_text_field(uploaded: dict[str, object], field: str) -> str:
 
 
 def _world(context: Context) -> ContractWorld:
-    world = context.contract
+    world = cast("object", context.contract)
     assert isinstance(world, ContractWorld)
     return world
+
+
+def _logs_contract(context: Context) -> LogContract:
+    logs_contract = cast("object", context.logs_contract)
+    assert isinstance(logs_contract, LogContract)
+    return logs_contract
 
 
 def _outcome(context: Context) -> Outcome:
@@ -147,6 +158,28 @@ def _object_list(value: object) -> list[object]:
     return cast("list[object]", value)
 
 
+def _is_json_value(value: object) -> TypeGuard[JSONValue]:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return True
+    if isinstance(value, (list, tuple)):
+        items = cast("list[object] | tuple[object, ...]", value)
+        return all(_is_json_value(item) for item in items)
+    if isinstance(value, Mapping):
+        entries = cast("Mapping[object, object]", value)
+        return all(
+            isinstance(key, str) and _is_json_value(item)
+            for key, item in entries.items()
+        )
+    return False
+
+
+def _log_events(value: object) -> list[Mapping[str, JSONValue]]:
+    assert isinstance(value, list)
+    events = cast("list[object]", value)
+    assert all(_is_json_value(event) and isinstance(event, Mapping) for event in events)
+    return cast("list[Mapping[str, JSONValue]]", value)
+
+
 def _remove_cleanup(world: ContractWorld, candidate: object) -> None:
     for callback in world.cleanup_callbacks:
         if callback is candidate:
@@ -173,7 +206,7 @@ def listen_for_auth_state_changes(context: Context) -> None:
 @when("the client signs in with the contract user's credentials")
 def sign_in(context: Context) -> None:
     world = _world(context)
-    world.record(
+    _ = world.record(
         lambda: world.client.auth.sign_in(
             email=world.fixture["user_email"],
             password=world.fixture["user_password"],
@@ -184,7 +217,7 @@ def sign_in(context: Context) -> None:
 @when("the client reads the current session")
 def read_current_session(context: Context) -> None:
     world = _world(context)
-    world.record(world.client.auth.get_session)
+    _ = world.record(world.client.auth.get_session)
 
 
 @when("a fresh client adopts the current session")
@@ -196,7 +229,7 @@ def adopt_current_session(context: Context) -> None:
         api_url=world.fixture["api_url"],
         anon_key=world.fixture["anon_key"],
     )
-    world.record(lambda: target.auth.set_session(source))
+    _ = world.record(lambda: target.auth.set_session(source))
     world.client = target
 
 
@@ -206,7 +239,7 @@ def refresh_current_session(context: Context) -> None:
     world.previous_session = world.client.auth.get_session()
     assert world.previous_session is not None
     time.sleep(ACCESS_TOKEN_CLOCK_TICK_SECONDS)
-    world.record(world.client.auth.refresh_session)
+    _ = world.record(world.client.auth.refresh_session)
 
 
 @when("a fresh client tries to refresh a supplied profile without a session identifier")
@@ -218,7 +251,7 @@ def refresh_supplied_profile_without_sid(context: Context) -> None:
         api_url=world.fixture["api_url"], anon_key=world.fixture["anon_key"]
     )
     supplied = target.auth.set_session(replace(source, access_token=REJECTED_BEARER))
-    world.record(target.auth.refresh_session)
+    _ = world.record(target.auth.refresh_session)
     assert target.auth.get_session() == supplied
 
 
@@ -235,7 +268,7 @@ def bootstrap_access_token(context: Context) -> None:
         anon_key=world.fixture["anon_key"],
         access_token=world.previous_session.access_token,
     )
-    world.record(world.client.auth.get_session)
+    _ = world.record(world.client.auth.get_session)
 
 
 @then("the token-only session has no cached user")
@@ -255,7 +288,7 @@ def bootstrap_rejected_token(context: Context) -> None:
         access_token=REJECTED_BEARER,
     )
     world.previous_session = world.client.current_session
-    world.record(world.client.auth.get_session)
+    _ = world.record(world.client.auth.get_session)
 
 
 @then("the session retains only the supplied access token")
@@ -304,7 +337,7 @@ def load_signed_out_profile(context: Context) -> None:
         anon_key=world.fixture["anon_key"],
         access_token=world.signed_out_session.access_token,
     )
-    world.record(target.auth.get_user)
+    _ = world.record(target.auth.get_user)
 
 
 @when("a fresh client tries to refresh the signed-out session")
@@ -315,9 +348,9 @@ def refresh_signed_out_session(context: Context) -> None:
         api_url=world.fixture["api_url"],
         anon_key=world.fixture["anon_key"],
     )
-    target.auth.set_session(world.signed_out_session)
+    _ = target.auth.set_session(world.signed_out_session)
     world.client = target
-    world.record(target.auth.refresh_session)
+    _ = world.record(target.auth.refresh_session)
 
 
 @then("the SDK operation fails with an authentication error")
@@ -411,7 +444,7 @@ def read_replaced_token(context: Context) -> None:
 @when("the client lists its server sessions")
 def list_server_sessions(context: Context) -> None:
     world = _world(context)
-    world.record(lambda: world.client.auth.list_sessions(page=1, limit=100))
+    _ = world.record(lambda: world.client.auth.list_sessions(page=1, limit=100))
 
 
 @then("the session list contains the current session for the contract user")
@@ -428,7 +461,7 @@ def listed_sessions_belong_to_contract_user(context: Context) -> None:
 @when("the client loads its server-validated profile")
 def load_server_profile(context: Context) -> None:
     world = _world(context)
-    world.record(world.client.auth.get_user)
+    _ = world.record(world.client.auth.get_user)
 
 
 @then("the returned and cached profiles belong to the contract user")
@@ -447,13 +480,13 @@ def pause_and_resume(context: Context) -> None:
     world = _world(context)
     if world.last_outcome is not None and not world.last_outcome.ok:
         return
-    world.record(lambda: world.run(verify_broadcast_pause(world)))
+    _ = world.record(lambda: world.run(verify_broadcast_pause(world)))
 
 
 @when('the client selects the contract table where "slug" equals the fixture slug')
 def select_fixture_row(context: Context) -> None:
     world = _world(context)
-    world.record(
+    _ = world.record(
         lambda: (
             world.client.database(world.fixture["database_name"])
             .from_(world.fixture["table_name"])
@@ -474,7 +507,7 @@ def fixture_row_returned(context: Context) -> None:
 @when("the client selects a projected page of query fixture members")
 def select_projected_query_page(context: Context) -> None:
     world = _world(context)
-    world.record(
+    _ = world.record(
         lambda: (
             world.client.database(world.fixture["database_name"])
             .from_(world.fixture["query_table_name"])
@@ -504,16 +537,30 @@ def _query_filters(
         table = world.client.database(world.fixture["database_name"]).from_(
             world.fixture["query_table_name"]
         )
-        return {
-            f"{operator}:{value}": getattr(table.select("slug"), operator)(
-                column, value
-            )
-            .order("rank")
-            .execute()
-            for operator, column, value in filters
-        }
+        results: dict[str, list[dict[str, object]]] = {}
+        for operator, column, value in filters:
+            query = table.select("slug")
+            value_filters: dict[str, Callable[[str, object], QueryBuilder]] = {
+                "neq": query.neq,
+                "gt": query.gt,
+                "gte": query.gte,
+                "lt": query.lt,
+                "lte": query.lte,
+                "is_": query.is_,
+            }
+            if operator in value_filters:
+                filtered = value_filters[operator](column, value)
+            else:
+                assert isinstance(value, str)
+                pattern_filters: dict[str, Callable[[str, str], QueryBuilder]] = {
+                    "like": query.like,
+                    "ilike": query.ilike,
+                }
+                filtered = pattern_filters[operator](column, value)
+            results[f"{operator}:{value}"] = filtered.order("rank").execute()
+        return results
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @when("the client selects query fixture rows with each comparison filter")
@@ -591,12 +638,12 @@ def insert_contract_row(context: Context) -> None:
 
     def operation() -> list[dict[str, object]]:
         def cleanup() -> None:
-            table.delete().eq("slug", row["slug"]).execute()
+            _ = table.delete().eq("slug", row["slug"]).execute()
 
         world.cleanup_callbacks.append(cleanup)
         return table.insert(row).execute()
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("exactly the inserted contract row is returned")
@@ -617,7 +664,7 @@ def update_contract_row(context: Context) -> None:
 
     def operation() -> list[dict[str, object]]:
         def cleanup() -> None:
-            (
+            _ = (
                 table.update({"value": row["before"]["value"]})
                 .eq("slug", row["before"]["slug"])
                 .execute()
@@ -630,7 +677,7 @@ def update_contract_row(context: Context) -> None:
             .execute()
         )
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("exactly the updated contract row is returned")
@@ -651,13 +698,13 @@ def delete_contract_row(context: Context) -> None:
 
     def operation() -> list[dict[str, object]]:
         def cleanup() -> None:
-            table.delete().eq("slug", row["slug"]).execute()
-            table.insert(row).execute()
+            _ = table.delete().eq("slug", row["slug"]).execute()
+            _ = table.insert(row).execute()
 
         world.cleanup_callbacks.append(cleanup)
         return table.delete().eq("slug", row["slug"]).execute()
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("exactly the deleted contract row is returned")
@@ -675,7 +722,7 @@ def update_missing_contract_row(context: Context) -> None:
         world.fixture["table_name"]
     )
     missing_slug = f"{world.fixture['fixture_row']['slug']}-missing"
-    world.record(
+    _ = world.record(
         lambda: (
             table.update({"value": "must-not-be-written"})
             .eq("slug", missing_slug)
@@ -691,7 +738,7 @@ def delete_missing_contract_row(context: Context) -> None:
         world.fixture["table_name"]
     )
     missing_slug = f"{world.fixture['fixture_row']['slug']}-missing"
-    world.record(lambda: table.delete().eq("slug", missing_slug).execute())
+    _ = world.record(lambda: table.delete().eq("slug", missing_slug).execute())
 
 
 @then("the mutation returns an empty row list")
@@ -727,7 +774,7 @@ def upload_and_download(context: Context) -> None:
             "path": uploaded_text_field(uploaded, "name"),
         }
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("the downloaded bytes equal the uploaded bytes")
@@ -750,7 +797,7 @@ def upload_and_read_metadata(context: Context) -> None:
         )
 
         def remove_object() -> None:
-            bucket.remove(world.storage_path)
+            _ = bucket.remove(world.storage_path)
 
         world.cleanup_callbacks.append(remove_object)
         listed = bucket.list(world.storage_path)
@@ -764,7 +811,7 @@ def upload_and_read_metadata(context: Context) -> None:
             ],
         }
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("the uploaded and listed object content types are text/plain")
@@ -785,7 +832,7 @@ def upload_and_download_range(context: Context) -> None:
         uploaded = bucket.upload(world.storage_path, world.storage_bytes)
 
         def remove_object() -> None:
-            bucket.remove(world.storage_path)
+            _ = bucket.remove(world.storage_path)
 
         world.cleanup_callbacks.append(remove_object)
         return {
@@ -793,7 +840,7 @@ def upload_and_download_range(context: Context) -> None:
             "path": uploaded_text_field(uploaded, "name"),
         }
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("the downloaded bytes equal uploaded bytes 2 through 7 inclusive")
@@ -817,19 +864,19 @@ def copy_move_and_remove(context: Context) -> None:
             if any(
                 item.name == object_path for item in bucket.list(object_path).objects
             ):
-                bucket.remove(object_path)
+                _ = bucket.remove(object_path)
 
         world.cleanup_callbacks.append(cleanup)
 
     def operation() -> StorageLifecycleResult:
-        bucket.upload(source, world.storage_bytes)
-        bucket.copy(source, copied)
+        _ = bucket.upload(source, world.storage_bytes)
+        _ = bucket.copy(source, copied)
         original_bytes = bucket.download(source)
         copied_bytes = bucket.download(copied)
-        bucket.move(copied, moved)
+        _ = bucket.move(copied, moved)
         moved_bytes = bucket.download(moved)
         after_move = sorted(item.name for item in bucket.list(source).objects)
-        bucket.remove(moved)
+        _ = bucket.remove(moved)
         after_remove = sorted(item.name for item in bucket.list(source).objects)
         remaining_bytes = bucket.download(source)
         return {
@@ -838,7 +885,7 @@ def copy_move_and_remove(context: Context) -> None:
             "after_remove": after_remove,
         }
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("the original, copied, and moved bytes equal the uploaded bytes")
@@ -881,7 +928,7 @@ def _clean_storage_object(world: ContractWorld) -> None:
         item.name == world.storage_path
         for item in bucket.list(world.storage_path).objects
     ):
-        bucket.remove(world.storage_path)
+        _ = bucket.remove(world.storage_path)
 
 
 def _partial_upload(world: ContractWorld) -> PartialUpload:
@@ -922,7 +969,7 @@ def resume_contract_upload(context: Context) -> None:
         progress = bucket.get_upload_session(
             world.storage_path, session_id=session.session_id
         )
-        bucket.upload_part(
+        _ = bucket.upload_part(
             world.storage_path,
             session_id=session.session_id,
             part_number=2,
@@ -939,7 +986,7 @@ def resume_contract_upload(context: Context) -> None:
             "download": download,
         }
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("upload progress describes exactly the first uploaded part")
@@ -1000,14 +1047,14 @@ def abort_contract_upload(context: Context) -> None:
         }
         for name, read in reads.items():
             try:
-                read()
+                _ = read()
             except NotFoundError:
                 outcomes[name] = "not found"
             else:
                 outcomes[name] = "unexpected success"
         return outcomes
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("the aborted session and unfinished object are not found")
@@ -1025,7 +1072,7 @@ def change_contract_visibility(context: Context) -> None:
     def operation() -> StorageVisibilityResult:
         bucket = _storage_bucket(world)
         world.cleanup_callbacks.append(lambda: _clean_storage_object(world))
-        bucket.upload(world.storage_path, world.storage_bytes)
+        _ = bucket.upload(world.storage_path, world.storage_bytes)
         url = bucket.get_public_url(world.storage_path)
         before = httpx.get(url, timeout=10)
         public = bucket.update_visibility(world.storage_path, is_public=True)
@@ -1039,7 +1086,7 @@ def change_contract_visibility(context: Context) -> None:
             "private_bytes": [before.content, after.content],
         }
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("anonymous reads return the original bytes only while the object is public")
@@ -1087,7 +1134,7 @@ def acquire_and_release_lock(context: Context) -> None:
         world.cleanup_callbacks.remove(replacement_cleanup)
         return {"lease": lease, "released": replacement.token != lease.token}
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("the released lease is no longer held")
@@ -1105,7 +1152,7 @@ def project_owner_client(context: Context) -> None:
 @when("the client starts the contract durable function")
 def start_durable_execution(context: Context) -> None:
     world = _world(context)
-    world.record(world.start_durable_execution)
+    _ = world.record(world.start_durable_execution)
 
 
 @when("the client starts the contract durable function twice under one execution name")
@@ -1115,7 +1162,7 @@ def start_durable_execution_twice(context: Context) -> None:
     def operation() -> tuple[DurableExecution, DurableExecution]:
         return world.start_durable_execution(), world.start_durable_execution()
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @when("the client recovers the contract lock with caller-owned tokens")
@@ -1142,7 +1189,7 @@ def recover_lock(context: Context) -> None:
             "available": available,
         }
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("the started execution carries its id, function, name, region, and creation time")
@@ -1188,7 +1235,7 @@ def read_execution_until_terminal(context: Context) -> None:
         return
     assert world.started_execution is not None
     execution_id = world.started_execution.id
-    world.record(lambda: world.follow_durable_execution(execution_id))
+    _ = world.record(lambda: world.follow_durable_execution(execution_id))
 
 
 @then("the execution succeeded carrying the function's result")
@@ -1205,7 +1252,7 @@ def list_durable_executions(context: Context) -> None:
     world = _world(context)
     if world.last_outcome is not None and not world.last_outcome.ok:
         return
-    world.record(world.list_durable_executions)
+    _ = world.record(world.list_durable_executions)
 
 
 @then("the listed executions include the started execution")
@@ -1261,7 +1308,7 @@ def force_release_lock(context: Context) -> None:
         locks.force_release(key, request_id=str(uuid4()))
         return {"lease": lease, "cleanup": cleanup, "available": locks.get(key)}
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("the force-released lock is available")
@@ -1286,10 +1333,10 @@ def reacquire_force_released_lock(context: Context) -> None:
 
     def operation() -> object:
         replacement = world.service_client.locks.acquire(world.lock_key, ttl=30)
-        world.register_lock_cleanup(world.lock_key, replacement)
+        _ = world.register_lock_cleanup(world.lock_key, replacement)
         return {"original": original, "replacement": replacement}
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("the replacement owner receives a higher fencing token")
@@ -1330,7 +1377,7 @@ def _realtime_pair(world: ContractWorld) -> tuple[Channel, Channel]:
         ),
     ]
     for client in clients:
-        client.auth.sign_in(
+        _ = client.auth.sign_in(
             email=world.fixture["user_email"],
             password=world.fixture["user_password"],
         )
@@ -1343,7 +1390,7 @@ def _realtime_pair(world: ContractWorld) -> tuple[Channel, Channel]:
 
 
 async def _subscribe_pair(subscriber: Channel, publisher: Channel) -> None:
-    await asyncio.gather(subscriber.subscribe(), publisher.subscribe())
+    _ = await asyncio.gather(subscriber.subscribe(), publisher.subscribe())
 
 
 async def publish_contract_message(world: ContractWorld) -> object:
@@ -1355,7 +1402,7 @@ async def publish_contract_message(world: ContractWorld) -> object:
         if not received.done():
             received.set_result(message)
 
-    world.subscriber.on("message", on_message)
+    _ = world.subscriber.on("message", on_message)
     await world.publisher.send(world.realtime_message)
     return await asyncio.wait_for(received, timeout=10)
 
@@ -1388,7 +1435,7 @@ def subscriber_received_message(context: Context) -> None:
 @when("the authenticated client invokes the contract function by name")
 def invoke_authenticated_contract_function(context: Context) -> None:
     world = _world(context)
-    world.record(
+    _ = world.record(
         lambda: world.client.functions.invoke(
             world.fixture["function_name"], {"value": "contract"}
         )
@@ -1404,7 +1451,7 @@ def invoke_contract_function(context: Context) -> None:
             world.fixture["function_name"], {"value": "contract"}
         )
 
-    world.record(operation)
+    _ = world.record(operation)
 
 
 @then("the function echoes the payload")
@@ -1426,32 +1473,32 @@ def project_logs_client(context: Context) -> None:
 
 @when("the contract function emits three unique structured log events")
 def emit_three_logs(context: Context) -> None:
-    context.logs_contract.emit(3)
+    _logs_contract(context).emit(3)
 
 
 @when("the contract function emits one unique structured log event")
 def emit_one_log(context: Context) -> None:
-    context.logs_contract.emit(1)
+    _logs_contract(context).emit(1)
 
 
 @when("the client searches and paginates those events within 240 seconds")
 def search_contract_logs(context: Context) -> None:
-    _world(context).record(context.logs_contract.search)
+    _ = _world(context).record(_logs_contract(context).search)
 
 
 @when("the client reads matching log activity within 120 seconds")
 def read_contract_log_activity(context: Context) -> None:
-    _world(context).record(context.logs_contract.activity)
+    _ = _world(context).record(_logs_contract(context).activity)
 
 
 @then("all three structured events retain their metadata without duplicates")
 def verify_contract_logs(context: Context) -> None:
-    context.logs_contract.verify_events(_outcome(context).value)
+    _logs_contract(context).verify_events(_log_events(_outcome(context).value))
 
 
 @then("activity counts exactly that event in its function and level buckets")
 def verify_contract_log_activity(context: Context) -> None:
-    context.logs_contract.verify_activity(_outcome(context).value)
+    _logs_contract(context).verify_activity(_value(context, LogActivityResponse))
 
 
 @when("one presence client joins and leaves while the other remains subscribed")
@@ -1459,13 +1506,10 @@ def observe_presence_membership(context: Context) -> None:
     world = _world(context)
     if world.last_outcome is not None and not world.last_outcome.ok:
         return
-    world.record(lambda: world.run(verify_presence_membership(world)))
+    _ = world.record(lambda: world.run(verify_presence_membership(world)))
 
 
-@then(
-    "both rosters identify the contract user "
-    "and the original handler observes membership changes"
-)
+@then(f"both rosters identify the contract user {PRESENCE_ROSTERS_SUFFIX}")
 def verify_presence_rosters(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
@@ -1477,7 +1521,7 @@ def observe_postgres_changes(context: Context) -> None:
     world = _world(context)
     if world.last_outcome is not None and not world.last_outcome.ok:
         return
-    world.record(lambda: world.run(verify_postgres_changes(world)))
+    _ = world.record(lambda: world.run(verify_postgres_changes(world)))
 
 
 @then("automatic and lightweight notifications retain metadata and row identity")

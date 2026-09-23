@@ -172,6 +172,15 @@ root = "src/volcano_sdk/_transport.py"
 reportUnannotatedClassAttribute = "error"
 reportAny = "error"
 
+[[tool.basedpyright.executionEnvironments]]
+root = "features"
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportImplicitStringConcatenation = "error"
+reportUnannotatedClassAttribute = "error"
+reportUnusedCallResult = "error"
+
 [tool.ruff]
 required-version = "==0.16.4"
 target-version = "py311"
