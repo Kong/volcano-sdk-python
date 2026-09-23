@@ -1,0 +1,82 @@
+"""Mutation reports must separate useful kills from other outcomes."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from scripts.mutation_results import main
+
+
+def fixture_report(tmp_path: Path, code: int | None) -> tuple[Path, Path]:
+    """Write a single generated mutant and the shell target inputs.
+
+    Returns:
+        Target and harness-failure path files.
+
+    """
+    source = Path("src/volcano_sdk/probe.py")
+    source.parent.mkdir(parents=True)
+    source.write_text("def probe() -> bool:\n    return True\n", encoding="utf-8")
+    meta = Path("mutants/src/volcano_sdk/probe.py.meta")
+    meta.parent.mkdir(parents=True)
+    _ = meta.write_text(
+        json.dumps({"exit_code_by_key": {"probe__mutmut_1": code}}),
+        encoding="utf-8",
+    )
+    targets = tmp_path / "targets.bin"
+    targets.write_bytes(f"{source}\0".encode())
+    failed = tmp_path / "failed.bin"
+    failed.write_bytes(b"")
+    return targets, failed
+
+
+@pytest.mark.parametrize(
+    ("code", "outcome"),
+    [
+        (0, "survived"),
+        (3, "crashed"),
+        (5, "uncovered"),
+        (36, "timed_out"),
+        (None, "incomplete"),
+    ],
+)
+def test_non_kills_fail_separately(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    code: int | None,
+    outcome: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    targets, failed = fixture_report(tmp_path, code)
+    assert main(targets, failed) == 1
+    report = json.loads(Path("reports/mutation.json").read_text(encoding="utf-8"))
+    assert report["outcomes"] == {outcome: 1}
+
+
+def test_killed_mutant_passes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    targets, failed = fixture_report(tmp_path, 1)
+    assert main(targets, failed) == 0
+
+
+def test_missing_mutation_report_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    targets, failed = fixture_report(tmp_path, 1)
+    Path("mutants/src/volcano_sdk/probe.py.meta").unlink()
+    assert main(targets, failed) == 1
+    report = Path("reports/mutation.json").read_text(encoding="utf-8")
+    assert "Missing mutmut report" in report
+
+
+def test_harness_failure_does_not_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    targets, failed = fixture_report(tmp_path, 1)
+    failed.write_bytes(b"src/volcano_sdk/probe.py\0")
+    assert main(targets, failed) == 1

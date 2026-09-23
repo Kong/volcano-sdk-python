@@ -1,24 +1,28 @@
 # Mutation testing
 
-`uv run --locked poe mutation` runs mutmut against the handwritten lock runtime
-with the full unit-test suite. The native `[tool.mutmut]` configuration selects
-`locks.py` and its three renewal/guard modules; it does not mutate the generated
-OpenAPI client. This is the first subsystem in a staged rollout, not a passing
-repository-wide mutation gate.
+`uv run --locked poe quality` runs all native checks and mutates every changed
+handwritten runtime module plus the lock acquisition, guard, renewal, and worker
+modules. CI uses the same `checks` and `mutation` tasks in separate jobs, then
+requires both through `Quality Gate`. The weekly `poe mutation-full` task audits
+every handwritten runtime module without a debt baseline.
 
-`poe mutation` exports and checks mutmut's native CI stats. Mutmut itself exits
-successfully when mutants survive, so the Poe result check requires a nonempty
-run with every mutant killed. Inspect `mutants/mutmut-cicd-stats.json` to keep
-`survived`, `no_tests`, `timeout`,
-`suspicious`, `segfault`, and interrupted counts separate. A timeout or crash
-does not prove that a test detected a defect. Mutmut caches results in the
-ignored `mutants/` directory; use a fresh directory when certifying a full run.
+Mutmut's [native configuration](https://mutmut.readthedocs.io/en/latest/) lives
+in `pyproject.toml`; it excludes only the generated OpenAPI client. Mutmut can
+select modules by name but has no Git-changed-module option and returns success
+when mutants survive. `scripts/mutation.sh` selects module names from Git and
+`scripts/mutation_results.py` reads only those modules' native metadata. The
+report at `reports/mutation.json` distinguishes survivors, uncovered mutants,
+timeouts, crashes, interrupted runs, and missing results. A pytest internal
+error is a harness crash, not a killed mutant. All non-killed outcomes fail.
 
-Mutmut 3.8.0's stats collection currently fails an unrelated storage read-size
-assertion when it instruments the entire SDK at once. The copied, unmutated
-source passes the full unit suite. The lock selection keeps this first
-mutation pass reproducible while the broader instrumentation issue is resolved.
-The selected source paths must expand to every handwritten runtime module
-before mutation becomes a required quality task.
+The full audit runs mutmut once across the entire source tree. It reports any
+surviving mutants without treating them as an approved baseline. Equivalent
+mutants require a reviewed, exact exception before a gate can accept them.
 
-Reference: [mutmut configuration and workflow](https://mutmut.readthedocs.io/en/latest/).
+Ruff, Mypy, Basedpyright, pytest, and Tox tasks pass `pyproject.toml`
+explicitly. Their documented config-file precedence can otherwise select a
+new local config before the checked-in policy:
+[Ruff](https://docs.astral.sh/ruff/configuration/),
+[Mypy](https://mypy.readthedocs.io/en/stable/command_line.html),
+[pytest](https://docs.pytest.org/en/stable/reference/customize.html),
+[Tox](https://tox.wiki/en/latest/man/tox.1.html).

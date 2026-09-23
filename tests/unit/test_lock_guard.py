@@ -152,6 +152,19 @@ def test_fallback_clock_does_not_advance_without_elapsed_time(
     assert clock() == pytest.approx(1_000.0)
 
 
+def test_fallback_clock_accumulates_monotonic_time_across_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monotonic = iter((100.0, 101.0, 102.0))
+    wall = iter((1_000.0, 900.0, 900.0))
+    monkeypatch.setattr(time, "monotonic", lambda: next(monotonic))
+    monkeypatch.setattr(time, "time", lambda: next(wall))
+    clock = guard_module._FallbackClock()
+
+    assert clock() == pytest.approx(1_001.0)
+    assert clock() == pytest.approx(1_002.0)
+
+
 def test_expired_guard_retains_the_ownership_loss_reason(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
