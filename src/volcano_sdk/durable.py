@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Protocol, cast
+from typing import Protocol, cast, runtime_checkable
 from uuid import UUID
 
 from ._transport import (
@@ -24,6 +24,7 @@ from .models import (
 
 _INVALID_EXECUTION_PAYLOAD = "Expected a complete durable execution"
 _INVALID_EXECUTION_PAGE = "Expected a complete durable execution page"
+_INVALID_DURABLE_TRANSPORT = "Transport does not support durable executions"
 # The spec's maxLength on X-Volcano-Execution-Name. Checked here so an
 # over-long name is refused before a request is spent on it, the way the
 # JavaScript SDK refuses it.
@@ -57,6 +58,7 @@ class DurableClientContext(Protocol):
     def _session_token(self) -> str: ...
 
 
+@runtime_checkable
 class DurableTransport(Protocol):
     """Transport operations required by the durable facade."""
 
@@ -110,7 +112,13 @@ class Durable:
 
     def __init__(self, client: DurableClientContext) -> None:
         """Bind durable operations to a Volcano client."""
-        self._client = client
+        self._client: DurableClientContext = client
+
+    def _durable_transport(self) -> DurableTransport:
+        transport = self._client._transport
+        if not isinstance(transport, DurableTransport):
+            raise TypeError(_INVALID_DURABLE_TRANSPORT)
+        return transport
 
     def start(
         self,
@@ -139,7 +147,7 @@ class Durable:
         """
         identifier = _identifier(function_name, "function_name")
         name = None if execution_name is None else _execution_name(execution_name)
-        transport = cast("DurableTransport", self._client._transport)
+        transport = self._durable_transport()
         response = invoke(
             transport.start_durable_execution_from_application,
             authorization=self._client._function_token(),
@@ -147,7 +155,8 @@ class Durable:
             payload={} if payload is None else payload,
             execution_name=name,
         )
-        return _durable_execution(response_payload(response, _HTTP_ACCEPTED))
+        response_body: object = response_payload(response, _HTTP_ACCEPTED)
+        return _durable_execution(response_body)
 
     def get(
         self,
@@ -173,7 +182,7 @@ class Durable:
         project = _identifier(project_id, "project_id")
         identifier = _identifier(function_name, "function_name")
         execution = _identifier(execution_id, "execution_id")
-        transport = cast("DurableTransport", self._client._transport)
+        transport = self._durable_transport()
         response = invoke(
             transport.get_durable_execution,
             authorization=self._client._session_token(),
@@ -181,7 +190,8 @@ class Durable:
             function_id=identifier,
             execution_id=execution,
         )
-        return _durable_execution(response_payload(response, _HTTP_OK))
+        response_body: object = response_payload(response, _HTTP_OK)
+        return _durable_execution(response_body)
 
     def list(
         self,
@@ -205,7 +215,7 @@ class Durable:
         """
         project = _identifier(project_id, "project_id")
         identifier = _identifier(function_name, "function_name")
-        transport = cast("DurableTransport", self._client._transport)
+        transport = self._durable_transport()
         request = DurableExecutionListRequest(status=status, page=page, limit=limit)
         response = invoke(
             transport.list_durable_executions,
@@ -214,7 +224,8 @@ class Durable:
             function_id=identifier,
             request=request,
         )
-        return _durable_execution_page(response_payload(response, _HTTP_OK))
+        response_body: object = response_payload(response, _HTTP_OK)
+        return _durable_execution_page(response_body)
 
     def stop(
         self,
@@ -239,7 +250,7 @@ class Durable:
         project = _identifier(project_id, "project_id")
         identifier = _identifier(function_name, "function_name")
         execution = _identifier(execution_id, "execution_id")
-        transport = cast("DurableTransport", self._client._transport)
+        transport = self._durable_transport()
         response = invoke(
             transport.stop_durable_execution,
             authorization=self._client._session_token(),
@@ -247,7 +258,8 @@ class Durable:
             function_id=identifier,
             execution_id=execution,
         )
-        return _durable_execution(response_payload(response, _HTTP_OK))
+        response_body: object = response_payload(response, _HTTP_OK)
+        return _durable_execution(response_body)
 
 
 def _execution_name(value: object) -> str:
@@ -299,7 +311,7 @@ def _identifier(value: object, field: str) -> str:
     trimmed = value.strip()
     if field in _UUID_IDENTIFIERS:
         try:
-            UUID(trimmed)
+            _ = UUID(trimmed)
         except ValueError as exc:
             raise ValueError(_UUID_IDENTIFIERS[field]) from exc
     return trimmed
