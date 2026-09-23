@@ -790,6 +790,84 @@ def _error_type(status: int) -> type[VolcanoError]:
     return VolcanoError
 
 
+class _InvalidGeneratedRequestError(TypeError):
+    def __init__(self, field: str) -> None:
+        super().__init__(f"Invalid generated request field: {field}")
+
+
+def _required_request_string(kwargs: Mapping[str, object], key: str) -> str:
+    value = kwargs.get(key)
+    if not isinstance(value, str):
+        raise _InvalidGeneratedRequestError(key)
+    return value
+
+
+def _request_headers(kwargs: Mapping[str, object]) -> dict[str, str]:
+    raw_headers = kwargs.get("headers", {})
+    if not isinstance(raw_headers, Mapping):
+        field = "headers"
+        raise _InvalidGeneratedRequestError(field)
+    source = cast("Mapping[object, object]", raw_headers)
+    headers: dict[str, str] = {}
+    for key, value in source.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            field = "headers"
+            raise _InvalidGeneratedRequestError(field)
+        headers[key] = value
+    return headers
+
+
+def _request_params(
+    kwargs: Mapping[str, object],
+) -> dict[str, str | int | float | bool | None] | None:
+    raw_params = kwargs.get("params")
+    if raw_params is None:
+        return None
+    if not isinstance(raw_params, Mapping):
+        field = "params"
+        raise _InvalidGeneratedRequestError(field)
+    source = cast("Mapping[object, object]", raw_params)
+    params: dict[str, str | int | float | bool | None] = {}
+    for key, value in source.items():
+        if not isinstance(key, str) or (
+            value is not None and not isinstance(value, (str, int, float, bool))
+        ):
+            field = "params"
+            raise _InvalidGeneratedRequestError(field)
+        params[key] = value
+    return params
+
+
+def _generated_request(
+    client: AuthenticatedClient, kwargs: Mapping[str, object]
+) -> httpx.Response:
+    if kwargs.keys() - {"method", "url", "headers", "json", "params"}:
+        field = "unsupported field"
+        raise _InvalidGeneratedRequestError(field)
+    return client.get_httpx_client().request(
+        method=_required_request_string(kwargs, "method"),
+        url=_required_request_string(kwargs, "url"),
+        headers=_request_headers(kwargs),
+        params=_request_params(kwargs),
+        json=kwargs.get("json"),
+    )
+
+
+def _json_object(response: httpx.Response) -> dict[str, object]:
+    raw = cast("object", response.json())
+    if not isinstance(raw, dict):
+        field = "response body"
+        raise _InvalidGeneratedRequestError(field)
+    source = cast("Mapping[object, object]", raw)
+    payload: dict[str, object] = {}
+    for key, value in source.items():
+        if not isinstance(key, str):
+            field = "response body key"
+            raise _InvalidGeneratedRequestError(field)
+        payload[key] = value
+    return payload
+
+
 def response_payload(response: TransportResponse, expected_status: int) -> object:
     status = int(response.status_code)
     if status != expected_status:
@@ -830,9 +908,9 @@ class GeneratedTransport:
         timeout: float = 60.0,
         httpx_transport: httpx.BaseTransport | None = None,
     ) -> None:
-        self._api_url = api_url.rstrip("/")
-        self._timeout = timeout
-        self._httpx_transport = httpx_transport
+        self._api_url: str = api_url.rstrip("/")
+        self._timeout: float = timeout
+        self._httpx_transport: httpx.BaseTransport | None = httpx_transport
 
     def _client(self, authorization: str) -> AuthenticatedClient:
         httpx_args: dict[str, object] = {}
@@ -854,7 +932,8 @@ class GeneratedTransport:
             payload = parsed
         else:
             try:
-                payload = json.loads(response.content)
+                raw = cast("object", json.loads(response.content))
+                payload = raw
             except (json.JSONDecodeError, UnicodeDecodeError):
                 payload = None
         return _GeneratedTransportResponse(
@@ -867,7 +946,7 @@ class GeneratedTransport:
     @staticmethod
     def _raw_response(response: _RawHTTPResponse) -> TransportResponse:
         try:
-            payload = json.loads(response.content)
+            payload = cast("object", json.loads(response.content))
         except (json.JSONDecodeError, UnicodeDecodeError):
             payload = None
         return _GeneratedTransportResponse(
@@ -918,9 +997,7 @@ class GeneratedTransport:
             user_metadata=AuthSignupAnonymousBodyUserMetadata.from_dict(metadata)
         )
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **signup_anonymous_kwargs(body=body)
-            )
+            response = _generated_request(client, signup_anonymous_kwargs(body=body))
         return self._raw_response(response)
 
     def auth_convert_anonymous(
@@ -938,8 +1015,8 @@ class GeneratedTransport:
         )
         try:
             with self._client(authorization) as client:
-                raw_response = client.get_httpx_client().request(
-                    **auth_convert_anonymous_kwargs(body=body)
+                raw_response = _generated_request(
+                    client, auth_convert_anonymous_kwargs(body=body)
                 )
                 if raw_response.status_code == HTTP_UNAUTHORIZED:
                     return self._raw_response(raw_response)
@@ -970,8 +1047,8 @@ class GeneratedTransport:
         email: str,
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **forgot_password_kwargs(body=AuthForgotPasswordBody(email=email))
+            response = _generated_request(
+                client, forgot_password_kwargs(body=AuthForgotPasswordBody(email=email))
             )
         return self._raw_response(response)
 
@@ -982,8 +1059,8 @@ class GeneratedTransport:
         token: str,
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **confirm_email_kwargs(body=AuthConfirmEmailBody(token=token))
+            response = _generated_request(
+                client, confirm_email_kwargs(body=AuthConfirmEmailBody(token=token))
             )
         return self._raw_response(response)
 
@@ -996,9 +1073,7 @@ class GeneratedTransport:
     ) -> TransportResponse:
         body = AuthResetPasswordBody(token=token, new_password=new_password)
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **reset_password_kwargs(body=body)
-            )
+            response = _generated_request(client, reset_password_kwargs(body=body))
         return self._raw_response(response)
 
     def auth_resend_confirmation(
@@ -1009,9 +1084,7 @@ class GeneratedTransport:
     ) -> TransportResponse:
         body = AuthResendConfirmationBody(email=email)
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **resend_confirmation_kwargs(body=body)
-            )
+            response = _generated_request(client, resend_confirmation_kwargs(body=body))
         return self._raw_response(response)
 
     def auth_request_email_change(
@@ -1022,14 +1095,14 @@ class GeneratedTransport:
     ) -> TransportResponse:
         body = AuthRequestEmailChangeBody(new_email=new_email)
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **request_email_change_kwargs(body=body)
+            response = _generated_request(
+                client, request_email_change_kwargs(body=body)
             )
         return self._raw_response(response)
 
     def auth_cancel_email_change(self, *, authorization: str) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(**cancel_email_change_kwargs())
+            response = _generated_request(client, cancel_email_change_kwargs())
         return self._raw_response(response)
 
     def auth_confirm_email_change(
@@ -1041,8 +1114,8 @@ class GeneratedTransport:
         body = AuthConfirmEmailChangeBody(email_change_token=token)
         try:
             with self._client(authorization) as client:
-                raw_response = client.get_httpx_client().request(
-                    **auth_confirm_email_change_kwargs(body=body)
+                raw_response = _generated_request(
+                    client, auth_confirm_email_change_kwargs(body=body)
                 )
                 if raw_response.status_code == HTTP_UNAUTHORIZED:
                     return self._raw_response(raw_response)
@@ -1072,9 +1145,7 @@ class GeneratedTransport:
         authorization: str,
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **delete_all_my_sessions_kwargs()
-            )
+            response = _generated_request(client, delete_all_my_sessions_kwargs())
         return self._raw_response(response)
 
     def auth_delete_my_session(
@@ -1084,8 +1155,8 @@ class GeneratedTransport:
         session_id: str,
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **delete_my_session_kwargs(session_id=cast("UUID", session_id))
+            response = _generated_request(
+                client, delete_my_session_kwargs(session_id=cast("UUID", session_id))
             )
         return self._raw_response(response)
 
@@ -1097,13 +1168,13 @@ class GeneratedTransport:
         limit: int,
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **get_my_sessions_kwargs(page=page, limit=limit)
+            response = _generated_request(
+                client, get_my_sessions_kwargs(page=page, limit=limit)
             )
         if response.status_code != HTTP_OK:
             return self._raw_response(response)
         try:
-            payload = AuthGetMySessionsResponse200.from_dict(response.json())
+            payload = AuthGetMySessionsResponse200.from_dict(_json_object(response))
         except (
             AttributeError,
             KeyError,
@@ -1125,13 +1196,13 @@ class GeneratedTransport:
         authorization: str,
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **list_oauth_providers_kwargs()
-            )
+            response = _generated_request(client, list_oauth_providers_kwargs())
         if response.status_code != HTTP_OK:
             return self._raw_response(response)
         try:
-            payload = AuthListOAuthProvidersResponse200.from_dict(response.json())
+            payload = AuthListOAuthProvidersResponse200.from_dict(
+                _json_object(response)
+            )
         except (
             AttributeError,
             KeyError,
@@ -1190,13 +1261,11 @@ class GeneratedTransport:
         provider: AuthLinkOAuthProviderProvider,
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **link_oauth_provider_kwargs(provider)
-            )
+            response = _generated_request(client, link_oauth_provider_kwargs(provider))
         if response.status_code != HTTP_OK:
             return self._raw_response(response)
         try:
-            payload = AuthLinkOAuthProviderResponse200.from_dict(response.json())
+            payload = AuthLinkOAuthProviderResponse200.from_dict(_json_object(response))
         except (
             AttributeError,
             KeyError,
@@ -1219,8 +1288,8 @@ class GeneratedTransport:
         provider: AuthUnlinkOAuthProviderProvider,
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **unlink_oauth_provider_kwargs(provider)
+            response = _generated_request(
+                client, unlink_oauth_provider_kwargs(provider)
             )
         return self._raw_response(response)
 
@@ -1231,13 +1300,13 @@ class GeneratedTransport:
         provider: GetOAuthProviderTokenProvider,
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **get_oauth_provider_token_kwargs(provider)
+            response = _generated_request(
+                client, get_oauth_provider_token_kwargs(provider)
             )
         if response.status_code != HTTP_OK:
             return self._raw_response(response)
         try:
-            payload = GetOAuthProviderTokenResponse200.from_dict(response.json())
+            payload = GetOAuthProviderTokenResponse200.from_dict(_json_object(response))
         except (
             AttributeError,
             KeyError,
@@ -1260,13 +1329,15 @@ class GeneratedTransport:
         provider: RefreshOAuthProviderTokenProvider,
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **refresh_oauth_provider_token_kwargs(provider)
+            response = _generated_request(
+                client, refresh_oauth_provider_token_kwargs(provider)
             )
         if response.status_code != HTTP_OK:
             return self._raw_response(response)
         try:
-            payload = RefreshOAuthProviderTokenResponse200.from_dict(response.json())
+            payload = RefreshOAuthProviderTokenResponse200.from_dict(
+                _json_object(response)
+            )
         except (
             AttributeError,
             KeyError,
@@ -1296,13 +1367,13 @@ class GeneratedTransport:
             request_values["body"] = _plain_json(body)
         request_body = CallOAuthProviderAPIBody.from_dict(request_values)
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **call_oauth_provider_api_kwargs(provider, body=request_body)
+            response = _generated_request(
+                client, call_oauth_provider_api_kwargs(provider, body=request_body)
             )
         if response.status_code != HTTP_OK:
             return self._raw_response(response)
         try:
-            payload = CallOAuthProviderAPIResponse200.from_dict(response.json())
+            payload = CallOAuthProviderAPIResponse200.from_dict(_json_object(response))
         except (
             AttributeError,
             KeyError,
@@ -1321,9 +1392,7 @@ class GeneratedTransport:
     def auth_get_user(self, *, authorization: str) -> TransportResponse:
         try:
             with self._client(authorization) as client:
-                raw_response = client.get_httpx_client().request(
-                    **auth_get_user_kwargs()
-                )
+                raw_response = _generated_request(client, auth_get_user_kwargs())
                 if raw_response.status_code == HTTP_UNAUTHORIZED:
                     return self._raw_response(raw_response)
                 response = build_auth_get_user_response(
@@ -1363,8 +1432,8 @@ class GeneratedTransport:
         )
         try:
             with self._client(authorization) as client:
-                raw_response = client.get_httpx_client().request(
-                    **auth_update_user_kwargs(body=body)
+                raw_response = _generated_request(
+                    client, auth_update_user_kwargs(body=body)
                 )
                 if raw_response.status_code == HTTP_UNAUTHORIZED:
                     return self._raw_response(raw_response)
@@ -1422,11 +1491,12 @@ class GeneratedTransport:
         body: dict[str, object],
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **database_select_kwargs(
+            response = _generated_request(
+                client,
+                database_select_kwargs(
                     database_name,
                     body=DatabaseSelectRequest.from_dict(body),
-                )
+                ),
             )
             if response.status_code == HTTP_UNAUTHORIZED:
                 return self._raw_response(response)
@@ -1456,10 +1526,11 @@ class GeneratedTransport:
         body: dict[str, object],
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **database_insert_kwargs(
+            response = _generated_request(
+                client,
+                database_insert_kwargs(
                     database_name, body=DatabaseInsertRequest.from_dict(body)
-                )
+                ),
             )
             if response.status_code == HTTP_UNAUTHORIZED:
                 return self._raw_response(response)
@@ -1474,10 +1545,11 @@ class GeneratedTransport:
         body: dict[str, object],
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **database_update_kwargs(
+            response = _generated_request(
+                client,
+                database_update_kwargs(
                     database_name, body=DatabaseUpdateRequest.from_dict(body)
-                )
+                ),
             )
             if response.status_code == HTTP_UNAUTHORIZED:
                 return self._raw_response(response)
@@ -1492,10 +1564,11 @@ class GeneratedTransport:
         body: dict[str, object],
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **database_delete_kwargs(
+            response = _generated_request(
+                client,
+                database_delete_kwargs(
                     database_name, body=DatabaseDeleteRequest.from_dict(body)
-                )
+                ),
             )
             if response.status_code == HTTP_UNAUTHORIZED:
                 return self._raw_response(response)
@@ -1724,9 +1797,7 @@ class GeneratedTransport:
         name: str,
     ) -> TransportResponse:
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **resolve_function_kwargs(name=name)
-            )
+            response = _generated_request(client, resolve_function_kwargs(name=name))
         return self._raw_response(response)
 
     def invoke_function(
@@ -1741,11 +1812,12 @@ class GeneratedTransport:
             payload=FunctionInvocationRequestPayload.from_dict(plain_payload)
         )
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                **invoke_function_kwargs(
+            response = _generated_request(
+                client,
+                invoke_function_kwargs(
                     UUID(function_id),
                     body=body,
-                )
+                ),
             )
         return self._raw_response(response)
 
@@ -1796,7 +1868,7 @@ class GeneratedTransport:
                 UUID(project_id), body=LogSearchRequest.from_dict(plain_request)
             )
             request_kwargs["json"] = plain_request
-            raw_response = client.get_httpx_client().request(**request_kwargs)
+            raw_response = _generated_request(client, request_kwargs)
             if raw_response.status_code == HTTP_UNAUTHORIZED:
                 return self._raw_response(raw_response)
             self._validate_log_response(raw_response, search_metadata)
@@ -1819,7 +1891,7 @@ class GeneratedTransport:
                 UUID(project_id), body=LogActivityRequest.from_dict(plain_request)
             )
             request_kwargs["json"] = plain_request
-            raw_response = client.get_httpx_client().request(**request_kwargs)
+            raw_response = _generated_request(client, request_kwargs)
             if raw_response.status_code == HTTP_UNAUTHORIZED:
                 return self._raw_response(raw_response)
             self._validate_log_response(raw_response, activity_total)
@@ -1845,7 +1917,7 @@ class GeneratedTransport:
                 x_volcano_lock_token=cast("UUID", token),
                 x_volcano_request_id=cast("UUID", request_id or str(uuid4())),
             )
-            raw_response = client.get_httpx_client().request(**request_kwargs)
+            raw_response = _generated_request(client, request_kwargs)
             if raw_response.status_code != HTTP_CREATED:
                 return self._raw_response(raw_response)
             response = build_lock_acquire_response(client=client, response=raw_response)

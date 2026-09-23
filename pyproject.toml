@@ -167,6 +167,11 @@ reportUnannotatedClassAttribute = "error"
 reportUnusedCallResult = "error"
 reportAny = "error"
 
+[[tool.basedpyright.executionEnvironments]]
+root = "src/volcano_sdk/_transport.py"
+reportUnannotatedClassAttribute = "error"
+reportAny = "error"
+
 [tool.ruff]
 required-version = "==0.16.4"
 target-version = "py311"
