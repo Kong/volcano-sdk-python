@@ -86,9 +86,9 @@ def test_token_bootstrap_retains_an_invalid_token_until_local_sign_out() -> None
     client = token_client(handle)
     initial = client.current_session
     with pytest.raises(AuthenticationError, match="expired supplied token"):
-        client.auth.get_user()
+        _ = client.auth.get_user()
     with pytest.raises(AuthenticationError, match="No refresh token"):
-        client.auth.refresh_session()
+        _ = client.auth.refresh_session()
     assert client.current_session is initial
     assert len(requests) == 1
     client.auth.sign_out()
@@ -134,12 +134,12 @@ def test_bootstrap_profile_cannot_overwrite_a_replacement_session() -> None:
     replacement = Session("replacement", "refresh", USER_ID)
 
     def handle(_request: httpx.Request) -> httpx.Response:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
         return httpx.Response(200, json={"user": PROFILE})
 
     client = token_client(handle)
     with pytest.raises(SessionChangedError):
-        client.auth.get_user()
+        _ = client.auth.get_user()
     assert client.current_session == replacement
 
 
@@ -150,9 +150,9 @@ def test_bootstrap_cannot_change_identity_after_profile_validation() -> None:
     client = token_client(
         lambda _request: httpx.Response(200, json={"user": next(responses)})
     )
-    client.auth.get_user()
+    _ = client.auth.get_user()
     with pytest.raises(AuthenticationError, match="does not match"):
-        client.auth.get_user()
+        _ = client.auth.get_user()
     assert client.current_session is not None
     assert client.current_session.user_id == USER_ID
 
@@ -162,19 +162,19 @@ def test_bootstrap_does_not_relax_complete_session_adoption() -> None:
     initial = client.current_session
     assert initial is not None
     with pytest.raises(ValueError, match="complete Session"):
-        client.auth.set_session(initial)
+        _ = client.auth.set_session(initial)
     assert client.current_session is initial
 
 
 @pytest.mark.parametrize("access_token", ["", " "])
 def test_bootstrap_rejects_empty_access_tokens(access_token: str) -> None:
     with pytest.raises(ValueError, match="access_token"):
-        VolcanoClient(anon_key="anon", access_token=access_token)
+        _ = VolcanoClient(anon_key="anon", access_token=access_token)
 
 
 def test_bootstrap_rejects_refresh_without_access_token() -> None:
     with pytest.raises(ValueError, match="access_token"):
-        VolcanoClient(anon_key="anon", refresh_token="refresh")
+        _ = VolcanoClient(anon_key="anon", refresh_token="refresh")
 
 
 @pytest.mark.parametrize("enrich_during_refresh", [False, True])
@@ -190,7 +190,7 @@ def test_refresh_cannot_replace_a_validated_bootstrap_identity(
             return httpx.Response(200, json={"user": PROFILE})
         if request.url.path == "/auth/refresh":
             if enrich_during_refresh:
-                client.auth.get_user()
+                _ = client.auth.get_user()
             return httpx.Response(
                 200,
                 json={
@@ -213,7 +213,7 @@ def test_refresh_cannot_replace_a_validated_bootstrap_identity(
         else client.database("main").from_("items").insert({"name": "example"}).execute
     )
     with pytest.raises(AuthenticationError):
-        run()
+        _ = run()
     assert client.current_session is not None
     assert client.current_session.user_id == USER_ID
     assert client.current_session.access_token == bootstrap_token()
@@ -242,7 +242,7 @@ def test_token_only_sign_out_revokes_the_captured_session(
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         if replace:
-            client.auth.set_session(replacement)
+            _ = client.auth.set_session(replacement)
         return revocation_response(request, outcome)
 
     client = token_client(handle, access_token=token, refresh_token=refresh_token)
@@ -264,7 +264,7 @@ def enrich_before_refresh(
     client: VolcanoClient, *, enrich_during_refresh: bool
 ) -> None:
     if not enrich_during_refresh:
-        client.auth.get_user()
+        _ = client.auth.get_user()
 
 
 def revocation_response(request: httpx.Request, outcome: int | str) -> httpx.Response:

@@ -3,14 +3,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from typing import BinaryIO
 
     from volcano_sdk.auth import Auth
     from volcano_sdk.logs import Logs
     from volcano_sdk.models import (
+        JSONValue,
         LinkedOAuthProvider,
         OAuthProviderTokenStatus,
         SessionPage,
+        SignUpResult,
+        User,
     )
     from volcano_sdk.realtime import Channel, Realtime
     from volcano_sdk.storage import StorageBucket
@@ -109,3 +113,30 @@ def assign_linked_provider(provider: LinkedOAuthProvider) -> None:
 
 def assign_provider_token(status: OAuthProviderTokenStatus) -> None:
     status.provider = "github"  # type: ignore[misc]
+
+
+def assign_sign_up_message(result: SignUpResult) -> None:
+    result.message = "changed"  # type: ignore[misc]
+
+
+def assign_user_email(user: User) -> None:
+    user.email = "changed@example.com"  # type: ignore[misc]
+
+
+def assign_snapshot_value(snapshot: Mapping[str, JSONValue]) -> None:
+    snapshot["email"] = "changed"  # type: ignore[index]
+
+
+def assign_metadata_value(
+    metadata: Mapping[str, JSONValue] | None, key: str, value: JSONValue
+) -> None:
+    assert metadata is not None
+    metadata[key] = value  # type: ignore[index]
+
+
+def unsupported_hosted_auth_action(auth: Auth) -> None:
+    _ = auth.get_hosted_auth_url(
+        project_id="project-id",
+        action="device",  # type: ignore[arg-type]
+        state="state-value",
+    )
