@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/Kong/volcano-sdk-python/compare/v0.11.3...v0.12.0) (2026-09-23)
+
+
+### Features
+
+* **quality:** lock native Python guardrails and source inventory ([#343](https://github.com/Kong/volcano-sdk-python/issues/343)) ([fad6ebf](https://github.com/Kong/volcano-sdk-python/commit/fad6ebf59dab9d87ae35fa8c43f64e2f30aa7289))
+
 ## [0.11.3](https://github.com/Kong/volcano-sdk-python/compare/v0.11.2...v0.11.3) (2026-09-23)
 
 
