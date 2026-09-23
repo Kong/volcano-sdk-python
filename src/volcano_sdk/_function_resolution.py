@@ -196,7 +196,7 @@ def _store(
 def forget(api_url: str, authorization: str, name: str) -> None:
     """Drop one cached resolution that turned out to be stale."""
     with _lock:
-        _entries.pop((api_url, authorization, name), None)
+        _ = _entries.pop((api_url, authorization, name), None)
 
 
 def clear() -> None:
