@@ -2127,7 +2127,7 @@ wheels = [
 
 [[package]]
 name = "volcano-sdk-python"
-version = "0.11.3"
+version = "0.12.0"
 source = { editable = "." }
 dependencies = [
     { name = "attrs" },
