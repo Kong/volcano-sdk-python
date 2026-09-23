@@ -47,14 +47,23 @@ if TYPE_CHECKING:
 
     from aws_durable_execution_sdk_python.config import (
         CompletionConfig,
+        MapConfig,
         ParallelConfig,
         StepConfig,
         StepSemantics,
     )
     from aws_durable_execution_sdk_python.config import Duration as EngineDuration
+    from aws_durable_execution_sdk_python.config import (
+        ParallelBranch as EngineParallelBranch,
+    )
     from aws_durable_execution_sdk_python.retries import (
         RetryDecision,
         RetryStrategyConfig,
+    )
+    from aws_durable_execution_sdk_python.waits import (
+        WaitForConditionConfig,
+        WaitForConditionDecision,
+        WaitStrategyConfig,
     )
 
 T = TypeVar("T")
@@ -157,22 +166,33 @@ class _Engine:
             root = importlib.import_module(_ENGINE_MODULE)
         except ImportError as error:
             raise DurableRuntimeMissingError(error) from error
-        self.durable_execution = root.durable_execution
+        self.durable_execution: Callable[[DurableHandler], FunctionHandler] = (
+            root.durable_execution
+        )
         self.duration: type[EngineDuration] = config.Duration
         self.step_config: type[StepConfig] = config.StepConfig
         self.step_semantics: type[StepSemantics] = config.StepSemantics
-        self.map_config = config.MapConfig
+        self.map_config: type[MapConfig[object]] = config.MapConfig
         self.parallel_config: type[ParallelConfig] = config.ParallelConfig
         self.completion_config: type[CompletionConfig] = config.CompletionConfig
-        self.parallel_branch = config.ParallelBranch
-        self.create_retry_strategy = retries.create_retry_strategy
+        self.parallel_branch: type[EngineParallelBranch[object]] = config.ParallelBranch
+        self.create_retry_strategy: Callable[
+            [RetryStrategyConfig], Callable[[Exception, int], RetryDecision]
+        ] = retries.create_retry_strategy
         self.retry_strategy_config: type[RetryStrategyConfig] = (
             retries.RetryStrategyConfig
         )
         self.retry_decision: type[RetryDecision] = retries.RetryDecision
-        self.create_wait_strategy = waits.create_wait_strategy
-        self.wait_strategy_config = waits.WaitStrategyConfig
-        self.wait_for_condition_config = waits.WaitForConditionConfig
+        self.create_wait_strategy: Callable[
+            [WaitStrategyConfig[object]],
+            Callable[[object, int], WaitForConditionDecision],
+        ] = waits.create_wait_strategy
+        self.wait_strategy_config: type[WaitStrategyConfig[object]] = (
+            waits.WaitStrategyConfig
+        )
+        self.wait_for_condition_config: type[WaitForConditionConfig[object]] = (
+            waits.WaitForConditionConfig
+        )
 
     @classmethod
     def load(cls) -> _Engine:
