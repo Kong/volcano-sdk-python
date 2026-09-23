@@ -1395,7 +1395,9 @@ class Auth:
             raise
 
     def _request_refreshed_session(self, refresh_token: str) -> Session:
-        transport = cast("AuthRefreshTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthRefreshTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         try:
             response = invoke(
                 transport.auth_refresh,
@@ -1466,7 +1468,9 @@ class Auth:
         if refresh_error is not None and not verified:
             raise refresh_error
         if session.refresh_token is not None:
-            transport = cast("AuthLogoutTransport", self._client._transport)
+            transport = self._client._transport
+            if not isinstance(transport, AuthLogoutTransport):
+                raise TypeError(_INVALID_AUTH_TRANSPORT)
             response = invoke(
                 transport.auth_logout,
                 authorization=self._client._anon_token(),

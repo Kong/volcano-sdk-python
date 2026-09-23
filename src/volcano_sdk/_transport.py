@@ -383,6 +383,7 @@ class _GeneratedTransportResponse:
     headers: Mapping[str, str]
 
 
+@runtime_checkable
 class AuthRefreshTransport(Protocol):
     def auth_refresh(
         self,
@@ -392,6 +393,7 @@ class AuthRefreshTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthLogoutTransport(Protocol):
     def auth_logout(
         self,
