@@ -870,12 +870,14 @@ class Auth:
         Returns:
             The provider authorization URL containing the caller state.
 
+        Raises:
+            TypeError: The transport cannot start an OAuth sign-in flow.
+
         """
         provider_name = _oauth_provider_name(provider)
-        transport = cast(
-            "AuthOAuthAuthorizationURLTransport",
-            self._client._transport,
-        )
+        transport = self._client._transport
+        if not isinstance(transport, AuthOAuthAuthorizationURLTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         return transport.auth_oauth_authorization_url(
             anon_key=self._client._anon_token(),
             provider=provider_name,
@@ -952,16 +954,16 @@ class Auth:
 
         Raises:
             AuthenticationError: There is no active session.
+            TypeError: The transport cannot unlink an OAuth provider.
 
         """
         provider_name = _oauth_provider_name(provider)
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast(
-            "AuthUnlinkOAuthProviderTransport",
-            self._client._transport,
-        )
+        transport = self._client._transport
+        if not isinstance(transport, AuthUnlinkOAuthProviderTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
             lambda access_token: invoke(
                 transport.auth_unlink_oauth_provider,
@@ -985,16 +987,16 @@ class Auth:
 
         Raises:
             AuthenticationError: There is no active session.
+            TypeError: The transport cannot read OAuth provider token status.
 
         """
         provider_name = _oauth_provider_name(provider)
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast(
-            "AuthGetOAuthProviderTokenTransport",
-            self._client._transport,
-        )
+        transport = self._client._transport
+        if not isinstance(transport, AuthGetOAuthProviderTokenTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
             lambda access_token: invoke(
                 transport.auth_get_oauth_provider_token,
@@ -1021,16 +1023,16 @@ class Auth:
 
         Raises:
             AuthenticationError: There is no active session.
+            TypeError: The transport cannot refresh an OAuth provider token.
 
         """
         provider_name = _oauth_provider_name(provider)
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast(
-            "AuthRefreshOAuthProviderTokenTransport",
-            self._client._transport,
-        )
+        transport = self._client._transport
+        if not isinstance(transport, AuthRefreshOAuthProviderTokenTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
             lambda access_token: invoke(
                 transport.auth_refresh_oauth_provider_token,
