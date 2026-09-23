@@ -86,6 +86,17 @@ def functions_client(
     )
 
 
+def test_functions_requires_a_transport_with_invocation_methods() -> None:
+    client = VolcanoClient(
+        anon_key="anon-key", service_key="service-key", _transport=RejectingTransport()
+    )
+
+    with pytest.raises(
+        TypeError, match="Transport does not support function invocation"
+    ):
+        client.functions.invoke("send-welcome")
+
+
 def test_functions_resolves_and_invokes_by_name() -> None:
     transport = FakeFunctionsTransport()
     client = functions_client(transport)
