@@ -5,7 +5,10 @@ typing, testing, coverage, package, audit, and mutation tools. `poe policy`
 checks the few relationships those tools cannot express themselves: every Git
 Python file appears in Ruff's [native file inventory](https://docs.astral.sh/ruff/configuration/),
 the maintained roots and coverage threshold remain selected, and no nested
-configuration or unreviewed suppression can redirect the checks.
+configuration, replaced quality-task command, expanded Ruff ignore list, or
+unreviewed suppression can redirect the checks. The quality-task definitions
+and existing Ruff ignore scopes are exact policy invariants; changing them
+requires reviewing the policy update itself.
 
 The policy task does not reimplement Ruff, Mypy, Basedpyright, pytest, or
 coverage.py. Ruff validates active ignores with `RUF100` and `PGH003/PGH004`;

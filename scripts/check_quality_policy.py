@@ -44,6 +44,48 @@ CONFIG_NAMES = {
     "setup.cfg",
     ".coveragerc",
 }
+GLOBAL_RUFF_IGNORES = {
+    "CPY001",
+    "COM812",
+    "COM819",
+    "D203",
+    "D206",
+    "D213",
+    "D300",
+    "E111",
+    "E114",
+    "E117",
+    "ISC001",
+    "ISC002",
+    "Q000",
+    "Q001",
+    "Q002",
+    "Q003",
+    "W191",
+}
+PER_FILE_RUFF_IGNORES = {
+    "features/**/*.py": {"D", "INP001", "S101"},
+    "scripts/*.py": {"T201"},
+    "src/volcano_sdk/auth.py": {"SLF001"},
+    "src/volcano_sdk/database.py": {"SLF001"},
+    "src/volcano_sdk/durable.py": {"SLF001"},
+    "src/volcano_sdk/durable_authoring.py": {"ANN401"},
+    "src/volcano_sdk/functions.py": {"SLF001"},
+    "src/volcano_sdk/logs.py": {"SLF001"},
+    "src/volcano_sdk/locks.py": {"SLF001"},
+    "src/volcano_sdk/realtime.py": {"ANN401", "SLF001"},
+    "src/volcano_sdk/storage.py": {"SLF001"},
+    "tests/**/*.py": {
+        "ANN401",
+        "D",
+        "INP001",
+        "PLR2004",
+        "S101",
+        "S105",
+        "S106",
+        "SLF001",
+    },
+}
 CHECKS = [
     "policy",
     "audit",
@@ -57,6 +99,48 @@ CHECKS = [
     "package-check",
     "package-extras",
 ]
+COVERAGE_PARTS = (
+    "uv run --locked --isolated --python 3.12 pytest -c pyproject.toml",
+    "tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing",
+    "--cov-report=json:reports/coverage.json --junitxml=reports/coverage-unit.xml",
+)
+CONTRACT_FIXTURE = "${POE_ROOT}/tests/fixtures/sdk-contract-dry-run.json"
+PACKAGE_EXTRAS_PARTS = (
+    "tox run -c pyproject.toml --recreate -e",
+    "package-base,package-min-typing,package-durable,package-types",
+)
+REQUIRED_TASKS: dict[str, object] = {
+    "build": "uv build --no-sources --require-hashes",
+    "policy": "bash scripts/check_quality_policy.sh",
+    "audit": "bash scripts/audit_dependencies.sh",
+    "generated": "python -m scripts.check_openapi",
+    "lint": "ruff check --config pyproject.toml .",
+    "format-check": "ruff format --check --config pyproject.toml .",
+    "types": ["mypy", "basedpyright"],
+    "mypy": "mypy --config-file pyproject.toml",
+    "basedpyright": "basedpyright --project pyproject.toml",
+    "test": "pytest -c pyproject.toml tests/unit -q --junitxml=reports/unit.xml",
+    "coverage": " ".join(COVERAGE_PARTS),
+    "contract-check": {
+        "sequence": [
+            {"cmd": "chmod 600 tests/fixtures/sdk-contract-dry-run.json"},
+            {"cmd": "behave features/contract --dry-run --no-snippets"},
+        ],
+        "env": {"VOLCANO_SDK_CONTRACT_FIXTURE": CONTRACT_FIXTURE},
+    },
+    "package-check": {
+        "interpreter": "bash",
+        "shell": """set -euo pipefail
+package_dir="$(mktemp -d)"
+trap 'rm -rf "$package_dir"' EXIT
+poe build --out-dir "$package_dir"
+bash scripts/check_package.sh "" "$package_dir"
+""",
+    },
+    "package-extras": {"cmd": " ".join(PACKAGE_EXTRAS_PARTS)},
+    "mutation": "bash scripts/mutation.sh",
+    "mutation-full": "MUTATION_FULL=1 bash scripts/mutation.sh",
+}
 REQUIRED = {
     ("mypy", "files"): ROOTS,
     ("mypy", "strict"): True,
@@ -104,6 +188,26 @@ def setting(tree: dict[str, object], path: tuple[str, ...]) -> object:
     return value
 
 
+def check_ruff_ignores(lint: dict[str, object]) -> list[str]:
+    """Protect reviewed Ruff rule exceptions.
+
+    Returns:
+        Deviations from the approved ignore scopes.
+
+    """
+    errors: list[str] = []
+    if "ALL" not in cast("list[str]", lint.get("select", [])):
+        errors.append("Ruff ALL rules disabled")
+    if set(cast("list[str]", lint.get("ignore", []))) != GLOBAL_RUFF_IGNORES:
+        errors.append("Ruff global ignores changed")
+    per_file = cast("dict[str, list[str]]", lint.get("per-file-ignores", {}))
+    if {
+        scope: set(rules) for scope, rules in per_file.items()
+    } != PER_FILE_RUFF_IGNORES:
+        errors.append("Ruff per-file ignores changed")
+    return errors
+
+
 def check_config(config: dict[str, object]) -> list[str]:
     """Reject changes that weaken native tool coverage or thresholds.
 
@@ -118,8 +222,12 @@ def check_config(config: dict[str, object]) -> list[str]:
         if setting(tool, path) != expected
     ]
     lint = cast("dict[str, object]", setting(tool, ("ruff", "lint")))
-    if "ALL" not in cast("list[str]", lint.get("select", [])):
-        errors.append("Ruff ALL rules disabled")
+    errors.extend(check_ruff_ignores(lint))
+    errors.extend(
+        f"quality task changed: {name}"
+        for name, expected in REQUIRED_TASKS.items()
+        if setting(tool, ("poe", "tasks", name)) != expected
+    )
     if setting(tool, ("mypy", "overrides")) is not None:
         errors.append("nested Mypy override")
     if setting(tool, ("basedpyright", "ignore")) or setting(

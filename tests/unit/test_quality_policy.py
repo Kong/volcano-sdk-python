@@ -43,6 +43,38 @@ def test_removed_quality_check_fails() -> None:
     assert "policy setting changed: poe.tasks.checks" in check_config(config)
 
 
+def test_replaced_quality_command_fails() -> None:
+    config = config_copy()
+    tool = cast("dict[str, object]", config["tool"])
+    poe = cast("dict[str, object]", tool["poe"])
+    tasks = cast("dict[str, object]", poe["tasks"])
+    tasks["coverage"] = "true"
+
+    assert "quality task changed: coverage" in check_config(config)
+
+
+def test_broadened_ruff_global_ignore_fails() -> None:
+    config = config_copy()
+    tool = cast("dict[str, object]", config["tool"])
+    ruff = cast("dict[str, object]", tool["ruff"])
+    lint = cast("dict[str, object]", ruff["lint"])
+    ignores = cast("list[str]", lint["ignore"])
+    ignores.append("S603")
+
+    assert "Ruff global ignores changed" in check_config(config)
+
+
+def test_broadened_ruff_file_ignore_fails() -> None:
+    config = config_copy()
+    tool = cast("dict[str, object]", config["tool"])
+    ruff = cast("dict[str, object]", tool["ruff"])
+    lint = cast("dict[str, object]", ruff["lint"])
+    per_file = cast("dict[str, list[str]]", lint["per-file-ignores"])
+    per_file["src/volcano_sdk/auth.py"].append("S603")
+
+    assert "Ruff per-file ignores changed" in check_config(config)
+
+
 def test_extra_coverage_exclusion_fails() -> None:
     config = config_copy()
     tool = cast("dict[str, object]", config["tool"])
