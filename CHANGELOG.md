@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.4](https://github.com/Kong/volcano-sdk-python/compare/v0.10.3...v0.10.4) (2026-09-23)
+
+
+### Bug Fixes
+
+* **types:** validate transport payloads before facade access ([#287](https://github.com/Kong/volcano-sdk-python/issues/287)) ([60e280c](https://github.com/Kong/volcano-sdk-python/commit/60e280ca0665ea5a143dc8df69a3d3cc2bdbb481))
+
 ## [0.10.3](https://github.com/Kong/volcano-sdk-python/compare/v0.10.2...v0.10.3) (2026-09-23)
 
 
