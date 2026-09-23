@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 from transport_fixtures import RejectingTransport
 
-from volcano_sdk import VolcanoClient
+from volcano_sdk import Session, VolcanoClient
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -43,6 +43,28 @@ def test_optional_auth_operation_requires_transport_capability(
     operation: Callable[[Auth], object],
 ) -> None:
     client = VolcanoClient(anon_key="anon", _transport=RejectingTransport())
+
+    with pytest.raises(TypeError, match="requested auth operation"):
+        operation(client.auth)
+
+
+_EMAIL_CHANGE_OPERATIONS: tuple[Callable[[Auth], object], ...] = (
+    lambda auth: auth.request_email_change(new_email="new@example.com"),
+    lambda auth: auth.cancel_email_change(),
+    lambda auth: auth.confirm_email_change(token="confirmation-token"),
+)
+
+
+@pytest.mark.parametrize(
+    "operation",
+    _EMAIL_CHANGE_OPERATIONS,
+    ids=("request-email-change", "cancel-email-change", "confirm-email-change"),
+)
+def test_email_change_requires_transport_capability_after_session_check(
+    operation: Callable[[Auth], object],
+) -> None:
+    client = VolcanoClient(anon_key="anon", _transport=RejectingTransport())
+    client.auth.set_session(Session("access", "refresh", "user"))
 
     with pytest.raises(TypeError, match="requested auth operation"):
         operation(client.auth)
