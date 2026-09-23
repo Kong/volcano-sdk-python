@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Protocol, TypeVar, cast, runtime_checkable
 
 from ._function_resolution import (
     FunctionResolution,
@@ -37,6 +37,7 @@ _INVALID_FUNCTION_NAME = (
 )
 _INVALID_FUNCTION_RESPONSE = "Expected a complete function response"
 _INVALID_FUNCTION_PAYLOAD = "Function payload must be a mapping"
+_INVALID_FUNCTION_TRANSPORT = "Transport does not support function invocation"
 _HTTP_SUCCESS_MIN = 200
 _HTTP_SUCCESS_MAX = 300
 _HTTP_NOT_FOUND = 404
@@ -65,9 +66,11 @@ class FunctionsContext(Protocol):
 
 class _FunctionAuth:
     def __init__(self, client: FunctionsContext) -> None:
-        self._client = client
-        self._binding = client._capture_session_binding()
-        self._fallback_token = client._function_token()
+        self._client: FunctionsContext = client
+        self._binding: tuple[int, SessionOperations, Session | None] = (
+            client._capture_session_binding()
+        )
+        self._fallback_token: str = client._function_token()
 
     def run(self, operation: Callable[[str], _Result]) -> _Result:
         if self._binding[2] is not None:
@@ -88,7 +91,7 @@ class _FunctionAuth:
                 raise
             try:
                 # Resolve has released its cache lock before refresh callbacks run.
-                self._client.auth._refresh_session_for_binding(self._binding)
+                _ = self._client.auth._refresh_session_for_binding(self._binding)
             except SessionChangedError:
                 raise
             except VolcanoError:
@@ -104,6 +107,7 @@ class _FunctionAuth:
         return session.access_token
 
 
+@runtime_checkable
 class FunctionsTransport(Protocol):
     """Transport operations required by the functions facade."""
 
@@ -142,7 +146,13 @@ class Functions:
 
     def __init__(self, client: FunctionsContext) -> None:
         """Bind function calls to a Volcano client."""
-        self._client = client
+        self._client: FunctionsContext = client
+
+    def _function_transport(self) -> FunctionsTransport:
+        transport = self._client._transport
+        if not isinstance(transport, FunctionsTransport):
+            raise TypeError(_INVALID_FUNCTION_TRANSPORT)
+        return transport
 
     def invoke(
         self,
@@ -161,7 +171,7 @@ class Functions:
         auth = _FunctionAuth(self._client)
         name = _function_name(name)
         request_payload = _function_payload(payload)
-        transport = cast("FunctionsTransport", self._client._transport)
+        transport = self._function_transport()
         authorization, resolution = auth.run(
             lambda token: (token, self._resolve(transport, token, name))
         )
@@ -209,7 +219,7 @@ class Functions:
             response.status_code == _HTTP_UNAUTHORIZED
             and _header(response.headers, _FUNCTION_INVOKED_HEADER) is None
         ):
-            response_payload(response, _HTTP_SUCCESS_MIN)
+            _ = response_payload(response, _HTTP_SUCCESS_MIN)
         return response
 
     def _resolve(
@@ -268,7 +278,7 @@ class Functions:
             name=name,
         )
         try:
-            payload = response_payload(resolved, _HTTP_SUCCESS_MIN)
+            payload: object = response_payload(resolved, _HTTP_SUCCESS_MIN)
         except NotFoundError as error:
             store_missing(api_url, authorization, name, error)
             raise
@@ -310,7 +320,7 @@ class Functions:
         # as though the function had returned it.
         dispatched = _header(response.headers, _FUNCTION_INVOKED_HEADER) is not None
         if not _HTTP_SUCCESS_MIN <= status < _HTTP_SUCCESS_MAX and not dispatched:
-            response_payload(response, _HTTP_SUCCESS_MIN)
+            _ = response_payload(response, _HTTP_SUCCESS_MIN)
         headers = {} if response.headers is None else dict(response.headers)
         return FunctionResponse(
             data=_function_data(response),
