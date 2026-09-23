@@ -10,6 +10,7 @@ FAKE_UV = """#!/bin/sh
 case "$1" in
   export)
     expected="export --locked --all-groups --all-extras --no-emit-project"
+    expected="$expected --no-emit-package aws-durable-execution-sdk-python-stubs"
     expected="$expected --format requirements-txt"
     test "$*" = "$expected" || exit 99
     printf 'fixture==1.0 --hash=sha256:fixture\n'

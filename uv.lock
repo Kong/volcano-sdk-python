@@ -133,6 +133,17 @@ wheels = [
 ]
 
 [[package]]
+name = "aws-durable-execution-sdk-python-stubs"
+version = "2.0.0"
+source = { directory = "typings/aws-durable-execution-sdk-python-stubs" }
+dependencies = [
+    { name = "aws-durable-execution-sdk-python" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "aws-durable-execution-sdk-python", specifier = "==2.0.0" }]
+
+[[package]]
 name = "aws-durable-execution-sdk-python-testing"
 version = "1.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1919,6 +1930,7 @@ build = [
     { name = "hatchling" },
 ]
 dev = [
+    { name = "aws-durable-execution-sdk-python-stubs" },
     { name = "aws-durable-execution-sdk-python-testing" },
     { name = "basedpyright" },
     { name = "behave" },
@@ -1950,6 +1962,7 @@ provides-extras = ["durable"]
 [package.metadata.requires-dev]
 build = [{ name = "hatchling", specifier = "==1.32.4" }]
 dev = [
+    { name = "aws-durable-execution-sdk-python-stubs", directory = "typings/aws-durable-execution-sdk-python-stubs" },
     { name = "aws-durable-execution-sdk-python-testing", specifier = ">=1.2.1,<2.0.0" },
     { name = "basedpyright", specifier = "==1.40.1" },
     { name = "behave", specifier = ">=1.3.3,<2.0.0" },

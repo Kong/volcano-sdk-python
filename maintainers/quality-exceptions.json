@@ -7,5 +7,11 @@
     "approved_by": "swkeever",
     "approved_at": "2026-08-27",
     "approval_evidence": "Original suppression introduced in commit 95ea362b and merged by swkeever in PR #1 on 2026-08-27."
+  },
+  {
+    "rule": "pip-audit --require-hashes",
+    "scope": "scripts/audit_dependencies.sh: --no-emit-package aws-durable-execution-sdk-python-stubs",
+    "rationale": "The local PEP 561 stub-only package has no index artifact hash or advisory record. Its exact-version durable runtime dependency and every indexed package remain in the audited export.",
+    "evidence": "typings/aws-durable-execution-sdk-python-stubs/pyproject.toml pins the runtime to 2.0.0; uv.lock records the local package and its dependency; uv export --locked --all-groups --all-extras --no-emit-project --no-emit-package aws-durable-execution-sdk-python-stubs retains the runtime."
   }
 ]

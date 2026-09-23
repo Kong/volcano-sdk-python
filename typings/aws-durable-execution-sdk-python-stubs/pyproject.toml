@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aws-durable-execution-sdk-python-stubs"
+version = "2.0.0"
+description = "Local partial stubs for Volcano's pinned optional durable runtime"
+requires-python = ">=3.11"
+dependencies = ["aws-durable-execution-sdk-python==2.0.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["aws_durable_execution_sdk_python-stubs"]

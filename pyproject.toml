@@ -50,6 +50,7 @@ dev = [
   # to install for a project that uses none of it.
   "volcano-sdk-python[durable]",
   "aws-durable-execution-sdk-python-testing>=1.2.1,<2.0.0",
+  "aws-durable-execution-sdk-python-stubs==2.0.0",
   "behave>=1.3.3,<2.0.0",
   "mypy>=1.18.0",
   "openapi-python-client==0.29.0",
@@ -94,6 +95,9 @@ build-constraint-dependencies = [
     "sha256:8b1ff4f9c191b1040b71c37f1e445ab99732911e3cd91de52838453a854d7a17",
   ] },
 ]
+
+[tool.uv.sources]
+aws-durable-execution-sdk-python-stubs = { path = "typings/aws-durable-execution-sdk-python-stubs" }
 
 [tool.mypy]
 files = ["src", "tests", "scripts", "features", "typings"]
@@ -279,10 +283,10 @@ bash scripts/check_package.sh "" "$package_dir"
 """
 
 [tool.poe.tasks.package-extras]
-cmd = "tox run --recreate -e package-base,package-durable"
+cmd = "tox run --recreate -e package-base,package-durable,package-types"
 
 [tool.tox]
-env_list = ["package-base", "package-durable"]
+env_list = ["package-base", "package-durable", "package-types"]
 
 [tool.tox.env_run_base]
 package = "wheel"
@@ -291,3 +295,11 @@ commands = [["python", "-I", "tests/package/optional_dependency.py", "base"]]
 [tool.tox.env.package-durable]
 extras = ["durable"]
 commands = [["python", "-I", "tests/package/optional_dependency.py", "durable"]]
+
+[tool.tox.env.package-types]
+extras = ["durable"]
+deps = [
+  "basedpyright==1.40.1",
+  "./typings/aws-durable-execution-sdk-python-stubs",
+]
+commands = [["basedpyright", "--verifytypes", "volcano_sdk"]]

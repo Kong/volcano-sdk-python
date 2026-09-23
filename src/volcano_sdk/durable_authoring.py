@@ -456,11 +456,8 @@ class DurableContext:
 
     __slots__ = ("_context", "_engine", "log")
 
-    def __init__(self, context: Any, engine: object) -> None:
+    def __init__(self, context: Any, engine: _Engine) -> None:
         """Wrap an engine context."""
-        if not isinstance(engine, _Engine):
-            msg = "DurableContext requires a loaded durable engine"
-            raise TypeError(msg)
         self._context = context
         self._engine = engine
         # Logs, suppressed while an operation is being replayed.

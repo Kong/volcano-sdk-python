@@ -121,11 +121,6 @@ def test_a_step_result_is_recorded_and_returned() -> None:
     assert run_handler(handler, {"order_id": "o-1"}) == {"id": "ch_1", "on": 1}
 
 
-def test_context_rejects_an_unloaded_engine() -> None:
-    with pytest.raises(TypeError, match="requires a loaded durable engine"):
-        DurableContext(object(), object())
-
-
 def test_an_unnamed_step_still_runs() -> None:
     @durable
     def handler(_event: Any, ctx: DurableContext) -> Any:
