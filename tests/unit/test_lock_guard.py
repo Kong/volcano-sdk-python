@@ -20,10 +20,30 @@ def lease(*, expires_at: datetime | None = None) -> LockLease:
     )
 
 
+@pytest.mark.parametrize(
+    ("clock_id", "expected"),
+    [(7, 7), (None, None), ("invalid", None)],
+)
+def test_suspend_aware_clock_id_accepts_only_integer_clock_ids(
+    clock_id: object, expected: int | None
+) -> None:
+    assert guard_module._suspend_aware_clock_id(clock_id) == expected
+
+
 def test_lease_clock_falls_back_to_portable_monotonic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delattr(time, "clock_gettime", raising=False)
+    monkeypatch.setattr(guard_module, "_FALLBACK_CLOCK", lambda: 123.0)
+
+    assert guard_module._lease_now() == pytest.approx(123.0)
+
+
+def test_lease_clock_falls_back_when_clock_gettime_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(time, "clock_gettime", None)
+    monkeypatch.setattr(guard_module, "SUSPEND_AWARE_CLOCK_ID", 7)
     monkeypatch.setattr(guard_module, "_FALLBACK_CLOCK", lambda: 123.0)
 
     assert guard_module._lease_now() == pytest.approx(123.0)

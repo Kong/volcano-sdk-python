@@ -9,22 +9,31 @@ from typing import TYPE_CHECKING
 from ._lock_renewer import renewal_delay as _calculate_renewal_delay
 
 if TYPE_CHECKING:
+    from _thread import LockType
+
     from .models import LockLease
 
 MAX_LOCK_LIFETIME_SECONDS = 7_776_000
 LOSS_POLL_INTERVAL_SECONDS = 1.0
-SUSPEND_AWARE_CLOCK_ID = getattr(time, "CLOCK_BOOTTIME", None)
 _LEASE_EXPIRED = "lock lease expired before renewal completed"
 _NO_SAFE_RENEWAL_WINDOW = "lock renewal returned no safe lease window"
+
+
+def _suspend_aware_clock_id(value: object) -> int | None:
+    return value if isinstance(value, int) else None
+
+
+_clock_id_value: object = getattr(time, "CLOCK_BOOTTIME", None)
+SUSPEND_AWARE_CLOCK_ID = _suspend_aware_clock_id(_clock_id_value)
 
 
 class _FallbackClock:
     """Combine monotonic progress with suspend-aware wall time."""
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._monotonic = time.monotonic()
-        self._value = time.time()
+        self._lock: LockType = threading.Lock()
+        self._monotonic: float = time.monotonic()
+        self._value: float = time.time()
 
     def __call__(self) -> float:
         with self._lock:
@@ -39,10 +48,10 @@ _FALLBACK_CLOCK = _FallbackClock()
 
 
 def _lease_now() -> float:
-    clock_gettime = getattr(time, "clock_gettime", None)
+    clock_gettime: object = getattr(time, "clock_gettime", None)
     if clock_gettime is None or SUSPEND_AWARE_CLOCK_ID is None:
         return _FALLBACK_CLOCK()
-    return float(clock_gettime(SUSPEND_AWARE_CLOCK_ID))
+    return float(time.clock_gettime(SUSPEND_AWARE_CLOCK_ID))
 
 
 class LockGuard:
@@ -57,15 +66,17 @@ class LockGuard:
         lease_started_at: float | None = None,
     ) -> None:
         """Track one acquired lease against its local monotonic deadline."""
-        self._state_lock = threading.Lock()
-        self._lease = lease
-        self._ttl = ttl
-        self._absolute_deadline = started_at + MAX_LOCK_LIFETIME_SECONDS
+        self._state_lock: LockType = threading.Lock()
+        self._lease: LockLease = lease
+        self._ttl: int = ttl
+        self._absolute_deadline: float = started_at + MAX_LOCK_LIFETIME_SECONDS
         # A successful retry renews the TTL, not the maximum ownership lifetime.
         lease_started_at = started_at if lease_started_at is None else lease_started_at
-        self._lease_deadline = min(lease_started_at + ttl, self._absolute_deadline)
+        self._lease_deadline: float = min(
+            lease_started_at + ttl, self._absolute_deadline
+        )
         self._failure: Exception | None = None
-        self._lost = threading.Event()
+        self._lost: threading.Event = threading.Event()
 
     @property
     def lease(self) -> LockLease:
@@ -105,7 +116,7 @@ class LockGuard:
                 if timeout_remaining <= 0:
                     return False
                 wait = min(wait, timeout_remaining)
-            self._lost.wait(wait)
+            _ = self._lost.wait(wait)
 
     def replace_lease(self, lease: LockLease, *, started_at: float) -> bool:
         with self._state_lock:
