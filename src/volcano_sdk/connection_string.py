@@ -72,9 +72,10 @@ def _query_parameters(query: str) -> list[str]:
         for parameter in query.split("&")
         if unquote(parameter.partition("=")[0]) != "application_name"
     ]
-    while parameters and not parameters[-1]:
-        _ = parameters.pop()
-    return parameters
+    for index in range(len(parameters) - 1, -1, -1):
+        if parameters[index]:
+            return parameters[: index + 1]
+    return []
 
 
 def _database_application_name(user_id: str | None) -> str:
