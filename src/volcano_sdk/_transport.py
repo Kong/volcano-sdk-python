@@ -475,6 +475,7 @@ class AuthResendConfirmationTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthRequestEmailChangeTransport(Protocol):
     def auth_request_email_change(
         self,
@@ -484,6 +485,7 @@ class AuthRequestEmailChangeTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthCancelEmailChangeTransport(Protocol):
     def auth_cancel_email_change(
         self,
@@ -492,6 +494,7 @@ class AuthCancelEmailChangeTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthConfirmEmailChangeTransport(Protocol):
     def auth_confirm_email_change(
         self,

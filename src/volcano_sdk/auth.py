@@ -647,7 +647,9 @@ class Auth:
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast("AuthRequestEmailChangeTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthRequestEmailChangeTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
             lambda access_token: invoke(
                 transport.auth_request_email_change,
@@ -670,7 +672,9 @@ class Auth:
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast("AuthCancelEmailChangeTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthCancelEmailChangeTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
             lambda access_token: invoke(
                 transport.auth_cancel_email_change,
@@ -694,7 +698,9 @@ class Auth:
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast("AuthConfirmEmailChangeTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthConfirmEmailChangeTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
             lambda access_token: invoke(
                 transport.auth_confirm_email_change,
