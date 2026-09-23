@@ -10,6 +10,7 @@ from volcano_sdk import Session, VolcanoClient
 from volcano_sdk.realtime import (
     _centrifuge_client,
     _ClientEvents,
+    _native_presence_clients,
     _VolcanoCentrifugeConnection,
 )
 
@@ -97,6 +98,10 @@ def test_native_adapter_rejects_an_incompatible_subscription_registry(
 
     with pytest.raises(TypeError, match="subscription registry"):
         _VolcanoCentrifugeConnection(native)
+
+
+def test_native_presence_rejects_non_string_client_keys() -> None:
+    assert _native_presence_clients({"known": object(), 1: object()}) is None
 
 
 async def test_default_factory_constructs_the_installed_centrifuge_client() -> None:
