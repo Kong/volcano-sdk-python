@@ -78,10 +78,18 @@ def test_lock_guard_bounds_waits_by_lease_and_caller_deadlines(
 ) -> None:
     clock = [100.0]
     waits: list[float] = []
-    monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
+    reads = [0]
+
+    def now() -> float:
+        reads[0] += 1
+        assert reads[0] < 30, "guard polled without waiting"
+        return clock[0]
+
+    monkeypatch.setattr(guard_module, "lease_now", now)
     guard = LockGuard(lease(), ttl=5, started_at=clock[0])
 
     def wait(timeout: float | None) -> bool:
+        assert len(waits) < 6, "guard wait did not converge"
         assert timeout is not None
         waits.append(timeout)
         clock[0] += timeout
@@ -132,6 +140,31 @@ def test_fallback_clock_ignores_wall_clock_rollbacks(
     clock = guard_module._FallbackClock()
 
     assert clock() == pytest.approx(1_001.0)
+
+
+def test_fallback_clock_does_not_advance_without_elapsed_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(time, "time", lambda: 1_000.0)
+    clock = guard_module._FallbackClock()
+
+    assert clock() == pytest.approx(1_000.0)
+
+
+def test_expired_guard_retains_the_ownership_loss_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
+    guard = LockGuard(lease(), ttl=5, started_at=clock[0])
+
+    clock[0] = 105.0
+
+    assert guard.lost
+    assert (
+        str(guard._renewal_failure()) == "lock lease expired before renewal completed"
+    )
 
 
 def test_lock_guard_exposes_the_latest_immutable_lease(
@@ -193,11 +226,26 @@ def test_lock_guard_detects_suspend_aware_expiry(
 def test_lock_guard_wait_times_out_while_the_lease_is_held(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
+    clock = [100.0]
+
+    def now() -> float:
+        clock[0] += 0.25
+        return clock[0]
+
+    monkeypatch.setattr(guard_module, "lease_now", now)
     guard = LockGuard(lease(), ttl=5, started_at=100.0)
+    waits = [0]
+
+    def wait(_timeout: float | None) -> bool:
+        waits[0] += 1
+        assert waits[0] < 10, "guard ignored the caller timeout"
+        return False
+
+    monkeypatch.setattr(guard._lost, "wait", wait)
 
     assert not guard.wait_lost(timeout=0)
     assert not guard.lost
+    assert waits[0] == 0
 
 
 def test_lock_guard_preserves_the_absolute_acquisition_deadline(

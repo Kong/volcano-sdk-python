@@ -90,6 +90,7 @@ def test_preparing_a_closed_guard_preserves_lost_ownership(
     assert guard.lease is original
     assert [request.method for request in requests] == ["POST", "PATCH"]
     assert requests[1].headers["x-volcano-lock-token"] == original.token
+    assert requests[0].url.path == requests[1].url.path
 
 
 @pytest.mark.parametrize("failure", ["transport", "503", "empty", "html", "malformed"])
@@ -111,6 +112,7 @@ def test_acquire_retries_once_with_the_same_owner_and_request(
     assert len(requests) == 2
     assert requests[0].headers == requests[1].headers
     assert requests[0].content == requests[1].content
+    assert requests[0].url == requests[1].url
     assert requests[0].headers["authorization"] == "Bearer service"
     assert str(UUID(requests[0].headers["x-volcano-request-id"]))
     assert lease.token == requests[0].headers["x-volcano-lock-token"]
@@ -173,9 +175,54 @@ def test_acquire_rejects_invalid_identifiers_before_a_request(
         requests.append(request)
         return httpx.Response(201, json=LEASE)
 
-    with pytest.raises(ValueError, match=name):
+    with pytest.raises(ValueError, match=f"^{name} must be a UUID string$"):
         make_client(handle).locks.acquire("build", ttl=30, **{name: value})
     assert not requests
+
+
+@pytest.mark.parametrize(
+    "operation", ["get", "acquire", "renew", "release", "force_release"]
+)
+def test_every_lock_operation_names_an_invalid_request_identifier(
+    operation: str,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return lease_response(request)
+
+    client = make_client(handle)
+    lease = LockLease(key="build", token=OWNER_TOKEN, expires_at=None, fencing_token=7)
+    operations: dict[str, Callable[[], object]] = {
+        "get": lambda: client.locks.get("build", request_id="invalid"),
+        "acquire": lambda: client.locks.acquire("build", ttl=30, request_id="invalid"),
+        "renew": lambda: client.locks.renew(
+            "build", lease, ttl=30, request_id="invalid"
+        ),
+        "release": lambda: client.locks.release("build", lease, request_id="invalid"),
+        "force_release": lambda: client.locks.force_release(
+            "build", request_id="invalid"
+        ),
+    }
+
+    with pytest.raises(ValueError, match="request_id must be a UUID string"):
+        _ = operations[operation]()
+    assert requests == []
+
+
+@pytest.mark.parametrize("ttl", [5, 7_776_000])
+def test_acquire_accepts_both_ttl_boundaries(ttl: int) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(201, json=LEASE)
+
+    _ = make_client(handle).locks.acquire("build", ttl=ttl)
+
+    assert len(requests) == 1
+    assert json.loads(requests[0].content)["ttl_seconds"] == ttl
 
 
 def test_each_lock_operation_forwards_the_supplied_request_id() -> None:
@@ -200,6 +247,26 @@ def test_each_lock_operation_forwards_the_supplied_request_id() -> None:
     assert [r.method for r in requests] == ["GET", "PATCH", "DELETE", "DELETE"]
     assert all(r.headers["x-volcano-request-id"] == REQUEST_ID for r in requests)
     assert json.loads(requests[1].content) == {"ttl_seconds": 30}
+
+
+@pytest.mark.parametrize("operation", ["release", "force_release"])
+def test_release_operations_reject_a_non_no_content_response(operation: str) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"error": "lock remained held"})
+
+    client = make_client(handle)
+    lease = LockLease(key="build", token=OWNER_TOKEN, expires_at=None, fencing_token=7)
+    operations: dict[str, Callable[[], None]] = {
+        "release": lambda: client.locks.release("build", lease),
+        "force_release": lambda: client.locks.force_release("build"),
+    }
+
+    with pytest.raises(VolcanoError, match="lock remained held"):
+        operations[operation]()
+    assert len(requests) == 1
 
 
 def test_lock_response_rejects_a_non_object_payload() -> None:
@@ -314,6 +381,57 @@ def test_guard_uses_successful_attempt_start_without_extending_a_slow_retry(
             assert not guard.lost
             assert guard._remaining_seconds() == 29
         assert [request.method for request in requests] == ["POST", "POST", "DELETE"]
+
+
+def test_guard_uses_attempt_start_for_a_first_try_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = iter((100.0, 101.0))
+    monkeypatch.setattr(locks_module, "lease_now", lambda: next(clock))
+    monkeypatch.setattr(guard_module, "lease_now", lambda: 101.0)
+
+    with make_client(lease_response).locks.with_lock("build", ttl=30) as guard:
+        assert guard._remaining_seconds() == pytest.approx(30.0)
+
+
+def test_with_lock_preserves_renewal_failure_when_release_fails() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "POST":
+            return httpx.Response(201, json=LEASE)
+        return httpx.Response(500, json={"error": "release failed"})
+
+    client = make_client(handle)
+    failure = RuntimeError("ownership lost")
+    with (
+        pytest.raises(RuntimeError, match="ownership lost"),
+        client.locks.with_lock("build", ttl=30) as guard,
+    ):
+        guard.mark_lost(failure)
+
+    assert [request.method for request in requests] == ["POST", "DELETE"]
+    assert requests[0].url.path == requests[1].url.path
+
+
+def test_with_lock_surfaces_release_failure_after_a_successful_body() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "POST":
+            return httpx.Response(201, json=LEASE)
+        return httpx.Response(500, json={"error": "release failed"})
+
+    with (
+        pytest.raises(VolcanoError, match="release failed"),
+        make_client(handle).locks.with_lock("build", ttl=30),
+    ):
+        pass
+
+    assert [request.method for request in requests] == ["POST", "DELETE"]
+    assert requests[0].url.path == requests[1].url.path
 
 
 @pytest.mark.parametrize("body", [b"", b"<h1>Unavailable</h1>", b"{"])

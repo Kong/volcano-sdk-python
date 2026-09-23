@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING
+
+import pytest
 
 from volcano_sdk import LockLease, VolcanoError
 from volcano_sdk import _lock_guard as guard_module
 from volcano_sdk import _lock_worker as worker_module
 from volcano_sdk._lock_guard import LockGuard
 from volcano_sdk._lock_worker import LockRenewer
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def lease(*, fencing_token: int = 7) -> LockLease:
@@ -74,6 +72,7 @@ class SuspendWait:
 
     def wait(self, timeout: float | None = None) -> bool:
         self.calls.append(timeout)
+        assert len(self.calls) <= 2, "renewal wait did not converge"
         self.clock[0] = 101.0 if len(self.calls) == 1 else 111.0
         return False
 
@@ -96,6 +95,49 @@ def test_lock_renewer_replaces_a_successfully_renewed_lease(
 
     assert guard.lease is replacement
     assert locks.calls == [("build", original, 30)]
+
+
+def test_lock_renewer_runs_as_a_daemon() -> None:
+    guard = LockGuard(lease(), ttl=30, started_at=guard_module.lease_now())
+    renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
+
+    assert renewer._thread.daemon
+
+
+def test_lock_renewer_continues_after_a_successful_renewal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guard = LockGuard(lease(), ttl=30, started_at=guard_module.lease_now())
+    renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
+    waits = iter((True, True, False))
+    renewed: list[bool] = []
+
+    def renew_once() -> bool:
+        renewed.append(True)
+        return True
+
+    monkeypatch.setattr(renewer, "_wait_until_renewal", lambda: next(waits))
+    monkeypatch.setattr(renewer, "_renew_once", renew_once)
+
+    renewer._run()
+
+    assert renewed == [True, True]
+
+
+def test_lock_renewer_does_not_swallow_process_interrupts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guard = LockGuard(lease(), ttl=30, started_at=guard_module.lease_now())
+    renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
+
+    def interrupt() -> bool:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(renewer, "_wait_until_renewal", interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        renewer._run()
+    assert not guard.lost
 
 
 def test_lock_renewer_records_an_sdk_failure(
@@ -191,6 +233,54 @@ def test_lock_renewer_rechecks_the_suspend_aware_clock_in_bounded_waits(
     assert renewer._wait_until_renewal()
 
     assert wait.calls == [1.0, 1.0]
+
+
+def test_lock_renewer_waits_through_the_final_fractional_second(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
+    monkeypatch.setattr(worker_module, "lease_now", lambda: clock[0])
+    guard = LockGuard(lease(), ttl=30, started_at=clock[0])
+    monkeypatch.setattr(guard, "renewal_delay", lambda: 10.0)
+    renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
+    waits: list[float | None] = []
+
+    class NearDeadlineWait:
+        def is_set(self) -> bool:
+            return False
+
+        def wait(self, timeout: float | None = None) -> bool:
+            waits.append(timeout)
+            assert len(waits) <= 2
+            clock[0] = 109.5 if len(waits) == 1 else 110.0
+            return False
+
+    monkeypatch.setattr(renewer, "_stop", NearDeadlineWait())
+
+    assert renewer._wait_until_renewal()
+    assert waits == [1.0, 0.5]
+
+
+def test_lock_renewer_passes_a_bounded_join_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guard = LockGuard(lease(), ttl=30, started_at=guard_module.lease_now())
+    renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
+    waits: list[float | None] = []
+
+    class RecordingThread:
+        def join(self, timeout: float | None = None) -> None:
+            waits.append(timeout)
+
+        def is_alive(self) -> bool:
+            return False
+
+    monkeypatch.setattr(renewer, "_thread", RecordingThread())
+
+    renewer.stop()
+
+    assert waits == [worker_module.RENEWER_SHUTDOWN_TIMEOUT_SECONDS]
 
 
 def test_lock_renewer_bounds_stalled_shutdown(
