@@ -43,7 +43,7 @@ class _TestIntegrity:
         expected = {item.nodeid for item in session.items}
         if not expected:
             self.violations.add("empty test discovery")
-        if expected - self.completed:
+        if not session.config.option.collectonly and expected - self.completed:
             self.violations.add("selected tests did not execute")
         if self.violations and session.exitstatus == pytest.ExitCode.OK:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
