@@ -512,6 +512,9 @@ class StorageBucket:
         Returns:
             Server response fields describing the uploaded object.
 
+        Raises:
+            TypeError: The upload response is not an object.
+
         """
         mime_type = _upload_content_type(content_type)
         binding = self._client._capture_session_binding()
@@ -570,6 +573,9 @@ class StorageBucket:
         Returns:
             Session ID, server-selected part size and count, and expiry.
 
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
         """
         transport = self._client._transport
         if not isinstance(transport, StorageUploadSessionTransport):
@@ -602,6 +608,9 @@ class StorageBucket:
         Returns:
             The accepted part number, ETag, and byte count.
 
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
         """
         transport = self._client._transport
         if not isinstance(transport, StorageUploadPartTransport):
@@ -632,6 +641,9 @@ class StorageBucket:
         Returns:
             Metadata for the object assembled from the uploaded parts.
 
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
         """
         transport = self._client._transport
         if not isinstance(transport, StorageCompleteUploadTransport):
@@ -661,6 +673,9 @@ class StorageBucket:
         Returns:
             Session state, byte and part counts, uploaded parts, and timestamps.
 
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
         """
         transport = self._client._transport
         if not isinstance(transport, StorageUploadStatusTransport):
@@ -684,7 +699,12 @@ class StorageBucket:
         *,
         session_id: str,
     ) -> None:
-        """Abort a resumable upload and discard its uploaded parts."""
+        """Abort a resumable upload and discard its uploaded parts.
+
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
+        """
         transport = self._client._transport
         if not isinstance(transport, StorageAbortUploadTransport):
             raise TypeError(_INVALID_STORAGE_TRANSPORT)
@@ -777,6 +797,9 @@ class StorageBucket:
         Returns:
             An immutable object page whose next_cursor is None on the last page.
 
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
         """
         transport = self._client._transport
         if not isinstance(transport, StorageListTransport):
@@ -829,6 +852,9 @@ class StorageBucket:
         Returns:
             Metadata for the object at its destination path.
 
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
         """
         source, destination = _storage_paths((from_path, to_path))
         transport = self._client._transport
@@ -851,6 +877,9 @@ class StorageBucket:
         Returns:
             Metadata for the new copy at its destination path.
 
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
         """
         source, destination = _storage_paths((from_path, to_path))
         transport = self._client._transport
@@ -872,6 +901,9 @@ class StorageBucket:
 
         Returns:
             Object metadata reflecting the updated visibility.
+
+        Raises:
+            TypeError: The transport does not support this storage operation.
 
         """
         object_path = _storage_paths(path)[0]
