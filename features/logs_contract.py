@@ -10,7 +10,9 @@ from volcano_sdk import VolcanoClient
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from volcano_sdk.models import JSONValue
+    from contract_support import ContractWorld
+
+    from volcano_sdk.models import JSONValue, LogActivityResponse
 
 _ResultT = TypeVar("_ResultT")
 
@@ -42,7 +44,7 @@ def event_id(event: Mapping[str, JSONValue]) -> str:
 
 
 class LogContract:
-    def __init__(self, world: Any) -> None:
+    def __init__(self, world: ContractWorld) -> None:
         self.world = world
         self.client = VolcanoClient(
             api_url=world.fixture["api_url"],
@@ -51,7 +53,7 @@ class LogContract:
             timeout=10,
         )
         self.marker = f"sdklogs{uuid4().hex}"
-        self.request: dict[str, Any] = {
+        self.request: dict[str, JSONValue] = {
             "resource": {"type": "function", "ids": [world.fixture["function_id"]]},
             "q": self.marker,
             "start_time": (datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
@@ -73,7 +75,7 @@ class LogContract:
             datetime.now(UTC) + timedelta(minutes=5)
         ).isoformat()
 
-    def search(self) -> list[Any]:
+    def search(self) -> list[Mapping[str, JSONValue]]:
         project = self.world.fixture["project_id"]
         page = poll(
             lambda: self.client.logs.search(project, {**self.request, "limit": 100}),
@@ -82,7 +84,7 @@ class LogContract:
         )
         assert len(page.data) == LOG_EVENT_COUNT
         expected_ids = {event_id(event) for event in page.data}
-        events: list[Any] = []
+        events: list[Mapping[str, JSONValue]] = []
         request = {**self.request, "limit": 1}
         for _ in range(LOG_EVENT_COUNT):
             page = self.client.logs.search(project, request)
@@ -97,7 +99,7 @@ class LogContract:
         assert {event_id(event) for event in events} == expected_ids
         return events
 
-    def activity(self) -> Any:
+    def activity(self) -> LogActivityResponse:
         return poll(
             lambda: self.client.logs.activity(
                 self.world.fixture["project_id"], {**self.request, "bucket_count": 2}

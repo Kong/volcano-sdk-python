@@ -5,7 +5,7 @@ import os
 import secrets
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from volcano_sdk import (
     AuthenticationError,
@@ -60,6 +60,8 @@ CONTRACT_EXCEPTIONS = (
     ValueError,
     VolcanoError,
 )
+
+_ResultT = TypeVar("_ResultT")
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,7 +169,7 @@ class ContractWorld:
             password=self.fixture["user_password"],
         )
 
-    def run(self, operation: Awaitable[Any]) -> Any:
+    def run(self, operation: Awaitable[_ResultT]) -> _ResultT:
         return self.loop.run_until_complete(operation)
 
     def start_durable_execution(self) -> DurableExecution:
