@@ -7,6 +7,7 @@ from uuid import UUID
 
 import httpx
 import pytest
+from transport_fixtures import RejectingTransport
 
 from volcano_sdk import LockLease, VolcanoClient, VolcanoError
 from volcano_sdk import _lock_guard as guard_module
@@ -32,6 +33,20 @@ def make_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCl
             httpx_transport=httpx.MockTransport(handler),
         ),
     )
+
+
+def test_optional_lock_operations_require_transport_capabilities() -> None:
+    client = VolcanoClient(
+        anon_key="anon", service_key="service", _transport=RejectingTransport()
+    )
+    lease = LockLease(key="build", token=OWNER_TOKEN, expires_at=None, fencing_token=7)
+
+    with pytest.raises(TypeError, match="requested lock operation"):
+        client.locks.get("build")
+    with pytest.raises(TypeError, match="requested lock operation"):
+        client.locks.renew("build", lease, ttl=30)
+    with pytest.raises(TypeError, match="requested lock operation"):
+        client.locks.force_release("build")
 
 
 def failed_acquisition_response(request: httpx.Request, failure: str) -> httpx.Response:
