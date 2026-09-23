@@ -89,6 +89,36 @@ def test_database_connection_string_keeps_at_sign_in_query_before_a_slash() -> N
     )
 
 
+def test_database_connection_string_keeps_credential_question_mark() -> None:
+    base = "postgres://u:p?@host?application_name=old&sslmode=require"
+
+    assert database_connection_string(base) == (
+        "postgres://u:p?@host?sslmode=require&application_name=volcano_full_access"
+    )
+
+
+def test_database_connection_string_ignores_later_at_sign_in_query() -> None:
+    base = "postgres://u@host?options=a@b"
+
+    assert database_connection_string(base) == (
+        f"{base}&application_name=volcano_full_access"
+    )
+
+
+def test_database_connection_string_keeps_question_mark_in_query_value() -> None:
+    base = "postgres://host/db?application_name=old?mode&sslmode=require"
+
+    assert database_connection_string(base) == (
+        "postgres://host/db?sslmode=require&application_name=volcano_full_access"
+    )
+
+
+def test_database_connection_string_replaces_name_containing_equals() -> None:
+    assert database_connection_string(
+        "postgres://host/db?application_name=old=more&sslmode=require"
+    ) == ("postgres://host/db?sslmode=require&application_name=volcano_full_access")
+
+
 @pytest.mark.parametrize(
     "value",
     [
