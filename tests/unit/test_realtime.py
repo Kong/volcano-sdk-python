@@ -84,6 +84,44 @@ def test_realtime_fetches_session_bound_postgres_rows() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("body", "valid"),
+    [
+        ("text", True),
+        (0, True),
+        (1.5, True),
+        (False, True),
+        (None, True),
+        ([1, None, {"nested": [True]}], True),
+        ((1, 2), True),
+        ({"nested": object()}, False),
+        ([object()], False),
+        ({1: "invalid key"}, False),
+        (object(), False),
+    ],
+)
+def test_realtime_fetch_validates_postgres_row_values(
+    body: object, *, valid: bool
+) -> None:
+    row = {"id": 42, "body": body}
+    client = VolcanoClient(
+        anon_key="anon-key",
+        _transport=RealtimeDatabaseTransport([row]),
+    )
+    request = realtime_module._PostgresFetchRequest(
+        database_name="app",
+        access_token="captured-token",
+        table="messages",
+        row_id=42,
+    )
+
+    if valid:
+        assert asyncio.run(client.realtime._fetch_postgres_rows((request,))) == (row,)
+    else:
+        with pytest.raises(TypeError, match="non-JSON value"):
+            asyncio.run(client.realtime._fetch_postgres_rows((request,)))
+
+
 def test_realtime_fetch_requires_async_select_transport() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=RejectingTransport())
     request = realtime_module._PostgresFetchRequest(

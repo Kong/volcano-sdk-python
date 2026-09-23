@@ -165,6 +165,7 @@ reportPrivateUsage = false
 root = "src/volcano_sdk/realtime.py"
 reportUnannotatedClassAttribute = "error"
 reportUnusedCallResult = "error"
+reportAny = "error"
 
 [tool.ruff]
 required-version = "==0.16.4"
