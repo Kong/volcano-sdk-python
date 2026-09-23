@@ -426,14 +426,17 @@ def test_fixture_loader_requires_absolute_private_file(tmp_path: Path) -> None:
         "contract_environment", ROOT / "features" / "environment.py"
     )
     fixture = tmp_path / "fixture.json"
-    fixture.write_text("{}", encoding="utf-8")
+    fixture.write_text(
+        (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text(),
+        encoding="utf-8",
+    )
 
     fixture.chmod(0o644)
     with pytest.raises(PermissionError, match="0600"):
         environment.load_fixture(fixture)
 
     fixture.chmod(0o600)
-    assert environment.load_fixture(fixture) == {}
+    assert environment.load_fixture(fixture)["project_id"] == "dry-run-project"
 
     previous = Path.cwd()
     os.chdir(tmp_path)
@@ -442,6 +445,41 @@ def test_fixture_loader_requires_absolute_private_file(tmp_path: Path) -> None:
             environment.load_fixture(Path("fixture.json"))
     finally:
         os.chdir(previous)
+
+
+def test_fixture_loader_rejects_incomplete_or_malformed_contract_data(
+    tmp_path: Path,
+) -> None:
+    environment = _load_module(
+        "contract_environment", ROOT / "features" / "environment.py"
+    )
+    fixture = tmp_path / "fixture.json"
+    fixture.write_text(
+        (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text(),
+        encoding="utf-8",
+    )
+    fixture.chmod(0o600)
+    valid = environment.load_fixture(fixture)
+    invalid_cases: tuple[dict[str, object], ...] = (
+        {},
+        {**valid, "project_id": 3},
+        {**valid, "fixture_row": {"slug": 3, "value": "value"}},
+        {**valid, "mutation_rows": {**valid["mutation_rows"], "insert": {}}},
+    )
+    for invalid in invalid_cases:
+        fixture.write_text(json.dumps(invalid), encoding="utf-8")
+        fixture.chmod(0o600)
+        with pytest.raises(TypeError, match="complete contract fixture"):
+            environment.load_fixture(fixture)
+
+
+def test_contract_fixture_validator_checks_every_declared_string_field() -> None:
+    fixture_module = _load_module(
+        "contract_fixture", ROOT / "features" / "contract_fixture.py"
+    )
+    assert set(fixture_module.STRING_FIELDS) == set(
+        fixture_module.ContractFixture.__annotations__
+    ) - {"fixture_row", "mutation_rows"}
 
 
 @pytest.mark.parametrize("revoked", [False, True])

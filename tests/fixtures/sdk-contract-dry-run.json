@@ -9,6 +9,7 @@
   "user_password": "dry-run-password",
   "database_name": "dry_run_database",
   "table_name": "dry_run_table",
+  "query_table_name": "dry_run_query_table",
   "fixture_row": {
     "slug": "dry-run",
     "value": "dry-run"
