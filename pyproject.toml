@@ -163,6 +163,15 @@ reportIncompatibleVariableOverride = "error"
 reportPrivateUsage = false
 
 [[tool.basedpyright.executionEnvironments]]
+root = "src/volcano_sdk/storage.py"
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportImplicitStringConcatenation = "error"
+reportUnannotatedClassAttribute = "error"
+reportUnusedCallResult = "error"
+
+[[tool.basedpyright.executionEnvironments]]
 root = "src/volcano_sdk/realtime.py"
 reportUnannotatedClassAttribute = "error"
 reportUnusedCallResult = "error"
