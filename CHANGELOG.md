@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.3](https://github.com/Kong/volcano-sdk-python/compare/v0.11.2...v0.11.3) (2026-09-23)
+
+
+### Bug Fixes
+
+* **storage:** validate response boundaries and stream fallback ([5c5cafe](https://github.com/Kong/volcano-sdk-python/commit/5c5cafeb7817c1f9453daabc18a958b21097325e))
+
 ## [0.11.2](https://github.com/Kong/volcano-sdk-python/compare/v0.11.1...v0.11.2) (2026-09-23)
 
 
