@@ -444,6 +444,7 @@ class AuthForgotPasswordTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthConfirmEmailTransport(Protocol):
     def auth_confirm_email(
         self,
@@ -453,6 +454,7 @@ class AuthConfirmEmailTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthResetPasswordTransport(Protocol):
     def auth_reset_password(
         self,
@@ -463,6 +465,7 @@ class AuthResetPasswordTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthResendConfirmationTransport(Protocol):
     def auth_resend_confirmation(
         self,
