@@ -540,7 +540,7 @@ class StateTransport(OAuthTransport):
 
     def acquire_project_lock(self, **kwargs: Any) -> Response:
         self.authorizations.append(("acquire", kwargs["authorization"]))
-        return Response(201, {"expires_at": None, "fencing_token": 1})
+        return Response(201, {"expires_at": "2030-01-01T00:00:00Z", "fencing_token": 1})
 
     def release_project_lock(self, **kwargs: Any) -> Response:
         self.authorizations.append(("release", kwargs["authorization"]))
