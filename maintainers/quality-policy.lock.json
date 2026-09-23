@@ -41,6 +41,15 @@
           "reportInvalidCast": "error",
           "reportUnannotatedClassAttribute": "error",
           "reportUnusedCallResult": "error",
+          "root": "tests/unit/test_realtime.py"
+        },
+        {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "reportImplicitStringConcatenation": "error",
+          "reportInvalidCast": "error",
+          "reportUnannotatedClassAttribute": "error",
+          "reportUnusedCallResult": "error",
           "root": "tests/unit/test_auth_facade_recovery.py"
         },
         {

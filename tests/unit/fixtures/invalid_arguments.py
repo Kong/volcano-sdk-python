@@ -103,6 +103,17 @@ def unsupported_postgres_change_event(channel: Channel) -> None:
     )
 
 
+def unsupported_realtime_channel_type(realtime: Realtime) -> None:
+    realtime.channel("contract", channel_type="presense")  # type: ignore[arg-type]
+
+
+async def remove_unsupported_realtime_channel_type(realtime: Realtime) -> None:
+    await realtime.remove_channel(
+        "contract",
+        channel_type="presense",  # type: ignore[arg-type]
+    )
+
+
 def assign_session_page(page: SessionPage) -> None:
     page.page = 3  # type: ignore[misc]
 

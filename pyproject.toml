@@ -192,6 +192,15 @@ reportUnannotatedClassAttribute = "error"
 reportUnusedCallResult = "error"
 
 [[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/test_realtime.py"
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportImplicitStringConcatenation = "error"
+reportUnannotatedClassAttribute = "error"
+reportUnusedCallResult = "error"
+
+[[tool.basedpyright.executionEnvironments]]
 root = "tests/unit/test_auth_facade_recovery.py"
 reportAny = "error"
 reportExplicitAny = "error"
