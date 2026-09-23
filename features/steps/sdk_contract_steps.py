@@ -4,7 +4,8 @@ import asyncio
 import time
 from contextlib import suppress
 from dataclasses import replace
-from typing import TYPE_CHECKING, TypedDict
+from datetime import datetime
+from typing import TYPE_CHECKING, TypedDict, TypeVar, cast
 from uuid import uuid4
 
 import httpx
@@ -20,30 +21,40 @@ from logs_contract import LogContract
 from postgres_changes import verify_postgres_changes
 from presence_membership import verify_presence_membership
 
-from volcano_sdk import NotFoundError, Session, VolcanoClient
+from volcano_sdk import (
+    DurableExecution,
+    DurableExecutionPage,
+    FunctionResponse,
+    LockLease,
+    LockState,
+    NotFoundError,
+    Session,
+    SessionPage,
+    User,
+    VolcanoClient,
+)
+from volcano_sdk.models import (
+    StorageObject,
+    UploadPart,
+    UploadSession,
+    UploadSessionStatus,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from behave.runner import Context
 
-    from volcano_sdk.models import (
-        DurableExecution,
-        FunctionResponse,
-        LockLease,
-        LockState,
-        StorageObject,
-        UploadPart,
-        UploadSession,
-        UploadSessionStatus,
-    )
     from volcano_sdk.realtime import Channel
     from volcano_sdk.storage import StorageBucket
 
 ACCESS_TOKEN_CLOCK_TICK_SECONDS = 1.1
 HTTP_OK = 200
 MULTIPART_PART_COUNT = 2
+DURABLE_START_COUNT = 2
+STORAGE_LIFECYCLE_DOWNLOAD_COUNT = 4
 REJECTED_BEARER = "sdk-contract-rejected-access-token"
+_ValueT = TypeVar("_ValueT")
 
 
 class PartialUpload(TypedDict):
@@ -112,6 +123,37 @@ def _outcome(context: Context) -> Outcome:
     outcome = _world(context).last_outcome
     assert outcome is not None
     return outcome
+
+
+def _value(context: Context, expected: type[_ValueT]) -> _ValueT:
+    value = _outcome(context).value
+    assert isinstance(value, expected)
+    return value
+
+
+def _value_dict(context: Context) -> dict[str, object]:
+    value = _outcome(context).value
+    assert isinstance(value, dict)
+    entries = cast("dict[object, object]", value)
+    result: dict[str, object] = {}
+    for key, item in entries.items():
+        assert isinstance(key, str)
+        result[key] = item
+    return result
+
+
+def _object_list(value: object) -> list[object]:
+    assert isinstance(value, list)
+    return cast("list[object]", value)
+
+
+def _remove_cleanup(world: ContractWorld, candidate: object) -> None:
+    for callback in world.cleanup_callbacks:
+        if callback is candidate:
+            world.cleanup_callbacks.remove(callback)
+            return
+    msg = "Expected registered contract cleanup callback"
+    raise AssertionError(msg)
 
 
 @given("the confirmed contract user")
@@ -231,9 +273,10 @@ def refreshed_session_becomes_current(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.previous_session is not None
-    assert world.last_outcome.value is not world.previous_session
-    assert world.last_outcome.value.access_token != world.previous_session.access_token
-    assert world.client.auth.get_session() is world.last_outcome.value
+    refreshed = _value(context, Session)
+    assert refreshed is not world.previous_session
+    assert refreshed.access_token != world.previous_session.access_token
+    assert world.client.auth.get_session() is refreshed
 
 
 @when("the client signs out")
@@ -303,7 +346,7 @@ def operation_fails(context: Context) -> None:
 def session_belongs_to_contract_user(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.last_outcome.value.user_id == world.fixture["user_id"]
+    assert _value(context, Session).user_id == world.fixture["user_id"]
     assert world.client.current_session is not None
     assert world.client.current_session.user_id == world.fixture["user_id"]
 
@@ -375,7 +418,7 @@ def list_server_sessions(context: Context) -> None:
 def listed_sessions_belong_to_contract_user(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    page = world.last_outcome.value
+    page = _value(context, SessionPage)
     assert page.page == 1
     assert page.total >= len(page.sessions) > 0
     assert all(session.user_id == world.fixture["user_id"] for session in page.sessions)
@@ -392,7 +435,7 @@ def load_server_profile(context: Context) -> None:
 def profiles_belong_to_contract_user(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.last_outcome.value.id == world.fixture["user_id"]
+    assert _value(context, User).id == world.fixture["user_id"]
     session = world.client.current_session
     assert session is not None
     assert session.user is not None
@@ -691,7 +734,7 @@ def upload_and_download(context: Context) -> None:
 def downloaded_bytes_match(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.last_outcome.value["bytes"] == world.storage_bytes
+    assert _value_dict(context)["bytes"] == world.storage_bytes
 
 
 @when(
@@ -728,10 +771,9 @@ def upload_and_read_metadata(context: Context) -> None:
 def stored_content_types_match(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.last_outcome.value["content_type"] == "text/plain"
-    assert world.last_outcome.value["listed"] == [
-        {"name": world.storage_path, "mime_type": "text/plain"}
-    ]
+    value = _value_dict(context)
+    assert value["content_type"] == "text/plain"
+    assert value["listed"] == [{"name": world.storage_path, "mime_type": "text/plain"}]
 
 
 @when("the client uploads the contract object and downloads bytes 2 through 7")
@@ -758,7 +800,7 @@ def upload_and_download_range(context: Context) -> None:
 def downloaded_range_matches(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.last_outcome.value["bytes"] == world.storage_bytes[2:8]
+    assert _value_dict(context)["bytes"] == world.storage_bytes[2:8]
 
 
 @when("the client copies, moves, and removes a copy of the contract object")
@@ -803,8 +845,9 @@ def copy_move_and_remove(context: Context) -> None:
 def lifecycle_bytes_match(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
+    values = _object_list(_value_dict(context)["bytes"])
     assert all(
-        value == world.storage_bytes for value in world.last_outcome.value["bytes"]
+        isinstance(value, bytes) and value == world.storage_bytes for value in values
     )
 
 
@@ -812,7 +855,7 @@ def lifecycle_bytes_match(context: Context) -> None:
 def moved_paths_match(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.last_outcome.value["after_move"] == sorted(
+    assert _value_dict(context)["after_move"] == sorted(
         [world.storage_path, f"{world.storage_path}.moved"]
     )
 
@@ -821,8 +864,11 @@ def moved_paths_match(context: Context) -> None:
 def removed_path_is_absent(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.last_outcome.value["after_remove"] == [world.storage_path]
-    assert world.last_outcome.value["bytes"][3] == world.storage_bytes
+    value = _value_dict(context)
+    assert value["after_remove"] == [world.storage_path]
+    values = _object_list(value["bytes"])
+    assert len(values) == STORAGE_LIFECYCLE_DOWNLOAD_COUNT
+    assert values[3] == world.storage_bytes
 
 
 def _storage_bucket(world: ContractWorld) -> StorageBucket:
@@ -900,13 +946,18 @@ def resume_contract_upload(context: Context) -> None:
 def partial_upload_progress(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    value = world.last_outcome.value
+    value = _value_dict(context)
     progress, session, part = value["progress"], value["session"], value["part"]
+    assert isinstance(progress, UploadSessionStatus)
+    assert isinstance(session, UploadSession)
+    assert isinstance(part, UploadPart)
+    upload_bytes = value["bytes"]
+    assert isinstance(upload_bytes, bytes)
     assert progress.session_id == session.session_id
     assert progress.path == world.storage_path
     assert progress.content_type == "application/octet-stream"
     assert progress.status == "uploading"
-    assert progress.total_size == len(value["bytes"])
+    assert progress.total_size == len(upload_bytes)
     assert progress.part_size == session.part_size == 5 * 1024 * 1024
     assert progress.total_parts == session.total_parts == MULTIPART_PART_COUNT
     assert progress.parts_uploaded == 1
@@ -920,11 +971,15 @@ def partial_upload_progress(context: Context) -> None:
 def completed_upload_matches(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    value = world.last_outcome.value
-    assert value["object"].name == world.storage_path
-    assert value["object"].mime_type == "application/octet-stream"
-    assert value["object"].size == len(value["bytes"])
-    assert value["download"] == value["bytes"]
+    value = _value_dict(context)
+    stored = value["object"]
+    upload_bytes = value["bytes"]
+    assert isinstance(stored, StorageObject)
+    assert isinstance(upload_bytes, bytes)
+    assert stored.name == world.storage_path
+    assert stored.mime_type == "application/octet-stream"
+    assert stored.size == len(upload_bytes)
+    assert value["download"] == upload_bytes
 
 
 @when("the client uploads one part and aborts the contract upload")
@@ -991,8 +1046,12 @@ def change_contract_visibility(context: Context) -> None:
 def anonymous_visibility_matches(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    value = world.last_outcome.value
-    assert all(world.storage_bytes not in body for body in value["private_bytes"])
+    value = _value_dict(context)
+    private_bytes = _object_list(value["private_bytes"])
+    assert all(
+        isinstance(body, bytes) and world.storage_bytes not in body
+        for body in private_bytes
+    )
     assert {key: value[key] for key in ("statuses", "bytes", "visibility")} == {
         "statuses": [404, 200, 404],
         "bytes": world.storage_bytes,
@@ -1004,7 +1063,7 @@ def anonymous_visibility_matches(context: Context) -> None:
 def stored_object_path_matches(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.last_outcome.value["path"] == world.storage_path
+    assert _value_dict(context)["path"] == world.storage_path
 
 
 @given("a service-role client")
@@ -1035,7 +1094,7 @@ def acquire_and_release_lock(context: Context) -> None:
 def released_lease_not_held(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.last_outcome.value["released"] is True
+    assert _value_dict(context)["released"] is True
 
 
 @given("a project-owner client")
@@ -1090,27 +1149,34 @@ def recover_lock(context: Context) -> None:
 def started_execution_is_addressable(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    execution = world.last_outcome.value
+    execution = _value(context, DurableExecution)
     assert execution.id
     assert execution.function_id
     assert execution.name == world.durable_execution_name
     assert execution.region
-    assert execution.created_at is not None
+    assert isinstance(execution.created_at, datetime)
 
 
 @then("the started execution is not terminal and carries no result")
 def started_execution_is_a_handle(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.last_outcome.value.is_terminal is False
-    assert world.last_outcome.value.result is None
+    execution = _value(context, DurableExecution)
+    assert execution.is_terminal is False
+    assert execution.result is None
 
 
 @then("both starts return the same execution")
 def both_starts_return_one_execution(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    first, second = world.last_outcome.value
+    raw_executions = _outcome(context).value
+    assert isinstance(raw_executions, tuple)
+    executions = cast("tuple[object, ...]", raw_executions)
+    assert len(executions) == DURABLE_START_COUNT
+    first, second = executions
+    assert isinstance(first, DurableExecution)
+    assert isinstance(second, DurableExecution)
     assert second.id == first.id
     assert second.name == first.name
 
@@ -1129,8 +1195,9 @@ def read_execution_until_terminal(context: Context) -> None:
 def execution_succeeded_with_result(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.last_outcome.value.status == "succeeded"
-    assert world.last_outcome.value.result == {"echoed": world.durable_payload["value"]}
+    execution = _value(context, DurableExecution)
+    assert execution.status == "succeeded"
+    assert execution.result == {"echoed": world.durable_payload["value"]}
 
 
 @when("the owner lists the durable function's executions")
@@ -1146,7 +1213,8 @@ def listed_executions_include_the_started_one(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
     assert world.started_execution is not None
-    listed = {execution.id for execution in world.last_outcome.value.executions}
+    page = _value(context, DurableExecutionPage)
+    listed = {execution.id for execution in page.executions}
     assert world.started_execution.id in listed
 
 
@@ -1154,22 +1222,31 @@ def listed_executions_include_the_started_one(context: Context) -> None:
 def recovered_lock_lifecycle(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    value = world.last_outcome.value
-    assert value["held"].held is True
-    assert value["available"].held is False
-    world.cleanup_callbacks.remove(value["cleanup"])
+    value = _value_dict(context)
+    held = value["held"]
+    available = value["available"]
+    cleanup = value["cleanup"]
+    token = value["token"]
+    lease = value["lease"]
+    recovered = value["recovered"]
+    renewed = value["renewed"]
+    assert isinstance(held, LockState)
+    assert isinstance(available, LockState)
+    assert callable(cleanup)
+    assert isinstance(token, str)
+    assert isinstance(lease, LockLease)
+    assert isinstance(recovered, LockLease)
+    assert isinstance(renewed, LockLease)
+    assert held.held is True
+    assert available.held is False
+    _remove_cleanup(world, cleanup)
+    assert token == lease.token == recovered.token == renewed.token
+    assert lease.fencing_token is not None
     assert (
-        value["token"]
-        == value["lease"].token
-        == value["recovered"].token
-        == value["renewed"].token
-    )
-    assert value["lease"].fencing_token is not None
-    assert (
-        value["lease"].fencing_token
-        == value["recovered"].fencing_token
-        == value["held"].fencing_token
-        == value["renewed"].fencing_token
+        lease.fencing_token
+        == recovered.fencing_token
+        == held.fencing_token
+        == renewed.fencing_token
     )
 
 
@@ -1191,15 +1268,21 @@ def force_release_lock(context: Context) -> None:
 def force_released_lock_available(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    assert world.last_outcome.value["available"].held is False
-    world.cleanup_callbacks.remove(world.last_outcome.value["cleanup"])
+    value = _value_dict(context)
+    available = value["available"]
+    cleanup = value["cleanup"]
+    assert isinstance(available, LockState)
+    assert callable(cleanup)
+    assert available.held is False
+    _remove_cleanup(world, cleanup)
 
 
 @when("the client reacquires the force-released contract lock")
 def reacquire_force_released_lock(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    original = world.last_outcome.value["lease"]
+    original = _value_dict(context)["lease"]
+    assert isinstance(original, LockLease)
 
     def operation() -> object:
         replacement = world.service_client.locks.acquire(world.lock_key, ttl=30)
@@ -1213,10 +1296,14 @@ def reacquire_force_released_lock(context: Context) -> None:
 def replacement_lock_fence_increases(context: Context) -> None:
     world = _world(context)
     assert world.last_outcome is not None
-    original = world.last_outcome.value["original"]
-    replacement = world.last_outcome.value["replacement"]
+    value = _value_dict(context)
+    original = value["original"]
+    replacement = value["replacement"]
+    assert isinstance(original, LockLease)
+    assert isinstance(replacement, LockLease)
     assert replacement.token != original.token
     assert original.fencing_token is not None
+    assert replacement.fencing_token is not None
     assert replacement.fencing_token > original.fencing_token
 
 
@@ -1327,7 +1414,7 @@ def function_echoed_payload(context: Context) -> None:
     # the SDK sent the request there rather than somewhere it guessed.
     world = _world(context)
     assert world.last_outcome is not None
-    response = world.last_outcome.value
+    response = _value(context, FunctionResponse)
     assert response.status == HTTP_OK, response
     assert response.data == {"echoed": "contract"}, response.data
 
