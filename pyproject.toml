@@ -256,7 +256,7 @@ format-check = "ruff format --check ."
 types = ["mypy", "basedpyright", "verifytypes"]
 mypy = "mypy"
 basedpyright = "basedpyright"
-verifytypes = "basedpyright --verifytypes volcano_sdk --ignoreexternal"
+verifytypes = "basedpyright --verifytypes volcano_sdk"
 test = "pytest tests/unit -q --junitxml=reports/unit.xml"
 coverage = "uv run --locked --isolated --python 3.12 pytest tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:reports/coverage.json --junitxml=reports/coverage-unit.xml"
 
