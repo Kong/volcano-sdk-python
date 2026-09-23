@@ -714,6 +714,7 @@ class Transport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AsyncDatabaseSelectTransport(Protocol):
     """Async database query capability used by cancellable realtime fetches."""
 

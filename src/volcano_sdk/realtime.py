@@ -85,6 +85,7 @@ NO_ACTIVE_SESSION = "No active session"
 CONNECTION_SESSION_UNAVAILABLE = "Realtime connection has no session binding"
 CONNECTION_SESSION_CHANGED = "Realtime connection session changed"
 POSTGRES_FETCH_FAILED_MESSAGE = "Volcano realtime Postgres row fetch failed"
+_POSTGRES_QUERY_UNAVAILABLE = "Transport does not support realtime Postgres row fetch"
 
 
 def _empty_presence_data() -> Mapping[str, JSONValue]:
@@ -1378,10 +1379,9 @@ class Realtime:
     ) -> tuple[dict[str, Any] | None, ...]:
         first = requests[0]
         row_ids = [request.row_id for request in requests]
-        transport = cast(
-            "AsyncDatabaseSelectTransport",
-            self._client_context._transport,
-        )
+        transport = self._client_context._transport
+        if not isinstance(transport, AsyncDatabaseSelectTransport):
+            raise TypeError(_POSTGRES_QUERY_UNAVAILABLE)
         response = await invoke_async(
             transport.query_database_select_async,
             authorization=first.access_token,

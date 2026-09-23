@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, create_autospec
 import pytest
 from fixtures.invalid_arguments import fractional_fetch_window
 from state_assertions import assert_same
+from transport_fixtures import RejectingTransport
 from typing_extensions import override
 
 from volcano_sdk import (
@@ -81,6 +82,19 @@ def test_realtime_fetches_session_bound_postgres_rows() -> None:
             },
         }
     ]
+
+
+def test_realtime_fetch_requires_async_select_transport() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=RejectingTransport())
+    request = realtime_module._PostgresFetchRequest(
+        database_name="app",
+        access_token="captured-token",
+        table="messages",
+        row_id=42,
+    )
+
+    with pytest.raises(TypeError, match="does not support realtime Postgres row fetch"):
+        asyncio.run(client.realtime._fetch_postgres_rows((request,)))
 
 
 def test_realtime_row_fetch_returns_none_when_the_row_is_absent() -> None:
