@@ -4,10 +4,13 @@ import json
 import os
 import stat
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 from contract_fixture import ContractFixture, is_contract_fixture
 from contract_support import ContractWorld
+
+if TYPE_CHECKING:
+    from behave.runner import Context
 
 FIXTURE_MODE = 0o600
 FIXTURE_ABSOLUTE_PATH_ERROR = "VOLCANO_SDK_CONTRACT_FIXTURE must be an absolute path"
@@ -30,18 +33,18 @@ def load_fixture(path: Path) -> ContractFixture:
     return value
 
 
-def before_all(context: Any) -> None:
+def before_all(context: Context) -> None:
     fixture_path = os.environ.get("VOLCANO_SDK_CONTRACT_FIXTURE")
     if fixture_path is None:
         raise RuntimeError(FIXTURE_REQUIRED_ERROR)
     context.contract_fixture = load_fixture(Path(fixture_path))
 
 
-def before_scenario(context: Any, scenario: Any) -> None:
+def before_scenario(context: Context, scenario: object) -> None:
     del scenario
     context.contract = ContractWorld(context.contract_fixture)
 
 
-def after_scenario(context: Any, scenario: Any) -> None:
+def after_scenario(context: Context, scenario: object) -> None:
     del scenario
     context.contract.cleanup()
