@@ -423,6 +423,7 @@ class AuthSignUpAnonymousTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthConvertAnonymousTransport(Protocol):
     def auth_convert_anonymous(
         self,
@@ -611,10 +612,12 @@ class AuthCallOAuthAPITransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthGetUserTransport(Protocol):
     def auth_get_user(self, *, authorization: str) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthUpdateUserTransport(Protocol):
     def auth_update_user(
         self,

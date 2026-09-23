@@ -608,7 +608,9 @@ class Auth:
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast("AuthConvertAnonymousTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthConvertAnonymousTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         request_metadata = deepcopy(dict(metadata or {}))
         response = self._session_request(
             lambda access_token: invoke(
@@ -1171,7 +1173,9 @@ class Auth:
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast("AuthGetUserTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthGetUserTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
             lambda access_token: invoke(
                 transport.auth_get_user, authorization=access_token
@@ -1198,7 +1202,9 @@ class Auth:
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast("AuthUpdateUserTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthUpdateUserTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         request_metadata = None if metadata is None else deepcopy(dict(metadata))
         response = self._session_request(
             lambda access_token: invoke(
