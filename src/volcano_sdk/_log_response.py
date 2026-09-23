@@ -14,11 +14,11 @@ INVALID_LOG_RESPONSE = "Expected a complete log response"
 def response_values(payload: object) -> Mapping[str, object]:
     """Require a JSON object for the response envelope.
 
-    Raises:
-        TypeError: The response envelope is not an object.
-
     Returns:
         The response fields without normalizing their values.
+
+    Raises:
+        TypeError: The response envelope is not an object.
 
     """
     if not isinstance(payload, Mapping):
@@ -29,11 +29,11 @@ def response_values(payload: object) -> Mapping[str, object]:
 def response_data(values: Mapping[str, object]) -> tuple[Mapping[str, JSONValue], ...]:
     """Require a list of objects without coercing empty mappings into lists.
 
-    Raises:
-        TypeError: The rows are not a list of objects.
-
     Returns:
         The validated rows in their original order.
+
+    Raises:
+        TypeError: The rows are not a list of objects.
 
     """
     raw_data = values.get("data")
@@ -48,11 +48,11 @@ def response_data(values: Mapping[str, object]) -> tuple[Mapping[str, JSONValue]
 def search_metadata(values: Mapping[str, object]) -> tuple[int, bool, str | None]:
     """Require search pagination fields without coercing their values.
 
-    Raises:
-        TypeError: Required metadata is missing or has an invalid type.
-
     Returns:
         The page limit, continuation flag, and optional cursor.
+
+    Raises:
+        TypeError: Required metadata is missing or has an invalid type.
 
     """
     limit = values.get("limit")
@@ -71,11 +71,11 @@ def search_metadata(values: Mapping[str, object]) -> tuple[int, bool, str | None
 def activity_total(values: Mapping[str, object]) -> int:
     """Require the activity total without treating booleans as integers.
 
-    Raises:
-        TypeError: The total is missing or is not an integer.
-
     Returns:
         The total reported by the server.
+
+    Raises:
+        TypeError: The total is missing or is not an integer.
 
     """
     total = values.get("total")

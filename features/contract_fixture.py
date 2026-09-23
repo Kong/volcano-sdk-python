@@ -74,12 +74,20 @@ STRING_FIELDS = (
 
 
 def is_object_dict(value: object) -> TypeGuard[dict[object, object]]:
-    """Narrow a decoded dictionary without trusting its keys or values."""
+    """Narrow a decoded dictionary without trusting its keys or values.
+
+    Returns:
+        Whether the value is a dictionary.
+    """
     return isinstance(value, dict)
 
 
 def is_contract_row(value: object) -> TypeGuard[ContractRow]:
-    """Check the fields read by the database scenarios."""
+    """Check the fields read by the database scenarios.
+
+    Returns:
+        Whether the value contains the required row fields.
+    """
     if not is_object_dict(value):
         return False
     return (
@@ -93,14 +101,22 @@ def is_contract_row(value: object) -> TypeGuard[ContractRow]:
 
 
 def is_update_rows(value: object) -> TypeGuard[UpdateRows]:
-    """Check both states of the update scenario."""
+    """Check both states of the update scenario.
+
+    Returns:
+        Whether both update states contain valid rows.
+    """
     if not is_object_dict(value):
         return False
     return is_contract_row(value.get("before")) and is_contract_row(value.get("after"))
 
 
 def is_mutation_rows(value: object) -> TypeGuard[MutationRows]:
-    """Check the three mutation fixtures."""
+    """Check the three mutation fixtures.
+
+    Returns:
+        Whether the insert, update, and delete rows are valid.
+    """
     if not is_object_dict(value):
         return False
     return (
@@ -111,7 +127,11 @@ def is_mutation_rows(value: object) -> TypeGuard[MutationRows]:
 
 
 def is_contract_fixture(value: object) -> TypeGuard[ContractFixture]:
-    """Validate every field consumed by the shared scenarios."""
+    """Validate every field consumed by the shared scenarios.
+
+    Returns:
+        Whether the fixture has every required field and row.
+    """
     if not is_object_dict(value):
         return False
     if any(not isinstance(value.get(key), str) for key in STRING_FIELDS):
