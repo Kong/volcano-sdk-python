@@ -5,7 +5,7 @@ import os
 import secrets
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from volcano_sdk import (
     AuthenticationError,
@@ -67,7 +67,7 @@ _ResultT = TypeVar("_ResultT")
 @dataclass(frozen=True, slots=True)
 class Outcome:
     ok: bool
-    value: Any = None
+    value: object = None
     category: str | None = None
     error: Exception | None = None
 
@@ -216,7 +216,7 @@ class ContractWorld:
             self.fixture["durable_function_name"],
         )
 
-    def record(self, operation: Callable[[], Any]) -> Outcome:
+    def record(self, operation: Callable[[], object]) -> Outcome:
         try:
             self.last_outcome = Outcome(ok=True, value=operation())
         except CONTRACT_EXCEPTIONS as error:
