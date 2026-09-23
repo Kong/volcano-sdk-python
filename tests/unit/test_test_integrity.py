@@ -20,6 +20,15 @@ def test_complete_run_passes(guarded: pytest.Pytester) -> None:
     assert result.ret == pytest.ExitCode.OK
 
 
+def test_collect_only_discovers_tests_without_execution(
+    guarded: pytest.Pytester,
+) -> None:
+    guarded.makepyfile("def test_discovered(): assert True")
+    result = guarded.runpytest_subprocess("--collect-only", "-q")
+    assert result.ret == pytest.ExitCode.OK
+    result.stdout.fnmatch_lines(["*1 test collected*"])
+
+
 @pytest.mark.parametrize(
     "source",
     [
