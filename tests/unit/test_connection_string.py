@@ -37,6 +37,13 @@ def test_database_connection_string_selects_encoded_user_access() -> None:
     )
 
 
+def test_database_connection_string_escapes_slashes_in_user_scope() -> None:
+    assert (
+        database_connection_string("postgres://host/app", user_id="tenant/child")
+        == "postgres://host/app?application_name=volcano_user_access%3Atenant%2Fchild"
+    )
+
+
 def test_database_connection_string_treats_empty_user_id_as_full_access() -> None:
     result = database_connection_string(
         "postgres://user:password@db.example.com/app",
@@ -73,6 +80,12 @@ def test_database_connection_string_drops_trailing_query_separator() -> None:
 def test_database_connection_string_ignores_at_sign_in_query_value() -> None:
     assert database_connection_string("postgresql://host/db?options=foo@bar") == (
         "postgresql://host/db?options=foo@bar&application_name=volcano_full_access"
+    )
+
+
+def test_database_connection_string_keeps_at_sign_in_query_before_a_slash() -> None:
+    assert database_connection_string("postgresql://host/db?options=foo@bar/path") == (
+        "postgresql://host/db?options=foo@bar/path&application_name=volcano_full_access"
     )
 
 
