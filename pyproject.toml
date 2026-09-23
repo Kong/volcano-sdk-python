@@ -219,7 +219,6 @@ max-complexity = 5
 [tool.ruff.lint.per-file-ignores]
 "features/**/*.py" = ["D", "INP001", "S101"]
 "scripts/*.py" = ["T201"]
-"src/volcano_sdk/_transport.py" = ["ANN401"]
 "src/volcano_sdk/auth.py" = ["SLF001"]
 "src/volcano_sdk/database.py" = ["SLF001"]
 "src/volcano_sdk/durable.py" = ["SLF001"]
