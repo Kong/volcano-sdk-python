@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, TypeVar
 from .errors import SessionChangedError, VolcanoError
 
 if TYPE_CHECKING:
+    from _thread import LockType
     from collections.abc import Callable
 
     from .models import Session
@@ -40,11 +41,11 @@ class SessionOperations:
     """Retain only this session's latest refresh and shared sign-out outcome."""
 
     def __init__(self, verified: Session | None = None) -> None:
-        self._lock = Lock()
+        self._lock: LockType = Lock()
         self.refreshing: Future[Session] | None = None
         self.signing_out: Future[BaseException | None] | None = None
-        self._locally_cleared = False
-        self._verified_pair = (
+        self._locally_cleared: bool = False
+        self._verified_pair: tuple[str, str | None] | None = (
             (verified.access_token, verified.refresh_token)
             if verified is not None
             else None

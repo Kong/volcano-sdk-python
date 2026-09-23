@@ -29,6 +29,7 @@ from .realtime import CentrifugeFactory, Realtime
 from .storage import Storage
 
 if TYPE_CHECKING:
+    from _thread import LockType
     from collections.abc import Callable, Mapping
     from types import TracebackType
 
@@ -104,15 +105,15 @@ class VolcanoClient:
         **credentials: Unpack[_BootstrapCredentials],
     ) -> None:
         """Create a client for a Volcano project."""
-        self._api_url = api_url.rstrip("/")
-        self._anon_key = anon_key
-        self._service_key = service_key
-        self._session_lock = threading.Lock()
-        self._session_generation = 0
-        self._session_lineage = SessionOperations()
-        self._current_session = _bootstrap_session(credentials)
+        self._api_url: str = api_url.rstrip("/")
+        self._anon_key: str = anon_key
+        self._service_key: str | None = service_key
+        self._session_lock: LockType = threading.Lock()
+        self._session_generation: int = 0
+        self._session_lineage: SessionOperations = SessionOperations()
+        self._current_session: Session | None = _bootstrap_session(credentials)
         self._auth_callbacks: dict[int, AuthStateCallback] = {}
-        self._next_auth_callback_id = 0
+        self._next_auth_callback_id: int = 0
         self._auth_notifications: deque[
             tuple[
                 tuple[int, ...],
@@ -120,7 +121,7 @@ class VolcanoClient:
                 Session | None,
             ]
         ] = deque()
-        self._dispatching_auth_notifications = False
+        self._dispatching_auth_notifications: bool = False
         self._transport: Transport = (
             _transport
             if _transport is not None
@@ -312,7 +313,7 @@ class VolcanoClient:
 
     def _unsubscribe_auth_state_change(self, callback_id: int) -> None:
         with self._session_lock:
-            self._auth_callbacks.pop(callback_id, None)
+            _ = self._auth_callbacks.pop(callback_id, None)
 
     def _enqueue_auth_state_change(
         self,
