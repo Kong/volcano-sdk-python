@@ -73,7 +73,7 @@ def _query_parameters(query: str) -> list[str]:
         if unquote(parameter.partition("=")[0]) != "application_name"
     ]
     while parameters and not parameters[-1]:
-        parameters.pop()
+        _ = parameters.pop()
     return parameters
 
 

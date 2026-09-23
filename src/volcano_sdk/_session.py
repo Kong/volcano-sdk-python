@@ -33,8 +33,8 @@ def session_id_from_access_token(access_token: str) -> str | None:
         return None
     padding = "=" * (-len(parts[1]) % 4)
     try:
-        payload: object = json.loads(
-            base64.urlsafe_b64decode(parts[1] + padding).decode()
+        payload = cast(
+            "object", json.loads(base64.urlsafe_b64decode(parts[1] + padding).decode())
         )
     except (ValueError, UnicodeDecodeError, RecursionError):
         return None
