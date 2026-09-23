@@ -9,10 +9,12 @@ uv run python -c 'import os, tomllib; p = tomllib.load(open("pyproject.toml", "r
 
 # Check the exact artifacts that will be uploaded, including sdist rebuilds.
 package_dir="${2:-dist}"
+package_dir="$(cd "$package_dir" && pwd)"
 artifacts=("$package_dir"/*)
 test "${#artifacts[@]}" -eq 2
 test -f "$package_dir/volcano_sdk_python-$version-py3-none-any.whl"
 test -f "$package_dir/volcano_sdk_python-$version.tar.gz"
+artifact_digests="$(shasum -a 256 "${artifacts[@]}")"
 uvx --from twine==7.0.0 twine check --strict "${artifacts[@]}"
 smoke_dir="$(mktemp -d)"
 trap 'rm -rf "$smoke_dir"' EXIT
@@ -41,13 +43,17 @@ for artifact in "${artifacts[@]}"; do
   "$smoke_dir/venv/bin/python" -I - <<'PY'
 import os
 from importlib.metadata import distribution
+from importlib.util import find_spec
 from volcano_sdk import VolcanoClient
+from volcano_sdk.durable_authoring import durable
 
 package = distribution("volcano-sdk-python")
 assert package.metadata["Name"] == "volcano-sdk-python"
 assert package.version == os.environ["PACKAGE_VERSION"]
 assert VolcanoClient
 assert package.read_text("WHEEL")
+assert find_spec("aws_durable_execution_sdk_python") is None
+assert callable(durable)
 print(f"Installed {package.metadata['Name']} {package.version}; volcano_sdk import OK")
 PY
   env -i PATH="$PATH" HOME="$smoke_dir" \
@@ -67,4 +73,27 @@ PY
     fi
     grep -q '\[arg-type\]' typing-error.log
   )
+  # Build only our checked sdist; dependencies must come from wheels.
+  binary_args=(--only-binary :all:)
+  if [[ "$artifact" == *.tar.gz ]]; then
+    binary_args+=(--no-binary volcano-sdk-python)
+  fi
+  cp "$artifact" "$smoke_dir/"
+  (
+    cd "$smoke_dir"
+    uv pip install --python "$smoke_dir/venv/bin/python" "${binary_args[@]}" "$smoke_dir/${artifact##*/}[durable]"
+  )
+  "$smoke_dir/venv/bin/python" -I - <<'PY'
+from importlib.metadata import distribution
+from importlib.util import find_spec
+from volcano_sdk.durable_authoring import durable
+
+assert find_spec("aws_durable_execution_sdk_python") is not None
+assert distribution("aws-durable-execution-sdk-python").version
+assert callable(durable)
+print("Durable extra installed and authoring API imported")
+PY
+  current_artifacts=("$package_dir"/*)
+  test "${#current_artifacts[@]}" -eq "${#artifacts[@]}"
+  test "$artifact_digests" = "$(shasum -a 256 "${current_artifacts[@]}")"
 done
