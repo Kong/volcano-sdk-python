@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, Protocol, Self, TypedDict, cast
+from typing import TYPE_CHECKING, Protocol, Self, TypedDict, TypeGuard, cast
 
 from typing_extensions import override
 
@@ -15,6 +15,30 @@ if TYPE_CHECKING:
     from .models import JSONValue
 
 from ._transport import Transport, invoke, response_payload
+
+_INVALID_DATABASE_ROWS = "Expected a list of database rows with string keys"
+
+
+def _is_database_row(value: object) -> TypeGuard[dict[str, object]]:
+    if not isinstance(value, dict):
+        return False
+    row = cast("dict[object, object]", value)
+    return all(isinstance(key, str) for key in row)
+
+
+def _database_rows(payload: object) -> list[dict[str, object]]:
+    if not isinstance(payload, Mapping):
+        raise TypeError(_INVALID_DATABASE_ROWS)
+    values = cast("Mapping[object, object]", payload)
+    raw_rows = values.get("data")
+    if not isinstance(raw_rows, list):
+        raise TypeError(_INVALID_DATABASE_ROWS)
+    rows: list[dict[str, object]] = []
+    for row in cast("list[object]", raw_rows):
+        if not _is_database_row(row):
+            raise TypeError(_INVALID_DATABASE_ROWS)
+        rows.append(row)
+    return rows
 
 
 def _snapshot_json(value: JSONValue) -> JSONValue:
@@ -315,12 +339,12 @@ class QueryBuilder(FilterBuilder):
             if value is not None
         }
 
-    def execute(self) -> list[dict[str, Any]]:
+    def execute(self) -> list[dict[str, object]]:
         """Execute the query and return its rows.
 
         Returns
         -------
-        list[dict[str, Any]]
+        list[dict[str, object]]
             Rows returned by the select request.
 
         """
@@ -333,8 +357,8 @@ class QueryBuilder(FilterBuilder):
                 body=body,
             )
         )
-        payload = response_payload(response, 200)
-        return list(payload["data"])
+        payload: object = response_payload(response, 200)
+        return _database_rows(payload)
 
 
 @dataclass(frozen=True, slots=True)
@@ -346,12 +370,12 @@ class InsertBuilder:
     _table: str
     _values: dict[str, JSONValue]
 
-    def execute(self) -> list[dict[str, Any]]:
+    def execute(self) -> list[dict[str, object]]:
         """Insert one row and return the inserted rows.
 
         Returns
         -------
-        list[dict[str, Any]]
+        list[dict[str, object]]
             Inserted rows returned by the server.
 
         """
@@ -363,8 +387,8 @@ class InsertBuilder:
                 body={"table": self._table, "values": _snapshot_row(self._values)},
             )
         )
-        payload = response_payload(response, 200)
-        return list(payload["data"])
+        payload: object = response_payload(response, 200)
+        return _database_rows(payload)
 
 
 @dataclass(frozen=True, slots=True)
@@ -381,12 +405,12 @@ class UpdateBuilder(FilterBuilder):
     def _with_filters(self, filters: tuple[_FilterCondition, ...]) -> UpdateBuilder:
         return replace(self, _filters=filters)
 
-    def execute(self) -> list[dict[str, Any]]:
+    def execute(self) -> list[dict[str, object]]:
         """Update matching rows and return them.
 
         Returns
         -------
-        list[dict[str, Any]]
+        list[dict[str, object]]
             Updated rows returned by the server.
 
         """
@@ -402,8 +426,8 @@ class UpdateBuilder(FilterBuilder):
                 },
             )
         )
-        payload = response_payload(response, 200)
-        return list(payload["data"])
+        payload: object = response_payload(response, 200)
+        return _database_rows(payload)
 
 
 @dataclass(frozen=True, slots=True)
@@ -419,12 +443,12 @@ class DeleteBuilder(FilterBuilder):
     def _with_filters(self, filters: tuple[_FilterCondition, ...]) -> DeleteBuilder:
         return replace(self, _filters=filters)
 
-    def execute(self) -> list[dict[str, Any]]:
+    def execute(self) -> list[dict[str, object]]:
         """Delete matching rows and return them.
 
         Returns
         -------
-        list[dict[str, Any]]
+        list[dict[str, object]]
             Deleted rows returned by the server.
 
         """
@@ -436,8 +460,8 @@ class DeleteBuilder(FilterBuilder):
                 body={"table": self._table, "filters": list(self._filters)},
             )
         )
-        payload = response_payload(response, 200)
-        return list(payload["data"])
+        payload: object = response_payload(response, 200)
+        return _database_rows(payload)
 
 
 @dataclass(frozen=True, slots=True)
