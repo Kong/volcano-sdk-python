@@ -14,6 +14,7 @@ from typing import (
     Protocol,
     TypeVar,
     cast,
+    overload,
     runtime_checkable,
 )
 from uuid import UUID, uuid4
@@ -303,6 +304,14 @@ ERROR_TYPES_BY_STATUS: dict[int, type[VolcanoError]] = {
     422: ValidationError,
     HTTP_RATE_LIMITED: RateLimitedError,
 }
+
+
+@overload
+def _plain_json(value: Mapping[str, JSONValue]) -> dict[str, JSONValue]: ...
+
+
+@overload
+def _plain_json(value: JSONValue) -> JSONValue: ...
 
 
 def _plain_json(value: JSONValue) -> JSONValue:
@@ -1718,7 +1727,7 @@ class GeneratedTransport:
         function_id: str,
         payload: Mapping[str, JSONValue],
     ) -> TransportResponse:
-        plain_payload = cast("dict[str, JSONValue]", _plain_json(payload))
+        plain_payload = _plain_json(payload)
         body = FunctionInvocationRequest(
             payload=FunctionInvocationRequestPayload.from_dict(plain_payload)
         )
@@ -1741,7 +1750,7 @@ class GeneratedTransport:
         # The resolved endpoint is absolute and off the API host, so it cannot
         # go through the generated client's base URL. The body still uses the
         # invoke contract's { payload } envelope.
-        plain_payload = cast("dict[str, JSONValue]", _plain_json(payload))
+        plain_payload = _plain_json(payload)
         with self._client(authorization) as client:
             response = client.get_httpx_client().request(
                 method="POST",
@@ -1772,7 +1781,7 @@ class GeneratedTransport:
         project_id: str,
         request: Mapping[str, JSONValue],
     ) -> TransportResponse:
-        plain_request = cast("dict[str, Any]", _plain_json(request))
+        plain_request = _plain_json(request)
         with self._client(authorization) as client:
             request_kwargs = log_search_kwargs(
                 UUID(project_id), body=LogSearchRequest.from_dict(plain_request)
@@ -1795,7 +1804,7 @@ class GeneratedTransport:
         project_id: str,
         request: Mapping[str, JSONValue],
     ) -> TransportResponse:
-        plain_request = cast("dict[str, Any]", _plain_json(request))
+        plain_request = _plain_json(request)
         with self._client(authorization) as client:
             request_kwargs = log_activity_kwargs(
                 UUID(project_id), body=LogActivityRequest.from_dict(plain_request)
