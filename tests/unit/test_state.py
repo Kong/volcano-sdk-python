@@ -12,7 +12,9 @@ from uuid import UUID
 import httpx
 import pytest
 from fixtures.invalid_arguments import (
-    assign_frozen_field,
+    assign_linked_provider,
+    assign_provider_token,
+    assign_session_page,
     non_session_adoption,
     unknown_oauth_api_provider,
     unknown_oauth_link,
@@ -1761,7 +1763,7 @@ def test_list_sessions_returns_an_immutable_offset_page() -> None:
         {"authorization": "access-1", "page": 2, "limit": 10}
     ]
     with pytest.raises(FrozenInstanceError):
-        assign_frozen_field(result, "page", 3)
+        assign_session_page(result)
 
 
 def test_list_sessions_requires_a_current_session() -> None:
@@ -1849,7 +1851,7 @@ def test_list_linked_oauth_providers_returns_immutable_values() -> None:
     assert client.auth.get_session() is established
     assert transport.list_oauth_providers_calls == [{"authorization": "access-1"}]
     with pytest.raises(FrozenInstanceError):
-        assign_frozen_field(result[0], "provider", "github")
+        assign_linked_provider(result[0])
 
 
 def test_list_linked_oauth_providers_requires_a_current_session() -> None:
@@ -2320,7 +2322,7 @@ def test_get_oauth_provider_token_returns_immutable_status() -> None:
         {"authorization": "access-1", "provider": "google"}
     ]
     with pytest.raises(FrozenInstanceError):
-        assign_frozen_field(result, "provider", "github")
+        assign_provider_token(result)
 
 
 def test_get_oauth_provider_token_rejects_an_unknown_provider() -> None:
@@ -2431,7 +2433,7 @@ def test_refresh_oauth_provider_token_returns_immutable_status() -> None:
         {"authorization": "access-1", "provider": "google"}
     ]
     with pytest.raises(FrozenInstanceError):
-        assign_frozen_field(result, "provider", "github")
+        assign_provider_token(result)
 
 
 def test_refresh_oauth_provider_token_rejects_an_unknown_provider() -> None:

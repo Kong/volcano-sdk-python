@@ -7,6 +7,11 @@ if TYPE_CHECKING:
 
     from volcano_sdk.auth import Auth
     from volcano_sdk.logs import Logs
+    from volcano_sdk.models import (
+        LinkedOAuthProvider,
+        OAuthProviderTokenStatus,
+        SessionPage,
+    )
     from volcano_sdk.realtime import Channel, Realtime
     from volcano_sdk.storage import StorageBucket
 
@@ -94,6 +99,13 @@ def unsupported_postgres_change_event(channel: Channel) -> None:
     )
 
 
-def assign_frozen_field(value: object, field: str, replacement: object) -> None:
-    """Exercise runtime immutability without a static assignment error."""
-    setattr(value, field, replacement)
+def assign_session_page(page: SessionPage) -> None:
+    page.page = 3  # type: ignore[misc]
+
+
+def assign_linked_provider(provider: LinkedOAuthProvider) -> None:
+    provider.provider = "github"  # type: ignore[misc]
+
+
+def assign_provider_token(status: OAuthProviderTokenStatus) -> None:
+    status.provider = "github"  # type: ignore[misc]

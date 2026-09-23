@@ -55,7 +55,8 @@ FORBIDDEN = re.compile(
     r"""
     \b(?:noqa|nosec|pragma:\s*no\s+(?:cover|branch))\b
     |\b(?:pyright:|mypy:|coverage:)
-    |\b(?:fmt:|isort:)\s*(?:off|skip)\b
+    |\b(?:fmt:|isort:)\s*(?:off|skip|skip_file)\b
+    |\byapf:\s*disable\b
     |\bpylint:\s*disable\b
     """,
     re.IGNORECASE | re.VERBOSE,
@@ -193,12 +194,12 @@ def check_ruff_comment(
     if "ruff:" not in comment.lower():
         return []
     location = f"{name}:{token.start[0]}"
-    match = RUFF_IGNORE.search(comment)
-    if match is None:
-        return [f"{location}: unrecognized Ruff directive"]
+    matches = list(RUFF_IGNORE.finditer(comment))
+    if len(matches) != 1 or comment.lower().count("ruff:") != 1:
+        return [f"{location}: unrecognized or multiple Ruff directives"]
     errors: list[str] = []
     scope = f"{name}:{enclosing_function(source, token.start[0])}"
-    for rule in match.group(1).replace(" ", "").upper().split(","):
+    for rule in matches[0].group(1).replace(" ", "").upper().split(","):
         errors.extend(check_rule((scope, rule), location, approved, used))
     return errors
 
@@ -224,6 +225,26 @@ def check_comment(
         errors.append(f"{location}: type ignore outside diagnostic fixture")
     errors.extend(check_ruff_comment(name, source, token, approved, used))
     return errors
+
+
+def check_token(
+    name: str,
+    source: str,
+    token: tokenize.TokenInfo,
+    approved: set[tuple[str, str]],
+    used: set[tuple[str, str]],
+) -> list[str]:
+    """Check the syntax locations that can bypass native diagnostics.
+
+    Returns:
+        Suppression violations.
+
+    """
+    if token.type == tokenize.NAME and token.string == "no_type_check":
+        return [f"{name}:{token.start[0]}: forbidden type-check opt-out"]
+    if token.type == tokenize.COMMENT:
+        return check_comment(name, source, token, approved, used)
+    return []
 
 
 def check_comments(
@@ -252,8 +273,7 @@ def check_comments(
             continue
         source = (root / name).read_text(encoding="utf-8")
         for token in tokenize.generate_tokens(io.StringIO(source).readline):
-            if token.type == tokenize.COMMENT:
-                errors.extend(check_comment(name, source, token, approved, used))
+            errors.extend(check_token(name, source, token, approved, used))
     errors.extend(
         f"unused exception: {scope} {rule}" for scope, rule in sorted(approved - used)
     )

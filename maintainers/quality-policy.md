@@ -12,8 +12,9 @@ The small policy check handles relationships native tools do not express:
 every Git-tracked handwritten `.py` and `.pyi` file must appear in
 [Ruff's own file inventory](https://docs.astral.sh/ruff/configuration/), tool
 configuration cannot be nested, and suppressions must match the exact reviewed
-record in `quality-exceptions.json`. Generated OpenAPI files are checked by
-regeneration in the required `generated` task. Runtime coverage uses
+record in `quality-exceptions.json`. Type-check opt-outs are forbidden. Generated
+OpenAPI files are checked by regeneration in the required `generated` task.
+Runtime coverage uses
 [coverage.py `source_dirs`](https://coverage.readthedocs.io/en/latest/source.html)
 so unimported modules count toward the 100% line and branch threshold.
 
