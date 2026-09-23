@@ -1102,7 +1102,9 @@ class Auth:
 
     def confirm_email(self, *, token: str) -> None:
         """Confirm an email with its token without changing local state."""
-        transport = cast("AuthConfirmEmailTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthConfirmEmailTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_confirm_email,
             authorization=self._client._anon_token(),
@@ -1112,7 +1114,9 @@ class Auth:
 
     def resend_confirmation(self, *, email: str) -> None:
         """Request a generic confirmation resend without changing local state."""
-        transport = cast("AuthResendConfirmationTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthResendConfirmationTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_resend_confirmation,
             authorization=self._client._anon_token(),
@@ -1122,7 +1126,9 @@ class Auth:
 
     def reset_password(self, *, token: str, new_password: str) -> None:
         """Set a new password with a recovery token without changing local state."""
-        transport = cast("AuthResetPasswordTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthResetPasswordTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_reset_password,
             authorization=self._client._anon_token(),

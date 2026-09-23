@@ -19,13 +19,25 @@ _AUTH_OPERATIONS: tuple[Callable[[Auth], object], ...] = (
     lambda auth: auth.sign_up(email="user@example.com", password="password"),
     lambda auth: auth.sign_in_anonymously(),
     lambda auth: auth.reset_password_for_email(email="user@example.com"),
+    lambda auth: auth.confirm_email(token="confirmation-token"),
+    lambda auth: auth.resend_confirmation(email="user@example.com"),
+    lambda auth: auth.reset_password(
+        token="recovery-token", new_password="new-password"
+    ),
 )
 
 
 @pytest.mark.parametrize(
     "operation",
     _AUTH_OPERATIONS,
-    ids=("sign-up", "anonymous-sign-up", "forgot-password"),
+    ids=(
+        "sign-up",
+        "anonymous-sign-up",
+        "forgot-password",
+        "confirm-email",
+        "resend-confirmation",
+        "reset-password",
+    ),
 )
 def test_optional_auth_operation_requires_transport_capability(
     operation: Callable[[Auth], object],
