@@ -4,7 +4,7 @@ import json
 import os
 import stat
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from contract_fixture import ContractFixture, is_contract_fixture
 from contract_support import ContractWorld
@@ -27,7 +27,7 @@ def load_fixture(path: Path) -> ContractFixture:
     mode = stat.S_IMODE(path.stat().st_mode)
     if mode != FIXTURE_MODE:
         raise PermissionError(FIXTURE_MODE_ERROR)
-    value: object = json.loads(path.read_text(encoding="utf-8"))
+    value = cast("object", json.loads(path.read_text(encoding="utf-8")))
     if not is_contract_fixture(value):
         raise TypeError(FIXTURE_SHAPE_ERROR)
     return value
@@ -42,9 +42,14 @@ def before_all(context: Context) -> None:
 
 def before_scenario(context: Context, scenario: object) -> None:
     del scenario
-    context.contract = ContractWorld(context.contract_fixture)
+    fixture = cast("object", context.contract_fixture)
+    if not is_contract_fixture(fixture):
+        raise TypeError(FIXTURE_SHAPE_ERROR)
+    context.contract = ContractWorld(fixture)
 
 
 def after_scenario(context: Context, scenario: object) -> None:
     del scenario
-    context.contract.cleanup()
+    world = cast("object", context.contract)
+    assert isinstance(world, ContractWorld)
+    world.cleanup()

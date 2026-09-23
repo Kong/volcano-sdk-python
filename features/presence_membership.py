@@ -13,11 +13,11 @@ if TYPE_CHECKING:
 
 class PresenceObserver:
     def __init__(self, channel: Channel, user_id: str) -> None:
-        self.channel = channel
-        self.user_id = user_id
-        self.changed = asyncio.Event()
+        self.channel: Channel = channel
+        self.user_id: str = user_id
+        self.changed: asyncio.Event = asyncio.Event()
         self.snapshots: list[set[str]] = []
-        self.unsubscribe = channel.on_presence_sync(self.record)
+        self.unsubscribe: Callable[[], None] = channel.on_presence_sync(self.record)
 
     def record(self, state: Mapping[str, RealtimePresenceInfo]) -> None:
         self.snapshots.append(set(state))
@@ -29,7 +29,7 @@ class PresenceObserver:
                 self.changed.clear()
                 if predicate():
                     return
-                await self.changed.wait()
+                _ = await self.changed.wait()
 
     async def roster(self, count: int) -> set[str]:
         await self.wait(lambda: len(self.channel.get_presence_state()) == count)
@@ -62,7 +62,7 @@ async def verify_presence_membership(world: ContractWorld) -> list[int]:
     finally:
         first_observer.unsubscribe()
         second_observer.unsubscribe()
-        await asyncio.gather(first.unsubscribe(), second.unsubscribe())
+        _ = await asyncio.gather(first.unsubscribe(), second.unsubscribe())
 
 
 def _observed_membership(

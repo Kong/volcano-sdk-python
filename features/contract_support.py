@@ -116,12 +116,12 @@ def classify_status(status: int | None) -> str:
 
 class ContractWorld:
     def __init__(self, fixture: ContractFixture) -> None:
-        self.fixture = fixture
-        self.client = VolcanoClient(
+        self.fixture: ContractFixture = fixture
+        self.client: VolcanoClient = VolcanoClient(
             api_url=fixture["api_url"],
             anon_key=fixture["anon_key"],
         )
-        self.service_client = VolcanoClient(
+        self.service_client: VolcanoClient = VolcanoClient(
             api_url=fixture["api_url"],
             anon_key=fixture["anon_key"],
             service_key=fixture["service_key"],
@@ -129,11 +129,11 @@ class ContractWorld:
         # Reading or stopping an execution is owner-scoped, so its client
         # carries the project's own token as its session. Neither key above can
         # reach those routes.
-        self.owner_client = VolcanoClient(
+        self.owner_client: VolcanoClient = VolcanoClient(
             api_url=fixture["api_url"],
             anon_key=fixture["anon_key"],
         )
-        self.owner_client.auth.set_session(
+        _ = self.owner_client.auth.set_session(
             Session(
                 access_token=fixture["platform_token"],
                 refresh_token=OWNER_SESSION_PLACEHOLDER,
@@ -141,16 +141,20 @@ class ContractWorld:
             )
         )
         suffix = f"py-{os.getpid()}-{secrets.token_hex(5)}"
-        self.storage_path = f"{fixture['storage_path']}.{suffix}"
-        self.realtime_channel = f"{fixture['realtime_channel']}-{suffix}"
-        self.lock_key = f"{fixture['lock_key']}-{suffix}"
-        self.storage_bytes = f"volcano-sdk-contract-{suffix}".encode()
-        self.realtime_message = {
+        self.storage_path: str = f"{fixture['storage_path']}.{suffix}"
+        self.realtime_channel: str = f"{fixture['realtime_channel']}-{suffix}"
+        self.lock_key: str = f"{fixture['lock_key']}-{suffix}"
+        self.storage_bytes: bytes = f"volcano-sdk-contract-{suffix}".encode()
+        self.realtime_message: dict[str, str] = {
             "event": "message",
             "value": f"volcano-sdk-contract-{suffix}",
         }
-        self.durable_execution_name = f"{fixture['durable_function_name']}-{suffix}"
-        self.durable_payload = {"value": f"volcano-sdk-contract-{suffix}"}
+        self.durable_execution_name: str = (
+            f"{fixture['durable_function_name']}-{suffix}"
+        )
+        self.durable_payload: dict[str, str] = {
+            "value": f"volcano-sdk-contract-{suffix}"
+        }
         self.started_execution: DurableExecution | None = None
         self.last_outcome: Outcome | None = None
         self.previous_session: Session | None = None
@@ -161,10 +165,10 @@ class ContractWorld:
         self.publisher: Channel | None = None
         self.realtime_clients: list[VolcanoClient] = []
         self.cleanup_callbacks: list[Callable[[], None]] = []
-        self.loop = asyncio.new_event_loop()
+        self.loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
 
     def authenticate(self) -> None:
-        self.client.auth.sign_in(
+        _ = self.client.auth.sign_in(
             email=self.fixture["user_email"],
             password=self.fixture["user_password"],
         )
