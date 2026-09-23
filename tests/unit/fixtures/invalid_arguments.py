@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import BinaryIO
 
+    from volcano_sdk import LinkedOAuthProvider, OAuthProviderTokenStatus, SessionPage
     from volcano_sdk.auth import Auth
     from volcano_sdk.logs import Logs
     from volcano_sdk.realtime import Realtime
@@ -16,6 +17,57 @@ if TYPE_CHECKING:
 
 def non_session_adoption(auth: Auth) -> None:
     auth.set_session(object())  # type: ignore[arg-type]
+
+
+def unknown_oauth_sign_in_provider(auth: Auth) -> None:
+    auth.sign_in_with_oauth(
+        provider="invalid",  # type: ignore[arg-type]
+        redirect_to="https://app.example/callback",
+        state="state-value",
+    )
+
+
+def unknown_oauth_link_provider(auth: Auth) -> None:
+    auth.link_oauth_provider(provider="invalid")  # type: ignore[arg-type]
+
+
+def unknown_oauth_unlink_provider(auth: Auth) -> None:
+    auth.unlink_oauth_provider(provider="invalid")  # type: ignore[arg-type]
+
+
+def unknown_oauth_token_provider(auth: Auth) -> None:
+    auth.get_oauth_provider_token(provider="invalid")  # type: ignore[arg-type]
+
+
+def unknown_oauth_refresh_provider(auth: Auth) -> None:
+    auth.refresh_oauth_provider_token(provider="invalid")  # type: ignore[arg-type]
+
+
+def unknown_oauth_api_provider(auth: Auth) -> None:
+    auth.call_oauth_api(
+        provider="invalid",  # type: ignore[arg-type]
+        endpoint="/user",
+    )
+
+
+def unsupported_oauth_api_method(auth: Auth) -> None:
+    auth.call_oauth_api(
+        provider="github",
+        endpoint="/user",
+        method="DELETE",  # type: ignore[arg-type]
+    )
+
+
+def mutate_frozen_page(page: SessionPage) -> None:
+    page.page = 3  # type: ignore[misc]
+
+
+def mutate_frozen_provider(provider: LinkedOAuthProvider) -> None:
+    provider.provider = "github"  # type: ignore[misc]
+
+
+def mutate_frozen_token_status(status: OAuthProviderTokenStatus) -> None:
+    status.provider = "github"  # type: ignore[misc]
 
 
 def non_string_content_type(bucket: StorageBucket, source: BinaryIO) -> None:

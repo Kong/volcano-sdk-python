@@ -11,7 +11,7 @@ import inspect
 import json
 import logging
 from contextlib import contextmanager
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -37,6 +37,9 @@ from volcano_sdk.durable_authoring import (
     StepScope,
     WaitUntilOptions,
     durable,
+)
+from volcano_sdk.durable_authoring import (
+    Duration as VolcanoDuration,
 )
 from volcano_sdk.durable_authoring import (
     _to_seconds as to_seconds,
@@ -613,10 +616,10 @@ def test_wait_refuses_a_name_that_is_not_a_string() -> None:
     "duration",
     [0, "0s", {"seconds": 0}, {"minutes": 0, "seconds": 0}],
 )
-def test_wait_refuses_a_wait_of_nothing(duration: object) -> None:
+def test_wait_refuses_a_wait_of_nothing(duration: VolcanoDuration) -> None:
     @durable
     def handler(_event: Any, ctx: DurableContext) -> Any:
-        return ctx.wait("cool-off", duration)  # type: ignore[arg-type]
+        return ctx.wait("cool-off", duration)
 
     assert "wait must be at least 1 second" in failing_handler(handler)
 
@@ -777,11 +780,13 @@ def without_engine(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Hide the durable engine and clear the cached load either side."""
     durable_authoring._Engine._loaded = None
 
-    def blocked(name: str, *args: object, **kwargs: object) -> Any:
+    original_import_module = importlib.import_module
+
+    def blocked(name: str, package: str | None = None) -> ModuleType:
         if name.startswith("aws_durable_execution_sdk_python"):
             message = f"No module named {name!r}"
             raise ImportError(message)
-        return importlib.import_module(name, *args, **kwargs)  # type: ignore[arg-type]
+        return original_import_module(name, package)
 
     monkeypatch.setattr(
         "volcano_sdk.durable_authoring.importlib.import_module", blocked

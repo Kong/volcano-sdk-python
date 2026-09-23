@@ -15,9 +15,24 @@ from pathlib import Path
 from typing import cast
 
 ROOTS = {"src", "tests", "scripts", "features", "typings"}
+INVALID_TYPE_FIXTURES = {
+    Path("tests/typing/contract_steps.py"),
+    Path("tests/typing/durable_callbacks.py"),
+    Path("tests/typing/durable_configuration.py"),
+    Path("tests/typing/durable_logger.py"),
+    Path("tests/typing/mypy_correctness.py"),
+    Path("tests/typing/realtime_subscriptions.py"),
+    Path("tests/typing/transport.py"),
+    Path("tests/unit/fixtures/invalid_arguments.py"),
+    Path("tests/unit/fixtures/invalid_callbacks.py"),
+    Path("tests/unit/fixtures/invalid_realtime_callback.py"),
+    Path("tests/unit/fixtures/invalid_wait_options.py"),
+}
 CONFIG_NAMES = {
     "pyproject.toml",
     "mypy.ini",
+    ".mypy.ini",
+    "setup.cfg",
     ".ruff.toml",
     "ruff.toml",
     "pyrightconfig.json",
@@ -27,9 +42,9 @@ CONFIG_NAMES = {
 }
 SUPPRESSIONS = (
     re.compile(
-        r"#\s*(?:ruff:\s*(?:ignore|noqa|file-ignore|disable)\b|noqa\b|pyright:\s*ignore)"
+        r"#\s*(?:ruff:\s*(?:ignore|noqa|file-ignore|disable)\b|noqa\b|pyright:|mypy:)"
     ),
-    re.compile(r"#\s*(?:type:\s*ignore|pragma:\s*no cover)"),
+    re.compile(r"#\s*(?:type:\s*ignore|pragma:\s*no (?:cover|branch))"),
 )
 NATIVE_SETTINGS = {
     "mypy": "1691659573a79362c5f2e4656a38b63966e705e0444aad591b587e98a2f03395",
@@ -39,6 +54,7 @@ NATIVE_SETTINGS = {
     "pytest": "b5b736f032341110e8a82214f31eb2bc687576a55a102109c8d47cb5fe1fb4fe",
     "mutmut": "fff450960a077177f6588392839b7ad6d7f33471db5b2bc032645b48e5b17efb",
     "poe": "d61b597c6f22f5b0ea7e590acd0e99d780095e81c924f1aef94c3c665fcfb9a7",
+    "tox": "76188378adfc28a75e096a75eb44241f143f94a653f42a71e311a8a54871e12d",
 }
 DECLARATION_EXCLUSION = r"^\s*(((async )?def .*?)?[\])]+(\s*->.*?)?:\s*)?\.\.\.\s*(#|$)"
 
@@ -258,25 +274,35 @@ def source_suppressions(path: Path) -> list[tuple[int, str]]:
     ]
 
 
-def enclosing_function(path: Path, line: int) -> str:
-    """Identify the narrow function scope of a suppression.
+def enclosing_scope(path: Path, line: int) -> str:
+    """Identify the qualified lexical scope of a suppression.
 
     Returns:
-        The enclosing function name or an empty string.
+        A qualified function name, or a line-specific non-function scope.
 
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))
-    functions = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.lineno <= line <= (node.end_lineno or node.lineno)
-    ]
-    return (
-        min(functions, key=lambda node: node.end_lineno or node.lineno).name
-        if functions
-        else ""
-    )
+    names: list[str] = []
+    body: list[ast.stmt] = tree.body
+    innermost: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef | None = None
+    while True:
+        children = [
+            node
+            for node in body
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.lineno <= line <= (node.end_lineno or node.lineno)
+        ]
+        if not children:
+            break
+        child = min(
+            children, key=lambda node: (node.end_lineno or node.lineno) - node.lineno
+        )
+        names.append(child.name)
+        body = child.body
+        innermost = child
+    if isinstance(innermost, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return ".".join(names)
+    return f"{'.'.join(names) or '<module>'}@{line}"
 
 
 def approved_suppressions(exceptions: list[object]) -> dict[tuple[str, str, str], int]:
@@ -334,7 +360,7 @@ def check_source_suppressions(
         rules = re.findall(r"\[([A-Za-z][A-Za-z0-9_-]*)\]", directive)
         if not rules:
             rules = re.findall(r"\b[A-Z]+\d+\b", directive)
-        symbol = enclosing_function(path, line)
+        symbol = enclosing_scope(path, line)
         key = (str(path), symbol, rules[0]) if len(rules) == 1 else None
         if key is None or key not in allowed:
             errors.append(f"Undocumented suppression: {path}: {directive}")
@@ -357,7 +383,8 @@ def suppression_errors(paths: list[Path], exceptions: list[object]) -> list[str]
         if path.suffix in {".py", ".pyi"}
         and path.is_file()
         and "_generated" not in path.parts
-        and path.parts[0] in {"src", "scripts", "features", "typings"}
+        and path.parts[0] in {"src", "tests", "scripts", "features", "typings"}
+        and path not in INVALID_TYPE_FIXTURES
     )
     errors = [
         error

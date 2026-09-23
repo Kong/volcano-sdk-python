@@ -14,8 +14,12 @@ have the same authorization gap.
 the Git inventory against configured source roots, pins key thresholds with
 readable errors, and fingerprints each complete native-tool table to catch
 new override keys. It tokenizes comments in maintained implementation and
-stub files, then requires every suppression to match one exact rule and
-function scope in `quality-exceptions.json`. An unused record fails too.
+stub and test files, then requires every suppression to match one exact rule
+and qualified function scope in `quality-exceptions.json`. An unused record
+fails too. The listed invalid-type fixtures are the only exemption: their
+deliberately wrong calls need Mypy `type: ignore` directives, and Mypy's
+unused-ignore check rejects a fixture that stops exercising its diagnostic.
+New test files are checked automatically.
 
 Changing a fingerprint is a quality-policy change. Review the native setting,
 its effect on actual diagnostics, and any exception evidence before updating

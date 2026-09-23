@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, create_autospec
 
 import pytest
 from fixtures.invalid_arguments import fractional_fetch_window
+from fixtures.invalid_realtime_callback import register_unsupported_postgres_event
 from state_assertions import assert_same
 from transport_fixtures import RejectingTransport
 from typing_extensions import override
@@ -1900,12 +1901,7 @@ def test_realtime_validates_postgres_change_operations() -> None:
             callback=lambda _change: None,
         )
     with pytest.raises(ValueError, match="unsupported Postgres change event"):
-        postgres.on_postgres_changes(
-            "UPSERT",  # type: ignore[arg-type]
-            schema="public",
-            table="messages",
-            callback=lambda _change: None,
-        )
+        register_unsupported_postgres_event(postgres)
 
     async def send() -> None:
         with pytest.raises(ValueError, match="only available for broadcast"):

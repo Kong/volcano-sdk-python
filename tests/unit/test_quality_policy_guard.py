@@ -53,6 +53,7 @@ def test_current_policy_passes() -> None:
         (("tool", "poe", "tasks"), ("quality", ["checks"])),
         (("tool", "poe", "tasks"), ("types", ["mypy"])),
         (("tool", "mypy"), ("strict", False)),
+        (("tool", "tox", "env", "package-types"), ("commands", list[list[str]]())),
         (("tool", "basedpyright"), ("typeCheckingMode", "basic")),
         (("tool", "ruff", "lint"), ("ignore", ["ALL"])),
         (
@@ -79,6 +80,8 @@ def test_weakened_native_settings_fail(
         Path("outside/new.pyi"),
         Path("src/other/new.py"),
         Path("src/volcano_sdk/pyproject.toml"),
+        Path(".mypy.ini"),
+        Path("setup.cfg"),
     ],
 )
 def test_excluded_new_source_or_nested_configuration_fails(path: Path) -> None:
@@ -90,11 +93,66 @@ def test_unapproved_source_suppression_fails(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     path = Path("scripts/probe.py")
-    path.parent.mkdir()
+    path.parent.mkdir(parents=True)
     path.write_text("def probe():\n    pass  # ruff: ignore[S603]\n", encoding="utf-8")
     assert source_suppressions(path) == [(2, "# ruff: ignore[S603]")]
     assert suppression_errors([path], []) == [
         "Undocumented suppression: scripts/probe.py: # ruff: ignore[S603]"
+    ]
+
+
+def test_unapproved_unit_test_suppression_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    path = Path("tests/unit/test_probe.py")
+    path.parent.mkdir(parents=True)
+    path.write_text("def probe():\n    pass  # noqa: S603\n", encoding="utf-8")
+    assert suppression_errors([path], []) == [
+        "Undocumented suppression: tests/unit/test_probe.py: # noqa: S603"
+    ]
+
+
+def test_deliberately_invalid_type_fixtures_are_separate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    path = Path("tests/unit/fixtures/invalid_arguments.py")
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "def probe():\n    pass  # type: ignore[arg-type]\n", encoding="utf-8"
+    )
+    assert suppression_errors([path], []) == []
+
+    unlisted = Path("tests/unit/fixtures/invalid_probe.py")
+    unlisted.write_text("def probe():\n    pass  # noqa: S603\n", encoding="utf-8")
+    assert suppression_errors([unlisted], []) == [
+        "Undocumented suppression: tests/unit/fixtures/invalid_probe.py: # noqa: S603"
+    ]
+
+
+def test_approved_method_scope_does_not_authorize_another_class(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    path = Path("scripts/probe.py")
+    path.parent.mkdir()
+    path.write_text(
+        "class A:\n    def run(self):\n        pass  # noqa: S603\n"
+        "class B:\n    def run(self):\n        pass  # noqa: S603\n",
+        encoding="utf-8",
+    )
+    record: object = {
+        "scope": "scripts/probe.py:A.run",
+        "rule": "S603",
+        "rationale": "Verified tool limitation",
+        "evidence": "Fixture",
+        "approved_by": "reviewer",
+        "approved_at": "2026-09-23",
+        "approval_evidence": "Review",
+    }
+    assert suppression_errors([path], [record]) == [
+        "Undocumented suppression: scripts/probe.py: # noqa: S603"
     ]
 
 
@@ -140,6 +198,21 @@ def test_approved_native_type_suppressions_are_recognized(
             "# ruff: noqa: D100, F401\ndef probe(): pass\n",
             "# ruff: noqa: D100, F401",
         ),
+        (
+            Path("tests/unit/test_probe.py"),
+            "# mypy: disable-error-code=attr-defined\ndef probe(): pass\n",
+            "# mypy: disable-error-code=attr-defined",
+        ),
+        (
+            Path("tests/unit/test_probe.py"),
+            "# pyright: basic\ndef probe(): pass\n",
+            "# pyright: basic",
+        ),
+        (
+            Path("tests/unit/test_probe.py"),
+            "def probe():\n    pass  # pragma: no branch\n",
+            "# pragma: no branch",
+        ),
     ],
 )
 def test_stub_and_file_level_suppressions_need_approval(
@@ -150,7 +223,7 @@ def test_stub_and_file_level_suppressions_need_approval(
     directive: str,
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    path.parent.mkdir()
+    path.parent.mkdir(parents=True)
     path.write_text(source, encoding="utf-8")
     assert suppression_errors([path], []) == [
         f"Undocumented suppression: {path}: {directive}"
