@@ -4,7 +4,7 @@ import asyncio
 import time
 from contextlib import suppress
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, TypedDict
 from uuid import uuid4
 
 import httpx
@@ -27,6 +27,16 @@ if TYPE_CHECKING:
 
     from behave.runner import Context
 
+    from volcano_sdk.models import (
+        DurableExecution,
+        FunctionResponse,
+        LockLease,
+        LockState,
+        StorageObject,
+        UploadPart,
+        UploadSession,
+        UploadSessionStatus,
+    )
     from volcano_sdk.realtime import Channel
     from volcano_sdk.storage import StorageBucket
 
@@ -34,6 +44,62 @@ ACCESS_TOKEN_CLOCK_TICK_SECONDS = 1.1
 HTTP_OK = 200
 MULTIPART_PART_COUNT = 2
 REJECTED_BEARER = "sdk-contract-rejected-access-token"
+
+
+class PartialUpload(TypedDict):
+    session: UploadSession
+    part: UploadPart
+    bytes: bytes
+
+
+class ResumedUpload(PartialUpload):
+    progress: UploadSessionStatus
+    object: StorageObject
+    download: bytes
+
+
+class StorageDownloadResult(TypedDict):
+    bytes: bytes
+    path: str
+
+
+class StorageMetadataResult(StorageDownloadResult):
+    content_type: str
+    listed: list[dict[str, str]]
+
+
+class StorageLifecycleResult(TypedDict):
+    bytes: list[bytes]
+    after_move: list[str]
+    after_remove: list[str]
+
+
+class StorageVisibilityResult(TypedDict):
+    statuses: list[int]
+    bytes: bytes
+    visibility: list[bool]
+    private_bytes: list[bytes]
+
+
+class LockReleaseResult(TypedDict):
+    lease: LockLease
+    released: bool
+
+
+class LockRecoveryResult(TypedDict):
+    token: str
+    cleanup: Callable[[], None]
+    lease: LockLease
+    recovered: LockLease
+    held: LockState
+    renewed: LockLease
+    available: LockState
+
+
+def uploaded_text_field(uploaded: dict[str, object], field: str) -> str:
+    value = uploaded[field]
+    assert isinstance(value, str)
+    return value
 
 
 def _world(context: Context) -> ContractWorld:
@@ -388,8 +454,10 @@ def projected_query_page_returned(context: Context) -> None:
     ]
 
 
-def _query_filters(world: ContractWorld, filters: list[tuple[str, str, Any]]) -> None:
-    def operation() -> dict[str, list[dict[str, Any]]]:
+def _query_filters(
+    world: ContractWorld, filters: list[tuple[str, str, object]]
+) -> None:
+    def operation() -> dict[str, list[dict[str, object]]]:
         table = world.client.database(world.fixture["database_name"]).from_(
             world.fixture["query_table_name"]
         )
@@ -478,7 +546,7 @@ def insert_contract_row(context: Context) -> None:
         world.fixture["table_name"]
     )
 
-    def operation() -> list[dict[str, Any]]:
+    def operation() -> list[dict[str, object]]:
         def cleanup() -> None:
             table.delete().eq("slug", row["slug"]).execute()
 
@@ -504,7 +572,7 @@ def update_contract_row(context: Context) -> None:
         world.fixture["table_name"]
     )
 
-    def operation() -> list[dict[str, Any]]:
+    def operation() -> list[dict[str, object]]:
         def cleanup() -> None:
             (
                 table.update({"value": row["before"]["value"]})
@@ -538,7 +606,7 @@ def delete_contract_row(context: Context) -> None:
         world.fixture["table_name"]
     )
 
-    def operation() -> list[dict[str, Any]]:
+    def operation() -> list[dict[str, object]]:
         def cleanup() -> None:
             table.delete().eq("slug", row["slug"]).execute()
             table.insert(row).execute()
@@ -608,12 +676,12 @@ def existing_contract_row_unchanged(context: Context) -> None:
 def upload_and_download(context: Context) -> None:
     world = _world(context)
 
-    def operation() -> dict[str, Any]:
+    def operation() -> StorageDownloadResult:
         bucket = world.client.storage.from_(world.fixture["bucket_name"])
         uploaded = bucket.upload(world.storage_path, world.storage_bytes)
         return {
             "bytes": bucket.download(world.storage_path),
-            "path": uploaded["name"],
+            "path": uploaded_text_field(uploaded, "name"),
         }
 
     world.record(operation)
@@ -632,7 +700,7 @@ def downloaded_bytes_match(context: Context) -> None:
 def upload_and_read_metadata(context: Context) -> None:
     world = _world(context)
 
-    def operation() -> dict[str, Any]:
+    def operation() -> StorageMetadataResult:
         bucket = world.client.storage.from_(world.fixture["bucket_name"])
         uploaded = bucket.upload(
             world.storage_path, world.storage_bytes, content_type="text/plain"
@@ -644,9 +712,9 @@ def upload_and_read_metadata(context: Context) -> None:
         world.cleanup_callbacks.append(remove_object)
         listed = bucket.list(world.storage_path)
         return {
-            "path": uploaded["name"],
+            "path": uploaded_text_field(uploaded, "name"),
             "bytes": bucket.download(world.storage_path),
-            "content_type": uploaded["mime_type"],
+            "content_type": uploaded_text_field(uploaded, "mime_type"),
             "listed": [
                 {"name": item.name, "mime_type": item.mime_type}
                 for item in listed.objects
@@ -670,7 +738,7 @@ def stored_content_types_match(context: Context) -> None:
 def upload_and_download_range(context: Context) -> None:
     world = _world(context)
 
-    def operation() -> dict[str, Any]:
+    def operation() -> StorageDownloadResult:
         bucket = world.client.storage.from_(world.fixture["bucket_name"])
         uploaded = bucket.upload(world.storage_path, world.storage_bytes)
 
@@ -680,7 +748,7 @@ def upload_and_download_range(context: Context) -> None:
         world.cleanup_callbacks.append(remove_object)
         return {
             "bytes": bucket.download(world.storage_path, byte_range="bytes=2-7"),
-            "path": uploaded["name"],
+            "path": uploaded_text_field(uploaded, "name"),
         }
 
     world.record(operation)
@@ -711,7 +779,7 @@ def copy_move_and_remove(context: Context) -> None:
 
         world.cleanup_callbacks.append(cleanup)
 
-    def operation() -> dict[str, Any]:
+    def operation() -> StorageLifecycleResult:
         bucket.upload(source, world.storage_bytes)
         bucket.copy(source, copied)
         original_bytes = bucket.download(source)
@@ -770,7 +838,7 @@ def _clean_storage_object(world: ContractWorld) -> None:
         bucket.remove(world.storage_path)
 
 
-def _partial_upload(world: ContractWorld) -> dict[str, Any]:
+def _partial_upload(world: ContractWorld) -> PartialUpload:
     bucket = _storage_bucket(world)
     body = b"x" * (5 * 1024 * 1024) + world.storage_bytes
     session = bucket.create_upload_session(
@@ -801,11 +869,11 @@ def _partial_upload(world: ContractWorld) -> dict[str, Any]:
 def resume_contract_upload(context: Context) -> None:
     world = _world(context)
 
-    def operation() -> dict[str, Any]:
+    def operation() -> ResumedUpload:
         value = _partial_upload(world)
         bucket = _storage_bucket(world)
         session = value["session"]
-        value["progress"] = bucket.get_upload_session(
+        progress = bucket.get_upload_session(
             world.storage_path, session_id=session.session_id
         )
         bucket.upload_part(
@@ -814,11 +882,16 @@ def resume_contract_upload(context: Context) -> None:
             part_number=2,
             data=value["bytes"][session.part_size :],
         )
-        value["object"] = bucket.complete_upload_session(
+        stored_object = bucket.complete_upload_session(
             world.storage_path, session_id=session.session_id
         )
-        value["download"] = bucket.download(world.storage_path)
-        return value
+        download = bucket.download(world.storage_path)
+        return {
+            **value,
+            "progress": progress,
+            "object": stored_object,
+            "download": download,
+        }
 
     world.record(operation)
 
@@ -894,7 +967,7 @@ def aborted_upload_is_gone(context: Context) -> None:
 def change_contract_visibility(context: Context) -> None:
     world = _world(context)
 
-    def operation() -> dict[str, Any]:
+    def operation() -> StorageVisibilityResult:
         bucket = _storage_bucket(world)
         world.cleanup_callbacks.append(lambda: _clean_storage_object(world))
         bucket.upload(world.storage_path, world.storage_bytes)
@@ -943,7 +1016,7 @@ def service_role_client(context: Context) -> None:
 def acquire_and_release_lock(context: Context) -> None:
     world = _world(context)
 
-    def operation() -> dict[str, Any]:
+    def operation() -> LockReleaseResult:
         lease = world.service_client.locks.acquire(world.lock_key, ttl=10)
         cleanup = world.register_lock_cleanup(world.lock_key, lease)
         world.service_client.locks.release(world.lock_key, lease)
@@ -980,7 +1053,7 @@ def start_durable_execution(context: Context) -> None:
 def start_durable_execution_twice(context: Context) -> None:
     world = _world(context)
 
-    def operation() -> tuple[Any, Any]:
+    def operation() -> tuple[DurableExecution, DurableExecution]:
         return world.start_durable_execution(), world.start_durable_execution()
 
     world.record(operation)
@@ -990,7 +1063,7 @@ def start_durable_execution_twice(context: Context) -> None:
 def recover_lock(context: Context) -> None:
     world = _world(context)
 
-    def operation() -> dict[str, Any]:
+    def operation() -> LockRecoveryResult:
         locks, key = world.service_client.locks, world.lock_key
         token, request_id = str(uuid4()), str(uuid4())
         lease = locks.acquire(key, ttl=30, token=token, request_id=request_id)
@@ -1186,12 +1259,12 @@ async def _subscribe_pair(subscriber: Channel, publisher: Channel) -> None:
     await asyncio.gather(subscriber.subscribe(), publisher.subscribe())
 
 
-async def publish_contract_message(world: ContractWorld) -> Any:
+async def publish_contract_message(world: ContractWorld) -> object:
     assert world.subscriber is not None
     assert world.publisher is not None
-    received = world.loop.create_future()
+    received: asyncio.Future[object] = world.loop.create_future()
 
-    def on_message(message: Any) -> None:
+    def on_message(message: object) -> None:
         if not received.done():
             received.set_result(message)
 
@@ -1239,7 +1312,7 @@ def invoke_authenticated_contract_function(context: Context) -> None:
 def invoke_contract_function(context: Context) -> None:
     world = _world(context)
 
-    def operation() -> Any:
+    def operation() -> FunctionResponse:
         return world.service_client.functions.invoke(
             world.fixture["function_name"], {"value": "contract"}
         )
