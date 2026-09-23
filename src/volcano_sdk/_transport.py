@@ -9,7 +9,6 @@ from io import BytesIO
 from pathlib import PurePosixPath
 from typing import (
     TYPE_CHECKING,
-    Any,
     ParamSpec,
     Protocol,
     TypeVar,
@@ -279,7 +278,7 @@ if TYPE_CHECKING:
     from ._generated.models.refresh_o_auth_provider_token_provider import (
         RefreshOAuthProviderTokenProvider,
     )
-    from .models import JSONValue
+    from .models import DurableExecutionStatus, JSONValue
 
 HTTP_CREATED = 201
 HTTP_UNAUTHORIZED = 401
@@ -347,11 +346,21 @@ class _RawHTTPResponse(Protocol):
     def headers(self) -> Mapping[str, str]: ...
 
 
+class _ParsedHTTPResponse(_RawHTTPResponse, Protocol):
+    @property
+    def parsed(self) -> object: ...
+
+
+@runtime_checkable
+class _ModelPayload(Protocol):
+    def to_dict(self) -> Mapping[str, object]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class DurableExecutionListRequest:
     """Filters and paging for a durable execution listing."""
 
-    status: str | None = None
+    status: DurableExecutionStatus | None = None
     page: int | None = None
     limit: int | None = None
 
@@ -627,7 +636,7 @@ class AuthCallOAuthAPITransport(Protocol):
         provider: CallOAuthProviderAPIProvider,
         endpoint: str,
         method: str,
-        body: Mapping[str, Any] | None,
+        body: Mapping[str, JSONValue] | None,
     ) -> TransportResponse: ...
 
 
@@ -661,7 +670,7 @@ class Transport(Protocol):
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> TransportResponse: ...
 
     def query_database_insert(
@@ -669,7 +678,7 @@ class Transport(Protocol):
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> TransportResponse: ...
 
     def query_database_update(
@@ -677,7 +686,7 @@ class Transport(Protocol):
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> TransportResponse: ...
 
     def query_database_delete(
@@ -685,7 +694,7 @@ class Transport(Protocol):
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> TransportResponse: ...
 
     def upload_storage_object(
@@ -736,7 +745,7 @@ class AsyncDatabaseSelectTransport(Protocol):
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> TransportResponse: ...
 
 
@@ -784,10 +793,10 @@ def _error_type(status: int) -> type[VolcanoError]:
 def response_payload(response: TransportResponse, expected_status: int) -> object:
     status = int(response.status_code)
     if status != expected_status:
-        payload: Mapping[str, object]
+        payload: Mapping[object, object]
         raw_payload = response.payload
         if isinstance(raw_payload, dict):
-            payload = cast("Mapping[str, object]", raw_payload)
+            payload = cast("Mapping[object, object]", raw_payload)
         else:
             payload = {}
         message = str(
@@ -826,7 +835,7 @@ class GeneratedTransport:
         self._httpx_transport = httpx_transport
 
     def _client(self, authorization: str) -> AuthenticatedClient:
-        httpx_args: dict[str, Any] = {}
+        httpx_args: dict[str, object] = {}
         if self._httpx_transport is not None:
             httpx_args["transport"] = self._httpx_transport
         return AuthenticatedClient(
@@ -837,10 +846,10 @@ class GeneratedTransport:
         )
 
     @staticmethod
-    def _response(response: Any) -> TransportResponse:
+    def _response(response: _ParsedHTTPResponse) -> TransportResponse:
         parsed = response.parsed
-        if hasattr(parsed, "to_dict"):
-            payload = parsed.to_dict()
+        if isinstance(parsed, _ModelPayload):
+            payload: object = parsed.to_dict()
         elif parsed is not None:
             payload = parsed
         else:
@@ -1280,9 +1289,9 @@ class GeneratedTransport:
         provider: CallOAuthProviderAPIProvider,
         endpoint: str,
         method: str,
-        body: Mapping[str, Any] | None,
+        body: Mapping[str, JSONValue] | None,
     ) -> TransportResponse:
-        request_values: dict[str, Any] = {"endpoint": endpoint, "method": method}
+        request_values: dict[str, object] = {"endpoint": endpoint, "method": method}
         if body is not None:
             request_values["body"] = _plain_json(body)
         request_body = CallOAuthProviderAPIBody.from_dict(request_values)
@@ -1410,7 +1419,7 @@ class GeneratedTransport:
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = client.get_httpx_client().request(
@@ -1429,7 +1438,7 @@ class GeneratedTransport:
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> TransportResponse:
         async with self._client(authorization) as client:
             response = await query_database_select.asyncio_detailed(
@@ -1444,7 +1453,7 @@ class GeneratedTransport:
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = client.get_httpx_client().request(
@@ -1462,7 +1471,7 @@ class GeneratedTransport:
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = client.get_httpx_client().request(
@@ -1480,7 +1489,7 @@ class GeneratedTransport:
         *,
         authorization: str,
         database_name: str,
-        body: dict[str, Any],
+        body: dict[str, object],
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = client.get_httpx_client().request(
@@ -1957,9 +1966,7 @@ class GeneratedTransport:
                 UUID(project_id),
                 function_id,
                 client=client,
-                status=(
-                    UNSET if request.status is None else cast("Any", request.status)
-                ),
+                status=UNSET if request.status is None else request.status,
                 page=UNSET if request.page is None else request.page,
                 limit=UNSET if request.limit is None else request.limit,
             )
