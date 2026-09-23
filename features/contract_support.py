@@ -24,6 +24,8 @@ from volcano_sdk.realtime import CENTRIFUGE_ERROR
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from contract_fixture import ContractFixture
+
     from volcano_sdk.models import (
         AuthChangeEvent,
         DurableExecution,
@@ -111,7 +113,7 @@ def classify_status(status: int | None) -> str:
 
 
 class ContractWorld:
-    def __init__(self, fixture: dict[str, Any]) -> None:
+    def __init__(self, fixture: ContractFixture) -> None:
         self.fixture = fixture
         self.client = VolcanoClient(
             api_url=fixture["api_url"],
