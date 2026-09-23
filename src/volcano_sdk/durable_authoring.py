@@ -205,11 +205,21 @@ class _Engine:
         return cls._loaded
 
     def seconds(self, value: int) -> EngineDuration:
-        """Build the runtime's duration from whole seconds."""
+        """Build the runtime's duration from whole seconds.
+
+        Returns:
+            The runtime duration.
+
+        """
         return self.duration.from_seconds(value)
 
     def step_options(self, *, retry: Retry, at_most_once: bool) -> StepConfig:
-        """Build the runtime's step options."""
+        """Build the runtime's step options.
+
+        Returns:
+            The runtime step configuration.
+
+        """
         config: dict[str, Any] = {}
         if at_most_once:
             config["step_semantics"] = self.step_semantics.AT_MOST_ONCE_PER_RETRY
@@ -258,7 +268,12 @@ class _Engine:
         return None if value is None else self.seconds(_to_seconds(value, field_name))
 
     def wait_condition_options(self, options: WaitUntilOptions) -> object:
-        """Build the runtime's polling options."""
+        """Build the runtime's polling options.
+
+        Returns:
+            The runtime wait condition configuration.
+
+        """
         until = options.until
 
         def keep_polling(state: Any) -> bool:
@@ -288,15 +303,30 @@ class _Engine:
         return config
 
     def map_options(self, options: BatchOptions | None) -> object:
-        """Build the runtime's map options."""
+        """Build the runtime's map options.
+
+        Returns:
+            The runtime map configuration.
+
+        """
         return self.map_config(**self._batch_options(options))
 
     def parallel_options(self, options: BatchOptions | None) -> ParallelConfig:
-        """Build the runtime's parallel options."""
+        """Build the runtime's parallel options.
+
+        Returns:
+            The runtime parallel configuration.
+
+        """
         return self.parallel_config(**self._batch_options(options))
 
     def named_branch(self, run: Callable[[object], object], name: str | None) -> object:
-        """Build a named runtime branch."""
+        """Build a named runtime branch.
+
+        Returns:
+            The runtime branch.
+
+        """
         return self.parallel_branch(func=run, name=name)
 
 
