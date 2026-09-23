@@ -24,7 +24,7 @@ dependencies = [
   "attrs>=26.1.0",
   "centrifuge-python>=0.6.0,<0.7.0",
   "httpx>=0.28.1,<0.29.0",
-  "typing-extensions>=4.4.0",
+  "typing-extensions>=4.10.0",
 ]
 
 [project.optional-dependencies]
@@ -376,14 +376,19 @@ bash scripts/check_package.sh "" "$package_dir"
 """
 
 [tool.poe.tasks.package-extras]
-cmd = "tox run --recreate -e package-base,package-durable,package-types"
+cmd = "tox run --recreate -e package-base,package-min-typing,package-durable,package-types"
 
 [tool.tox]
-env_list = ["package-base", "package-durable", "package-types"]
+env_list = ["package-base", "package-min-typing", "package-durable", "package-types"]
 
 [tool.tox.env_run_base]
 package = "wheel"
 commands = [["python", "-I", "tests/package/optional_dependency.py", "base"]]
+
+[tool.tox.env.package-min-typing]
+deps = ["typing-extensions==4.10.0"]
+constrain_package_deps = true
+commands = [["python", "-I", "-c", "from importlib.metadata import version; assert version('typing-extensions') == '4.10.0'; import volcano_sdk"]]
 
 [tool.tox.env.package-durable]
 extras = ["durable"]
