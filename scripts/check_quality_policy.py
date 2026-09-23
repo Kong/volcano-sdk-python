@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import io
 import json
 import os
@@ -25,9 +26,20 @@ CONFIG_NAMES = {
     "tox.ini",
 }
 SUPPRESSIONS = (
-    re.compile(r"#\s*(?:ruff:\s*ignore\[|noqa\b|pyright:\s*ignore)"),
+    re.compile(
+        r"#\s*(?:ruff:\s*(?:ignore|noqa|file-ignore|disable)\b|noqa\b|pyright:\s*ignore)"
+    ),
     re.compile(r"#\s*(?:type:\s*ignore|pragma:\s*no cover)"),
 )
+NATIVE_SETTINGS = {
+    "mypy": "1691659573a79362c5f2e4656a38b63966e705e0444aad591b587e98a2f03395",
+    "basedpyright": "a25df922d29050705928fd7e00c311760d47c3dad6630b566980d4a8fb5d4f14",
+    "ruff": "919e6709f54d0c80b3bd64bca840e6e0f9443b049c941ca8a1b80ebb8de0fd9c",
+    "coverage": "dde4573e98774ec0e07659dec74d74b640efb8e99e080bd8d832d89127604c58",
+    "pytest": "b5b736f032341110e8a82214f31eb2bc687576a55a102109c8d47cb5fe1fb4fe",
+    "mutmut": "fff450960a077177f6588392839b7ad6d7f33471db5b2bc032645b48e5b17efb",
+    "poe": "d61b597c6f22f5b0ea7e590acd0e99d780095e81c924f1aef94c3c665fcfb9a7",
+}
 DECLARATION_EXCLUSION = r"^\s*(((async )?def .*?)?[\])]+(\s*->.*?)?:\s*)?\.\.\.\s*(#|$)"
 
 
@@ -134,6 +146,7 @@ def configuration_errors(config: dict[str, object]) -> list[str]:
         (("tool", "poe", "tasks", "format-check"), "ruff format --check ."),
         (("tool", "poe", "tasks", "mypy"), "mypy"),
         (("tool", "poe", "tasks", "basedpyright"), "basedpyright"),
+        (("tool", "poe", "tasks", "types"), ["mypy", "basedpyright"]),
         (
             ("tool", "poe", "tasks", "test"),
             "pytest tests/unit -q --junitxml=reports/unit.xml",
@@ -169,6 +182,25 @@ def configuration_errors(config: dict[str, object]) -> list[str]:
     coverage_task = nested(config, "tool", "poe", "tasks", "coverage")
     if not isinstance(coverage_task, str) or coverage_task.split() != coverage_args:
         errors.append("Weakened quality setting: tool.poe.tasks.coverage")
+    errors.extend(native_settings_errors(config))
+    return errors
+
+
+def native_settings_errors(config: dict[str, object]) -> list[str]:
+    """Detect any change to native enforcement, including new override keys.
+
+    Returns:
+        Tool sections requiring policy review.
+
+    """
+    tool = table(config["tool"])
+    errors: list[str] = []
+    for name, expected in NATIVE_SETTINGS.items():
+        settings = table(tool[name])
+        encoded = json.dumps(settings, sort_keys=True, separators=(",", ":"))
+        actual = hashlib.sha256(encoded.encode()).hexdigest()
+        if actual != expected:
+            errors.append(f"Native quality policy changed: tool.{name}")
     return errors
 
 
@@ -299,7 +331,9 @@ def check_source_suppressions(
     """
     errors: list[str] = []
     for line, directive in source_suppressions(path):
-        rules = re.findall(r"[A-Z]+\d+", directive)
+        rules = re.findall(r"\[([A-Za-z][A-Za-z0-9_-]*)\]", directive)
+        if not rules:
+            rules = re.findall(r"\b[A-Z]+\d+\b", directive)
         symbol = enclosing_function(path, line)
         key = (str(path), symbol, rules[0]) if len(rules) == 1 else None
         if key is None or key not in allowed:
@@ -320,9 +354,10 @@ def suppression_errors(paths: list[Path], exceptions: list[object]) -> list[str]
     source_paths = (
         path
         for path in paths
-        if path.suffix == ".py"
+        if path.suffix in {".py", ".pyi"}
+        and path.is_file()
         and "_generated" not in path.parts
-        and path.parts[0] in {"src", "scripts", "features"}
+        and path.parts[0] in {"src", "scripts", "features", "typings"}
     )
     errors = [
         error

@@ -51,6 +51,14 @@ def test_current_policy_passes() -> None:
         (("tool", "ruff", "lint", "mccabe"), ("max-complexity", 6)),
         (("tool", "mutmut"), ("only_mutate", ["src/volcano_sdk/locks.py"])),
         (("tool", "poe", "tasks"), ("quality", ["checks"])),
+        (("tool", "poe", "tasks"), ("types", ["mypy"])),
+        (("tool", "mypy"), ("strict", False)),
+        (("tool", "basedpyright"), ("typeCheckingMode", "basic")),
+        (("tool", "ruff", "lint"), ("ignore", ["ALL"])),
+        (
+            ("tool", "ruff", "lint"),
+            ("per-file-ignores", {"src/volcano_sdk/*.py": ["ALL"]}),
+        ),
     ],
 )
 def test_weakened_native_settings_fail(
@@ -88,6 +96,72 @@ def test_unapproved_source_suppression_fails(
     assert suppression_errors([path], []) == [
         "Undocumented suppression: scripts/probe.py: # ruff: ignore[S603]"
     ]
+
+
+@pytest.mark.parametrize(
+    ("directive", "rule"),
+    [
+        ("# type: ignore[return-value]", "return-value"),
+        ("# pyright: ignore[reportPrivateUsage]", "reportPrivateUsage"),
+    ],
+)
+def test_approved_native_type_suppressions_are_recognized(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    directive: str,
+    rule: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    path = Path("scripts/probe.py")
+    path.parent.mkdir()
+    path.write_text(f"def probe():\n    pass  {directive}\n", encoding="utf-8")
+    record: object = {
+        "scope": "scripts/probe.py:probe",
+        "rule": rule,
+        "rationale": "Verified tool limitation",
+        "evidence": "Fixture",
+        "approved_by": "reviewer",
+        "approved_at": "2026-09-23",
+        "approval_evidence": "Review",
+    }
+    assert suppression_errors([path], [record]) == []
+
+
+@pytest.mark.parametrize(
+    ("path", "source", "directive"),
+    [
+        (
+            Path("typings/probe.pyi"),
+            "def probe() -> int: ...  # type: ignore[return-value]\n",
+            "# type: ignore[return-value]",
+        ),
+        (
+            Path("scripts/probe.py"),
+            "# ruff: noqa: D100, F401\ndef probe(): pass\n",
+            "# ruff: noqa: D100, F401",
+        ),
+    ],
+)
+def test_stub_and_file_level_suppressions_need_approval(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path: Path,
+    source: str,
+    directive: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    path.parent.mkdir()
+    path.write_text(source, encoding="utf-8")
+    assert suppression_errors([path], []) == [
+        f"Undocumented suppression: {path}: {directive}"
+    ]
+
+
+def test_deleted_worktree_source_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert suppression_errors([Path("src/volcano_sdk/deleted.py")], []) == []
 
 
 def test_unused_exception_fails() -> None:
