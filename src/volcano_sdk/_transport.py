@@ -738,7 +738,7 @@ def _error_type(status: int) -> type[VolcanoError]:
     return VolcanoError
 
 
-def response_payload(response: TransportResponse, expected_status: int) -> Any:
+def response_payload(response: TransportResponse, expected_status: int) -> object:
     status = int(response.status_code)
     if status != expected_status:
         payload: Mapping[str, object]

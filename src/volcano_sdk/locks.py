@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import contextmanager, suppress
 from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, cast
@@ -22,6 +23,7 @@ _MIN_LOCK_TTL_SECONDS = 5
 _MAX_LOCK_TTL_SECONDS = 7_776_000
 _INVALID_LOCK_TTL = "ttl must be an integer between 5 seconds and 90 days"
 _MISSING_RENEWAL_FAILURE = "lock guard rejected renewal without a failure"
+_INVALID_LOCK_RESPONSE = "Expected a complete lock response"
 
 
 class LocksContext(Protocol):
@@ -82,6 +84,26 @@ def _parse_datetime(value: object) -> datetime | None:
     return datetime.fromisoformat(str(value))
 
 
+def _lock_values(payload: object) -> Mapping[object, object]:
+    if not isinstance(payload, Mapping):
+        raise TypeError(_INVALID_LOCK_RESPONSE)
+    return cast("Mapping[object, object]", payload)
+
+
+def _fencing_token(value: object) -> int | None:
+    if value is None or type(value) is int:
+        return value
+    raise TypeError(_INVALID_LOCK_RESPONSE)
+
+
+def _lease_fields(payload: Mapping[object, object]) -> tuple[datetime, int]:
+    expires_at = payload.get("expires_at")
+    fencing_token = payload.get("fencing_token")
+    if not isinstance(expires_at, str) or type(fencing_token) is not int:
+        raise TypeError(_INVALID_LOCK_RESPONSE)
+    return datetime.fromisoformat(expires_at), fencing_token
+
+
 def _validate_ttl(ttl: object) -> None:
     if (
         isinstance(ttl, bool)
@@ -125,11 +147,14 @@ class Locks:
             key=key,
             request_id=_request_uuid(request_id, "request_id"),
         )
-        payload = response_payload(response, 200)
+        payload = _lock_values(response_payload(response, 200))
+        held = payload.get("held")
+        if not isinstance(held, bool):
+            raise TypeError(_INVALID_LOCK_RESPONSE)
         return LockState(
-            held=payload["held"],
+            held=held,
             expires_at=_parse_datetime(payload.get("expires_at")),
-            fencing_token=payload.get("fencing_token"),
+            fencing_token=_fencing_token(payload.get("fencing_token")),
         )
 
     def acquire(
@@ -173,17 +198,18 @@ class Locks:
                 raise
             started_at = _lease_now()
             payload = self._acquire_payload(key, ttl, token, request_id, authorization)
+        expires_at, fencing_token = _lease_fields(payload)
         lease = LockLease(
             key=key,
             token=token,
-            expires_at=_parse_datetime(payload.get("expires_at")),
-            fencing_token=cast("int | None", payload.get("fencing_token")),
+            expires_at=expires_at,
+            fencing_token=fencing_token,
         )
         return lease, started_at
 
     def _acquire_payload(
         self, key: str, ttl: int, token: str, request_id: str, authorization: str
-    ) -> dict[str, object]:
+    ) -> Mapping[object, object]:
         response = invoke(
             self._client._transport.acquire_project_lock,
             authorization=authorization,
@@ -192,7 +218,7 @@ class Locks:
             token=token,
             request_id=request_id,
         )
-        return cast("dict[str, object]", response_payload(response, 201))
+        return _lock_values(response_payload(response, 201))
 
     def renew(
         self, key: str, lease: LockLease, *, ttl: int, request_id: str | None = None
@@ -216,12 +242,13 @@ class Locks:
             ttl=ttl,
             token=lease.token,
         )
-        payload = response_payload(response, 200)
+        payload = _lock_values(response_payload(response, 200))
+        expires_at, fencing_token = _lease_fields(payload)
         return LockLease(
             key=key,
             token=lease.token,
-            expires_at=_parse_datetime(payload.get("expires_at")),
-            fencing_token=payload.get("fencing_token"),
+            expires_at=expires_at,
+            fencing_token=fencing_token,
         )
 
     def release(

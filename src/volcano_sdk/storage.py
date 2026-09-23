@@ -50,6 +50,7 @@ _HTTP_PARTIAL_CONTENT = 206
 _UPLOAD_SPOOL_READ_SIZE = 1_048_576
 _UPLOAD_SOURCE_UNAVAILABLE = "Upload source is temporarily unavailable"
 _INVALID_SIMPLE_UPLOAD = "Upload data must be bytes or a readable binary stream"
+_INVALID_UPLOAD_RESPONSE = "Expected a storage upload response object"
 
 
 def _optional_datetime(value: object) -> datetime | None:
@@ -498,7 +499,12 @@ class StorageBucket:
             binding=binding,
         )
         payload = response_payload(response, 201)
-        return dict(payload)
+        if not isinstance(payload, Mapping):
+            raise TypeError(_INVALID_UPLOAD_RESPONSE)
+        values = cast("Mapping[object, object]", payload)
+        if not all(isinstance(key, str) for key in values):
+            raise TypeError(_INVALID_UPLOAD_RESPONSE)
+        return dict(cast("Mapping[str, Any]", values))
 
     def download(self, path: str, *, byte_range: str | None = None) -> bytes:
         """Download bytes from a path in this bucket.

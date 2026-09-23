@@ -1,14 +1,43 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from io import BytesIO
 
 import httpx
 import pytest
 from fixtures.invalid_arguments import non_string_content_type
 from storage_fixtures import upload_response
+from typing_extensions import override
 
 from volcano_sdk import Session, VolcanoClient
-from volcano_sdk._transport import GeneratedTransport
+from volcano_sdk._transport import GeneratedTransport, TransportResponse
+
+
+@dataclass(frozen=True)
+class UploadResponse:
+    payload: object
+    status_code: int = 201
+    content: bytes = b""
+    headers: dict[str, str] | None = None
+
+
+class UploadPayloadTransport(GeneratedTransport):
+    def __init__(self, payload: object) -> None:
+        super().__init__(api_url="https://api.test.volcano.dev")
+        self.payload = payload
+
+    @override
+    def upload_storage_object(
+        self,
+        *,
+        authorization: str,
+        bucket_name: str,
+        path: str,
+        data: bytes,
+        content_type: str = "application/octet-stream",
+    ) -> TransportResponse:
+        del authorization, bucket_name, path, data, content_type
+        return UploadResponse(self.payload)
 
 
 @pytest.mark.parametrize(
@@ -68,3 +97,12 @@ def test_upload_rejects_non_string_content_type_before_reading() -> None:
         non_string_content_type(client.storage.from_("assets"), source)
 
     assert source.tell() == 0
+
+
+@pytest.mark.parametrize("payload", [[], {1: "unexpected"}])
+def test_upload_rejects_malformed_success_payload(payload: object) -> None:
+    client = VolcanoClient(anon_key="anon", _transport=UploadPayloadTransport(payload))
+    client.auth.set_session(Session("access", "refresh", "user"))
+
+    with pytest.raises(TypeError, match="Expected a storage upload response object"):
+        client.storage.from_("assets").upload("payload.bin", b"payload")

@@ -13,6 +13,7 @@ from volcano_sdk import _lock_guard as guard_module
 from volcano_sdk import locks as locks_module
 from volcano_sdk._lock_guard import LockGuard
 from volcano_sdk._transport import GeneratedTransport
+from volcano_sdk.locks import _lock_values
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -184,6 +185,47 @@ def test_each_lock_operation_forwards_the_supplied_request_id() -> None:
     assert [r.method for r in requests] == ["GET", "PATCH", "DELETE", "DELETE"]
     assert all(r.headers["x-volcano-request-id"] == REQUEST_ID for r in requests)
     assert json.loads(requests[1].content) == {"ttl_seconds": 30}
+
+
+def test_lock_response_rejects_a_non_object_payload() -> None:
+    with pytest.raises(TypeError, match="Expected a complete lock response"):
+        _lock_values([])
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{"held": "yes"}, {"held": True, "fencing_token": "seven"}],
+)
+def test_get_rejects_invalid_lock_response_fields(payload: object) -> None:
+    def handle(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    with pytest.raises(TypeError, match="Expected a complete lock response"):
+        make_client(handle).locks.get("build")
+
+
+@pytest.mark.parametrize("value", [None, "seven", True])
+def test_acquisition_rejects_invalid_fencing_tokens(value: object) -> None:
+    def handle(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            201,
+            json={"expires_at": "2026-09-18T18:00:00Z", "fencing_token": value},
+        )
+
+    with pytest.raises(TypeError, match="Expected a complete lock response"):
+        make_client(handle).locks.acquire("build", ttl=30)
+
+
+def test_renew_rejects_a_non_integer_fencing_token() -> None:
+    def handle(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"expires_at": "2026-09-18T18:00:00Z", "fencing_token": "seven"},
+        )
+
+    lease = LockLease(key="build", token=OWNER_TOKEN, expires_at=None, fencing_token=7)
+    with pytest.raises(TypeError, match="Expected a complete lock response"):
+        make_client(handle).locks.renew("build", lease, ttl=30)
 
 
 def test_acquire_keeps_the_original_service_credential_on_retry() -> None:
