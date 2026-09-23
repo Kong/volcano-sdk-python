@@ -102,3 +102,25 @@ def test_access_session_revocation_requires_transport_capability() -> None:
             None,
             joined=False,
         )
+
+
+_PROFILE_OPERATIONS: tuple[Callable[[Auth], object], ...] = (
+    lambda auth: auth.convert_anonymous(email="user@example.com", password="password"),
+    lambda auth: auth.get_user(),
+    lambda auth: auth.update_user(metadata={"name": "User"}),
+)
+
+
+@pytest.mark.parametrize(
+    "operation",
+    _PROFILE_OPERATIONS,
+    ids=("convert-anonymous", "get-user", "update-user"),
+)
+def test_profile_operation_requires_transport_capability(
+    operation: Callable[[Auth], object],
+) -> None:
+    client = VolcanoClient(anon_key="anon", _transport=RejectingTransport())
+    client.auth.set_session(Session("access", "refresh", "user"))
+
+    with pytest.raises(TypeError, match="requested auth operation"):
+        operation(client.auth)
