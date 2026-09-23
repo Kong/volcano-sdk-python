@@ -4,7 +4,8 @@
 SDK function and the lock subsystem on each PR. The lock modules always run
 because credential scope, ownership, and lease renewal are critical. The Git
 diff is measured from the merge base with `origin/main`, including local
-working-tree edits. CI fetches that base before running the same quality task.
+working-tree edits. For a push to `main`, CI uses the push event's previous
+commit so the updated `origin/main` cannot hide the pushed SDK changes.
 
 Mutmut has native mutant-name patterns and cached incremental results, but no
 Git-diff selector or failing exit status for survivors. The narrow
@@ -20,7 +21,8 @@ a complete run.
 uncovered, crashing, timed-out, and incomplete mutants separately. Equivalent
 mutants are never inferred from a crash or timeout; the equivalent count stays
 zero until a specific human-reviewed exception exists. Any selected outcome
-other than killed fails the PR gate, including an empty result. CI preserves
+other than killed fails the PR gate, including an empty result or a changed
+function with no matching mutant. CI preserves
 the summary, target list, native stats, and detailed results.
 
 The weekly [Full Mutation Audit](../.github/workflows/mutation-audit.yml) runs

@@ -89,6 +89,7 @@ volcano_sdk.other.x_run__mutmut_1: survived
         "crashes": 1,
         "timeouts": 1,
         "incomplete": 1,
+        "unmatched_targets": 0,
     }
     with pytest.raises(ValueError, match="unchecked or alive"):
         check_results(report)
@@ -100,6 +101,17 @@ volcano_sdk.other.x_run__mutmut_1: survived
 """
 
     check_results(result_report(results, ["volcano_sdk.sample.*"]))
+
+
+def test_every_changed_callable_must_produce_a_mutant() -> None:
+    results = "volcano_sdk._lock_guard.x_run__mutmut_1: killed\n"
+    targets = [*CRITICAL_MODULES, "volcano_sdk.sample.x_changed__mutmut_*"]
+
+    report = result_report(results, targets)
+
+    assert report["unmatched_targets"] == len(targets) - 1
+    with pytest.raises(ValueError, match="unchecked or alive"):
+        check_results(report)
 
 
 def test_empty_mutation_result_fails() -> None:

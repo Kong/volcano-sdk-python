@@ -117,6 +117,13 @@ def result_report(results: str, targets: list[str]) -> dict[str, int]:
 
     """
     counts = selected_results(results, targets)
+    matched_targets = {
+        target
+        for line in results.splitlines()
+        if (match := _RESULT.match(line))
+        for target in targets
+        if fnmatch.fnmatchcase(match[1], target)
+    }
     incomplete = counts.total() - sum(
         counts[status]
         for status in ("killed", "survived", "no tests", "segfault", "timeout")
@@ -130,6 +137,7 @@ def result_report(results: str, targets: list[str]) -> dict[str, int]:
         "crashes": counts["segfault"],
         "timeouts": counts["timeout"],
         "incomplete": incomplete,
+        "unmatched_targets": len(set(targets) - matched_targets),
     }
 
 
@@ -143,7 +151,7 @@ def check_results(report: dict[str, int]) -> None:
     if report["selected"] == 0:
         msg = "mutation run selected no mutants"
         raise ValueError(msg)
-    if report["selected"] != report["killed"]:
+    if report["unmatched_targets"] or report["selected"] != report["killed"]:
         msg = f"mutation run left selected mutants unchecked or alive: {report}"
         raise ValueError(msg)
 

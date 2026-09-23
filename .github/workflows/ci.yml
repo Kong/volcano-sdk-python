@@ -40,6 +40,8 @@ jobs:
           version: "0.12.17"
       - run: uv sync --locked
       - name: Run SDK quality checks
+        env:
+          MUTATION_DIFF_BASE: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: uv run --locked poe quality
       - name: Preserve runtime coverage
         if: ${{ always() }}

@@ -351,7 +351,7 @@ interpreter = "bash"
 shell = """
 set -euo pipefail
 mkdir -p reports
-base="$(git merge-base origin/main HEAD)"
+base="${MUTATION_DIFF_BASE:-$(git merge-base origin/main HEAD)}"
 git diff --unified=0 --no-ext-diff --no-color "$base" -- src/volcano_sdk \
   | python -m scripts.mutation_targets select > reports/mutation-targets.txt
 targets=()
