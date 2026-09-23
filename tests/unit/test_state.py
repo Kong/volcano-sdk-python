@@ -2071,6 +2071,29 @@ def test_sign_in_with_oauth_returns_an_authorization_url_without_a_session() -> 
     ]
 
 
+def test_oauth_capabilities_fail_cleanly_when_transport_lacks_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = VolcanoClient(anon_key="anon", _transport=StateTransport())
+    _ = client.auth.set_session(
+        Session(access_token="access", refresh_token="refresh", user_id="user")
+    )
+    monkeypatch.setattr(client, "_transport", object())
+
+    with pytest.raises(TypeError, match="Transport does not support"):
+        _ = client.auth.sign_in_with_oauth(
+            provider="github",
+            redirect_to="https://app.example/callback",
+            state="state-value",
+        )
+    with pytest.raises(TypeError, match="Transport does not support"):
+        client.auth.unlink_oauth_provider(provider="google")
+    with pytest.raises(TypeError, match="Transport does not support"):
+        _ = client.auth.get_oauth_provider_token(provider="google")
+    with pytest.raises(TypeError, match="Transport does not support"):
+        _ = client.auth.refresh_oauth_provider_token(provider="google")
+
+
 def test_sign_in_with_oauth_rejects_an_unknown_provider() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)

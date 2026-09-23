@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import SEEK_END, BytesIO, StringIO
-from typing import TYPE_CHECKING, Any, BinaryIO, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 import pytest
 from fixtures.invalid_arguments import (
@@ -322,6 +322,19 @@ class BoundedNonSeekableReader:
     def seekable(self) -> bool:
         return False
 
+    def tell(self) -> int:
+        raise OSError
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        _ = offset, whence
+        raise OSError
+
+
+class PositionProbeFailingReader(BoundedBytesIO):
+    @override
+    def tell(self) -> int:
+        raise OSError
+
 
 class TemporarilyUnavailableReader:
     def __init__(self) -> None:
@@ -343,6 +356,18 @@ class ReadOnlyStream:
 
     def read(self, size: int = -1) -> bytes:
         return self._source.read(size)
+
+
+@runtime_checkable
+class RuntimeUploader(Protocol):
+    def upload(self, path: str, data: object) -> object: ...
+
+
+def unchecked_upload(bucket: object, data: object) -> object:
+    if not isinstance(bucket, RuntimeUploader):
+        msg = "Expected a runtime upload method"
+        raise TypeError(msg)
+    return bucket.upload("a.txt", data)
 
 
 class FailingSeekableReader(BoundedBytesIO):
@@ -574,10 +599,7 @@ def test_storage_upload_rejects_text_streams_before_transport() -> None:
     client = signed_in_client(transport)
 
     with pytest.raises(TypeError, match="binary"):
-        client.storage.from_("assets").upload(
-            "a.txt",
-            cast("BinaryIO", StringIO("text")),
-        )
+        unchecked_upload(client.storage.from_("assets"), StringIO("text"))
 
     assert all(operation != "uploadStorageObject" for operation, _ in transport.calls)
 
@@ -589,7 +611,7 @@ def test_storage_upload_reports_temporarily_unavailable_streams() -> None:
     with pytest.raises(BlockingIOError, match="temporarily unavailable"):
         client.storage.from_("assets").upload(
             "a.txt",
-            cast("BinaryIO", TemporarilyUnavailableReader()),
+            TemporarilyUnavailableReader(),
         )
 
     assert all(operation != "uploadStorageObject" for operation, _ in transport.calls)
@@ -1207,17 +1229,22 @@ def test_storage_fills_parts_when_a_seekable_source_returns_short_reads() -> Non
     ]
 
 
-def test_storage_spools_non_seekable_uploads_with_bounded_reads() -> None:
+@pytest.mark.parametrize(
+    "source_type", [BoundedNonSeekableReader, PositionProbeFailingReader]
+)
+def test_storage_spools_non_seekable_uploads_with_bounded_reads(
+    source_type: type[BoundedNonSeekableReader | PositionProbeFailingReader],
+) -> None:
     transport = FakeTransport()
     transport.upload_session_part_size = 4
     transport.upload_session_total_parts = 3
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
     client.auth.sign_in(email="user@example.com", password="secret")
-    source = BoundedNonSeekableReader(b"abcdefghij")
+    source = source_type(b"abcdefghij")
 
     client.storage.from_("assets").upload_resumable(
         "file.bin",
-        cast("BinaryIO", source),
+        source,
     )
 
     assert source.read_sizes
@@ -1239,7 +1266,7 @@ def test_storage_spools_read_only_streams_without_a_seekability_probe() -> None:
 
     client.storage.from_("assets").upload_resumable(
         "file.bin",
-        cast("BinaryIO", ReadOnlyStream(b"abcdefgh")),
+        ReadOnlyStream(b"abcdefgh"),
     )
 
     upload_calls = [call for call in transport.calls if call[0] == "uploadPart"]
@@ -1289,7 +1316,7 @@ def test_storage_rejects_temporarily_unavailable_nonblocking_sources() -> None:
     with pytest.raises(BlockingIOError, match="temporarily unavailable"):
         client.storage.from_("assets").upload_resumable(
             "file.bin",
-            cast("BinaryIO", source),
+            source,
         )
 
     assert all(operation != "createUploadSession" for operation, _ in transport.calls)
@@ -1303,7 +1330,7 @@ def test_storage_validates_authentication_before_spooling() -> None:
     with pytest.raises(RuntimeError, match="active session"):
         client.storage.from_("assets").upload_resumable(
             "file.bin",
-            cast("BinaryIO", source),
+            source,
         )
 
     assert source.read_sizes == []
@@ -1318,7 +1345,7 @@ def test_storage_validates_path_before_spooling() -> None:
     with pytest.raises(ValueError, match="non-empty string"):
         client.storage.from_("assets").upload_resumable(
             "",
-            cast("BinaryIO", source),
+            source,
         )
 
     assert source.read_sizes == []

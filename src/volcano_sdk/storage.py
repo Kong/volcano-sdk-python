@@ -63,6 +63,31 @@ _INVALID_STORAGE_TRANSPORT = (
 )
 
 
+class BinaryReader(Protocol):
+    """Binary input required by upload operations, including read-only streams."""
+
+    def read(self, size: int = -1, /) -> bytes | None:
+        """Return bytes, or None when the source is temporarily unavailable."""
+        ...
+
+
+@runtime_checkable
+class SeekableBinaryReader(BinaryReader, Protocol):
+    """Optional stream capabilities used to avoid spooling seekable inputs."""
+
+    def seekable(self) -> bool:
+        """Report whether seeking is supported."""
+        ...
+
+    def tell(self) -> int:
+        """Return the current byte position."""
+        ...
+
+    def seek(self, offset: int, whence: int = 0, /) -> int:
+        """Move to a byte position and return it."""
+        ...
+
+
 def _optional_datetime(value: object) -> datetime | None:
     if value is None:
         return None
@@ -228,7 +253,9 @@ def _encoded_storage_path(path: str) -> str:
     return "/".join(quote(segment, safe="") for segment in segments)
 
 
-def _remaining_upload_bytes(source: BinaryIO) -> int | None:
+def _remaining_upload_bytes(source: BinaryReader) -> int | None:
+    if not isinstance(source, SeekableBinaryReader):
+        return None
     try:
         if not source.seekable():
             return None
@@ -246,9 +273,9 @@ def _remaining_upload_bytes(source: BinaryIO) -> int | None:
     return remaining
 
 
-def _spool_upload_source(source: BinaryIO, target: BinaryIO) -> None:
+def _spool_upload_source(source: BinaryReader, target: BinaryIO) -> None:
     while True:
-        chunk = cast("bytes | None", source.read(_UPLOAD_SPOOL_READ_SIZE))
+        chunk = source.read(_UPLOAD_SPOOL_READ_SIZE)
         if chunk is None:
             raise BlockingIOError(_UPLOAD_SOURCE_UNAVAILABLE)
         if chunk == b"":
@@ -256,10 +283,10 @@ def _spool_upload_source(source: BinaryIO, target: BinaryIO) -> None:
         _ = target.write(chunk)
 
 
-def _read_upload_part(source: BinaryIO, part_size: int) -> bytes:
+def _read_upload_part(source: BinaryReader, part_size: int) -> bytes:
     part = bytearray()
     while len(part) < part_size:
-        chunk = cast("bytes | None", source.read(part_size - len(part)))
+        chunk = source.read(part_size - len(part))
         if chunk is None:
             raise BlockingIOError(_UPLOAD_SOURCE_UNAVAILABLE)
         if chunk == b"":
@@ -284,8 +311,8 @@ def _simple_upload_bytes(data: object) -> bytes:
 
 @contextmanager
 def _resumable_upload_source(
-    data: bytes | BinaryIO,
-) -> Generator[tuple[BinaryIO, int], None, None]:
+    data: bytes | BinaryReader,
+) -> Generator[tuple[BinaryReader, int], None, None]:
     if isinstance(data, bytes):
         with BytesIO(data) as source:
             yield source, len(data)
@@ -503,7 +530,7 @@ class StorageBucket:
     def upload(
         self,
         path: str,
-        data: bytes | BinaryIO,
+        data: bytes | BinaryReader,
         *,
         content_type: str | None = None,
     ) -> dict[str, object]:
@@ -724,7 +751,7 @@ class StorageBucket:
     def upload_resumable(
         self,
         path: str,
-        data: bytes | BinaryIO,
+        data: bytes | BinaryReader,
         *,
         content_type: str = "application/octet-stream",
         part_size: int | None = None,
@@ -763,7 +790,7 @@ class StorageBucket:
     def _upload_session_parts(
         self,
         path: str,
-        source: BinaryIO,
+        source: BinaryReader,
         session: UploadSession,
         total_size: int,
         on_progress: Callable[[int, int], None] | None,
