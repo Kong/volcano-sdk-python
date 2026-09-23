@@ -53,8 +53,8 @@ def lease_response(request: httpx.Request) -> httpx.Response:
 def test_preparing_a_closed_guard_preserves_lost_ownership(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
-    monkeypatch.setattr(locks_module, "_lease_now", lambda: 100.0)
+    monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
+    monkeypatch.setattr(locks_module, "lease_now", lambda: 100.0)
     requests: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -276,8 +276,8 @@ def test_guard_uses_successful_attempt_start_without_extending_a_slow_retry(
     monkeypatch: pytest.MonkeyPatch, retry_duration: float
 ) -> None:
     clock = [100.0]
-    monkeypatch.setattr(locks_module, "_lease_now", lambda: clock[0])
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
+    monkeypatch.setattr(locks_module, "lease_now", lambda: clock[0])
+    monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
     requests: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:

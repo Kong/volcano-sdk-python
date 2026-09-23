@@ -700,8 +700,8 @@ def test_locks_with_lock_renews_an_unsafe_initial_lease_before_yielding(
         def stop(self) -> None:
             self.stopped = True
 
-    monkeypatch.setattr(locks_module, "_lease_now", lambda: clock[0])
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
+    monkeypatch.setattr(locks_module, "lease_now", lambda: clock[0])
+    monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
     monkeypatch.setattr(locks_module, "LockRenewer", NoopRenewer)
     transport = SlowAcquireTransport()
     client = VolcanoClient(

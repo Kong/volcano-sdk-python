@@ -84,8 +84,8 @@ class SuspendWait:
 def test_lock_renewer_replaces_a_successfully_renewed_lease(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
-    monkeypatch.setattr(worker_module, "_lease_now", lambda: 101.0)
+    monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
+    monkeypatch.setattr(worker_module, "lease_now", lambda: 101.0)
     original = lease()
     replacement = lease(fencing_token=8)
     guard = LockGuard(original, ttl=30, started_at=100.0)
@@ -101,7 +101,7 @@ def test_lock_renewer_replaces_a_successfully_renewed_lease(
 def test_lock_renewer_records_an_sdk_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
     failure = VolcanoError("renewal failed")
     guard = LockGuard(lease(), ttl=30, started_at=100.0)
     renewer = LockRenewer(FailingLocks(failure), "build", guard, ttl=30)
@@ -115,7 +115,7 @@ def test_lock_renewer_records_an_sdk_failure(
 def test_lock_renewer_records_an_unexpected_ordinary_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
     failure = RuntimeError("service credential changed")
     guard = LockGuard(lease(), ttl=30, started_at=100.0)
     renewer = LockRenewer(FailingLocks(failure), "build", guard, ttl=30)
@@ -129,7 +129,7 @@ def test_lock_renewer_records_an_unexpected_ordinary_failure(
 def test_lock_renewer_records_a_failure_outside_the_renewal_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
     failure = RuntimeError("scheduling failed")
     guard = LockGuard(lease(), ttl=30, started_at=100.0)
 
@@ -148,7 +148,7 @@ def test_lock_renewer_records_a_failure_outside_the_renewal_request(
 def test_lock_renewer_stop_interrupts_a_scheduled_wait(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
     guard = LockGuard(lease(), ttl=30, started_at=100.0)
     locks = RecordingLocks(lease(fencing_token=8))
     renewer = LockRenewer(locks, "build", guard, ttl=30)
@@ -164,7 +164,7 @@ def test_lock_renewer_does_not_renew_after_the_lease_expires_while_waiting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = [100.0]
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
+    monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
     guard = LockGuard(lease(), ttl=5, started_at=clock[0])
     locks = RecordingLocks(lease(fencing_token=8))
     renewer = LockRenewer(locks, "build", guard, ttl=5)
@@ -180,8 +180,8 @@ def test_lock_renewer_rechecks_the_suspend_aware_clock_in_bounded_waits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = [100.0]
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
-    monkeypatch.setattr(worker_module, "_lease_now", lambda: clock[0])
+    monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
+    monkeypatch.setattr(worker_module, "lease_now", lambda: clock[0])
     guard = LockGuard(lease(), ttl=30, started_at=clock[0])
     monkeypatch.setattr(guard, "renewal_delay", lambda: 10.0)
     renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
@@ -196,7 +196,7 @@ def test_lock_renewer_rechecks_the_suspend_aware_clock_in_bounded_waits(
 def test_lock_renewer_bounds_stalled_shutdown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
     monkeypatch.setattr(worker_module, "RENEWER_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
     guard = LockGuard(lease(), ttl=30, started_at=100.0)
     monkeypatch.setattr(guard, "renewal_delay", lambda: 0.0)
@@ -220,8 +220,8 @@ def test_lock_renewer_bounds_stalled_shutdown(
 def test_lock_renewer_stops_after_an_in_flight_request_completes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
-    monkeypatch.setattr(worker_module, "_lease_now", lambda: 100.0)
+    monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
+    monkeypatch.setattr(worker_module, "lease_now", lambda: 100.0)
     original = lease()
     guard = LockGuard(original, ttl=30, started_at=100.0)
     monkeypatch.setattr(guard, "renewal_delay", lambda: 0.0)

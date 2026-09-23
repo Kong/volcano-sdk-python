@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, cast
 from uuid import UUID, uuid4
 
-from ._lock_guard import LockGuard, _lease_now
+from ._lock_guard import LockGuard, lease_now
 from ._lock_worker import LockRenewer
 from ._transport import Transport, invoke, response_payload
 from .errors import ServerError, TransportError
@@ -190,13 +190,13 @@ class Locks:
         token = _request_uuid(token, "token")
         request_id = _request_uuid(request_id, "request_id")
         authorization = self._client._service_token()
-        started_at = _lease_now()
+        started_at = lease_now()
         try:
             payload = self._acquire_payload(key, ttl, token, request_id, authorization)
         except (TransportError, ServerError) as error:
             if error.status not in {None, 503}:
                 raise
-            started_at = _lease_now()
+            started_at = lease_now()
             payload = self._acquire_payload(key, ttl, token, request_id, authorization)
         expires_at, fencing_token = _lease_fields(payload)
         lease = LockLease(
@@ -294,7 +294,7 @@ class Locks:
 
         """
         _validate_ttl(ttl)
-        started_at = _lease_now()
+        started_at = lease_now()
         lease, lease_started_at = self._acquire_with_start(
             key, ttl=ttl, token=token, request_id=request_id
         )
@@ -322,7 +322,7 @@ class Locks:
     def _prepare_guard(self, key: str, guard: LockGuard, *, ttl: int) -> None:
         if guard.renewal_delay() != 0:
             return
-        started_at = _lease_now()
+        started_at = lease_now()
         renewed = self.renew(key, guard.lease, ttl=ttl)
         if guard.replace_lease(renewed, started_at=started_at):
             return

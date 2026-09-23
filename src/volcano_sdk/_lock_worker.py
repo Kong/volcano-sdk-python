@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from typing import TYPE_CHECKING, Protocol
 
-from ._lock_guard import LockGuard, _lease_now
+from ._lock_guard import LockGuard, lease_now
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -27,7 +27,7 @@ class LockRenewalClient(Protocol):
 
 class _RenewalFailureRecorder:
     def __init__(self, guard: LockGuard) -> None:
-        self._guard = guard
+        self._guard: LockGuard = guard
 
     def __enter__(self) -> None:
         return None
@@ -56,12 +56,12 @@ class LockRenewer:
         *,
         ttl: int,
     ) -> None:
-        self._locks = locks
-        self._key = key
-        self._guard = guard
-        self._ttl = ttl
-        self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._locks: LockRenewalClient = locks
+        self._key: str = key
+        self._guard: LockGuard = guard
+        self._ttl: int = ttl
+        self._stop: threading.Event = threading.Event()
+        self._thread: threading.Thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self) -> None:
         """Start renewing the guarded lease."""
@@ -81,11 +81,11 @@ class LockRenewer:
                     return
 
     def _wait_until_renewal(self) -> bool:
-        renew_at = _lease_now() + self._guard.renewal_delay()
+        renew_at = lease_now() + self._guard.renewal_delay()
         while not self._stop.is_set():
             if self._guard.lost:
                 return False
-            remaining = renew_at - _lease_now()
+            remaining = renew_at - lease_now()
             if remaining <= 0:
                 return True
             if self._stop.wait(min(remaining, MAX_RENEWAL_WAIT_SLICE_SECONDS)):
@@ -93,7 +93,7 @@ class LockRenewer:
         return False
 
     def _renew_once(self) -> bool:
-        started_at = _lease_now()
+        started_at = lease_now()
         with _RenewalFailureRecorder(self._guard):
             lease = self._locks.renew(
                 self._key,
