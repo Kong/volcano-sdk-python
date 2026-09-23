@@ -143,6 +143,11 @@ class Locks:
         LockState
             Whether the lock is held, with its expiry and fencing token if set.
 
+        Raises
+        ------
+        TypeError
+            The transport lacks lock inspection or the response is incomplete.
+
         """
         transport = self._client._transport
         if not isinstance(transport, LockGetTransport):
@@ -237,6 +242,11 @@ class Locks:
             An immutable replacement with the server's updated expiry and the
             same ownership and fencing tokens.
 
+        Raises
+        ------
+        TypeError
+            The transport does not support this lock operation.
+
         """
         _validate_ttl(ttl)
         transport = self._client._transport
@@ -273,7 +283,12 @@ class Locks:
         _ = response_payload(response, 204)
 
     def force_release(self, key: str, *, request_id: str | None = None) -> None:
-        """Release a lock regardless of which token owns it."""
+        """Release a lock regardless of which token owns it.
+
+        Raises:
+            TypeError: The transport does not support this lock operation.
+
+        """
         transport = self._client._transport
         if not isinstance(transport, LockForceReleaseTransport):
             raise TypeError(_INVALID_LOCK_TRANSPORT)

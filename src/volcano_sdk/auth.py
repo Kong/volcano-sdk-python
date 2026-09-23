@@ -543,6 +543,9 @@ class Auth:
         Returns:
             The sign-up acknowledgement, including a session if signed in.
 
+        Raises:
+            TypeError: The transport does not support this authentication operation.
+
         """
         generation, _ = self._client._capture_session()
         transport = self._client._transport
@@ -573,6 +576,7 @@ class Auth:
 
         Raises:
             SessionChangedError: The local session changed during sign-up.
+            TypeError: The transport does not support this authentication operation.
 
         """
         generation, _ = self._client._capture_session()
@@ -603,6 +607,7 @@ class Auth:
 
         Raises:
             AuthenticationError: There is no active session.
+            TypeError: The transport does not support this authentication operation.
 
         """
         binding = self._client._capture_session_binding()
@@ -625,7 +630,12 @@ class Auth:
         return self._update_current_user(response_payload(response, 200), binding)
 
     def reset_password_for_email(self, *, email: str) -> None:
-        """Request a reset email without revealing whether the account exists."""
+        """Request a reset email without revealing whether the account exists.
+
+        Raises:
+            TypeError: The transport does not support this authentication operation.
+
+        """
         transport = self._client._transport
         if not isinstance(transport, AuthForgotPasswordTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
@@ -644,6 +654,7 @@ class Auth:
 
         Raises:
             AuthenticationError: There is no active session.
+            TypeError: The transport does not support this authentication operation.
 
         """
         binding = self._client._capture_session_binding()
@@ -669,6 +680,7 @@ class Auth:
 
         Raises:
             AuthenticationError: There is no active session.
+            TypeError: The transport does not support this authentication operation.
 
         """
         binding = self._client._capture_session_binding()
@@ -695,6 +707,7 @@ class Auth:
 
         Raises:
             AuthenticationError: There is no active session.
+            TypeError: The transport does not support this authentication operation.
 
         """
         binding = self._client._capture_session_binding()
@@ -718,6 +731,7 @@ class Auth:
 
         Raises:
             AuthenticationError: There is no active session.
+            TypeError: The transport does not support this authentication operation.
 
         """
         binding = self._client._capture_session_binding()
@@ -744,6 +758,7 @@ class Auth:
 
         Raises:
             AuthenticationError: There is no active session.
+            TypeError: The transport does not support this authentication operation.
 
         """
         binding = self._client._capture_session_binding()
@@ -773,6 +788,7 @@ class Auth:
 
         Raises:
             AuthenticationError: There is no active session.
+            TypeError: The transport does not support this authentication operation.
 
         """
         binding = self._client._capture_session_binding()
@@ -882,6 +898,7 @@ class Auth:
 
         Raises:
             SessionChangedError: The local session changed during the exchange.
+            TypeError: The transport does not support this authentication operation.
 
         """
         _validate_oauth_callback_state(state, expected_state)
@@ -908,6 +925,7 @@ class Auth:
 
         Raises:
             AuthenticationError: There is no active session.
+            TypeError: The transport does not support this authentication operation.
 
         """
         provider_name = _oauth_provider_name(provider)
@@ -1042,6 +1060,7 @@ class Auth:
 
         Raises:
             AuthenticationError: There is no active session.
+            TypeError: The transport does not support this authentication operation.
 
         """
         provider_name = _oauth_provider_name(provider)
@@ -1075,6 +1094,7 @@ class Auth:
             AuthenticationError: There is no active session.
             SessionChangedError: The local session changed during deletion.
             TransportError: The deletion request failed before a usable response.
+            TypeError: The transport does not support this authentication operation.
 
         """
         binding = self._client._capture_session_binding()
@@ -1123,7 +1143,12 @@ class Auth:
             raise SessionChangedError
 
     def confirm_email(self, *, token: str) -> None:
-        """Confirm an email with its token without changing local state."""
+        """Confirm an email with its token without changing local state.
+
+        Raises:
+            TypeError: The transport does not support this authentication operation.
+
+        """
         transport = self._client._transport
         if not isinstance(transport, AuthConfirmEmailTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
@@ -1135,7 +1160,12 @@ class Auth:
         _ = response_payload(response, 200)
 
     def resend_confirmation(self, *, email: str) -> None:
-        """Request a generic confirmation resend without changing local state."""
+        """Request a generic confirmation resend without changing local state.
+
+        Raises:
+            TypeError: The transport does not support this authentication operation.
+
+        """
         transport = self._client._transport
         if not isinstance(transport, AuthResendConfirmationTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
@@ -1147,7 +1177,12 @@ class Auth:
         _ = response_payload(response, 200)
 
     def reset_password(self, *, token: str, new_password: str) -> None:
-        """Set a new password with a recovery token without changing local state."""
+        """Set a new password with a recovery token without changing local state.
+
+        Raises:
+            TypeError: The transport does not support this authentication operation.
+
+        """
         transport = self._client._transport
         if not isinstance(transport, AuthResetPasswordTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
@@ -1176,6 +1211,7 @@ class Auth:
 
         Raises:
             AuthenticationError: There is no active session.
+            TypeError: The transport does not support this authentication operation.
 
         """
         binding = self._client._capture_session_binding()
@@ -1205,6 +1241,7 @@ class Auth:
 
         Raises:
             AuthenticationError: There is no active session.
+            TypeError: The transport does not support this authentication operation.
 
         """
         binding = self._client._capture_session_binding()

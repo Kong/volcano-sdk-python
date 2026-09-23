@@ -9,7 +9,12 @@ from volcano_sdk.durable_authoring import _Engine, durable
 
 
 def main() -> None:
-    """Exercise the optional runtime in a package environment managed by tox."""
+    """Exercise the optional runtime in a package environment managed by tox.
+
+    Raises:
+        ValueError: The requested package scenario is not supported.
+
+    """
     assert callable(durable)
     installed = find_spec("aws_durable_execution_sdk_python") is not None
     if sys.argv[1] == "base":
