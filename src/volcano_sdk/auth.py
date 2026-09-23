@@ -108,6 +108,7 @@ _INVALID_LINKED_OAUTH_PROVIDERS = "Expected complete linked OAuth providers"
 _INVALID_OAUTH_LINK = "Expected an OAuth authorization URL"
 _INVALID_OAUTH_STATUS = "Expected complete OAuth provider token status"
 _INVALID_OAUTH_API_RESPONSE = "Expected OAuth provider API response data"
+_INVALID_AUTH_TRANSPORT = "Transport does not support the requested auth operation"
 _INVALID_AUTH_CALLBACK = "callback must be callable"
 _INVALID_HOSTED_AUTH_PARAMETER = "Hosted auth parameters must be non-empty strings"
 _HOSTED_AUTH_STATE_MISMATCH = "Hosted auth state mismatch"
@@ -544,7 +545,9 @@ class Auth:
 
         """
         generation, _ = self._client._capture_session()
-        transport = cast("AuthSignUpTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthSignUpTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_signup,
             authorization=self._client._anon_token(),
@@ -573,7 +576,9 @@ class Auth:
 
         """
         generation, _ = self._client._capture_session()
-        transport = cast("AuthSignUpAnonymousTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthSignUpAnonymousTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_signup_anonymous,
             authorization=self._client._anon_token(),
@@ -619,7 +624,9 @@ class Auth:
 
     def reset_password_for_email(self, *, email: str) -> None:
         """Request a reset email without revealing whether the account exists."""
-        transport = cast("AuthForgotPasswordTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthForgotPasswordTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_forgot_password,
             authorization=self._client._anon_token(),

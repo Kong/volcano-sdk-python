@@ -7,7 +7,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ParamSpec,
+    Protocol,
+    TypeVar,
+    cast,
+    runtime_checkable,
+)
 from uuid import UUID, uuid4
 
 import httpx
@@ -393,6 +401,7 @@ class AuthLogoutTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthSignUpTransport(Protocol):
     def auth_signup(
         self,
@@ -404,6 +413,7 @@ class AuthSignUpTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthSignUpAnonymousTransport(Protocol):
     def auth_signup_anonymous(
         self,
@@ -424,6 +434,7 @@ class AuthConvertAnonymousTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthForgotPasswordTransport(Protocol):
     def auth_forgot_password(
         self,
