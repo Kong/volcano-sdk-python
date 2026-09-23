@@ -161,6 +161,11 @@ reportIncompatibleVariableOverride = "error"
 # Ruff still enforces private access everywhere else.
 reportPrivateUsage = false
 
+[[tool.basedpyright.executionEnvironments]]
+root = "src/volcano_sdk/realtime.py"
+reportUnannotatedClassAttribute = "error"
+reportUnusedCallResult = "error"
+
 [tool.ruff]
 required-version = "==0.16.4"
 target-version = "py311"
