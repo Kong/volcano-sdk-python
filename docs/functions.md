@@ -63,3 +63,54 @@ A function's own HTTP 404 does not trigger another invocation.
 Network failures do not establish whether a function ran; do not blindly retry operations with side effects.
 
 Invalid invocation arguments and malformed successful resolution responses can raise `ValueError` or `TypeError`.
+
+## Start and follow a durable execution
+
+A durable execution can run for up to 366 days. Starting one returns a handle instead of waiting for its result:
+
+```python
+handle = client.durable.start(
+    "charge-order",
+    {"order_id": "order-9"},
+    execution_name="order-9",
+)
+
+execution = client.durable.get(project_id, "charge-order", handle.id)
+page = client.durable.list(project_id, "charge-order", status="running")
+client.durable.stop(project_id, "charge-order", handle.id)
+```
+
+`start()` accepts the same active session, service key, or anonymous key as `functions.invoke()`. It is the only durable operation available to application credentials. An execution name makes a start idempotent.
+
+`get()`, `list()`, and `stop()` are owner-scoped and require the project's platform token. `stop()` returns after the stop request is accepted, so poll `get()` until `is_terminal` is true.
+
+## Write a durable function
+
+Use `volcano_sdk.durable_authoring` in a durable function running on `python3.13` or `python3.14`:
+
+```python
+from volcano_sdk.durable_authoring import durable
+
+
+@durable
+def handler(event, ctx):
+    charge = ctx.step("charge", lambda scope: charge_card(event["order_id"]))
+    ctx.wait("settle", "30s")
+    return {"charge_id": charge["id"]}
+```
+
+Volcano records each context operation. Resumed executions replay recorded results instead of repeating completed work. Keep changing decisions inside `ctx.step()`. Use `ctx.wait_until()` to poll application state. Volcano does not expose externally completed callbacks.
+
+## Run durable functions locally
+
+Deploy and start the same handler through the local durable engine:
+
+```bash
+volcano start
+volcano durable deploy --all
+volcano durable start charge-order --input '{"order_id":"order-9"}'
+```
+
+Local waits resolve immediately by default while preserving checkpoint and replay behavior. Set `LOCAL_DURABLE_REAL_TIME=true` before `volcano start` when wait timing must match the deployed function.
+
+Running a decorated handler directly in a Python process still needs the optional test runtime: `python -m pip install 'volcano-sdk-python[durable]'`.

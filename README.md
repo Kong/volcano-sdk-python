@@ -239,8 +239,8 @@ A function's own response, HTTP 403, or a network failure never triggers this re
 Anonymous and service keys do not refresh.
 
 `durable.start()` begins an execution of a deployed durable function and returns
-a handle rather than a result: an execution can run for hours, so its result is
-read back with `durable.get()`. It takes the credential `functions.invoke()`
+a handle rather than a result: an execution can run for up to 366 days, so its
+result is read back with `durable.get()`. It takes the credential `functions.invoke()`
 takes, and is the only durable operation an application credential may perform.
 An `execution_name` makes the start idempotent — starting again under the same
 name returns the execution that already exists rather than beginning a second
@@ -330,6 +330,19 @@ platform rather than by your code, so an execution suspended for an hour costs
 nothing while it waits. Running the handler anywhere durable execution does not
 exist raises `DurableRuntimeMissingError` rather than an import error from an
 unfamiliar package.
+
+Run the same handler through the local durable engine:
+
+```bash
+volcano start
+volcano durable deploy --all
+volcano durable start order-pipeline --input '{"order_id":"order-9"}'
+```
+
+Local waits resolve immediately by default while preserving checkpoint and replay
+behavior. Set `LOCAL_DURABLE_REAL_TIME=true` before `volcano start` when wait
+timing must match the deployed function. Volcano does not expose externally
+completed callbacks; use `ctx.wait_until` to poll application state instead.
 
 `logs.search()` returns an immutable page of retained runtime or deployment log
 events. Pass `next_cursor` back as `cursor` to continue a search. `logs.activity()`

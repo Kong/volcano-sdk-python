@@ -817,8 +817,10 @@ def test_the_missing_runtime_error_says_to_deploy_as_durable() -> None:
     # fix is a deploy rather than an install. A function's requirements.txt
     # never names the runtime, and the error must not send a reader to add it.
     assert "deploy this one that way" in message
+    assert "`volcano durable deploy` locally" in message
+    assert "`volcano cloud durable deploy` in cloud" in message
     assert "kind: durable" in message
-    assert "does not run locally" in message
+    assert "does not run locally" not in message
     assert "requirements.txt" not in message
     assert "aws-durable-execution-sdk-python" not in message
 

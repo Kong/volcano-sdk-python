@@ -1,8 +1,8 @@
 """Durable function authoring API.
 
 A durable function checkpoints its progress as it runs, so one execution can
-span many invocations and run for hours. This module is what the function
-itself is written against; starting an execution and reading its result are
+span many invocations and run for up to 366 days. This module is what the
+function itself is written against; starting an execution and reading its result are
 done through `client.durable`, the CLI, or the dashboard.
 
     from volcano_sdk.durable_authoring import durable
@@ -123,10 +123,10 @@ class DurableRuntimeMissingError(Exception):
         super().__init__(
             "Durable execution is not available here. Volcano provides the "
             "durable runtime when it builds a function deployed as durable, so "
-            "deploy this one that way (`volcano cloud durable deploy`, or "
-            "`kind: durable` in volcano-config.yaml). Durable execution is a "
-            f"cloud capability and does not run locally; to exercise a handler "
-            f"in your own tests, install `{_ENGINE_EXTRA}`."
+            "deploy this one that way (`volcano durable deploy` locally, "
+            "`volcano cloud durable deploy` in cloud, or `kind: durable` in "
+            "volcano-config.yaml). To exercise a handler directly in your own "
+            f"tests, install `{_ENGINE_EXTRA}`."
         )
         self.__cause__ = cause
 
