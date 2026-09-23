@@ -535,6 +535,7 @@ class AuthGetMySessionsTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthListOAuthProvidersTransport(Protocol):
     def auth_list_oauth_providers(
         self,
@@ -554,6 +555,7 @@ class AuthOAuthAuthorizationURLTransport(Protocol):
     ) -> str: ...
 
 
+@runtime_checkable
 class AuthOAuthExchangeTransport(Protocol):
     def auth_oauth_exchange(
         self,
@@ -564,6 +566,7 @@ class AuthOAuthExchangeTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthLinkOAuthProviderTransport(Protocol):
     def auth_link_oauth_provider(
         self,
@@ -600,6 +603,7 @@ class AuthRefreshOAuthProviderTokenTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthCallOAuthAPITransport(Protocol):
     def auth_call_oauth_api(
         self,
