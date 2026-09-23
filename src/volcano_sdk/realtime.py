@@ -94,7 +94,7 @@ def _empty_presence_data() -> Mapping[str, JSONValue]:
 
 def _consume_presence_result(task: asyncio.Task[Any]) -> None:
     if not task.cancelled():
-        task.exception()
+        _ = task.exception()
 
 
 def _validate_channel_type(channel_type: str) -> ChannelType:
@@ -382,7 +382,7 @@ def _finish_unsubscribe(
 ) -> None:
     if cancelled is not None:
         if not task.cancelled():
-            task.exception()
+            _ = task.exception()
         raise cancelled
     task.result()
 
@@ -511,7 +511,7 @@ def _project_subscriptions(value: object) -> _ProjectAwareSubscriptions[object]:
 
 class _VolcanoCentrifugeConnection:
     def __init__(self, connection: CentrifugeConnection) -> None:
-        self._connection = connection
+        self._connection: CentrifugeConnection = connection
         state = vars(connection)
         state["_subs"] = _project_subscriptions(state.get("_subs"))
 
@@ -547,7 +547,7 @@ class _VolcanoCentrifugeConnection:
 
 class _ChannelEvents:
     def __init__(self, channel: Channel) -> None:
-        self._channel = channel
+        self._channel: Channel = channel
 
     def _is_current(self) -> bool:
         return self._channel._subscription_events is self
@@ -597,7 +597,7 @@ class _ChannelEvents:
 
 class _ClientEvents:
     def __init__(self, realtime: Realtime) -> None:
-        self._realtime = realtime
+        self._realtime: Realtime = realtime
 
     async def on_connecting(self, ctx: Any) -> None:
         del ctx
@@ -693,35 +693,35 @@ class Channel:
         fetch_config: _PostgresFetchConfig,
     ) -> None:
         """Create a channel managed by a realtime facade."""
-        self._realtime = realtime
-        self._name = name
-        self._type = channel_type
-        self._fetch_config = fetch_config
+        self._realtime: Realtime = realtime
+        self._name: str = name
+        self._type: ChannelType = channel_type
+        self._fetch_config: _PostgresFetchConfig = fetch_config
         self._callbacks: dict[str, list[MessageCallback]] = {}
         self._presence_state: dict[str, RealtimePresenceInfo] = {}
         self._presence_events: list[tuple[str, RealtimePresenceInfo]] = []
-        self._presence_syncing = False
+        self._presence_syncing: bool = False
         self._tracked_state: Mapping[str, JSONValue] = MappingProxyType({})
-        self._subscribe_lock = asyncio.Lock()
-        self._subscribe_generation = 0
+        self._subscribe_lock: asyncio.Lock = asyncio.Lock()
+        self._subscribe_generation: int = 0
         self._readiness_task: asyncio.Task[None] | None = None
         self._subscription: CentrifugeSubscription | None = None
         self._subscription_events: _ChannelEvents | None = None
-        self._subscribed = False
-        self._paused = True
-        self._delivery_epoch = 0
-        self._presence_epoch = 0
-        self._presence_lock = asyncio.Lock()
+        self._subscribed: bool = False
+        self._paused: bool = True
+        self._delivery_epoch: int = 0
+        self._presence_epoch: int = 0
+        self._presence_lock: asyncio.Lock = asyncio.Lock()
         self._presence_sync_task: asyncio.Task[None] | None = None
-        self._presence_sync_pending = False
+        self._presence_sync_pending: bool = False
         self._callback_queue: asyncio.Queue[_CallbackDelivery] = asyncio.Queue(
             maxsize=CALLBACK_QUEUE_LIMIT
         )
         self._callback_task: asyncio.Task[None] | None = None
         self._pending_presence_sync: Any = NO_PENDING_CALLBACK
-        self._postgres_epoch = 0
+        self._postgres_epoch: int = 0
         self._postgres_session_lineage: SessionOperations | None = None
-        self._postgres_lock = asyncio.Lock()
+        self._postgres_lock: asyncio.Lock = asyncio.Lock()
         self._postgres_worker: PostgresFetchWorker[_PostgresDelivery] | None = None
         self._postgres_filters: dict[
             int,
@@ -794,7 +794,7 @@ class Channel:
             callbacks = self._callbacks.get("*", [])
             if filtered in callbacks:
                 callbacks.remove(filtered)
-            self._postgres_filters.pop(id(filtered), None)
+            _ = self._postgres_filters.pop(id(filtered), None)
 
         return unsubscribe
 
@@ -1205,7 +1205,7 @@ class Channel:
         if event == "join":
             self._presence_state[presence.client] = presence
         else:
-            self._presence_state.pop(presence.client, None)
+            _ = self._presence_state.pop(presence.client, None)
 
     async def _presence_join(self, info: Any) -> None:
         if self._type != "presence" or info is None:
@@ -1273,8 +1273,8 @@ class Channel:
         self._presence_sync_pending = False
         if task is None or task.done():
             return
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
+        _ = task.cancel()
+        _ = await asyncio.gather(task, return_exceptions=True)
 
     async def _reset(self) -> None:
         self._invalidate()
@@ -1287,7 +1287,7 @@ class Channel:
 
     def _invalidate(self) -> None:
         if self._readiness_task is not None:
-            self._readiness_task.cancel()
+            _ = self._readiness_task.cancel()
         self._subscription = None
         self._subscription_events = None
         self._pause_delivery()
@@ -1342,13 +1342,13 @@ class Realtime:
         client_factory: CentrifugeFactory = _centrifuge_client,
     ) -> None:
         """Create a lazily connected realtime facade."""
-        self._client_context = client
-        self._api_url = api_url
-        self._client_factory = client_factory
+        self._client_context: RealtimeContext = client
+        self._api_url: str = api_url
+        self._client_factory: CentrifugeFactory = client_factory
         self._connection: _VolcanoCentrifugeConnection | None = None
         self._connection_session_lineage: SessionOperations | None = None
         self._connection_access_token: str | None = None
-        self._connection_lock = asyncio.Lock()
+        self._connection_lock: asyncio.Lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
         self._callback_tasks: set[asyncio.Task[None]] = set()
         self._removing_channels: set[str] = set()
@@ -1357,7 +1357,7 @@ class Realtime:
             "disconnect": {},
             "error": {},
         }
-        self._next_callback_id = 0
+        self._next_callback_id: int = 0
         self._connection_callback_queue: asyncio.Queue[
             tuple[str, Any, tuple[int, ...]]
         ] = asyncio.Queue(maxsize=CALLBACK_QUEUE_LIMIT)
@@ -1445,7 +1445,7 @@ class Realtime:
         self._connection_callbacks[event][callback_id] = callback
 
         def unsubscribe() -> None:
-            self._connection_callbacks[event].pop(callback_id, None)
+            _ = self._connection_callbacks[event].pop(callback_id, None)
 
         return unsubscribe
 
@@ -1563,7 +1563,7 @@ class Realtime:
             self._removing_channels.add(wire_name)
             try:
                 await self._remove_channel(channel)
-                self._channels.pop(wire_name, None)
+                _ = self._channels.pop(wire_name, None)
             finally:
                 self._removing_channels.remove(wire_name)
 
@@ -1651,7 +1651,7 @@ class Realtime:
 
     async def _connect_locked(self) -> _VolcanoCentrifugeConnection:
         if self._connection is not None:
-            self._session_for_lineage(self._connection_lineage())
+            _ = self._session_for_lineage(self._connection_lineage())
             return self._connection
         _generation, lineage, session = self._client_context._capture_session_binding()
         if session is None:
