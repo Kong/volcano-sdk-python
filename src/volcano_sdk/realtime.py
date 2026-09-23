@@ -48,13 +48,13 @@ _PostgresFetchRequest: TypeAlias = PostgresFetchRequest
 _SubscriptionT = TypeVar("_SubscriptionT")
 _DefaultT = TypeVar("_DefaultT")
 
-MessageCallback = Callable[[Any], Any]
-RealtimeCallback = Callable[[Any], Any]
+MessageCallback = Callable[[Any], object]
+RealtimeCallback = Callable[[Any], object]
 UnsubscribeCallback = Callable[[], None]
 ChannelType: TypeAlias = Literal["broadcast", "presence", "postgres"]
 PostgresEvent: TypeAlias = Literal["INSERT", "UPDATE", "DELETE"]
 PostgresListenerEvent: TypeAlias = Literal["INSERT", "UPDATE", "DELETE", "*"]
-PostgresChangeCallback = Callable[["PostgresChange"], Any]
+PostgresChangeCallback = Callable[["PostgresChange"], object]
 SUPPORTED_CHANNEL_TYPES = frozenset({"broadcast", "presence", "postgres"})
 POSTGRES_EVENTS = frozenset({"INSERT", "UPDATE", "DELETE"})
 POSTGRES_CHANNEL_SEGMENTS = 3
@@ -86,6 +86,7 @@ CONNECTION_SESSION_UNAVAILABLE = "Realtime connection has no session binding"
 CONNECTION_SESSION_CHANGED = "Realtime connection session changed"
 POSTGRES_FETCH_FAILED_MESSAGE = "Volcano realtime Postgres row fetch failed"
 _POSTGRES_QUERY_UNAVAILABLE = "Transport does not support realtime Postgres row fetch"
+_INVALID_POSTGRES_ROW_VALUE = "Realtime Postgres row contains a non-JSON value"
 
 
 def _empty_presence_data() -> Mapping[str, JSONValue]:
@@ -257,7 +258,7 @@ class _PostgresDelivery:
 @dataclass(frozen=True, slots=True)
 class _CallbackDelivery:
     event: str
-    data: Any
+    data: object
     postgres_identity: _PostgresDeliveryIdentity | None = None
     delivery_epoch: int | None = None
 
@@ -476,6 +477,33 @@ def _native_presence_clients(value: object) -> Mapping[str, object] | None:
     return clients
 
 
+def _is_json_value(value: object) -> TypeGuard[JSONValue]:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return True
+    if isinstance(value, (list, tuple)):
+        values = cast("list[object] | tuple[object, ...]", value)
+        return all(_is_json_value(item) for item in values)
+    if isinstance(value, Mapping):
+        entries = cast("Mapping[object, object]", value)
+        return all(
+            isinstance(key, str) and _is_json_value(item)
+            for key, item in entries.items()
+        )
+    return False
+
+
+def _is_json_record(
+    value: Mapping[str, object],
+) -> TypeGuard[Mapping[str, JSONValue]]:
+    return all(_is_json_value(item) for item in value.values())
+
+
+def _checked_postgres_row(row: dict[str, object]) -> Mapping[str, JSONValue]:
+    if not _is_json_record(row):
+        raise TypeError(_INVALID_POSTGRES_ROW_VALUE)
+    return row
+
+
 def _centrifuge_client(
     address: str,
     *,
@@ -686,7 +714,7 @@ def _presence_info(info: object) -> RealtimePresenceInfo:
 
 async def _run_connection_callback(
     callback: RealtimeCallback,
-    context: Any,
+    context: object,
 ) -> None:
     result = callback(context)
     if inspect.isawaitable(result):
@@ -741,7 +769,7 @@ class Channel:
             maxsize=CALLBACK_QUEUE_LIMIT
         )
         self._callback_task: asyncio.Task[None] | None = None
-        self._pending_presence_sync: Any = NO_PENDING_CALLBACK
+        self._pending_presence_sync: object = NO_PENDING_CALLBACK
         self._postgres_epoch: int = 0
         self._postgres_session_lineage: SessionOperations | None = None
         self._postgres_lock: asyncio.Lock = asyncio.Lock()
@@ -1047,7 +1075,7 @@ class Channel:
         """Wait until this channel is subscribed and ready for use."""
         await self._realtime._subscribe(self)
 
-    async def send(self, data: Any) -> None:
+    async def send(self, data: object) -> None:
         """Publish a broadcast payload to this channel."""
         await self._realtime._publish(self, data)
 
@@ -1058,7 +1086,7 @@ class Channel:
     async def _emit(
         self,
         event: str,
-        data: Any,
+        data: object,
         *,
         postgres_identity: _PostgresDeliveryIdentity | None = None,
     ) -> None:
@@ -1382,7 +1410,7 @@ class Realtime:
         }
         self._next_callback_id: int = 0
         self._connection_callback_queue: asyncio.Queue[
-            tuple[str, Any, tuple[int, ...]]
+            tuple[str, object, tuple[int, ...]]
         ] = asyncio.Queue(maxsize=CALLBACK_QUEUE_LIMIT)
         self._connection_callback_task: asyncio.Task[None] | None = None
         self._database_name: str | None = None
@@ -1399,7 +1427,7 @@ class Realtime:
     async def _fetch_postgres_rows(
         self,
         requests: tuple[_PostgresFetchRequest, ...],
-    ) -> tuple[dict[str, Any] | None, ...]:
+    ) -> tuple[Mapping[str, JSONValue] | None, ...]:
         first = requests[0]
         row_ids = [request.row_id for request in requests]
         transport = self._client_context._transport
@@ -1415,7 +1443,10 @@ class Realtime:
                 "limit": len(row_ids),
             },
         )
-        rows = _database_rows(response_payload(response, 200))
+        rows = tuple(
+            _checked_postgres_row(row)
+            for row in _database_rows(response_payload(response, 200))
+        )
         return tuple(
             next(
                 (row for row in rows if row.get("id") == request.row_id),
@@ -1472,7 +1503,7 @@ class Realtime:
 
         return unsubscribe
 
-    def _enqueue_connection_callbacks(self, event: str, context: Any) -> None:
+    def _enqueue_connection_callbacks(self, event: str, context: object) -> None:
         callback_ids = tuple(self._connection_callbacks[event])
         if not callback_ids:
             return
@@ -1818,7 +1849,7 @@ class Realtime:
         else:
             await channel._abort_presence_sync()
 
-    async def _publish(self, channel: Channel, data: Any) -> None:
+    async def _publish(self, channel: Channel, data: object) -> None:
         async with self._connection_lock:
             if channel._type != "broadcast":
                 raise ValueError(BROADCAST_ONLY)
