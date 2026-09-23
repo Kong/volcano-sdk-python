@@ -11,7 +11,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from io import SEEK_END, BytesIO
 from tempfile import TemporaryFile
-from typing import TYPE_CHECKING, BinaryIO, Protocol, TypeGuard, cast
+from typing import (
+    TYPE_CHECKING,
+    BinaryIO,
+    Protocol,
+    TypeGuard,
+    cast,
+    runtime_checkable,
+)
 from urllib.parse import quote
 
 from ._transport import (
@@ -51,6 +58,9 @@ _UPLOAD_SPOOL_READ_SIZE = 1_048_576
 _UPLOAD_SOURCE_UNAVAILABLE = "Upload source is temporarily unavailable"
 _INVALID_SIMPLE_UPLOAD = "Upload data must be bytes or a readable binary stream"
 _INVALID_UPLOAD_RESPONSE = "Expected a storage upload response object"
+_INVALID_STORAGE_TRANSPORT = (
+    "Transport does not support the requested storage operation"
+)
 
 
 def _optional_datetime(value: object) -> datetime | None:
@@ -194,8 +204,11 @@ def _project_id_from_anon_key(anon_key: str) -> str:
     try:
         encoded = parts[1].encode("ascii")
         padded = encoded + (b"=" * (-len(encoded) % 4))
-        payload = json.loads(
-            base64.b64decode(padded, altchars=b"-_", validate=True).decode(),
+        payload = cast(
+            "object",
+            json.loads(
+                base64.b64decode(padded, altchars=b"-_", validate=True).decode()
+            ),
         )
     except (binascii.Error, UnicodeError, json.JSONDecodeError) as error:
         raise ValueError(_INVALID_STORAGE_ANON_KEY) from error
@@ -224,12 +237,12 @@ def _remaining_upload_bytes(source: BinaryIO) -> int | None:
         return None
     try:
         try:
-            source.seek(0, SEEK_END)
+            _ = source.seek(0, SEEK_END)
             remaining = max(0, source.tell() - position)
         except (OSError, ValueError):
             remaining = None
     finally:
-        source.seek(position)
+        _ = source.seek(position)
     return remaining
 
 
@@ -240,7 +253,7 @@ def _spool_upload_source(source: BinaryIO, target: BinaryIO) -> None:
             raise BlockingIOError(_UPLOAD_SOURCE_UNAVAILABLE)
         if chunk == b"":
             return
-        target.write(chunk)
+        _ = target.write(chunk)
 
 
 def _read_upload_part(source: BinaryIO, part_size: int) -> bytes:
@@ -284,7 +297,7 @@ def _resumable_upload_source(
     with TemporaryFile(mode="w+b") as source:
         _spool_upload_source(data, source)
         total_size = source.tell()
-        source.seek(0)
+        _ = source.seek(0)
         yield source, total_size
 
 
@@ -305,6 +318,7 @@ class StorageContext(Protocol):
     ) -> tuple[int, SessionOperations, Session | None]: ...
 
 
+@runtime_checkable
 class StorageListTransport(Protocol):
     """Transport capability required to list storage objects."""
 
@@ -321,6 +335,7 @@ class StorageListTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageDeleteTransport(Protocol):
     """Transport capability required to delete storage objects."""
 
@@ -335,6 +350,7 @@ class StorageDeleteTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageMoveTransport(Protocol):
     """Transport capability required to move a storage object."""
 
@@ -350,6 +366,7 @@ class StorageMoveTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageCopyTransport(Protocol):
     """Transport capability required to copy a storage object."""
 
@@ -365,6 +382,7 @@ class StorageCopyTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageVisibilityTransport(Protocol):
     """Transport capability required to update object visibility."""
 
@@ -380,6 +398,7 @@ class StorageVisibilityTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageUploadSessionTransport(Protocol):
     """Transport capability required to create resumable upload sessions."""
 
@@ -394,6 +413,7 @@ class StorageUploadSessionTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageUploadPartTransport(Protocol):
     """Transport capability required to upload resumable storage parts."""
 
@@ -408,6 +428,7 @@ class StorageUploadPartTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageCompleteUploadTransport(Protocol):
     """Transport capability required to complete resumable storage uploads."""
 
@@ -422,6 +443,7 @@ class StorageCompleteUploadTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageUploadStatusTransport(Protocol):
     """Transport capability required to inspect resumable storage uploads."""
 
@@ -436,6 +458,7 @@ class StorageUploadStatusTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageAbortUploadTransport(Protocol):
     """Transport capability required to abort resumable storage uploads."""
 
@@ -492,7 +515,7 @@ class StorageBucket:
         """
         mime_type = _upload_content_type(content_type)
         binding = self._client._capture_session_binding()
-        self._client._session_token()
+        _ = self._client._session_token()
         content = _simple_upload_bytes(data)
         response = self._client.auth._session_request(
             lambda token: invoke(
@@ -531,7 +554,7 @@ class StorageBucket:
             if byte_range is not None and response.status_code == _HTTP_PARTIAL_CONTENT
             else 200
         )
-        response_payload(response, expected_status)
+        _ = response_payload(response, expected_status)
         return bytes(response.content)
 
     def create_upload_session(
@@ -548,7 +571,9 @@ class StorageBucket:
             Session ID, server-selected part size and count, and expiry.
 
         """
-        transport = cast("StorageUploadSessionTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, StorageUploadSessionTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
         response = self._client.auth._session_request(
             lambda token: invoke(
                 transport.create_upload_session,
@@ -578,7 +603,9 @@ class StorageBucket:
             The accepted part number, ETag, and byte count.
 
         """
-        transport = cast("StorageUploadPartTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, StorageUploadPartTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
         response = self._client.auth._session_request(
             lambda token: invoke(
                 transport.upload_part,
@@ -606,7 +633,9 @@ class StorageBucket:
             Metadata for the object assembled from the uploaded parts.
 
         """
-        transport = cast("StorageCompleteUploadTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, StorageCompleteUploadTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
         response = self._client.auth._session_request(
             lambda token: invoke(
                 transport.complete_upload_session,
@@ -633,7 +662,9 @@ class StorageBucket:
             Session state, byte and part counts, uploaded parts, and timestamps.
 
         """
-        transport = cast("StorageUploadStatusTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, StorageUploadStatusTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
         response = self._client.auth._session_request(
             lambda token: invoke(
                 transport.get_upload_session,
@@ -654,7 +685,9 @@ class StorageBucket:
         session_id: str,
     ) -> None:
         """Abort a resumable upload and discard its uploaded parts."""
-        transport = cast("StorageAbortUploadTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, StorageAbortUploadTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
         response = self._client.auth._session_request(
             lambda token: invoke(
                 transport.abort_upload_session,
@@ -666,7 +699,7 @@ class StorageBucket:
                 ),
             )
         )
-        response_payload(response, 200)
+        _ = response_payload(response, 200)
 
     def upload_resumable(
         self,
@@ -684,7 +717,7 @@ class StorageBucket:
 
         """
         path = _storage_path(path)
-        self._client._session_token()
+        _ = self._client._session_token()
         with _resumable_upload_source(data) as (source, total_size):
             session = self.create_upload_session(
                 path,
@@ -718,7 +751,7 @@ class StorageBucket:
         uploaded = 0
         for part_index in range(session.total_parts):
             part = _read_upload_part(source, session.part_size)
-            self.upload_part(
+            _ = self.upload_part(
                 path,
                 session_id=session.session_id,
                 part_number=part_index + 1,
@@ -745,7 +778,9 @@ class StorageBucket:
             An immutable object page whose next_cursor is None on the last page.
 
         """
-        transport = cast("StorageListTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, StorageListTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
         response = self._client.auth._session_request(
             lambda token: invoke(
                 transport.list_storage_objects,
@@ -774,7 +809,9 @@ class StorageBucket:
     def _remove_path(
         self, path: str, binding: tuple[int, SessionOperations, Session | None]
     ) -> None:
-        transport = cast("StorageDeleteTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, StorageDeleteTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
         response = self._client.auth._session_request(
             lambda token: invoke(
                 transport.delete_storage_object,
@@ -784,7 +821,7 @@ class StorageBucket:
             ),
             binding=binding,
         )
-        response_payload(response, 200)
+        _ = response_payload(response, 200)
 
     def move(self, from_path: str, to_path: str) -> StorageObject:
         """Move or rename an object within this bucket.
@@ -794,7 +831,9 @@ class StorageBucket:
 
         """
         source, destination = _storage_paths((from_path, to_path))
-        transport = cast("StorageMoveTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, StorageMoveTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
         response = self._client.auth._session_request(
             lambda token: invoke(
                 transport.move_storage_object,
@@ -814,7 +853,9 @@ class StorageBucket:
 
         """
         source, destination = _storage_paths((from_path, to_path))
-        transport = cast("StorageCopyTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, StorageCopyTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
         response = self._client.auth._session_request(
             lambda token: invoke(
                 transport.copy_storage_object,
@@ -835,7 +876,9 @@ class StorageBucket:
         """
         object_path = _storage_paths(path)[0]
         visibility = _storage_visibility(is_public)
-        transport = cast("StorageVisibilityTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, StorageVisibilityTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
         response = self._client.auth._session_request(
             lambda token: invoke(
                 transport.update_storage_object_visibility,
@@ -868,7 +911,7 @@ class Storage:
 
     def __init__(self, client: StorageContext) -> None:
         """Create a storage facade backed by a client."""
-        self._client = client
+        self._client: StorageContext = client
 
     def from_(self, bucket: str) -> StorageBucket:
         """Create a facade scoped to a bucket.

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from io import SEEK_END, BufferedReader, BytesIO, RawIOBase
+from typing import TYPE_CHECKING
 
 import pytest
+from transport_fixtures import RejectingTransport
 from typing_extensions import override
 
 from volcano_sdk import VolcanoClient
@@ -17,6 +19,11 @@ from volcano_sdk.storage import (
     _storage_page,
     _storage_paths,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from volcano_sdk.storage import StorageBucket
 
 
 class UnavailableRawStream(RawIOBase):
@@ -36,6 +43,47 @@ class EndSeekFailure(BytesIO):
             message = "size unavailable"
             raise OSError(message)
         return super().seek(offset, whence)
+
+
+_STORAGE_OPERATIONS: tuple[Callable[[StorageBucket], object], ...] = (
+    lambda bucket: bucket.create_upload_session("file.bin", total_size=0),
+    lambda bucket: bucket.upload_part(
+        "file.bin", session_id="session", part_number=1, data=b"x"
+    ),
+    lambda bucket: bucket.complete_upload_session("file.bin", session_id="session"),
+    lambda bucket: bucket.get_upload_session("file.bin", session_id="session"),
+    lambda bucket: bucket.abort_upload_session("file.bin", session_id="session"),
+    lambda bucket: bucket.list(),
+    lambda bucket: bucket.remove("file.bin"),
+    lambda bucket: bucket.move("file.bin", "moved.bin"),
+    lambda bucket: bucket.copy("file.bin", "copied.bin"),
+    lambda bucket: bucket.update_visibility("file.bin", is_public=True),
+)
+
+
+@pytest.mark.parametrize(
+    "operation",
+    _STORAGE_OPERATIONS,
+    ids=(
+        "create-session",
+        "upload-part",
+        "complete-session",
+        "get-session",
+        "abort-session",
+        "list",
+        "remove",
+        "move",
+        "copy",
+        "update-visibility",
+    ),
+)
+def test_optional_storage_operation_requires_transport_capability(
+    operation: Callable[[StorageBucket], object],
+) -> None:
+    client = VolcanoClient(anon_key="anon", _transport=RejectingTransport())
+
+    with pytest.raises(TypeError, match="requested storage operation"):
+        operation(client.storage.from_("assets"))
 
 
 @pytest.mark.parametrize("payload", [None, [], "invalid", 1])
