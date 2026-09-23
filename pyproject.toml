@@ -181,6 +181,37 @@ reportImplicitStringConcatenation = "error"
 reportUnannotatedClassAttribute = "error"
 reportUnusedCallResult = "error"
 
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/contract"
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportImplicitStringConcatenation = "error"
+reportPrivateUsage = "error"
+reportUnannotatedClassAttribute = "error"
+reportUnusedCallResult = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/package"
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportImplicitStringConcatenation = "error"
+reportPrivateUsage = "error"
+reportUnannotatedClassAttribute = "error"
+reportUnusedCallResult = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "scripts"
+extraPaths = [".", "src", "tests/unit", "features"]
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportImplicitStringConcatenation = "error"
+reportPrivateUsage = "error"
+reportUnannotatedClassAttribute = "error"
+reportUnusedCallResult = "error"
+
 [tool.ruff]
 required-version = "==0.16.4"
 target-version = "py311"
@@ -261,6 +292,7 @@ max-complexity = 5
 
 [tool.pytest.ini_options]
 minversion = "9.1.1"
+pythonpath = ["features"]
 strict = true
 empty_parameter_set_mark = "fail_at_collect"
 asyncio_mode = "auto"

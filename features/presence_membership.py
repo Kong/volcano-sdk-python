@@ -56,7 +56,7 @@ async def verify_presence_membership(world: ContractWorld) -> list[int]:
         await second.unsubscribe()
         assert await first_observer.roster(1) == initial
         await first_observer.wait(
-            lambda: _observed_membership(first_observer.snapshots, initial, joined)
+            lambda: observed_membership(first_observer.snapshots, initial, joined)
         )
         return [1, 2, 1]
     finally:
@@ -65,7 +65,7 @@ async def verify_presence_membership(world: ContractWorld) -> list[int]:
         _ = await asyncio.gather(first.unsubscribe(), second.unsubscribe())
 
 
-def _observed_membership(
+def observed_membership(
     snapshots: list[set[str]], initial: set[str], joined: set[str]
 ) -> bool:
     expected = iter([initial, joined, initial])

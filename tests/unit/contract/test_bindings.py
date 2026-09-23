@@ -2,29 +2,103 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import importlib.util
+import importlib
 import json
 import os
-import sys
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from unittest.mock import AsyncMock, Mock, call
 
+import behave.step_registry as behave_step_registry
+import broadcast_pause
+import contract_fixture
+import environment as contract_environment
 import httpx
+import logs_contract
+import postgres_changes
+import presence_membership
 import pytest
-from behave.step_registry import registry
+from behave.runner import Context
+from contract_support import ContractWorld, Outcome
 from session_fixtures import access_token
+from steps import sdk_contract_steps
 
-from volcano_sdk import Session, VolcanoClient
+from contract.fakes import (
+    FailingBucket,
+    FailingPresenceChannel,
+    PausePublisher,
+    PauseSubscriber,
+)
+from volcano_sdk import FunctionResponse, LogActivityResponse, Session, VolcanoClient
 from volcano_sdk._transport import GeneratedTransport
 from volcano_sdk.auth import Auth
+from volcano_sdk.realtime import PostgresChange
 
 if TYPE_CHECKING:
-    from types import ModuleType
+    from collections.abc import Callable, Mapping
 
-ROOT = Path(__file__).parents[2]
+    from volcano_sdk.models import JSONValue
+
+ROOT = Path(__file__).parents[3]
+
+
+class _Runner:
+    config: object = object()
+
+
+_RUNNER = _Runner()
+
+
+@runtime_checkable
+class _StepRegistry(Protocol):
+    steps: object
+
+    def clear(self) -> None: ...
+
+
+@runtime_checkable
+class _StepDefinition(Protocol):
+    pattern: str
+
+
+def _registry() -> _StepRegistry:
+    value = cast("object", behave_step_registry.registry)
+    assert isinstance(value, _StepRegistry)
+    return value
+
+
+def _bound_patterns() -> set[str]:
+    steps = _registry().steps
+    assert isinstance(steps, dict)
+    entries = cast("dict[object, object]", steps)
+    bound: set[str] = set()
+    for definitions in entries.values():
+        assert isinstance(definitions, list)
+        for definition in cast("list[object]", definitions):
+            assert isinstance(definition, _StepDefinition)
+            assert isinstance(definition.pattern, str)
+            bound.add(definition.pattern)
+    return bound
+
+
+def _fixture() -> contract_fixture.ContractFixture:
+    decoded = cast(
+        "object",
+        json.loads((ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text()),
+    )
+    assert contract_fixture.is_contract_fixture(decoded)
+    return decoded
+
+
+def _context(world: ContractWorld) -> Context:
+    context = Context(_RUNNER)
+    context.contract = world
+    return context
+
+
 FEATURE_SHA256 = {
     "storage-lifecycle.feature": (
         "08d00ac825bc186929904dea75af28052df964e446e7aeb0e2266711536aa88f"
@@ -101,18 +175,6 @@ FEATURE_SHA256 = {
 }
 
 
-def _load_module(name: str, path: Path) -> ModuleType:
-    features_path = str(ROOT / "features")
-    if features_path not in sys.path:
-        sys.path.insert(0, features_path)
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def test_contract_features_match_shared_source() -> None:
     copied = ROOT / "features" / "contract"
     assert {path.name for path in copied.glob("*.feature")} == FEATURE_SHA256.keys()
@@ -163,15 +225,9 @@ def test_contract_storage_sessions_match_shared_source() -> None:
 
 
 def test_every_contract_phrase_is_bound_verbatim() -> None:
-    registry.clear()
-    _load_module(
-        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
-    )
-    bound = {
-        definition.pattern
-        for definitions in registry.steps.values()
-        for definition in definitions
-    }
+    _registry().clear()
+    _ = importlib.reload(sdk_contract_steps)
+    bound = _bound_patterns()
     assert bound == {
         "the authenticated client invokes the contract function by name",
         "the function invocation replaces the rejected token for the same user",
@@ -309,52 +365,42 @@ def test_every_contract_phrase_is_bound_verbatim() -> None:
 def test_broadcast_pause_checks_silence(
     monkeypatch: pytest.MonkeyPatch, *, leak: bool
 ) -> None:
-    pause = _load_module(
-        "contract_broadcast_pause", ROOT / "features" / "broadcast_pause.py"
-    )
-    subscriber = SimpleNamespace(
-        on=Mock(), subscribe=AsyncMock(), unsubscribe=AsyncMock()
-    )
-
-    def publish(message: object) -> None:
-        paused = subscriber.unsubscribe.await_count > subscriber.subscribe.await_count
-        if leak or not paused:
-            subscriber.on.call_args.args[1](message)
-
-    world = SimpleNamespace(
-        subscriber=subscriber,
-        publisher=SimpleNamespace(send=AsyncMock(side_effect=publish)),
-        realtime_message={"event": "message", "value": "contract"},
-    )
-    monkeypatch.setattr(pause.asyncio, "sleep", AsyncMock())
-    if leak:
-        with pytest.raises(AssertionError, match="while paused"):
-            asyncio.run(pause.verify_broadcast_pause(world))
-    else:
-        assert (
-            asyncio.run(pause.verify_broadcast_pause(world)) == world.realtime_message
-        )
-    subscriber.on.assert_called_once()
-    pause.asyncio.sleep.assert_awaited_once_with(1)
+    world = ContractWorld(_fixture())
+    subscriber = PauseSubscriber()
+    monkeypatch.setattr(world, "subscriber", subscriber)
+    monkeypatch.setattr(world, "publisher", PausePublisher(subscriber, leak=leak))
+    world.realtime_message = {"event": "message", "value": "contract"}
+    sleep = AsyncMock()
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+    try:
+        if leak:
+            with pytest.raises(AssertionError, match="while paused"):
+                _ = asyncio.run(broadcast_pause.verify_broadcast_pause(world))
+        else:
+            assert (
+                asyncio.run(broadcast_pause.verify_broadcast_pause(world))
+                == world.realtime_message
+            )
+        assert subscriber.on_count == 1
+        sleep.assert_awaited_once_with(1)
+    finally:
+        world.cleanup()
 
 
 def test_durable_idempotency_binding_starts_twice_and_records_both_handles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    registry.clear()
-    steps = _load_module(
-        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
-    )
+    _registry().clear()
+    _ = importlib.reload(sdk_contract_steps)
+    steps = sdk_contract_steps
     first = SimpleNamespace(id="execution", name="contract")
     second = SimpleNamespace(id="execution", name="contract")
-    fixture = json.loads(
-        (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text()
-    )
-    world = steps.ContractWorld(fixture)
+    fixture = _fixture()
+    world = ContractWorld(fixture)
     start = Mock(side_effect=[first, second])
     monkeypatch.setattr(world, "start_durable_execution", start)
     try:
-        steps.start_durable_execution_twice(SimpleNamespace(contract=world))
+        steps.start_durable_execution_twice(_context(world))
 
         assert start.call_args_list == [call(), call()]
         assert world.last_outcome is not None
@@ -367,22 +413,26 @@ def test_durable_idempotency_binding_starts_twice_and_records_both_handles(
 def test_realtime_contract_pair_authenticates_and_owns_both_clients(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    registry.clear()
-    steps = _load_module(
-        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
-    )
-    fixture = json.loads(
-        (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text()
-    )
-    world = steps.ContractWorld(fixture)
+    _registry().clear()
+    _ = importlib.reload(sdk_contract_steps)
+    steps = sdk_contract_steps
+    fixture = _fixture()
+    world = ContractWorld(fixture)
     signed_in: list[tuple[str, str]] = []
 
     def sign_in(_auth: object, *, email: str, password: str) -> None:
         signed_in.append((email, password))
 
+    async def subscribe_pair(_subscriber: object, _publisher: object) -> None:
+        pass
+
     monkeypatch.setattr(Auth, "sign_in", sign_in)
+    monkeypatch.setattr(steps, "_subscribe_pair", subscribe_pair)
     try:
-        subscriber, publisher = steps._realtime_pair(world)
+        steps.two_realtime_clients(_context(world))
+        subscriber, publisher = world.subscriber, world.publisher
+        assert subscriber is not None
+        assert publisher is not None
         assert len(world.realtime_clients) == 2
         assert world.subscriber is subscriber
         assert world.publisher is publisher
@@ -393,47 +443,47 @@ def test_realtime_contract_pair_authenticates_and_owns_both_clients(
         world.cleanup()
 
 
-def test_lifecycle_cleanup_attempts_all_paths_after_a_deletion_failure() -> None:
-    registry.clear()
-    steps = _load_module(
-        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
-    )
+def test_lifecycle_cleanup_attempts_all_paths_after_a_deletion_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _registry().clear()
+    _ = importlib.reload(sdk_contract_steps)
+    steps = sdk_contract_steps
     paths = ["contract.txt", "contract.txt.copy", "contract.txt.moved"]
-    bucket = Mock()
-    bucket.list.return_value.objects = [SimpleNamespace(name=path) for path in paths]
-    bucket.remove.side_effect = [RuntimeError("delete failed"), None, None]
-    fixture = json.loads(
-        (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text()
-    )
-    world = steps.ContractWorld(fixture)
-    world.client = SimpleNamespace(
-        storage=SimpleNamespace(from_=Mock(return_value=bucket))
-    )
+    bucket = FailingBucket(paths)
+    fixture = _fixture()
+    world = ContractWorld(fixture)
+
+    def bucket_for(_name: str) -> FailingBucket:
+        return bucket
+
+    def record(_operation: Callable[[], object]) -> Outcome:
+        return Outcome(ok=True)
+
+    monkeypatch.setattr(world.client.storage, "from_", bucket_for)
     world.fixture["bucket_name"] = "assets"
     world.storage_path = paths[0]
-    world.record = Mock()
-    steps.copy_move_and_remove(SimpleNamespace(contract=world))
+    monkeypatch.setattr(world, "record", record)
+    steps.copy_move_and_remove(_context(world))
 
     with pytest.raises(ExceptionGroup, match="Python contract cleanup failed"):
         world.cleanup()
 
-    assert bucket.remove.call_args_list == [call(path) for path in reversed(paths)]
+    assert bucket.removed == list(reversed(paths))
     assert world.loop.is_closed()
 
 
 def test_fixture_loader_requires_absolute_private_file(tmp_path: Path) -> None:
-    environment = _load_module(
-        "contract_environment", ROOT / "features" / "environment.py"
-    )
+    environment = contract_environment
     fixture = tmp_path / "fixture.json"
-    fixture.write_text(
+    _ = fixture.write_text(
         (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text(),
         encoding="utf-8",
     )
 
     fixture.chmod(0o644)
     with pytest.raises(PermissionError, match="0600"):
-        environment.load_fixture(fixture)
+        _ = environment.load_fixture(fixture)
 
     fixture.chmod(0o600)
     assert environment.load_fixture(fixture)["project_id"] == "dry-run-project"
@@ -442,7 +492,7 @@ def test_fixture_loader_requires_absolute_private_file(tmp_path: Path) -> None:
     os.chdir(tmp_path)
     try:
         with pytest.raises(ValueError, match="absolute"):
-            environment.load_fixture(Path("fixture.json"))
+            _ = environment.load_fixture(Path("fixture.json"))
     finally:
         os.chdir(previous)
 
@@ -450,11 +500,9 @@ def test_fixture_loader_requires_absolute_private_file(tmp_path: Path) -> None:
 def test_fixture_loader_rejects_incomplete_or_malformed_contract_data(
     tmp_path: Path,
 ) -> None:
-    environment = _load_module(
-        "contract_environment", ROOT / "features" / "environment.py"
-    )
+    environment = contract_environment
     fixture = tmp_path / "fixture.json"
-    fixture.write_text(
+    _ = fixture.write_text(
         (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text(),
         encoding="utf-8",
     )
@@ -467,16 +515,14 @@ def test_fixture_loader_rejects_incomplete_or_malformed_contract_data(
         {**valid, "mutation_rows": {**valid["mutation_rows"], "insert": {}}},
     )
     for invalid in invalid_cases:
-        fixture.write_text(json.dumps(invalid), encoding="utf-8")
+        _ = fixture.write_text(json.dumps(invalid), encoding="utf-8")
         fixture.chmod(0o600)
         with pytest.raises(TypeError, match="complete contract fixture"):
-            environment.load_fixture(fixture)
+            _ = environment.load_fixture(fixture)
 
 
 def test_contract_fixture_validator_checks_every_declared_string_field() -> None:
-    fixture_module = _load_module(
-        "contract_fixture", ROOT / "features" / "contract_fixture.py"
-    )
+    fixture_module = contract_fixture
     assert set(fixture_module.STRING_FIELDS) == set(
         fixture_module.ContractFixture.__annotations__
     ) - {"fixture_row", "mutation_rows"}
@@ -486,34 +532,35 @@ def test_contract_fixture_validator_checks_every_declared_string_field() -> None
 def test_bootstrap_cleanup_is_disarmed_only_after_successful_revocation(
     monkeypatch: pytest.MonkeyPatch, *, revoked: bool
 ) -> None:
-    registry.clear()
-    steps = _load_module(
-        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
-    )
-    source = Mock()
-    source.auth.get_session.return_value = SimpleNamespace(
-        access_token="captured-access"
-    )
-    target = Mock()
-    fixture = json.loads(
-        (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text()
-    )
-    world = steps.ContractWorld(fixture)
-    world.client = source
-    world.record = Mock(return_value=SimpleNamespace(ok=revoked))
-    with monkeypatch.context() as patch:
-        patch.setattr(steps, "VolcanoClient", Mock(return_value=target))
-        steps.bootstrap_access_token(SimpleNamespace(contract=world))
-        steps.sign_out(SimpleNamespace(contract=world))
+    _registry().clear()
+    _ = importlib.reload(sdk_contract_steps)
+    steps = sdk_contract_steps
+    world = ContractWorld(_fixture())
+    source = world.client
+    _ = source.auth.set_session(Session("captured-access", "refresh", "user"))
+    sign_out_calls = 0
+
+    def sign_out() -> None:
+        nonlocal sign_out_calls
+        sign_out_calls += 1
+
+    def record(_operation: Callable[[], object]) -> Outcome:
+        return Outcome(ok=revoked)
+
+    monkeypatch.setattr(source.auth, "sign_out", sign_out)
+    monkeypatch.setattr(world, "record", record)
+    try:
+        steps.bootstrap_access_token(_context(world))
+        steps.sign_out(_context(world))
+    finally:
         world.cleanup()
-    assert source.auth.sign_out.call_count == (0 if revoked else 1)
+    assert sign_out_calls == (0 if revoked else 1)
 
 
 def test_rejected_token_binding_preserves_refreshable_session_identity() -> None:
-    registry.clear()
-    steps = _load_module(
-        "contract_steps", ROOT / "features/steps/sdk_contract_steps.py"
-    )
+    _registry().clear()
+    _ = importlib.reload(sdk_contract_steps)
+    steps = sdk_contract_steps
     user = "00000000-0000-4000-8000-000000000001"
     requests: list[httpx.Request] = []
 
@@ -536,14 +583,12 @@ def test_rejected_token_binding_preserves_refreshable_session_identity() -> None
             api_url="https://api.test", httpx_transport=httpx.MockTransport(handle)
         ),
     )
-    client.auth.set_session(Session(access_token(), "refresh", user))
-    fixture = json.loads(
-        (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text()
-    )
-    world = steps.ContractWorld(fixture)
+    _ = client.auth.set_session(Session(access_token(), "refresh", user))
+    fixture = _fixture()
+    world = ContractWorld(fixture)
     world.client = client
     world.fixture["user_id"] = user
-    context = SimpleNamespace(contract=world)
+    context = _context(world)
     try:
         steps.replace_access_token(context)
         assert client.current_session is not None
@@ -552,7 +597,7 @@ def test_rejected_token_binding_preserves_refreshable_session_identity() -> None
             client.current_session.access_token.split(".")[:2]
             == access_token().split(".")[:2]
         )
-        client.auth.refresh_session()
+        _ = client.auth.refresh_session()
         steps.read_replaced_token(context)
         assert len(requests) == 1
         assert requests[0].url.path == "/auth/refresh"
@@ -564,20 +609,17 @@ def test_rejected_token_binding_preserves_refreshable_session_identity() -> None
 def test_visibility_assertion_rejects_private_payload_leaks(
     leaking_response: int | None,
 ) -> None:
-    registry.clear()
-    steps = _load_module(
-        "contract_steps", ROOT / "features" / "steps" / "sdk_contract_steps.py"
-    )
+    _registry().clear()
+    _ = importlib.reload(sdk_contract_steps)
+    steps = sdk_contract_steps
     content = b"private contract content"
     private_bytes = [b"not found", b"not found"]
     if leaking_response is not None:
         private_bytes[leaking_response] = b"prefix: " + content
-    fixture = json.loads(
-        (ROOT / "tests/fixtures/sdk-contract-dry-run.json").read_text()
-    )
-    world = steps.ContractWorld(fixture)
+    fixture = _fixture()
+    world = ContractWorld(fixture)
     world.storage_bytes = content
-    world.last_outcome = steps.Outcome(
+    world.last_outcome = Outcome(
         ok=True,
         value={
             "statuses": [404, 200, 404],
@@ -586,7 +628,7 @@ def test_visibility_assertion_rejects_private_payload_leaks(
             "private_bytes": private_bytes,
         },
     )
-    context = SimpleNamespace(contract=world)
+    context = _context(world)
     try:
         if leaking_response is None:
             steps.anonymous_visibility_matches(context)
@@ -604,17 +646,10 @@ def test_contract_logs_feature_matches_shared_source() -> None:
 
 
 def test_log_contract_rejects_duplicate_and_wrong_resource_events() -> None:
-    module = _load_module("logs_contract", ROOT / "features" / "logs_contract.py")
-    world = SimpleNamespace(
-        fixture={
-            "api_url": "https://api.test",
-            "anon_key": "anon",
-            "logs_access_token": "project-token",
-            "function_id": "function-id",
-        }
-    )
-    contract = module.LogContract(world)
-    events = [
+    world = ContractWorld(_fixture())
+    world.fixture["function_id"] = "function-id"
+    contract = logs_contract.LogContract(world)
+    events: list[Mapping[str, JSONValue]] = [
         {
             "id": f"event-{ordinal}",
             "timestamp": f"2026-09-18T12:00:0{2 - ordinal}Z",
@@ -624,77 +659,78 @@ def test_log_contract_rejects_duplicate_and_wrong_resource_events() -> None:
         }
         for ordinal in range(3)
     ]
-    contract.verify_events(events)
-    with pytest.raises(AssertionError):
-        contract.verify_events([events[0], events[0], events[2]])
-    events[1] = {
-        **events[1],
-        "resource": {"type": "function", "id": "another-function"},
-    }
-    with pytest.raises(AssertionError):
+    try:
         contract.verify_events(events)
-    malformed_event: dict[str, object] = {**events[1], "resource": None}
-    with pytest.raises(AssertionError):
-        contract.verify_events([events[0], malformed_event, events[2]])
+        with pytest.raises(AssertionError):
+            contract.verify_events([events[0], events[0], events[2]])
+        events[1] = {
+            **events[1],
+            "resource": {"type": "function", "id": "another-function"},
+        }
+        with pytest.raises(AssertionError):
+            contract.verify_events(events)
+        malformed_event: dict[str, JSONValue] = {**events[1], "resource": None}
+        with pytest.raises(AssertionError):
+            contract.verify_events([events[0], malformed_event, events[2]])
+    finally:
+        world.cleanup()
 
 
 def test_log_activity_contract_rejects_wrong_resource_counts() -> None:
-    module = _load_module("logs_contract", ROOT / "features" / "logs_contract.py")
-    contract = module.LogContract(
-        SimpleNamespace(
-            fixture={
-                "api_url": "https://api.test",
-                "anon_key": "anon",
-                "logs_access_token": "project-token",
-                "function_id": "function-id",
-            }
+    world = ContractWorld(_fixture())
+    world.fixture["function_id"] = "function-id"
+    contract = logs_contract.LogContract(world)
+
+    def activity(resource_ids: JSONValue) -> LogActivityResponse:
+        return LogActivityResponse(
+            total=1,
+            data=(
+                {
+                    "total": 1,
+                    "counts": {"resource_ids": resource_ids, "levels": {"info": 1}},
+                },
+                {"total": 0, "counts": {"resource_ids": {}, "levels": {}}},
+            ),
         )
-    )
-    response = SimpleNamespace(
-        total=1,
-        data=[
-            {
-                "total": 1,
-                "counts": {"resource_ids": {"function-id": 1}, "levels": {"info": 1}},
-            },
-            {"total": 0, "counts": {"resource_ids": {}, "levels": {}}},
-        ],
-    )
-    contract.verify_activity(response)
-    response.data[0]["counts"]["resource_ids"] = {"another-function": 1}
-    with pytest.raises(AssertionError):
-        contract.verify_activity(response)
-    response.data[0]["counts"]["resource_ids"] = None
-    with pytest.raises(AssertionError):
-        contract.verify_activity(response)
+
+    try:
+        contract.verify_activity(activity({"function-id": 1}))
+        with pytest.raises(AssertionError):
+            contract.verify_activity(activity({"another-function": 1}))
+        with pytest.raises(AssertionError):
+            contract.verify_activity(activity(None))
+    finally:
+        world.cleanup()
 
 
 @pytest.mark.parametrize("server_skew_seconds", [-120, 120])
-def test_log_bounds_allow_server_clock_skew(server_skew_seconds: int) -> None:
-    module = _load_module("logs_contract", ROOT / "features" / "logs_contract.py")
-    world = SimpleNamespace(
-        fixture={
-            "api_url": "https://api.test",
-            "anon_key": "anon",
-            "logs_access_token": "project-token",
-            "function_id": "function-id",
-            "function_name": "function",
-        },
-        service_client=SimpleNamespace(
-            functions=SimpleNamespace(
-                invoke=Mock(
-                    return_value=SimpleNamespace(
-                        status=200, data={"echoed": "contract"}
-                    )
-                ),
-            )
-        ),
+def test_log_bounds_allow_server_clock_skew(
+    monkeypatch: pytest.MonkeyPatch, server_skew_seconds: int
+) -> None:
+    world = ContractWorld(_fixture())
+
+    def invoke(_name: str, _payload: JSONValue) -> FunctionResponse:
+        return FunctionResponse(
+            data={"echoed": "contract"}, status=200, headers={}, version=None
+        )
+
+    monkeypatch.setattr(
+        world.service_client.functions,
+        "invoke",
+        invoke,
     )
-    contract = module.LogContract(world)
+    contract = logs_contract.LogContract(world)
     server_time = datetime.now(UTC) + timedelta(seconds=server_skew_seconds)
-    contract.emit(1)
-    assert datetime.fromisoformat(contract.request["start_time"]) < server_time
-    assert server_time < datetime.fromisoformat(contract.request["end_time"])
+    try:
+        contract.emit(1)
+        start = contract.request["start_time"]
+        end = contract.request["end_time"]
+        assert isinstance(start, str)
+        assert isinstance(end, str)
+        assert datetime.fromisoformat(start) < server_time
+        assert server_time < datetime.fromisoformat(end)
+    finally:
+        world.cleanup()
 
 
 def test_contract_presence_feature_matches_shared_source() -> None:
@@ -714,11 +750,9 @@ def test_contract_presence_feature_matches_shared_source() -> None:
 def test_presence_requires_original_handler_membership_sequence(
     snapshots: list[set[str]], *, expected: bool
 ) -> None:
-    module = _load_module(
-        "presence_membership", ROOT / "features" / "presence_membership.py"
-    )
+    module = presence_membership
     assert (
-        module._observed_membership(snapshots, {"first"}, {"first", "second"})
+        module.observed_membership(snapshots, {"first"}, {"first", "second"})
         is expected
     )
 
@@ -729,6 +763,18 @@ def test_contract_postgres_feature_matches_shared_source() -> None:
     assert hashlib.sha256(feature.read_bytes()).hexdigest() == expected
 
 
+def _wrong_change(event: PostgresChange, field: str) -> PostgresChange:
+    if field == "record":
+        return replace(event, record={"id": "wrong-value"})
+    if field == "id":
+        return replace(event, id="wrong-value")
+    if field == "table":
+        return replace(event, table="wrong-value")
+    if field == "mode":
+        return replace(event, mode="lightweight")
+    raise ValueError(field)
+
+
 @pytest.mark.parametrize(
     ("automatic", "wrong_field"),
     [(True, "record"), (False, "id"), (True, "table"), (True, "id"), (True, "mode")],
@@ -736,9 +782,8 @@ def test_contract_postgres_feature_matches_shared_source() -> None:
 def test_postgres_notification_checks_reject_wrong_identity(
     *, automatic: bool, wrong_field: str
 ) -> None:
-    module = _load_module("postgres_changes", ROOT / "features" / "postgres_changes.py")
-    row = {"id": "row", "value": "inserted", "owner_id": "user"}
-    event = SimpleNamespace(
+    row: dict[str, JSONValue] = {"id": "row", "value": "inserted", "owner_id": "user"}
+    event = PostgresChange(
         type="INSERT",
         schema="public",
         table="records",
@@ -747,30 +792,54 @@ def test_postgres_notification_checks_reject_wrong_identity(
         id=None if automatic else "row",
         mode=None if automatic else "lightweight",
     )
-    module.verify_change(event, "INSERT", "records", row, automatic=automatic)
-    setattr(event, wrong_field, "wrong-value")
+    postgres_changes.verify_change(event, "INSERT", "records", row, automatic=automatic)
+    changed = _wrong_change(event, wrong_field)
     with pytest.raises(AssertionError):
-        module.verify_change(event, "INSERT", "records", row, automatic=automatic)
+        postgres_changes.verify_change(
+            changed, "INSERT", "records", row, automatic=automatic
+        )
 
 
 @pytest.mark.parametrize("automatic", [True, False])
-def test_postgres_observer_ignores_other_rows(*, automatic: bool) -> None:
-    module = _load_module("postgres_changes", ROOT / "features" / "postgres_changes.py")
-    channel = Mock()
-    observer = module.ChangeObserver(channel, "records", "row")
-    callbacks = [
-        entry.kwargs["callback"] for entry in channel.on_postgres_changes.call_args_list
-    ]
-    other = SimpleNamespace(
-        record={"id": "other"} if automatic else None, id=None if automatic else "other"
+def test_postgres_observer_ignores_other_rows(
+    monkeypatch: pytest.MonkeyPatch, *, automatic: bool
+) -> None:
+    client = VolcanoClient(api_url="https://api.test", anon_key="anon")
+    channel = client.realtime.channel("contract-postgres")
+    callbacks: list[Callable[[PostgresChange], None]] = []
+
+    def on_postgres_changes(
+        _event: str,
+        *,
+        schema: str,
+        table: str,
+        callback: Callable[[PostgresChange], None],
+    ) -> Callable[[], None]:
+        assert schema == "public"
+        assert table in {"records", "records_other"}
+        callbacks.append(callback)
+        return lambda: None
+
+    monkeypatch.setattr(channel, "on_postgres_changes", on_postgres_changes)
+    observer = postgres_changes.ChangeObserver(channel, "records", "row")
+    other = PostgresChange(
+        type="INSERT",
+        schema="public",
+        table="records",
+        record={"id": "other"} if automatic else None,
+        id=None if automatic else "other",
     )
     for callback in callbacks:
         callback(other)
     assert not observer.events
     assert not observer.inserts
     assert not observer.wrong_table
-    own = SimpleNamespace(
-        record={"id": "row"} if automatic else None, id=None if automatic else "row"
+    own = PostgresChange(
+        type="INSERT",
+        schema="public",
+        table="records",
+        record={"id": "row"} if automatic else None,
+        id=None if automatic else "row",
     )
     callbacks[0](own)
     callbacks[1](own)
@@ -779,27 +848,26 @@ def test_postgres_observer_ignores_other_rows(*, automatic: bool) -> None:
     observer.close()
 
 
-def test_presence_retains_channel_name_at_platform_length_boundary() -> None:
-    module = _load_module(
-        "presence_membership", ROOT / "features" / "presence_membership.py"
-    )
+def test_presence_retains_channel_name_at_platform_length_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     stop = RuntimeError("valid channel")
 
-    def channel(name: str, *, channel_type: str) -> Mock:
+    def channel(name: str, *, channel_type: str) -> FailingPresenceChannel:
         assert len(name) <= 64
         assert channel_type == "presence"
-        return Mock(
-            on_presence_sync=Mock(return_value=lambda: None),
-            subscribe=AsyncMock(side_effect=stop),
-            unsubscribe=AsyncMock(),
-        )
+        return FailingPresenceChannel(stop)
 
-    world = SimpleNamespace(
-        realtime_channel="x" * 64,
-        fixture={"user_id": "user"},
-        realtime_clients=[SimpleNamespace(realtime=SimpleNamespace(channel=channel))]
-        * 2,
-    )
-    with pytest.raises(RuntimeError, match="valid channel") as error:
-        asyncio.run(module.verify_presence_membership(world))
+    world = ContractWorld(_fixture())
+    world.realtime_channel = "x" * 64
+    world.fixture["user_id"] = "user"
+    other = VolcanoClient(api_url="https://api.test", anon_key="anon")
+    world.realtime_clients = [world.client, other]
+    monkeypatch.setattr(world.client.realtime, "channel", channel)
+    monkeypatch.setattr(other.realtime, "channel", channel)
+    try:
+        with pytest.raises(RuntimeError, match="valid channel") as error:
+            _ = asyncio.run(presence_membership.verify_presence_membership(world))
+    finally:
+        world.cleanup()
     assert error.value is stop
