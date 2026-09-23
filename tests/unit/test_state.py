@@ -11,7 +11,17 @@ from uuid import UUID
 
 import httpx
 import pytest
-from fixtures.invalid_arguments import non_session_adoption
+from fixtures.invalid_arguments import (
+    assign_frozen_field,
+    non_session_adoption,
+    unknown_oauth_api_provider,
+    unknown_oauth_link,
+    unknown_oauth_sign_in,
+    unknown_oauth_token,
+    unknown_oauth_token_refresh,
+    unknown_oauth_unlink,
+    unsupported_oauth_api_method,
+)
 from fixtures.invalid_callbacks import register_non_callable_auth
 
 from volcano_sdk import (
@@ -1751,7 +1761,7 @@ def test_list_sessions_returns_an_immutable_offset_page() -> None:
         {"authorization": "access-1", "page": 2, "limit": 10}
     ]
     with pytest.raises(FrozenInstanceError):
-        result.page = 3  # type: ignore[misc]
+        assign_frozen_field(result, "page", 3)
 
 
 def test_list_sessions_requires_a_current_session() -> None:
@@ -1839,7 +1849,7 @@ def test_list_linked_oauth_providers_returns_immutable_values() -> None:
     assert client.auth.get_session() is established
     assert transport.list_oauth_providers_calls == [{"authorization": "access-1"}]
     with pytest.raises(FrozenInstanceError):
-        result[0].provider = "github"  # type: ignore[misc]
+        assign_frozen_field(result[0], "provider", "github")
 
 
 def test_list_linked_oauth_providers_requires_a_current_session() -> None:
@@ -2099,11 +2109,7 @@ def test_sign_in_with_oauth_rejects_an_unknown_provider() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(ValueError, match="Unsupported OAuth provider"):
-        client.auth.sign_in_with_oauth(
-            provider="invalid",  # type: ignore[arg-type]
-            redirect_to="https://app.example/callback",
-            state="state-value",
-        )
+        unknown_oauth_sign_in(client.auth)
 
     assert transport.oauth_authorization_url_calls == []
 
@@ -2194,7 +2200,7 @@ def test_link_oauth_provider_rejects_an_unknown_provider() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(ValueError, match="Unsupported OAuth provider"):
-        client.auth.link_oauth_provider(provider="invalid")  # type: ignore[arg-type]
+        unknown_oauth_link(client.auth)
 
     assert transport.link_oauth_provider_calls == []
 
@@ -2261,7 +2267,7 @@ def test_unlink_oauth_provider_rejects_an_unknown_provider() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(ValueError, match="Unsupported OAuth provider"):
-        client.auth.unlink_oauth_provider(provider="invalid")  # type: ignore[arg-type]
+        unknown_oauth_unlink(client.auth)
 
     assert transport.unlink_oauth_provider_calls == []
 
@@ -2314,7 +2320,7 @@ def test_get_oauth_provider_token_returns_immutable_status() -> None:
         {"authorization": "access-1", "provider": "google"}
     ]
     with pytest.raises(FrozenInstanceError):
-        result.provider = "github"  # type: ignore[misc]
+        assign_frozen_field(result, "provider", "github")
 
 
 def test_get_oauth_provider_token_rejects_an_unknown_provider() -> None:
@@ -2322,7 +2328,7 @@ def test_get_oauth_provider_token_rejects_an_unknown_provider() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(ValueError, match="Unsupported OAuth provider"):
-        client.auth.get_oauth_provider_token(provider="invalid")  # type: ignore[arg-type]
+        unknown_oauth_token(client.auth)
 
     assert transport.oauth_provider_token_status_calls == []
 
@@ -2425,7 +2431,7 @@ def test_refresh_oauth_provider_token_returns_immutable_status() -> None:
         {"authorization": "access-1", "provider": "google"}
     ]
     with pytest.raises(FrozenInstanceError):
-        result.provider = "github"  # type: ignore[misc]
+        assign_frozen_field(result, "provider", "github")
 
 
 def test_refresh_oauth_provider_token_rejects_an_unknown_provider() -> None:
@@ -2433,7 +2439,7 @@ def test_refresh_oauth_provider_token_rejects_an_unknown_provider() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(ValueError, match="Unsupported OAuth provider"):
-        client.auth.refresh_oauth_provider_token(provider="invalid")  # type: ignore[arg-type]
+        unknown_oauth_token_refresh(client.auth)
 
     assert transport.refresh_oauth_provider_token_calls == []
 
@@ -2519,10 +2525,7 @@ def test_call_oauth_api_rejects_an_unknown_provider() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(ValueError, match="Unsupported OAuth provider"):
-        client.auth.call_oauth_api(
-            provider="invalid",  # type: ignore[arg-type]
-            endpoint="/user",
-        )
+        unknown_oauth_api_provider(client.auth)
 
     assert transport.call_oauth_api_calls == []
 
@@ -2532,11 +2535,7 @@ def test_call_oauth_api_rejects_an_unsupported_method() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(ValueError, match="Unsupported OAuth provider API method"):
-        client.auth.call_oauth_api(
-            provider="github",
-            endpoint="/user",
-            method="DELETE",  # type: ignore[arg-type]
-        )
+        unsupported_oauth_api_method(client.auth)
 
     assert transport.call_oauth_api_calls == []
 

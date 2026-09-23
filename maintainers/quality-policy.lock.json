@@ -1,0 +1,505 @@
+{
+  "native_tool_config": {
+    "basedpyright": {
+      "exclude": [
+        "src/volcano_sdk/_generated"
+      ],
+      "executionEnvironments": [
+        {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "reportImplicitStringConcatenation": "error",
+          "reportInvalidCast": "error",
+          "reportUnannotatedClassAttribute": "error",
+          "reportUnusedCallResult": "error",
+          "root": "src/volcano_sdk/storage.py"
+        },
+        {
+          "reportAny": "error",
+          "reportUnannotatedClassAttribute": "error",
+          "reportUnusedCallResult": "error",
+          "root": "src/volcano_sdk/realtime.py"
+        },
+        {
+          "reportAny": "error",
+          "reportUnannotatedClassAttribute": "error",
+          "root": "src/volcano_sdk/_transport.py"
+        },
+        {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "reportImplicitStringConcatenation": "error",
+          "reportInvalidCast": "error",
+          "reportUnannotatedClassAttribute": "error",
+          "reportUnusedCallResult": "error",
+          "root": "features"
+        },
+        {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "reportImplicitStringConcatenation": "error",
+          "reportInvalidCast": "error",
+          "reportPrivateUsage": "error",
+          "reportUnannotatedClassAttribute": "error",
+          "reportUnusedCallResult": "error",
+          "root": "tests/unit/contract"
+        },
+        {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "reportImplicitStringConcatenation": "error",
+          "reportInvalidCast": "error",
+          "reportPrivateUsage": "error",
+          "reportUnannotatedClassAttribute": "error",
+          "reportUnusedCallResult": "error",
+          "root": "tests/package"
+        },
+        {
+          "extraPaths": [
+            ".",
+            "src",
+            "tests/unit",
+            "features"
+          ],
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "reportImplicitStringConcatenation": "error",
+          "reportInvalidCast": "error",
+          "reportPrivateUsage": "error",
+          "reportUnannotatedClassAttribute": "error",
+          "reportUnusedCallResult": "error",
+          "root": "scripts"
+        }
+      ],
+      "extraPaths": [
+        "src",
+        "tests/unit",
+        "features"
+      ],
+      "include": [
+        "src",
+        "tests",
+        "scripts",
+        "features",
+        "typings"
+      ],
+      "pythonVersion": "3.11",
+      "reportCallInDefaultInitializer": "error",
+      "reportIgnoreCommentWithoutRule": "error",
+      "reportImplicitAbstractClass": "error",
+      "reportImplicitOverride": "error",
+      "reportImplicitRelativeImport": "error",
+      "reportImportCycles": "error",
+      "reportIncompatibleUnannotatedOverride": "error",
+      "reportIncompatibleVariableOverride": "error",
+      "reportInvalidAbstractMethod": "error",
+      "reportMissingModuleSource": "error",
+      "reportPrivateLocalImportUsage": "error",
+      "reportPrivateUsage": false,
+      "reportPropertyTypeMismatch": "error",
+      "reportSelfClsDefault": "error",
+      "reportUninitializedInstanceVariable": "error",
+      "reportUnnecessaryCast": "error",
+      "reportUnnecessaryComparison": "error",
+      "reportUnnecessaryTypeIgnoreComment": "error",
+      "reportUnreachable": "error",
+      "reportUnsafeMultipleInheritance": "error",
+      "reportUnusedParameter": "error",
+      "stubPath": "typings",
+      "typeCheckingMode": "strict",
+      "venv": ".venv",
+      "venvPath": "."
+    },
+    "coverage": {
+      "report": {
+        "exclude_lines": [
+          "^\\s*(((async )?def .*?)?[\\])]+(\\s*->.*?)?:\\s*)?\\.\\.\\.\\s*(#|$)",
+          "if (typing\\.)?TYPE_CHECKING:"
+        ],
+        "fail_under": 100,
+        "include_namespace_packages": true,
+        "partial_branches": [],
+        "show_missing": true
+      },
+      "run": {
+        "branch": true,
+        "omit": [
+          "src/volcano_sdk/_generated/*"
+        ],
+        "source_dirs": [
+          "src/volcano_sdk"
+        ]
+      }
+    },
+    "hatch": {
+      "build": {
+        "targets": {
+          "wheel": {
+            "packages": [
+              "src/volcano_sdk"
+            ]
+          }
+        }
+      }
+    },
+    "mutmut": {
+      "also_copy": [
+        "features",
+        "maintainers",
+        "tests/fixtures",
+        "scripts",
+        "openapi",
+        "openapi-python-client.yaml",
+        "README.md"
+      ],
+      "do_not_mutate": [
+        "src/volcano_sdk/_generated/*"
+      ],
+      "on_dependency_change": "rerun",
+      "pytest_add_cli_args": [
+        "-c",
+        "pyproject.toml"
+      ],
+      "pytest_add_cli_args_test_selection": [
+        "tests/unit"
+      ],
+      "source_paths": [
+        "src/volcano_sdk"
+      ]
+    },
+    "mypy": {
+      "disallow_any_decorated": true,
+      "disallow_any_unimported": true,
+      "enable_error_code": [
+        "deprecated",
+        "exhaustive-match",
+        "explicit-override",
+        "ignore-without-code",
+        "mutable-override",
+        "possibly-undefined",
+        "redundant-expr",
+        "redundant-self",
+        "truthy-bool",
+        "truthy-iterable",
+        "unimported-reveal",
+        "unused-awaitable"
+      ],
+      "exclude": [
+        "src/volcano_sdk/_generated/"
+      ],
+      "explicit_package_bases": true,
+      "files": [
+        "src",
+        "tests",
+        "scripts",
+        "features",
+        "typings"
+      ],
+      "mypy_path": [
+        "$MYPY_CONFIG_FILE_DIR/src",
+        "$MYPY_CONFIG_FILE_DIR/tests/unit",
+        "$MYPY_CONFIG_FILE_DIR/features",
+        "$MYPY_CONFIG_FILE_DIR/typings"
+      ],
+      "python_version": "3.11",
+      "strict": true,
+      "strict_bytes": true,
+      "strict_equality_for_none": true,
+      "warn_unreachable": true,
+      "warn_unused_ignores": true
+    },
+    "poe": {
+      "tasks": {
+        "audit": "bash scripts/audit_dependencies.sh",
+        "basedpyright": "basedpyright --project pyproject.toml",
+        "build": "uv build --no-sources --require-hashes",
+        "checks": [
+          "policy",
+          "audit",
+          "generated",
+          "lint",
+          "format-check",
+          "types",
+          "test",
+          "coverage",
+          "contract-check",
+          "package-check",
+          "package-extras"
+        ],
+        "contract-check": {
+          "env": {
+            "VOLCANO_SDK_CONTRACT_FIXTURE": "${POE_ROOT}/tests/fixtures/sdk-contract-dry-run.json"
+          },
+          "sequence": [
+            {
+              "cmd": "chmod 600 tests/fixtures/sdk-contract-dry-run.json"
+            },
+            {
+              "cmd": "behave features/contract --dry-run --no-snippets"
+            }
+          ]
+        },
+        "coverage": "uv run --locked --isolated --python 3.12 pytest -c pyproject.toml tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:reports/coverage.json --junitxml=reports/coverage-unit.xml",
+        "format-check": "ruff format --check --config pyproject.toml .",
+        "generated": "python -m scripts.check_openapi",
+        "lint": "ruff check --config pyproject.toml .",
+        "mutation": "bash scripts/mutation.sh",
+        "mutation-full": "MUTATION_FULL=1 bash scripts/mutation.sh",
+        "mypy": "mypy --config-file pyproject.toml",
+        "package-check": {
+          "interpreter": "bash",
+          "shell": "set -euo pipefail\npackage_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$package_dir\"' EXIT\npoe build --out-dir \"$package_dir\"\nbash scripts/check_package.sh \"\" \"$package_dir\"\n"
+        },
+        "package-extras": {
+          "cmd": "tox run -c pyproject.toml --recreate -e package-base,package-min-typing,package-durable,package-types"
+        },
+        "policy": "bash scripts/check_quality_policy.sh",
+        "quality": [
+          "checks",
+          "mutation"
+        ],
+        "test": "pytest -c pyproject.toml tests/unit -q --junitxml=reports/unit.xml",
+        "types": [
+          "mypy",
+          "basedpyright"
+        ]
+      }
+    },
+    "pytest": {
+      "ini_options": {
+        "asyncio_debug": true,
+        "asyncio_default_fixture_loop_scope": "function",
+        "asyncio_default_test_loop_scope": "function",
+        "asyncio_mode": "auto",
+        "empty_parameter_set_mark": "fail_at_collect",
+        "filterwarnings": [
+          "error"
+        ],
+        "minversion": "9.1.1",
+        "pythonpath": [
+          ".",
+          "features"
+        ],
+        "strict": true
+      }
+    },
+    "ruff": {
+      "extend-exclude": [
+        "src/volcano_sdk/_generated"
+      ],
+      "lint": {
+        "explicit-preview-rules": true,
+        "ignore": [
+          "CPY001",
+          "COM812",
+          "COM819",
+          "D203",
+          "D206",
+          "D213",
+          "D300",
+          "E111",
+          "E114",
+          "E117",
+          "ISC001",
+          "ISC002",
+          "Q000",
+          "Q001",
+          "Q002",
+          "Q003",
+          "W191"
+        ],
+        "mccabe": {
+          "max-complexity": 5
+        },
+        "per-file-ignores": {
+          "features/**/*.py": [
+            "D",
+            "INP001",
+            "S101"
+          ],
+          "scripts/*.py": [
+            "T201"
+          ],
+          "src/volcano_sdk/auth.py": [
+            "SLF001"
+          ],
+          "src/volcano_sdk/database.py": [
+            "SLF001"
+          ],
+          "src/volcano_sdk/durable.py": [
+            "SLF001"
+          ],
+          "src/volcano_sdk/durable_authoring.py": [
+            "ANN401"
+          ],
+          "src/volcano_sdk/functions.py": [
+            "SLF001"
+          ],
+          "src/volcano_sdk/locks.py": [
+            "SLF001"
+          ],
+          "src/volcano_sdk/logs.py": [
+            "SLF001"
+          ],
+          "src/volcano_sdk/realtime.py": [
+            "ANN401",
+            "SLF001"
+          ],
+          "src/volcano_sdk/storage.py": [
+            "SLF001"
+          ],
+          "tests/**/*.py": [
+            "ANN401",
+            "D",
+            "INP001",
+            "PLR2004",
+            "S101",
+            "S105",
+            "S106",
+            "SLF001"
+          ]
+        },
+        "preview": true,
+        "select": [
+          "ALL",
+          "ASYNC119",
+          "B901",
+          "B909",
+          "DOC201",
+          "DOC501",
+          "D420",
+          "PLE4703",
+          "PLW0244",
+          "PLW0717",
+          "PLW1514",
+          "PLW3201",
+          "PT029",
+          "RUF045",
+          "RUF066",
+          "RUF069",
+          "RUF071",
+          "RUF074",
+          "RUF105"
+        ]
+      },
+      "output-prefer-rule-codes": true,
+      "required-version": "==0.16.4",
+      "target-version": "py311"
+    },
+    "tox": {
+      "env": {
+        "package-durable": {
+          "commands": [
+            [
+              "python",
+              "-I",
+              "tests/package/optional_dependency.py",
+              "durable"
+            ]
+          ],
+          "extras": [
+            "durable"
+          ]
+        },
+        "package-min-typing": {
+          "commands": [
+            [
+              "python",
+              "-I",
+              "-c",
+              "from importlib.metadata import version; assert version('typing-extensions') == '4.10.0'; import volcano_sdk"
+            ]
+          ],
+          "constrain_package_deps": true,
+          "deps": [
+            "typing-extensions==4.10.0"
+          ]
+        },
+        "package-types": {
+          "change_dir": "{env_tmp_dir}",
+          "commands": [
+            [
+              "basedpyright",
+              "--project",
+              "{env_tmp_dir}",
+              "--verifytypes",
+              "volcano_sdk",
+              "--warnings"
+            ]
+          ],
+          "deps": [
+            "basedpyright==1.40.1"
+          ],
+          "extras": [
+            "durable"
+          ]
+        }
+      },
+      "env_list": [
+        "package-base",
+        "package-min-typing",
+        "package-durable",
+        "package-types"
+      ],
+      "env_run_base": {
+        "commands": [
+          [
+            "python",
+            "-I",
+            "tests/package/optional_dependency.py",
+            "base"
+          ]
+        ],
+        "package": "wheel"
+      }
+    },
+    "uv": {
+      "build-constraint-dependencies": [
+        {
+          "hashes": [
+            "sha256:c4468f73144c054d2aab4ef0f0378c43b9878bf07f8ffd6b79690e970d375f07",
+            "sha256:08ecf7548fb48205e7f213d70c71e67b8271b7242093dc3f1da578b42c734a2c"
+          ],
+          "requirement": "hatchling==1.32.4"
+        },
+        {
+          "hashes": [
+            "sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79",
+            "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c"
+          ],
+          "requirement": "packaging==26.3"
+        },
+        {
+          "hashes": [
+            "sha256:17db5ecd524104a120e173814c90367a96a98d07c45b2e10c2f3919fff91bf5a",
+            "sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189"
+          ],
+          "requirement": "pathspec==1.1.1"
+        },
+        {
+          "hashes": [
+            "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3",
+            "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746"
+          ],
+          "requirement": "pluggy==1.6.0"
+        },
+        {
+          "hashes": [
+            "sha256:e25bbf38843005246210a12982776f27f99cb9be67160e14434d0c0d21ee1e97",
+            "sha256:177a05aece5a8ca5266fd3c448abb47b8d352f09d477d3ca8332db4d89b24304"
+          ],
+          "requirement": "tomlkit==0.15.1"
+        },
+        {
+          "hashes": [
+            "sha256:0a9ebc8d4e2f3e8a22848c5258033035bec17a3012ac3fea16dbaa764489eb71",
+            "sha256:8b1ff4f9c191b1040b71c37f1e445ab99732911e3cd91de52838453a854d7a17"
+          ],
+          "requirement": "trove-classifiers==2026.9.21.13"
+        }
+      ],
+      "required-version": "==0.12.17"
+    }
+  },
+  "schema": 1
+}
