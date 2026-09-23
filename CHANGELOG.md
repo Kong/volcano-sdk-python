@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.3](https://github.com/Kong/volcano-sdk-python/compare/v0.10.2...v0.10.3) (2026-09-23)
+
+
+### Bug Fixes
+
+* **types:** validate database rows before returning them ([#285](https://github.com/Kong/volcano-sdk-python/issues/285)) ([e0ee14d](https://github.com/Kong/volcano-sdk-python/commit/e0ee14d28f5cf9d96ebdc3f07aa3b83f40c191e8))
+
 ## [0.10.2](https://github.com/Kong/volcano-sdk-python/compare/v0.10.1...v0.10.2) (2026-09-22)
 
 
