@@ -36,7 +36,7 @@ def test_lease_clock_falls_back_to_portable_monotonic(
     monkeypatch.delattr(time, "clock_gettime", raising=False)
     monkeypatch.setattr(guard_module, "_FALLBACK_CLOCK", lambda: 123.0)
 
-    assert guard_module._lease_now() == pytest.approx(123.0)
+    assert guard_module.lease_now() == pytest.approx(123.0)
 
 
 def test_lease_clock_falls_back_when_clock_gettime_is_none(
@@ -46,7 +46,7 @@ def test_lease_clock_falls_back_when_clock_gettime_is_none(
     monkeypatch.setattr(guard_module, "SUSPEND_AWARE_CLOCK_ID", 7)
     monkeypatch.setattr(guard_module, "_FALLBACK_CLOCK", lambda: 123.0)
 
-    assert guard_module._lease_now() == pytest.approx(123.0)
+    assert guard_module.lease_now() == pytest.approx(123.0)
 
 
 def test_lease_clock_uses_the_suspend_aware_system_clock(
@@ -61,7 +61,7 @@ def test_lease_clock_uses_the_suspend_aware_system_clock(
     monkeypatch.setattr(guard_module, "SUSPEND_AWARE_CLOCK_ID", 7)
     monkeypatch.setattr(time, "clock_gettime", clock_gettime, raising=False)
 
-    assert guard_module._lease_now() == pytest.approx(456.0)
+    assert guard_module.lease_now() == pytest.approx(456.0)
     assert requested_clocks == [7]
 
 
@@ -78,7 +78,7 @@ def test_lock_guard_bounds_waits_by_lease_and_caller_deadlines(
 ) -> None:
     clock = [100.0]
     waits: list[float] = []
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
+    monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
     guard = LockGuard(lease(), ttl=5, started_at=clock[0])
 
     def wait(timeout: float | None) -> bool:
@@ -97,7 +97,7 @@ def test_lock_guard_bounds_waits_by_lease_and_caller_deadlines(
 def test_lock_guard_rejects_an_already_expired_renewal_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
     original = lease()
     guard = LockGuard(original, ttl=5, started_at=100.0)
 
@@ -138,7 +138,7 @@ def test_lock_guard_exposes_the_latest_immutable_lease(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = [100.0]
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
+    monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
     original = lease(expires_at=datetime(2026, 9, 3, 12, 0, 5, tzinfo=UTC))
     renewed = lease(expires_at=datetime(2026, 9, 3, 12, 0, 9, tzinfo=UTC))
     guard = LockGuard(original, ttl=5, started_at=clock[0])
@@ -154,7 +154,7 @@ def test_lock_guard_exposes_the_latest_immutable_lease(
 def test_lock_guard_calculates_renewal_delay_from_remaining_lease(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
     monkeypatch.setattr(renewer_module, "_renewal_jitter", lambda: 0.0)
     guard = LockGuard(lease(), ttl=30, started_at=100.0)
 
@@ -165,7 +165,7 @@ def test_lock_guard_rejects_a_renewal_completed_after_lease_expiry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = [100.0]
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
+    monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
     original = lease()
     guard = LockGuard(original, ttl=5, started_at=clock[0])
 
@@ -181,7 +181,7 @@ def test_lock_guard_detects_suspend_aware_expiry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = [100.0]
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
+    monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
     guard = LockGuard(lease(), ttl=5, started_at=clock[0])
 
     clock[0] = 105.0
@@ -193,7 +193,7 @@ def test_lock_guard_detects_suspend_aware_expiry(
 def test_lock_guard_wait_times_out_while_the_lease_is_held(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
     guard = LockGuard(lease(), ttl=5, started_at=100.0)
 
     assert not guard.wait_lost(timeout=0)
@@ -204,7 +204,7 @@ def test_lock_guard_preserves_the_absolute_acquisition_deadline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = [0.0]
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
+    monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
     guard = LockGuard(
         lease(),
         ttl=guard_module.MAX_LOCK_LIFETIME_SECONDS,
@@ -221,7 +221,7 @@ def test_lock_guard_preserves_the_absolute_acquisition_deadline(
 def test_lock_guard_preserves_the_first_loss_reason(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: 100.0)
+    monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
     guard = LockGuard(lease(), ttl=5, started_at=100.0)
     first = RuntimeError("renewal failed")
 
@@ -237,7 +237,7 @@ def test_lock_guard_classifies_expiry_before_a_late_renewal_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = [100.0]
-    monkeypatch.setattr(guard_module, "_lease_now", lambda: clock[0])
+    monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
     guard = LockGuard(lease(), ttl=5, started_at=clock[0])
 
     clock[0] = 105.0
