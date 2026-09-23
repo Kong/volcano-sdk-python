@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from contextlib import contextmanager, suppress
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from uuid import UUID, uuid4
 
 from ._lock_guard import LockGuard, lease_now
@@ -24,6 +24,7 @@ _MAX_LOCK_TTL_SECONDS = 7_776_000
 _INVALID_LOCK_TTL = "ttl must be an integer between 5 seconds and 90 days"
 _MISSING_RENEWAL_FAILURE = "lock guard rejected renewal without a failure"
 _INVALID_LOCK_RESPONSE = "Expected a complete lock response"
+_INVALID_LOCK_TRANSPORT = "Transport does not support the requested lock operation"
 
 
 class LocksContext(Protocol):
@@ -34,6 +35,7 @@ class LocksContext(Protocol):
     def _service_token(self) -> str: ...
 
 
+@runtime_checkable
 class LockGetTransport(Protocol):
     """Transport capability required to inspect a lock."""
 
@@ -48,6 +50,7 @@ class LockGetTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class LockRenewTransport(Protocol):
     """Transport capability required to renew a lock."""
 
@@ -64,6 +67,7 @@ class LockRenewTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class LockForceReleaseTransport(Protocol):
     """Transport capability required to force release a lock."""
 
@@ -117,7 +121,7 @@ def _request_uuid(value: str | None, name: str) -> str:
     if value is None:
         return str(uuid4())
     try:
-        UUID(value)
+        _ = UUID(value)
     except (AttributeError, ValueError) as error:
         message = f"{name} must be a UUID string"
         raise ValueError(message) from error
@@ -129,7 +133,7 @@ class Locks:
 
     def __init__(self, client: LocksContext) -> None:
         """Create a lock facade backed by a client."""
-        self._client = client
+        self._client: LocksContext = client
 
     def get(self, key: str, *, request_id: str | None = None) -> LockState:
         """Inspect a project-scoped lock.
@@ -140,7 +144,9 @@ class Locks:
             Whether the lock is held, with its expiry and fencing token if set.
 
         """
-        transport = cast("LockGetTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, LockGetTransport):
+            raise TypeError(_INVALID_LOCK_TRANSPORT)
         response = invoke(
             transport.get_project_lock,
             authorization=self._client._service_token(),
@@ -233,7 +239,9 @@ class Locks:
 
         """
         _validate_ttl(ttl)
-        transport = cast("LockRenewTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, LockRenewTransport):
+            raise TypeError(_INVALID_LOCK_TRANSPORT)
         response = invoke(
             transport.renew_project_lock,
             authorization=self._client._service_token(),
@@ -262,18 +270,20 @@ class Locks:
             request_id=_request_uuid(request_id, "request_id"),
             token=lease.token,
         )
-        response_payload(response, 204)
+        _ = response_payload(response, 204)
 
     def force_release(self, key: str, *, request_id: str | None = None) -> None:
         """Release a lock regardless of which token owns it."""
-        transport = cast("LockForceReleaseTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, LockForceReleaseTransport):
+            raise TypeError(_INVALID_LOCK_TRANSPORT)
         response = invoke(
             transport.force_release_project_lock,
             authorization=self._client._service_token(),
             key=key,
             request_id=_request_uuid(request_id, "request_id"),
         )
-        response_payload(response, 204)
+        _ = response_payload(response, 204)
 
     @contextmanager
     def with_lock(
