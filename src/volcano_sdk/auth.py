@@ -490,7 +490,7 @@ class Auth:
 
     def __init__(self, client: AuthContext) -> None:
         """Create an authentication facade backed by a client."""
-        self._client = client
+        self._client: AuthContext = client
         self._rejected_refresh: tuple[int, SessionOperations] | None = None
 
     def get_session(self) -> Session | None:
@@ -625,7 +625,7 @@ class Auth:
             authorization=self._client._anon_token(),
             email=email,
         )
-        response_payload(response, 200)
+        _ = response_payload(response, 200)
 
     def request_email_change(self, *, new_email: str) -> EmailChangeResult:
         """Request a confirmation email without changing the current session.
@@ -650,7 +650,7 @@ class Auth:
             binding=binding,
         )
         result = _email_change_result_from_payload(response_payload(response, 200))
-        self._owned_refresh_session(binding)
+        _ = self._owned_refresh_session(binding)
         return result
 
     def cancel_email_change(self) -> None:
@@ -671,8 +671,8 @@ class Auth:
             ),
             binding=binding,
         )
-        response_payload(response, 200)
-        self._owned_refresh_session(binding)
+        _ = response_payload(response, 200)
+        _ = self._owned_refresh_session(binding)
 
     def confirm_email_change(self, *, token: str) -> User:
         """Confirm a pending email change and return the updated user.
@@ -716,8 +716,8 @@ class Auth:
             ),
             binding=binding,
         )
-        response_payload(response, 204)
-        self._owned_refresh_session(binding)
+        _ = response_payload(response, 204)
+        _ = self._owned_refresh_session(binding)
 
     def list_sessions(self, *, page: int = 1, limit: int = 20) -> SessionPage:
         """List sessions in the stable offset-paginated activity order.
@@ -743,7 +743,7 @@ class Auth:
             binding=binding,
         )
         result = _session_page_from_payload(response_payload(response, 200))
-        self._owned_refresh_session(binding)
+        _ = self._owned_refresh_session(binding)
         return result
 
     def list_linked_oauth_providers(self) -> tuple[LinkedOAuthProvider, ...]:
@@ -768,7 +768,7 @@ class Auth:
             binding=binding,
         )
         result = _linked_oauth_providers_from_payload(response_payload(response, 200))
-        self._owned_refresh_session(binding)
+        _ = self._owned_refresh_session(binding)
         return result
 
     def get_hosted_auth_url(
@@ -901,7 +901,7 @@ class Auth:
             binding=binding,
         )
         result = _oauth_link_from_payload(response_payload(response, 200))
-        self._owned_refresh_session(binding)
+        _ = self._owned_refresh_session(binding)
         return result
 
     def unlink_oauth_provider(self, *, provider: OAuthProviderName) -> None:
@@ -927,8 +927,8 @@ class Auth:
             ),
             binding=binding,
         )
-        response_payload(response, 204)
-        self._owned_refresh_session(binding)
+        _ = response_payload(response, 204)
+        _ = self._owned_refresh_session(binding)
 
     def get_oauth_provider_token(
         self,
@@ -963,7 +963,7 @@ class Auth:
         result = _oauth_provider_token_status_from_payload(
             response_payload(response, 200)
         )
-        self._owned_refresh_session(binding)
+        _ = self._owned_refresh_session(binding)
         return result
 
     def refresh_oauth_provider_token(
@@ -999,7 +999,7 @@ class Auth:
         result = _oauth_provider_token_status_from_payload(
             response_payload(response, 200)
         )
-        self._owned_refresh_session(binding)
+        _ = self._owned_refresh_session(binding)
         return result
 
     def call_oauth_api(
@@ -1038,7 +1038,7 @@ class Auth:
             binding=binding,
         )
         result = _oauth_api_data_from_payload(response_payload(response, 200))
-        self._owned_refresh_session(binding)
+        _ = self._owned_refresh_session(binding)
         return result
 
     def delete_session(self, *, session_id: str) -> None:
@@ -1069,7 +1069,7 @@ class Auth:
                 ),
                 binding=binding,
             )
-            response_payload(response, 204)
+            _ = response_payload(response, 204)
         except TransportError as error:
             if deletes_current and not self._client._clear_session_if_current(
                 generation, lineage=lineage
@@ -1101,7 +1101,7 @@ class Auth:
             authorization=self._client._anon_token(),
             token=token,
         )
-        response_payload(response, 200)
+        _ = response_payload(response, 200)
 
     def resend_confirmation(self, *, email: str) -> None:
         """Request a generic confirmation resend without changing local state."""
@@ -1111,7 +1111,7 @@ class Auth:
             authorization=self._client._anon_token(),
             email=email,
         )
-        response_payload(response, 200)
+        _ = response_payload(response, 200)
 
     def reset_password(self, *, token: str, new_password: str) -> None:
         """Set a new password with a recovery token without changing local state."""
@@ -1122,7 +1122,7 @@ class Auth:
             token=token,
             new_password=new_password,
         )
-        response_payload(response, 200)
+        _ = response_payload(response, 200)
 
     def _update_current_user(
         self, payload: object, binding: tuple[int, SessionOperations, Session | None]
@@ -1248,7 +1248,7 @@ class Auth:
         rejected_response: TransportResponse,
     ) -> TransportResponse:
         try:
-            self._refresh_session_for_binding(binding)
+            _ = self._refresh_session_for_binding(binding)
         except SessionChangedError:
             raise
         except VolcanoError:
@@ -1256,14 +1256,14 @@ class Auth:
             return rejected_response
         session = self._owned_refresh_session(binding)[2]
         response = operation(session.access_token)
-        self._owned_refresh_session(binding)
+        _ = self._owned_refresh_session(binding)
         return response
 
     def _validate_read_failure(
         self, binding: tuple[int, SessionOperations, Session | None]
     ) -> None:
         with suppress(AuthenticationError):
-            self._owned_refresh_session(binding)
+            _ = self._owned_refresh_session(binding)
 
     def _refresh_session_for_binding(
         self, binding: tuple[int, SessionOperations, Session | None]
@@ -1275,7 +1275,7 @@ class Auth:
         try:
             active_generation, _, _ = self._owned_refresh_session(binding)
             if active_generation == generation:
-                owner.refresh(
+                _ = owner.refresh(
                     lambda: self._perform_refresh(binding, current, notifications)
                 )
             if owner.signing_out is not None:
@@ -1324,7 +1324,7 @@ class Auth:
         validate_refresh_identity(current, refreshed)
         owner.verify_pair(refreshed)
         if owner.signing_out is None:
-            self._client._set_session_if_current(
+            _ = self._client._set_session_if_current(
                 refreshed,
                 generation,
                 event="TOKEN_REFRESHED",
@@ -1435,7 +1435,7 @@ class Auth:
             )
         else:
             return
-        response_payload(response, 204)
+        _ = response_payload(response, 204)
 
     def _revoke_access_session(
         self,
@@ -1465,7 +1465,7 @@ class Auth:
                     authorization=refreshed.access_token,
                     session_id=session_id,
                 )
-        response_payload(response, 204)
+        _ = response_payload(response, 204)
 
 
 def _dispatch_notifications(notifications: list[Callable[[], None]]) -> None:
