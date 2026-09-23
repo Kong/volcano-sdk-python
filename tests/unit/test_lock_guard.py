@@ -133,13 +133,14 @@ def test_fallback_clock_includes_system_suspend(
 def test_fallback_clock_ignores_wall_clock_rollbacks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monotonic = iter((100.0, 101.0))
-    wall = iter((1_000.0, 900.0))
+    monotonic = iter((100.0, 101.0, 103.0))
+    wall = iter((1_000.0, 900.0, 900.0))
     monkeypatch.setattr(time, "monotonic", lambda: next(monotonic))
     monkeypatch.setattr(time, "time", lambda: next(wall))
     clock = guard_module._FallbackClock()
 
     assert clock() == pytest.approx(1_001.0)
+    assert clock() == pytest.approx(1_003.0)
 
 
 def test_fallback_clock_does_not_advance_without_elapsed_time(
