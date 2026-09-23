@@ -109,6 +109,17 @@ def durable_client(
     return client
 
 
+def test_durable_requires_a_transport_with_execution_methods() -> None:
+    client = VolcanoClient(
+        anon_key="anon-key", service_key="service-key", _transport=RejectingTransport()
+    )
+
+    with pytest.raises(
+        TypeError, match="Transport does not support durable executions"
+    ):
+        client.durable.start("order-pipeline")
+
+
 def test_start_returns_the_accepted_execution_handle() -> None:
     transport = FakeDurableTransport()
 
