@@ -14,7 +14,7 @@ from functools import partial
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, NoReturn, cast
 
 from typing_extensions import override
 
@@ -39,13 +39,13 @@ class Handler(BaseHTTPRequestHandler):
         user: dict[str, object],
         requests: list[tuple[str, str, str | None, object]],
     ) -> None:
-        self.user = user
-        self.requests = requests
+        self.user: dict[str, object] = user
+        self.requests: list[tuple[str, str, str | None, object]] = requests
         super().__init__(request, client_address, server)
 
     def _respond(self) -> None:
         raw = self.rfile.read(int(self.headers.get("Content-Length", "0")))
-        body = json.loads(raw) if raw else None
+        body = cast("object", json.loads(raw)) if raw else None
         self.requests.append(
             (self.command, self.path, self.headers.get("Authorization"), body),
         )
@@ -75,7 +75,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
-        self.wfile.write(encoded)
+        _ = self.wfile.write(encoded)
 
     def do_GET(self) -> None:
         self._respond()
@@ -108,7 +108,7 @@ def run_quickstart() -> None:
         thread.start()
         previous_handler = signal.signal(signal.SIGALRM, timeout)
         try:
-            signal.alarm(30)
+            _ = signal.alarm(30)
             os.environ.update(
                 VOLCANO_API_URL=f"http://127.0.0.1:{server.server_port}",
                 VOLCANO_ANON_KEY="synthetic-anon",
@@ -118,9 +118,11 @@ def run_quickstart() -> None:
             output = io.StringIO()
             with TemporaryDirectory(prefix="volcano-quickstart-") as directory:
                 example = Path(directory) / "quickstart.py"
-                example.write_text(examples[0])
+                example_source = cast("object", examples[0])
+                assert isinstance(example_source, str)
+                _ = example.write_text(example_source)
                 with redirect_stdout(output):
-                    runpy.run_path(str(example), run_name="__main__")
+                    _ = runpy.run_path(str(example), run_name="__main__")
             assert output.getvalue().strip() == f"Signed in as {user['email']}"
             assert requests == [
                 (
@@ -138,8 +140,8 @@ def run_quickstart() -> None:
                 ),
             ]
         finally:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, previous_handler)
+            _ = signal.alarm(0)
+            _ = signal.signal(signal.SIGALRM, previous_handler)
             server.shutdown()
             thread.join(timeout=5)
 

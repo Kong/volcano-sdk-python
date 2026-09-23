@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = ROOT / "openapi" / "openapi.yaml"
@@ -49,7 +50,7 @@ def generate(output: Path) -> None:
     if output.exists():
         shutil.rmtree(output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(  # ruff: ignore[S603] - argv and executable are controlled by this script.
+    _ = subprocess.run(  # ruff: ignore[S603] - argv and executable are controlled by this script.
         [
             sys.executable,
             "-I",
@@ -78,11 +79,20 @@ def generate(output: Path) -> None:
 
 
 def main() -> None:
-    """Parse command-line options and generate the internal client."""
+    """Parse command-line options and generate the internal client.
+
+    Raises:
+        TypeError: The output argument is not a path.
+
+    """
     parser = argparse.ArgumentParser(description="Generate the internal OpenAPI client")
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    _ = parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
-    generate(args.output.resolve())
+    output = cast("object", args.output)
+    if not isinstance(output, Path):
+        message = "--output must be a path"
+        raise TypeError(message)
+    generate(output.resolve())
 
 
 if __name__ == "__main__":
