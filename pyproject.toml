@@ -170,7 +170,27 @@ extend-exclude = ["src/volcano_sdk/_generated"]
 [tool.ruff.lint]
 preview = true
 explicit-preview-rules = true
-select = ["ALL", "DOC201", "DOC501", "D420", "PLW0717", "RUF105"]
+select = [
+  "ALL",
+  "ASYNC119",
+  "B901",
+  "B909",
+  "DOC201",
+  "DOC501",
+  "D420",
+  "PLE4703",
+  "PLW0244",
+  "PLW0717",
+  "PLW1514",
+  "PLW3201",
+  "PT029",
+  "RUF045",
+  "RUF066",
+  "RUF069",
+  "RUF071",
+  "RUF074",
+  "RUF105",
+]
 ignore = [
   # The repository license covers source files without per-file headers.
   "CPY001",
