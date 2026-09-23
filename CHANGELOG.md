@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/Kong/volcano-sdk-python/compare/v0.11.0...v0.11.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* **storage:** validate optional transport capabilities ([#303](https://github.com/Kong/volcano-sdk-python/issues/303)) ([e6b8e1a](https://github.com/Kong/volcano-sdk-python/commit/e6b8e1a9c677503c510ea58ec2a6956a21fb9652))
+
 ## [0.11.0](https://github.com/Kong/volcano-sdk-python/compare/v0.10.4...v0.11.0) (2026-09-23)
 
 
