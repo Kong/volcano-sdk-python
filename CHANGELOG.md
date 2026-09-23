@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/Kong/volcano-sdk-python/compare/v0.10.4...v0.11.0) (2026-09-23)
+
+
+### Features
+
+* **types:** verify installed SDK interface without external exclusions ([#293](https://github.com/Kong/volcano-sdk-python/issues/293)) ([50aac73](https://github.com/Kong/volcano-sdk-python/commit/50aac73b5c46f1f6925c9c9b010b70f9fc649ef3))
+
 ## [0.10.4](https://github.com/Kong/volcano-sdk-python/compare/v0.10.3...v0.10.4) (2026-09-23)
 
 
