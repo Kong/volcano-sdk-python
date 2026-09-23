@@ -68,3 +68,37 @@ def test_email_change_requires_transport_capability_after_session_check(
 
     with pytest.raises(TypeError, match="requested auth operation"):
         operation(client.auth)
+
+
+_SESSION_OPERATIONS: tuple[Callable[[Auth], object], ...] = (
+    lambda auth: auth.delete_all_other_sessions(),
+    lambda auth: auth.list_sessions(),
+    lambda auth: auth.delete_session(session_id="session-id"),
+)
+
+
+@pytest.mark.parametrize(
+    "operation",
+    _SESSION_OPERATIONS,
+    ids=("delete-other-sessions", "list-sessions", "delete-session"),
+)
+def test_session_operation_requires_transport_capability(
+    operation: Callable[[Auth], object],
+) -> None:
+    client = VolcanoClient(anon_key="anon", _transport=RejectingTransport())
+    client.auth.set_session(Session("access", "refresh", "user"))
+
+    with pytest.raises(TypeError, match="requested auth operation"):
+        operation(client.auth)
+
+
+def test_access_session_revocation_requires_transport_capability() -> None:
+    client = VolcanoClient(anon_key="anon", _transport=RejectingTransport())
+
+    with pytest.raises(TypeError, match="requested auth operation"):
+        client.auth._revoke_access_session(
+            Session("access", "refresh", "user"),
+            "session-id",
+            None,
+            joined=False,
+        )

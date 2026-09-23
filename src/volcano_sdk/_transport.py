@@ -504,6 +504,7 @@ class AuthConfirmEmailChangeTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthDeleteAllMySessionsTransport(Protocol):
     def auth_delete_all_my_sessions(
         self,
@@ -512,6 +513,7 @@ class AuthDeleteAllMySessionsTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthDeleteMySessionTransport(Protocol):
     def auth_delete_my_session(
         self,
@@ -521,6 +523,7 @@ class AuthDeleteMySessionTransport(Protocol):
     ) -> TransportResponse: ...
 
 
+@runtime_checkable
 class AuthGetMySessionsTransport(Protocol):
     def auth_get_my_sessions(
         self,

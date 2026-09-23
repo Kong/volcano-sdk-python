@@ -721,7 +721,9 @@ class Auth:
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast("AuthDeleteAllMySessionsTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthDeleteAllMySessionsTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
             lambda access_token: invoke(
                 transport.auth_delete_all_my_sessions,
@@ -745,7 +747,9 @@ class Auth:
         binding = self._client._capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = cast("AuthGetMySessionsTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthGetMySessionsTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
             lambda access_token: invoke(
                 transport.auth_get_my_sessions,
@@ -1072,7 +1076,9 @@ class Auth:
             current_session_id is not None
             and current_session_id.casefold() == session_id.casefold()
         )
-        transport = cast("AuthDeleteMySessionTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthDeleteMySessionTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         try:
             response = self._session_request(
                 lambda access_token: invoke(
@@ -1464,7 +1470,9 @@ class Auth:
         *,
         joined: bool,
     ) -> None:
-        transport = cast("AuthDeleteMySessionTransport", self._client._transport)
+        transport = self._client._transport
+        if not isinstance(transport, AuthDeleteMySessionTransport):
+            raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_delete_my_session,
             authorization=session.access_token,
