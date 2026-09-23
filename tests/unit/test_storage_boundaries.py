@@ -13,11 +13,15 @@ from volcano_sdk.storage import (
     _optional_datetime,
     _read_upload_part,
     _remaining_upload_bytes,
+    _resumable_upload_source,
     _simple_upload_bytes,
     _spool_upload_source,
     _storage_object,
     _storage_page,
     _storage_paths,
+    _upload_part,
+    _upload_session,
+    _upload_session_status,
 )
 
 if TYPE_CHECKING:
@@ -43,6 +47,15 @@ class EndSeekFailure(BytesIO):
             message = "size unavailable"
             raise OSError(message)
         return super().seek(offset, whence)
+
+
+class SeekLookupFailure(BytesIO):
+    @override
+    def __getattribute__(self, name: str) -> object:
+        if name in {"seekable", "tell", "seek"}:
+            message = "seek capability unavailable"
+            raise OSError(message)
+        return super().__getattribute__(name)
 
 
 _STORAGE_OPERATIONS: tuple[Callable[[StorageBucket], object], ...] = (
@@ -105,10 +118,165 @@ def test_storage_object_rejects_non_mapping_payloads(payload: object) -> None:
     ],
 )
 def test_storage_object_rejects_invalid_field_types(field: str, value: object) -> None:
-    payload: dict[str, object] = {"metadata": {}, "size": 1, "is_public": False}
+    payload: dict[str, object] = {
+        "id": "object",
+        "bucket_id": "assets",
+        "name": "file.bin",
+        "size": 1,
+        "mime_type": "application/octet-stream",
+        "is_public": False,
+        "metadata": {},
+    }
     payload[field] = value
     with pytest.raises(TypeError, match="Expected a complete storage page"):
         _storage_object(payload)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("id", 1),
+        ("bucket_id", None),
+        ("name", []),
+        ("mime_type", False),
+        ("owner_id", 3),
+        ("etag", []),
+        ("public_url", 7),
+        ("metadata", {"nested": object()}),
+        ("metadata", {"nested": {1: "bad key"}}),
+        ("metadata", {"nested": ["valid", object()]}),
+    ],
+)
+def test_storage_object_rejects_untyped_response_fields(
+    field: str, value: object
+) -> None:
+    payload: dict[str, object] = {
+        "id": "object",
+        "bucket_id": "assets",
+        "name": "file.bin",
+        "size": 4,
+        "mime_type": "application/octet-stream",
+        "is_public": False,
+    }
+    payload[field] = value
+
+    with pytest.raises(TypeError, match="Expected a complete storage page"):
+        _storage_object(payload)
+
+
+def test_storage_object_rejects_non_string_response_keys() -> None:
+    payload: dict[object, object] = {
+        "id": "object",
+        "bucket_id": "assets",
+        "name": "file.bin",
+        "size": 4,
+        "mime_type": "application/octet-stream",
+        "is_public": False,
+        1: "unexpected",
+    }
+
+    with pytest.raises(TypeError, match="Expected a complete storage page"):
+        _storage_object(payload)
+
+
+def test_storage_object_preserves_nested_json_metadata() -> None:
+    value = _storage_object(
+        {
+            "id": "object",
+            "bucket_id": "assets",
+            "name": "file.bin",
+            "size": 4,
+            "mime_type": "application/octet-stream",
+            "is_public": False,
+            "metadata": {"nested": {"values": (True, 3.5, None)}},
+        }
+    )
+
+    assert value.metadata == {"nested": {"values": (True, 3.5, None)}}
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("session_id", None),
+        ("part_size", "4"),
+        ("total_parts", True),
+        ("expires_at", None),
+        ("expires_at", []),
+    ],
+)
+def test_upload_session_rejects_untyped_response_fields(
+    field: str, value: object
+) -> None:
+    payload: dict[str, object] = {
+        "session_id": "session",
+        "part_size": 4,
+        "total_parts": 2,
+        "expires_at": "2026-09-23T12:00:00Z",
+    }
+    payload[field] = value
+
+    with pytest.raises(TypeError, match="Expected a complete storage page"):
+        _upload_session(payload)
+
+
+def test_upload_session_accepts_a_datetime_from_a_typed_transport() -> None:
+    expires_at = datetime(2026, 9, 23, tzinfo=UTC)
+    value = _upload_session(
+        {
+            "session_id": "session",
+            "part_size": 4,
+            "total_parts": 2,
+            "expires_at": expires_at,
+        }
+    )
+
+    assert value.expires_at is expires_at
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("part_number", False), ("etag", None), ("size", "4")],
+)
+def test_upload_part_rejects_untyped_response_fields(field: str, value: object) -> None:
+    payload: dict[str, object] = {"part_number": 1, "etag": "part", "size": 4}
+    payload[field] = value
+
+    with pytest.raises(TypeError, match="Expected a complete storage page"):
+        _upload_part(payload)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("status", "unknown"),
+        ("status", 1),
+        ("parts", {}),
+        ("parts", [None]),
+        ("bytes_uploaded", True),
+        ("created_at", None),
+    ],
+)
+def test_upload_status_rejects_untyped_response_fields(
+    field: str, value: object
+) -> None:
+    payload: dict[str, object] = {
+        "session_id": "session",
+        "status": "uploading",
+        "path": "file.bin",
+        "content_type": "application/octet-stream",
+        "total_size": 4,
+        "part_size": 4,
+        "total_parts": 1,
+        "parts_uploaded": 0,
+        "bytes_uploaded": 0,
+        "expires_at": "2026-09-23T12:00:00Z",
+        "created_at": "2026-09-23T11:00:00Z",
+    }
+    payload[field] = value
+
+    with pytest.raises(TypeError, match="Expected a complete storage page"):
+        _upload_session_status(payload)
 
 
 @pytest.mark.parametrize("payload", [None, [], 1, {"objects": {}}, {"objects": None}])
@@ -146,6 +314,15 @@ def test_upload_size_probe_restores_position_after_end_seek_fails() -> None:
         assert _remaining_upload_bytes(source) is None
         assert source.tell() == 7
         assert source.read() == b"payload"
+
+
+def test_upload_spools_when_seek_capability_lookup_raises() -> None:
+    with SeekLookupFailure(b"prefix-\x00\xffpayload") as source:
+        _ = source.read(7)
+        with _resumable_upload_source(source) as (upload, size):
+            assert size == len(b"\x00\xffpayload")
+            assert upload.read() == b"\x00\xffpayload"
+        assert not source.closed
 
 
 def test_spooling_reports_a_temporarily_unavailable_binary_source() -> None:

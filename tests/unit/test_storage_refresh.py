@@ -73,6 +73,34 @@ def test_storage_cursor_normalization_preserves_non_string_values(
     assert client.storage.from_("assets").list().next_cursor == expected
 
 
+@pytest.mark.parametrize(
+    ("operation", "status", "payload"),
+    [
+        (
+            "create",
+            201,
+            {
+                "session_id": "upload",
+                "part_size": "7",
+                "total_parts": 1,
+                "expires_at": "2026-09-18T00:00:00Z",
+            },
+        ),
+        ("part", 200, {"part_number": True, "etag": "part", "size": 7}),
+        ("status", 200, {"status": "future"}),
+    ],
+)
+def test_storage_public_operations_reject_malformed_success_responses(
+    operation: str, status: int, payload: object
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json=payload)
+
+    client = make_client(handler)
+    with pytest.raises(TypeError, match="Expected a complete storage page"):
+        storage_operation(client, operation)
+
+
 def storage_operation(client: VolcanoClient, operation: str) -> object:
     bucket = client.storage.from_("assets")
     operations: dict[str, Callable[[], object]] = {

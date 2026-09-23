@@ -21,6 +21,8 @@ from typing import (
 )
 from urllib.parse import quote
 
+from typing_extensions import TypeIs
+
 from ._transport import (
     StorageUploadPartRequest,
     StorageUploadSessionReference,
@@ -98,39 +100,96 @@ def _optional_datetime(value: object) -> datetime | None:
     raise TypeError(_INVALID_STORAGE_PAGE)
 
 
+def _storage_mapping(value: object) -> Mapping[str, object]:
+    if not _is_string_keyed_mapping(value):
+        raise TypeError(_INVALID_STORAGE_PAGE)
+    return value
+
+
+def _required_string(values: Mapping[str, object], key: str) -> str:
+    value = values.get(key)
+    if not isinstance(value, str):
+        raise TypeError(_INVALID_STORAGE_PAGE)
+    return value
+
+
+def _optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError(_INVALID_STORAGE_PAGE)
+    return value
+
+
+def _required_integer(values: Mapping[str, object], key: str) -> int:
+    value = values.get(key)
+    if type(value) is not int:
+        raise TypeError(_INVALID_STORAGE_PAGE)
+    return value
+
+
+def _required_datetime(values: Mapping[str, object], key: str) -> datetime:
+    value = _optional_datetime(values.get(key))
+    if value is None:
+        raise TypeError(_INVALID_STORAGE_PAGE)
+    return value
+
+
+def _is_json_value(value: object) -> TypeGuard[JSONValue]:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return True
+    if isinstance(value, (list, tuple)):
+        items = cast("Sequence[object]", value)
+        return all(_is_json_value(item) for item in items)
+    if isinstance(value, Mapping):
+        entries = cast("Mapping[object, object]", value)
+        return all(
+            isinstance(key, str) and _is_json_value(item)
+            for key, item in entries.items()
+        )
+    return False
+
+
+def _is_json_record(value: object) -> TypeGuard[Mapping[str, JSONValue]]:
+    if not isinstance(value, Mapping):
+        return False
+    entries = cast("Mapping[object, object]", value)
+    return all(
+        isinstance(key, str) and _is_json_value(item) for key, item in entries.items()
+    )
+
+
+def _storage_metadata(value: object) -> Mapping[str, JSONValue] | None:
+    if value is None:
+        return None
+    if not _is_json_record(value):
+        raise TypeError(_INVALID_STORAGE_PAGE)
+    return value
+
+
 def _storage_object(payload: object) -> StorageObject:
-    if not isinstance(payload, Mapping):
-        raise TypeError(_INVALID_STORAGE_PAGE)
-    values = cast("Mapping[str, object]", payload)
-    raw_metadata = values.get("metadata")
-    if raw_metadata is not None and not isinstance(raw_metadata, Mapping):
-        raise TypeError(_INVALID_STORAGE_PAGE)
-    size = values["size"]
-    is_public = values["is_public"]
-    if type(size) is not int or not isinstance(is_public, bool):
+    values = _storage_mapping(payload)
+    is_public = values.get("is_public")
+    if not isinstance(is_public, bool):
         raise TypeError(_INVALID_STORAGE_PAGE)
     return StorageObject(
-        id=str(values["id"]),
-        bucket_id=str(values["bucket_id"]),
-        name=str(values["name"]),
-        size=size,
-        mime_type=str(values["mime_type"]),
+        id=_required_string(values, "id"),
+        bucket_id=_required_string(values, "bucket_id"),
+        name=_required_string(values, "name"),
+        size=_required_integer(values, "size"),
+        mime_type=_required_string(values, "mime_type"),
         is_public=is_public,
-        owner_id=None if values.get("owner_id") is None else str(values["owner_id"]),
-        etag=None if values.get("etag") is None else str(values["etag"]),
-        metadata=cast("Mapping[str, JSONValue] | None", raw_metadata),
+        owner_id=_optional_string(values.get("owner_id")),
+        etag=_optional_string(values.get("etag")),
+        metadata=_storage_metadata(values.get("metadata")),
         created_at=_optional_datetime(values.get("created_at")),
         updated_at=_optional_datetime(values.get("updated_at")),
-        public_url=(
-            None if values.get("public_url") is None else str(values["public_url"])
-        ),
+        public_url=_optional_string(values.get("public_url")),
     )
 
 
 def _storage_page(payload: object) -> StoragePage:
-    if not isinstance(payload, Mapping):
-        raise TypeError(_INVALID_STORAGE_PAGE)
-    values = cast("Mapping[str, object]", payload)
+    values = _storage_mapping(payload)
     raw_objects = values.get("objects", [])
     if not isinstance(raw_objects, list):
         raise TypeError(_INVALID_STORAGE_PAGE)
@@ -147,46 +206,56 @@ def _storage_page(payload: object) -> StoragePage:
 
 
 def _upload_session(payload: object) -> UploadSession:
-    values = cast("Mapping[str, object]", payload)
-    raw_expires_at = values["expires_at"]
-    expires_at = (
-        datetime.fromisoformat(raw_expires_at)
-        if isinstance(raw_expires_at, str)
-        else cast("datetime", raw_expires_at)
-    )
+    values = _storage_mapping(payload)
     return UploadSession(
-        session_id=cast("str", values["session_id"]),
-        part_size=cast("int", values["part_size"]),
-        total_parts=cast("int", values["total_parts"]),
-        expires_at=expires_at,
+        session_id=_required_string(values, "session_id"),
+        part_size=_required_integer(values, "part_size"),
+        total_parts=_required_integer(values, "total_parts"),
+        expires_at=_required_datetime(values, "expires_at"),
     )
 
 
 def _upload_part(payload: object) -> UploadPart:
-    values = cast("Mapping[str, object]", payload)
+    values = _storage_mapping(payload)
     return UploadPart(
-        part_number=cast("int", values["part_number"]),
-        etag=cast("str", values["etag"]),
-        size=cast("int", values["size"]),
+        part_number=_required_integer(values, "part_number"),
+        etag=_required_string(values, "etag"),
+        size=_required_integer(values, "size"),
     )
 
 
+def _is_upload_session_state(value: object) -> TypeGuard[UploadSessionState]:
+    return isinstance(value, str) and value in {
+        "pending",
+        "uploading",
+        "completing",
+        "completed",
+        "aborted",
+    }
+
+
 def _upload_session_status(payload: object) -> UploadSessionStatus:
-    values = cast("Mapping[str, object]", payload)
-    raw_parts = cast("list[object]", values.get("parts", []))
+    values = _storage_mapping(payload)
+    raw_parts = values.get("parts", [])
+    if not isinstance(raw_parts, list):
+        raise TypeError(_INVALID_STORAGE_PAGE)
+    parts = cast("list[object]", raw_parts)
+    status = values.get("status")
+    if not _is_upload_session_state(status):
+        raise TypeError(_INVALID_STORAGE_PAGE)
     return UploadSessionStatus(
-        session_id=cast("str", values["session_id"]),
-        status=cast("UploadSessionState", values["status"]),
-        path=cast("str", values["path"]),
-        content_type=cast("str", values["content_type"]),
-        total_size=cast("int", values["total_size"]),
-        part_size=cast("int", values["part_size"]),
-        total_parts=cast("int", values["total_parts"]),
-        parts_uploaded=cast("int", values["parts_uploaded"]),
-        bytes_uploaded=cast("int", values["bytes_uploaded"]),
-        parts=tuple(_upload_part(part) for part in raw_parts),
-        expires_at=cast("datetime", _optional_datetime(values["expires_at"])),
-        created_at=cast("datetime", _optional_datetime(values["created_at"])),
+        session_id=_required_string(values, "session_id"),
+        status=status,
+        path=_required_string(values, "path"),
+        content_type=_required_string(values, "content_type"),
+        total_size=_required_integer(values, "total_size"),
+        part_size=_required_integer(values, "part_size"),
+        total_parts=_required_integer(values, "total_parts"),
+        parts_uploaded=_required_integer(values, "parts_uploaded"),
+        bytes_uploaded=_required_integer(values, "bytes_uploaded"),
+        parts=tuple(_upload_part(part) for part in parts),
+        expires_at=_required_datetime(values, "expires_at"),
+        created_at=_required_datetime(values, "created_at"),
     )
 
 
@@ -253,8 +322,18 @@ def _encoded_storage_path(path: str) -> str:
     return "/".join(quote(segment, safe="") for segment in segments)
 
 
+def _has_seekable_methods(source: BinaryReader) -> TypeIs[SeekableBinaryReader]:
+    try:
+        return all(
+            callable(getattr(source, name, None))
+            for name in ("seekable", "tell", "seek")
+        )
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
 def _remaining_upload_bytes(source: BinaryReader) -> int | None:
-    if not isinstance(source, SeekableBinaryReader):
+    if not _has_seekable_methods(source):
         return None
     try:
         if not source.seekable():
@@ -686,7 +765,7 @@ class StorageBucket:
                 ),
             )
         )
-        payload = cast("Mapping[str, object]", response_payload(response, 200))
+        payload = _storage_mapping(response_payload(response, 200))
         return _storage_object(payload["object"])
 
     def get_upload_session(
