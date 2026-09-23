@@ -21,6 +21,8 @@ from typing import (
 )
 from urllib.parse import quote
 
+from typing_extensions import TypeIs
+
 from ._transport import (
     StorageUploadPartRequest,
     StorageUploadSessionReference,
@@ -71,7 +73,6 @@ class BinaryReader(Protocol):
         ...
 
 
-@runtime_checkable
 class SeekableBinaryReader(BinaryReader, Protocol):
     """Optional stream capabilities used to avoid spooling seekable inputs."""
 
@@ -253,8 +254,14 @@ def _encoded_storage_path(path: str) -> str:
     return "/".join(quote(segment, safe="") for segment in segments)
 
 
+def _has_seekable_methods(source: BinaryReader) -> TypeIs[SeekableBinaryReader]:
+    return all(
+        callable(getattr(source, name, None)) for name in ("seekable", "tell", "seek")
+    )
+
+
 def _remaining_upload_bytes(source: BinaryReader) -> int | None:
-    if not isinstance(source, SeekableBinaryReader):
+    if not _has_seekable_methods(source):
         return None
     try:
         if not source.seekable():

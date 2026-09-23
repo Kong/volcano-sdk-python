@@ -1171,6 +1171,10 @@ def test_storage_streams_seekable_uploads_with_server_selected_reads() -> None:
 
     assert source.read_sizes
     assert max(source.read_sizes) <= 4
+    create_call = next(
+        call for call in transport.calls if call[0] == "createUploadSession"
+    )
+    assert create_call[1]["request"].total_size == 10
     upload_calls = [call for call in transport.calls if call[0] == "uploadPart"]
     assert [call[1]["request"].data for call in upload_calls] == [
         b"abcd",

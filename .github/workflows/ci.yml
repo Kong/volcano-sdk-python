@@ -30,6 +30,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          fetch-depth: 0
       - run: bash .github/scripts/actionlint.sh
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -46,6 +47,17 @@ jobs:
         with:
           name: coverage-for-python-${{ matrix.python-version }}
           path: reports/coverage.json
+          if-no-files-found: error
+      - name: Preserve mutation outcomes
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-for-python-${{ matrix.python-version }}
+          path: |
+            reports/mutation-targets.txt
+            reports/mutation-results.txt
+            reports/mutation-summary.json
+            mutants/mutmut-cicd-stats.json
           if-no-files-found: error
       - name: Preserve test failures and property seeds
         if: ${{ failure() }}
