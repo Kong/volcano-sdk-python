@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from io import SEEK_END, BytesIO
 from tempfile import TemporaryFile
-from typing import TYPE_CHECKING, Any, BinaryIO, Protocol, TypeGuard, cast
+from typing import TYPE_CHECKING, BinaryIO, Protocol, TypeGuard, cast
 from urllib.parse import quote
 
 from ._transport import (
@@ -463,6 +463,13 @@ def _upload_content_type(value: object) -> str:
     return value
 
 
+def _is_string_keyed_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
+    if not isinstance(value, Mapping):
+        return False
+    mapping = cast("Mapping[object, object]", value)
+    return all(isinstance(key, str) for key in mapping)
+
+
 @dataclass(frozen=True, slots=True)
 class StorageBucket:
     """Operations scoped to one storage bucket."""
@@ -476,7 +483,7 @@ class StorageBucket:
         data: bytes | BinaryIO,
         *,
         content_type: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Upload bytes or the remaining contents of a binary stream.
 
         Returns:
@@ -499,12 +506,9 @@ class StorageBucket:
             binding=binding,
         )
         payload = response_payload(response, 201)
-        if not isinstance(payload, Mapping):
+        if not _is_string_keyed_mapping(payload):
             raise TypeError(_INVALID_UPLOAD_RESPONSE)
-        values = cast("Mapping[object, object]", payload)
-        if not all(isinstance(key, str) for key in values):
-            raise TypeError(_INVALID_UPLOAD_RESPONSE)
-        return dict(cast("Mapping[str, Any]", values))
+        return dict(payload)
 
     def download(self, path: str, *, byte_range: str | None = None) -> bytes:
         """Download bytes from a path in this bucket.
