@@ -64,6 +64,7 @@ dev = [
   "pytest-cov==7.1.0",
   "types-behave==1.3.0.20260408",
   "tox==4.62.0",
+  "mutmut==3.8.0",
 ]
 
 [tool.uv]
@@ -317,6 +318,25 @@ exclude_lines = [
 ]
 partial_branches = []
 
+[tool.mutmut]
+source_paths = ["src/volcano_sdk"]
+pytest_add_cli_args_test_selection = ["tests/unit"]
+only_mutate = [
+  "src/volcano_sdk/locks.py",
+  "src/volcano_sdk/_lock_guard.py",
+  "src/volcano_sdk/_lock_renewer.py",
+  "src/volcano_sdk/_lock_worker.py",
+]
+do_not_mutate = ["src/volcano_sdk/_generated/*"]
+also_copy = [
+  "features",
+  "tests/fixtures",
+  "scripts",
+  "openapi",
+  "openapi-python-client.yaml",
+  "README.md",
+]
+
 [tool.poe.tasks]
 quality = ["audit", "generated", "lint", "format-check", "types", "test", "coverage", "contract-check", "package-check", "package-extras"]
 build = "uv build --no-sources --require-hashes"
@@ -329,6 +349,13 @@ mypy = "mypy"
 basedpyright = "basedpyright"
 test = "pytest tests/unit -q --junitxml=reports/unit.xml"
 coverage = "uv run --locked --isolated --python 3.12 pytest tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:reports/coverage.json --junitxml=reports/coverage-unit.xml"
+mutation = ["mutation-run", "mutation-check"]
+
+[tool.poe.tasks.mutation-run]
+sequence = [{ cmd = "mutmut run" }, { cmd = "mutmut export-cicd-stats" }]
+
+[tool.poe.tasks.mutation-check]
+cmd = '''python -c "import json,sys; from pathlib import Path; stats=json.loads(Path('mutants/mutmut-cicd-stats.json').read_text()); print(stats); sys.exit(not (stats['total'] > 0 and stats['killed'] == stats['total']))"'''
 
 [tool.poe.tasks.contract-check]
 sequence = [

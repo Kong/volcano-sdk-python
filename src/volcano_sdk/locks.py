@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from contextlib import contextmanager, suppress
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import UUID, uuid4
+
+from typing_extensions import TypeIs
 
 from ._lock_guard import LockGuard, lease_now
 from ._lock_worker import LockRenewer
@@ -88,10 +90,14 @@ def _parse_datetime(value: object) -> datetime | None:
     return datetime.fromisoformat(str(value))
 
 
+def _is_lock_mapping(payload: object) -> TypeIs[Mapping[object, object]]:
+    return isinstance(payload, Mapping)
+
+
 def _lock_values(payload: object) -> Mapping[object, object]:
-    if not isinstance(payload, Mapping):
+    if not _is_lock_mapping(payload):
         raise TypeError(_INVALID_LOCK_RESPONSE)
-    return cast("Mapping[object, object]", payload)
+    return payload
 
 
 def _fencing_token(value: object) -> int | None:
