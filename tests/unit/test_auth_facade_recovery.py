@@ -90,6 +90,10 @@ CASES = [
 ]
 
 
+def case_name(case: AuthCase) -> str:
+    return case.name
+
+
 def refresh_response(access: str | None = None) -> httpx.Response:
     return httpx.Response(
         200,
@@ -111,11 +115,11 @@ def client_for(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCli
             httpx_transport=httpx.MockTransport(handler),
         ),
     )
-    client.auth.set_session(Session(access_token("original"), "refresh-1", USER))
+    _ = client.auth.set_session(Session(access_token("original"), "refresh-1", USER))
     return client
 
 
-@pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
+@pytest.mark.parametrize("case", CASES, ids=case_name)
 @pytest.mark.parametrize(
     "rejection", [b'{"error":"expired"}', b"", b"<h1>Unauthorized</h1>"]
 )
@@ -133,7 +137,7 @@ def test_auth_facade_replays_only_the_captured_request_after_401(
         return httpx.Response(case.status, json=case.body)
 
     client = client_for(handle)
-    case.invoke(client)
+    _ = case.invoke(client)
     assert [request.headers["authorization"] for request in requests] == [
         f"Bearer {access_token('original')}",
         "Bearer anon",
@@ -146,7 +150,7 @@ def test_auth_facade_replays_only_the_captured_request_after_401(
     assert client.current_session.access_token == access_token("rotated")
 
 
-@pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
+@pytest.mark.parametrize("case", CASES, ids=case_name)
 def test_auth_facade_bounds_repeated_auth_rejection(case: AuthCase) -> None:
     requests: list[httpx.Request] = []
 
@@ -159,12 +163,12 @@ def test_auth_facade_bounds_repeated_auth_rejection(case: AuthCase) -> None:
         )
 
     with pytest.raises(VolcanoError) as caught:
-        case.invoke(client_for(handle))
+        _ = case.invoke(client_for(handle))
     assert caught.value.status == 401
     assert len(requests) == 3
 
 
-@pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
+@pytest.mark.parametrize("case", CASES, ids=case_name)
 @pytest.mark.parametrize("failure", ["transport", "503"])
 def test_auth_facade_does_not_replay_ambiguous_failure(
     case: AuthCase, failure: str
@@ -179,23 +183,23 @@ def test_auth_facade_does_not_replay_ambiguous_failure(
         return httpx.Response(503, json={"error": "unavailable"})
 
     with pytest.raises(VolcanoError):
-        case.invoke(client_for(handle))
+        _ = case.invoke(client_for(handle))
     assert len(requests) == 1
 
 
-@pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
+@pytest.mark.parametrize("case", CASES, ids=case_name)
 def test_auth_facade_preserves_replacement_without_replaying(case: AuthCase) -> None:
     requests: list[httpx.Request] = []
     replacement = Session("other", "other-refresh", "other-user")
 
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
         return httpx.Response(401, json={"error": "expired"})
 
     client = client_for(handle)
     with pytest.raises(SessionChangedError):
-        case.invoke(client)
+        _ = case.invoke(client)
     assert len(requests) == 1
     assert client.current_session == replacement
 
@@ -232,7 +236,7 @@ def test_oauth_recovery_replays_a_snapshot_of_the_nested_body() -> None:
             },
         )
 
-    client_for(handle).auth.call_oauth_api(
+    _ = client_for(handle).auth.call_oauth_api(
         provider="github", endpoint="/user", method="POST", body=body
     )
     assert requests[0].content == requests[2].content
@@ -252,12 +256,14 @@ def test_oauth_captures_ownership_before_copying_the_request(
     client = client_for(handle)
 
     def replace_while_copying(value: dict[str, JSONValue]) -> dict[str, JSONValue]:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
         return deepcopy(value)
 
     monkeypatch.setattr(auth_module, "deepcopy", replace_while_copying)
     with pytest.raises(SessionChangedError):
-        client.auth.call_oauth_api(provider="github", endpoint="/user", body={"x": 1})
+        _ = client.auth.call_oauth_api(
+            provider="github", endpoint="/user", body={"x": 1}
+        )
     assert client.current_session == replacement
     assert not requests
 
@@ -265,7 +271,7 @@ def test_oauth_captures_ownership_before_copying_the_request(
 @pytest.mark.parametrize(
     "case",
     [case for case in CASES if case.name in {"token", "refresh_token", "provider_api"}],
-    ids=lambda case: case.name,
+    ids=case_name,
 )
 @pytest.mark.parametrize(
     "payload", [b"", b"not-json", b"null", b"42", b"true", b"\xff"]
@@ -288,7 +294,7 @@ def test_malformed_oauth_response_preserves_session_without_retry(
     )
 
     with pytest.raises(VolcanoError, match=message) as error:
-        case.invoke(client)
+        _ = case.invoke(client)
 
     assert error.value.__cause__ is not None
     assert client.current_session is original
@@ -332,11 +338,11 @@ def test_delete_current_session_clears_refreshed_descendant(
         if len(requests) == 1:
             if timing == "401":
                 return httpx.Response(401)
-            client.auth.refresh_session()
+            _ = client.auth.refresh_session()
         return deletion_response(request, failure=failure)
 
     client = client_for(handle)
-    client.auth.set_session(Session(session_token(), "refresh-1", USER))
+    _ = client.auth.set_session(Session(session_token(), "refresh-1", USER))
     delete_current_session(client, failure=failure)
     assert client.current_session is None
     assert len(requests) == (3 if timing == "401" else 2)
@@ -349,11 +355,11 @@ def test_delete_current_session_preserves_explicit_replacement(
     replacement = Session("other", "other-refresh", "other-user")
 
     def handle(request: httpx.Request) -> httpx.Response:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
         return deletion_response(request, failure=failure)
 
     client = client_for(handle)
-    client.auth.set_session(Session(session_token(), "refresh-1", USER))
+    _ = client.auth.set_session(Session(session_token(), "refresh-1", USER))
     with pytest.raises(SessionChangedError):
         client.auth.delete_session(session_id=SESSION)
     assert client.current_session == replacement
@@ -371,7 +377,7 @@ def test_delete_other_session_rejects_completion_after_local_clear(
                 client.auth.sign_out()
             else:
                 with pytest.raises(VolcanoError, match="expired refresh"):
-                    client.auth.refresh_session()
+                    _ = client.auth.refresh_session()
         return httpx.Response(204)
 
     client = client_for(handle)

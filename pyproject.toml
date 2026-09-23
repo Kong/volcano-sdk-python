@@ -183,6 +183,42 @@ reportUnannotatedClassAttribute = "error"
 reportAny = "error"
 
 [[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/test_state.py"
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportImplicitStringConcatenation = "error"
+reportUnannotatedClassAttribute = "error"
+reportUnusedCallResult = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/test_auth_facade_recovery.py"
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportImplicitStringConcatenation = "error"
+reportUnannotatedClassAttribute = "error"
+reportUnusedCallResult = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/test_session_continuity.py"
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportImplicitStringConcatenation = "error"
+reportUnannotatedClassAttribute = "error"
+reportUnusedCallResult = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/test_token_bootstrap.py"
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportImplicitStringConcatenation = "error"
+reportUnannotatedClassAttribute = "error"
+reportUnusedCallResult = "error"
+
+[[tool.basedpyright.executionEnvironments]]
 root = "features"
 reportAny = "error"
 reportExplicitAny = "error"

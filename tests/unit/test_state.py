@@ -6,15 +6,19 @@ from dataclasses import FrozenInstanceError, dataclass
 from datetime import datetime
 from threading import Event, Thread
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast, final
 from uuid import UUID
 
 import httpx
 import pytest
 from fixtures.invalid_arguments import (
     assign_linked_provider,
+    assign_metadata_value,
     assign_provider_token,
     assign_session_page,
+    assign_sign_up_message,
+    assign_snapshot_value,
+    assign_user_email,
     non_session_adoption,
     unknown_oauth_api_provider,
     unknown_oauth_link,
@@ -22,6 +26,7 @@ from fixtures.invalid_arguments import (
     unknown_oauth_token,
     unknown_oauth_token_refresh,
     unknown_oauth_unlink,
+    unsupported_hosted_auth_action,
     unsupported_oauth_api_method,
 )
 from fixtures.invalid_callbacks import register_non_callable_auth
@@ -72,12 +77,15 @@ from volcano_sdk._generated.models.refresh_o_auth_provider_token_response_200 im
     RefreshOAuthProviderTokenResponse200,
 )
 from volcano_sdk._generated.types import Unset
+from volcano_sdk.database import QueryBuilder
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+    from typing import Literal, TypeGuard
 
     from volcano_sdk import User
     from volcano_sdk.auth import Auth
+    from volcano_sdk.models import JSONValue
 
 _CONNECTION_LOST = "connection lost"
 _SUBSCRIBER_FAILED = "subscriber failed"
@@ -93,6 +101,25 @@ class Response:
     payload: object = None
     content: bytes = b""
     headers: dict[str, str] | None = None
+
+
+def _authorization(kwargs: Mapping[str, object]) -> str:
+    authorization = kwargs["authorization"]
+    assert isinstance(authorization, str)
+    return authorization
+
+
+def _is_request_body(value: object) -> TypeGuard[dict[str, object]]:
+    if not isinstance(value, dict):
+        return False
+    entries = cast("dict[object, object]", value)
+    return all(isinstance(key, str) for key in entries)
+
+
+def _request_body(kwargs: Mapping[str, object]) -> dict[str, object]:
+    body = kwargs["body"]
+    assert _is_request_body(body)
+    return body
 
 
 def _user_profile(*, email: str = "user@example.com") -> AuthGetUserResponse200:
@@ -188,9 +215,11 @@ def _linked_oauth_providers() -> AuthListOAuthProvidersResponse200:
 class OAuthTransport:
     def __init__(self) -> None:
         self.authorizations: list[tuple[str, str]] = []
-        self.oauth_authorization_url = "https://api.example/auth/oauth/github/authorize"
+        self.oauth_authorization_url: str = (
+            "https://api.example/auth/oauth/github/authorize"
+        )
         self.oauth_authorization_url_calls: list[dict[str, object]] = []
-        self.oauth_exchange_response = Response(
+        self.oauth_exchange_response: Response = Response(
             200,
             {
                 "access_token": "oauth-access",
@@ -200,10 +229,12 @@ class OAuthTransport:
         )
         self.oauth_exchange_calls: list[dict[str, object]] = []
         self.on_oauth_exchange: Callable[[], None] | None = None
-        self.list_oauth_providers_response = Response(200, _linked_oauth_providers())
+        self.list_oauth_providers_response: Response = Response(
+            200, _linked_oauth_providers()
+        )
         self.list_oauth_providers_calls: list[dict[str, object]] = []
         self.on_list_oauth_providers: Callable[[], None] | None = None
-        self.link_oauth_provider_response = Response(
+        self.link_oauth_provider_response: Response = Response(
             200,
             AuthLinkOAuthProviderResponse200.from_dict(
                 {"authorization_url": "https://accounts.example/link"}
@@ -211,10 +242,10 @@ class OAuthTransport:
         )
         self.link_oauth_provider_calls: list[dict[str, object]] = []
         self.on_link_oauth_provider: Callable[[], None] | None = None
-        self.unlink_oauth_provider_response = Response(204)
+        self.unlink_oauth_provider_response: Response = Response(204)
         self.unlink_oauth_provider_calls: list[dict[str, object]] = []
         self.on_unlink_oauth_provider: Callable[[], None] | None = None
-        self.oauth_provider_token_status_response = Response(
+        self.oauth_provider_token_status_response: Response = Response(
             200,
             GetOAuthProviderTokenResponse200.from_dict(
                 {
@@ -226,7 +257,7 @@ class OAuthTransport:
         )
         self.oauth_provider_token_status_calls: list[dict[str, object]] = []
         self.on_oauth_provider_token_status: Callable[[], None] | None = None
-        self.refresh_oauth_provider_token_response = Response(
+        self.refresh_oauth_provider_token_response: Response = Response(
             200,
             RefreshOAuthProviderTokenResponse200.from_dict(
                 {
@@ -238,7 +269,7 @@ class OAuthTransport:
         )
         self.refresh_oauth_provider_token_calls: list[dict[str, object]] = []
         self.on_refresh_oauth_provider_token: Callable[[], None] | None = None
-        self.call_oauth_api_response = Response(
+        self.call_oauth_api_response: Response = Response(
             200,
             CallOAuthProviderAPIResponse200.from_dict(
                 {
@@ -252,59 +283,60 @@ class OAuthTransport:
         self.call_oauth_api_calls: list[dict[str, object]] = []
         self.on_call_oauth_api: Callable[[], None] | None = None
 
-    def auth_list_oauth_providers(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("list_oauth_providers", kwargs["authorization"]))
+    def auth_list_oauth_providers(self, **kwargs: object) -> Response:
+        self.authorizations.append(("list_oauth_providers", _authorization(kwargs)))
         self.list_oauth_providers_calls.append(kwargs)
         if self.on_list_oauth_providers is not None:
             self.on_list_oauth_providers()
         return self.list_oauth_providers_response
 
-    def auth_oauth_authorization_url(self, **kwargs: Any) -> str:
+    def auth_oauth_authorization_url(self, **kwargs: object) -> str:
         self.oauth_authorization_url_calls.append(kwargs)
         return self.oauth_authorization_url
 
-    def auth_oauth_exchange(self, **kwargs: Any) -> Response:
+    def auth_oauth_exchange(self, **kwargs: object) -> Response:
         self.oauth_exchange_calls.append(kwargs)
         if self.on_oauth_exchange is not None:
             self.on_oauth_exchange()
         return self.oauth_exchange_response
 
-    def auth_link_oauth_provider(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("link_oauth_provider", kwargs["authorization"]))
+    def auth_link_oauth_provider(self, **kwargs: object) -> Response:
+        self.authorizations.append(("link_oauth_provider", _authorization(kwargs)))
         self.link_oauth_provider_calls.append(kwargs)
         if self.on_link_oauth_provider is not None:
             self.on_link_oauth_provider()
         return self.link_oauth_provider_response
 
-    def auth_unlink_oauth_provider(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("unlink_oauth_provider", kwargs["authorization"]))
+    def auth_unlink_oauth_provider(self, **kwargs: object) -> Response:
+        self.authorizations.append(("unlink_oauth_provider", _authorization(kwargs)))
         self.unlink_oauth_provider_calls.append(kwargs)
         if self.on_unlink_oauth_provider is not None:
             self.on_unlink_oauth_provider()
         return self.unlink_oauth_provider_response
 
-    def auth_get_oauth_provider_token(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("oauth_token_status", kwargs["authorization"]))
+    def auth_get_oauth_provider_token(self, **kwargs: object) -> Response:
+        self.authorizations.append(("oauth_token_status", _authorization(kwargs)))
         self.oauth_provider_token_status_calls.append(kwargs)
         if self.on_oauth_provider_token_status is not None:
             self.on_oauth_provider_token_status()
         return self.oauth_provider_token_status_response
 
-    def auth_refresh_oauth_provider_token(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("refresh_oauth_token", kwargs["authorization"]))
+    def auth_refresh_oauth_provider_token(self, **kwargs: object) -> Response:
+        self.authorizations.append(("refresh_oauth_token", _authorization(kwargs)))
         self.refresh_oauth_provider_token_calls.append(kwargs)
         if self.on_refresh_oauth_provider_token is not None:
             self.on_refresh_oauth_provider_token()
         return self.refresh_oauth_provider_token_response
 
-    def auth_call_oauth_api(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("call_oauth_api", kwargs["authorization"]))
+    def auth_call_oauth_api(self, **kwargs: object) -> Response:
+        self.authorizations.append(("call_oauth_api", _authorization(kwargs)))
         self.call_oauth_api_calls.append(kwargs)
         if self.on_call_oauth_api is not None:
             self.on_call_oauth_api()
         return self.call_oauth_api_response
 
 
+@final
 class StateTransport(OAuthTransport):
     on_signin: Callable[[], None] | None = None
     on_signup: Callable[[], None] | None = None
@@ -401,8 +433,8 @@ class StateTransport(OAuthTransport):
         self.update_calls: list[dict[str, object]] = []
         self.delete_calls: list[dict[str, object]] = []
 
-    def auth_signin(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("auth", kwargs["authorization"]))
+    def auth_signin(self, **kwargs: object) -> Response:
+        self.authorizations.append(("auth", _authorization(kwargs)))
         if self.on_signin is not None:
             self.on_signin()
         return Response(
@@ -414,148 +446,151 @@ class StateTransport(OAuthTransport):
             },
         )
 
-    def auth_signup(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("signup", kwargs["authorization"]))
+    def auth_signup(self, **kwargs: object) -> Response:
+        self.authorizations.append(("signup", _authorization(kwargs)))
         self.signup_calls.append(kwargs)
         if self.on_signup is not None:
             self.on_signup()
         return self.signup_response
 
-    def auth_signup_anonymous(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("anonymous_signin", kwargs["authorization"]))
+    def auth_signup_anonymous(self, **kwargs: object) -> Response:
+        self.authorizations.append(("anonymous_signin", _authorization(kwargs)))
         self.anonymous_signin_calls.append(kwargs)
         if self.on_anonymous_signin is not None:
             self.on_anonymous_signin()
         return self.anonymous_signin_response
 
-    def auth_convert_anonymous(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("anonymous_conversion", kwargs["authorization"]))
+    def auth_convert_anonymous(self, **kwargs: object) -> Response:
+        self.authorizations.append(("anonymous_conversion", _authorization(kwargs)))
         self.anonymous_conversion_calls.append(kwargs)
         if self.on_anonymous_conversion is not None:
             self.on_anonymous_conversion()
         return self.anonymous_conversion_response
 
-    def auth_request_email_change(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("email_change", kwargs["authorization"]))
+    def auth_request_email_change(self, **kwargs: object) -> Response:
+        self.authorizations.append(("email_change", _authorization(kwargs)))
         self.email_change_calls.append(kwargs)
         if self.on_email_change is not None:
             self.on_email_change()
         return self.email_change_response
 
-    def auth_cancel_email_change(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("cancel_email_change", kwargs["authorization"]))
+    def auth_cancel_email_change(self, **kwargs: object) -> Response:
+        self.authorizations.append(("cancel_email_change", _authorization(kwargs)))
         self.cancel_email_change_calls.append(kwargs)
         if self.on_cancel_email_change is not None:
             self.on_cancel_email_change()
         return self.cancel_email_change_response
 
-    def auth_confirm_email_change(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("confirm_email_change", kwargs["authorization"]))
+    def auth_confirm_email_change(self, **kwargs: object) -> Response:
+        self.authorizations.append(("confirm_email_change", _authorization(kwargs)))
         self.confirm_email_change_calls.append(kwargs)
         if self.on_confirm_email_change is not None:
             self.on_confirm_email_change()
         return self.confirm_email_change_response
 
-    def auth_delete_all_my_sessions(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("delete_other_sessions", kwargs["authorization"]))
+    def auth_delete_all_my_sessions(self, **kwargs: object) -> Response:
+        self.authorizations.append(("delete_other_sessions", _authorization(kwargs)))
         self.delete_other_sessions_calls.append(kwargs)
         if self.on_delete_other_sessions is not None:
             self.on_delete_other_sessions()
         return self.delete_other_sessions_response
 
-    def auth_delete_my_session(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("delete_session", kwargs["authorization"]))
+    def auth_delete_my_session(self, **kwargs: object) -> Response:
+        self.authorizations.append(("delete_session", _authorization(kwargs)))
         self.delete_session_calls.append(kwargs)
         if self.on_delete_session is not None:
             self.on_delete_session()
         return self.delete_session_response
 
-    def auth_get_my_sessions(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("list_sessions", kwargs["authorization"]))
+    def auth_get_my_sessions(self, **kwargs: object) -> Response:
+        self.authorizations.append(("list_sessions", _authorization(kwargs)))
         self.list_sessions_calls.append(kwargs)
         if self.on_list_sessions is not None:
             self.on_list_sessions()
         return self.list_sessions_response
 
-    def auth_forgot_password(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("forgot_password", kwargs["authorization"]))
+    def auth_forgot_password(self, **kwargs: object) -> Response:
+        self.authorizations.append(("forgot_password", _authorization(kwargs)))
         self.forgot_password_calls.append(kwargs)
         return self.forgot_password_response
 
-    def auth_reset_password(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("reset_password", kwargs["authorization"]))
+    def auth_reset_password(self, **kwargs: object) -> Response:
+        self.authorizations.append(("reset_password", _authorization(kwargs)))
         self.reset_password_calls.append(kwargs)
         return self.reset_password_response
 
-    def auth_confirm_email(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("confirm_email", kwargs["authorization"]))
+    def auth_confirm_email(self, **kwargs: object) -> Response:
+        self.authorizations.append(("confirm_email", _authorization(kwargs)))
         self.confirm_email_calls.append(kwargs)
         return self.confirm_email_response
 
-    def auth_resend_confirmation(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("resend_confirmation", kwargs["authorization"]))
+    def auth_resend_confirmation(self, **kwargs: object) -> Response:
+        self.authorizations.append(("resend_confirmation", _authorization(kwargs)))
         self.resend_confirmation_calls.append(kwargs)
         return self.resend_confirmation_response
 
-    def auth_get_user(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("get_user", kwargs["authorization"]))
+    def auth_get_user(self, **kwargs: object) -> Response:
+        self.authorizations.append(("get_user", _authorization(kwargs)))
         if self.on_get_user is not None:
             self.on_get_user()
         return self.user_response
 
-    def auth_update_user(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("update_user", kwargs["authorization"]))
+    def auth_update_user(self, **kwargs: object) -> Response:
+        self.authorizations.append(("update_user", _authorization(kwargs)))
         self.update_user_calls.append(kwargs)
         if self.on_update_user is not None:
             self.on_update_user()
         return self.update_user_response
 
-    def auth_refresh(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("refresh", kwargs["authorization"]))
+    def auth_refresh(self, **kwargs: object) -> Response:
+        self.authorizations.append(("refresh", _authorization(kwargs)))
         if self.on_refresh is not None:
             self.on_refresh()
         return self.refresh_response
 
-    def auth_logout(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("logout", kwargs["authorization"]))
+    def auth_logout(self, **kwargs: object) -> Response:
+        self.authorizations.append(("logout", _authorization(kwargs)))
         if self.on_logout is not None:
             self.on_logout()
         return self.logout_response
 
-    def query_database_select(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("query", kwargs["authorization"]))
-        self.query_calls.append(kwargs["body"])
-        return Response(200, {"data": [kwargs["body"]], "count": 1})
+    def query_database_select(self, **kwargs: object) -> Response:
+        self.authorizations.append(("query", _authorization(kwargs)))
+        body = _request_body(kwargs)
+        self.query_calls.append(body)
+        return Response(200, {"data": [body], "count": 1})
 
-    def query_database_insert(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("insert", kwargs["authorization"]))
-        self.insert_calls.append(kwargs["body"])
-        return Response(200, {"data": [kwargs["body"]["values"]], "count": 1})
+    def query_database_insert(self, **kwargs: object) -> Response:
+        self.authorizations.append(("insert", _authorization(kwargs)))
+        body = _request_body(kwargs)
+        self.insert_calls.append(body)
+        return Response(200, {"data": [body["values"]], "count": 1})
 
-    def query_database_update(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("update", kwargs["authorization"]))
-        self.update_calls.append(kwargs["body"])
-        return Response(200, {"data": [kwargs["body"]["values"]], "count": 1})
+    def query_database_update(self, **kwargs: object) -> Response:
+        self.authorizations.append(("update", _authorization(kwargs)))
+        body = _request_body(kwargs)
+        self.update_calls.append(body)
+        return Response(200, {"data": [body["values"]], "count": 1})
 
-    def query_database_delete(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("delete", kwargs["authorization"]))
-        self.delete_calls.append(kwargs["body"])
+    def query_database_delete(self, **kwargs: object) -> Response:
+        self.authorizations.append(("delete", _authorization(kwargs)))
+        self.delete_calls.append(_request_body(kwargs))
         return Response(200, {"data": [{"id": "item-1"}], "count": 1})
 
-    def upload_storage_object(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("upload", kwargs["authorization"]))
+    def upload_storage_object(self, **kwargs: object) -> Response:
+        self.authorizations.append(("upload", _authorization(kwargs)))
         return Response(201, {"name": kwargs["path"]})
 
-    def download_storage_object(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("download", kwargs["authorization"]))
+    def download_storage_object(self, **kwargs: object) -> Response:
+        self.authorizations.append(("download", _authorization(kwargs)))
         return Response(200, content=b"bytes")
 
-    def acquire_project_lock(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("acquire", kwargs["authorization"]))
+    def acquire_project_lock(self, **kwargs: object) -> Response:
+        self.authorizations.append(("acquire", _authorization(kwargs)))
         return Response(201, {"expires_at": "2030-01-01T00:00:00Z", "fencing_token": 1})
 
-    def release_project_lock(self, **kwargs: Any) -> Response:
-        self.authorizations.append(("release", kwargs["authorization"]))
+    def release_project_lock(self, **kwargs: object) -> Response:
+        self.authorizations.append(("release", _authorization(kwargs)))
         return Response(204)
 
 
@@ -592,7 +627,7 @@ def test_profile_operations_update_the_local_snapshot(
     original = client.auth.sign_in(email="user@example.com", password="secret")
     binding = client._capture_session_binding()
     events: list[str] = []
-    client.auth.on_auth_state_change(lambda event, _session: events.append(event))
+    _ = client.auth.on_auth_state_change(lambda event, _session: events.append(event))
     events.clear()
 
     user = operation(client.auth)
@@ -607,9 +642,8 @@ def test_profile_operations_update_the_local_snapshot(
     assert client._capture_session_binding()[:2] == binding[:2]
     assert events == []
     assert original.user == {"id": original.user_id}
-    mutable_user: Any = current.user
     with pytest.raises(TypeError):
-        mutable_user["email"] = "changed"
+        assign_snapshot_value(current.user)
 
 
 @pytest.mark.parametrize(
@@ -626,7 +660,7 @@ def test_profile_operations_reject_a_different_user_without_changing_session(
     binding = client._capture_session_binding()
 
     with pytest.raises(AuthenticationError, match="Profile user does not match"):
-        operation(client.auth)
+        _ = operation(client.auth)
 
     assert client.auth.get_session() is original
     assert client._capture_session_binding() == binding
@@ -689,10 +723,10 @@ def test_profile_operations_preserve_equivalent_session_user_ids(
 def test_profile_updates_do_not_invalidate_an_overlapping_profile_read() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     def update_profile() -> None:
-        client.auth.update_user(metadata={"name": "new"})
+        _ = client.auth.update_user(metadata={"name": "new"})
 
     transport.on_get_user = update_profile
 
@@ -707,14 +741,14 @@ def test_profile_updates_do_not_invalidate_an_overlapping_profile_read() -> None
 def test_query_builder_chains_are_immutable() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     base = client.database("main").from_("items")
     selected = base.select("*")
     first = selected.eq("slug", "a")
     second = selected.eq("slug", "b")
 
-    first.execute()
-    second.execute()
+    _ = first.execute()
+    _ = second.execute()
 
     assert transport.query_calls == [
         {
@@ -729,26 +763,26 @@ def test_query_builder_chains_are_immutable() -> None:
 
 
 @pytest.mark.parametrize(
-    ("method_name", "operator"),
+    ("filter_method", "operator"),
     [
-        ("neq", "neq"),
-        ("gt", "gt"),
-        ("gte", "gte"),
-        ("lt", "lt"),
-        ("lte", "lte"),
+        (QueryBuilder.neq, "neq"),
+        (QueryBuilder.gt, "gt"),
+        (QueryBuilder.gte, "gte"),
+        (QueryBuilder.lt, "lt"),
+        (QueryBuilder.lte, "lte"),
     ],
 )
 def test_query_builder_comparison_filters_are_immutable(
-    method_name: str,
+    filter_method: Callable[[QueryBuilder, str, object], QueryBuilder],
     operator: str,
 ) -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     source = client.database("main").from_("items").select("*")
 
-    getattr(source, method_name)("priority", 7).execute()
-    source.execute()
+    _ = filter_method(source, "priority", 7).execute()
+    _ = source.execute()
 
     assert transport.query_calls == [
         {
@@ -760,20 +794,20 @@ def test_query_builder_comparison_filters_are_immutable(
 
 
 @pytest.mark.parametrize(
-    ("method_name", "operator"),
-    [("like", "like"), ("ilike", "ilike")],
+    ("filter_method", "operator"),
+    [(QueryBuilder.like, "like"), (QueryBuilder.ilike, "ilike")],
 )
 def test_query_builder_pattern_filters_are_immutable(
-    method_name: str,
+    filter_method: Callable[[QueryBuilder, str, str], QueryBuilder],
     operator: str,
 ) -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     source = client.database("main").from_("items").select("*")
 
-    getattr(source, method_name)("name", "%volcano%").execute()
-    source.execute()
+    _ = filter_method(source, "name", "%volcano%").execute()
+    _ = source.execute()
 
     assert transport.query_calls == [
         {
@@ -789,11 +823,11 @@ def test_query_builder_pattern_filters_are_immutable(
 def test_query_builder_null_filter_is_immutable() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     source = client.database("main").from_("items").select("*")
 
-    source.is_("deleted_at", None).execute()
-    source.execute()
+    _ = source.is_("deleted_at", None).execute()
+    _ = source.execute()
 
     assert transport.query_calls == [
         {
@@ -809,14 +843,14 @@ def test_query_builder_null_filter_is_immutable() -> None:
 def test_query_builder_membership_filter_copies_values() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     source = client.database("main").from_("items").select("*")
     statuses = ["draft", "published"]
 
     query = source.in_("status", statuses)
     statuses.append("archived")
-    query.execute()
-    source.execute()
+    _ = query.execute()
+    _ = source.execute()
 
     assert transport.query_calls == [
         {
@@ -836,9 +870,9 @@ def test_query_builder_membership_filter_copies_values() -> None:
 def test_database_insert_copies_values_and_reads_current_credentials() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
-    labels = ["sdk"]
-    values: dict[str, Any] = {
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
+    labels: list[JSONValue] = ["sdk"]
+    values: dict[str, JSONValue] = {
         "name": "Volcano",
         "metadata": MappingProxyType({"labels": labels}),
     }
@@ -847,7 +881,7 @@ def test_database_insert_copies_values_and_reads_current_credentials() -> None:
     values["name"] = "Lava"
     labels.append("mutated")
     transport.next_access_token = "access-2"
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     assert insert.execute() == [
         {"name": "Volcano", "metadata": {"labels": ["sdk"]}},
@@ -864,9 +898,9 @@ def test_database_insert_copies_values_and_reads_current_credentials() -> None:
 def test_database_update_copies_inputs_and_reads_current_credentials() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
-    labels = ["sdk"]
-    values: dict[str, Any] = {"metadata": MappingProxyType({"labels": labels})}
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
+    labels: list[JSONValue] = ["sdk"]
+    values: dict[str, JSONValue] = {"metadata": MappingProxyType({"labels": labels})}
     statuses = ["draft", "published"]
 
     update = (
@@ -875,7 +909,7 @@ def test_database_update_copies_inputs_and_reads_current_credentials() -> None:
     labels.append("mutated")
     statuses.append("archived")
     transport.next_access_token = "access-2"
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     assert update.execute() == [{"metadata": {"labels": ["sdk"]}}]
     assert transport.update_calls == [
@@ -897,14 +931,21 @@ def test_database_update_copies_inputs_and_reads_current_credentials() -> None:
 def test_database_update_reuses_the_select_filter_vocabulary() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     update = client.database("main").from_("items").update({"status": "review"})
-    update.eq("id", 1).neq("state", "deleted").gt("score", 1).gte("priority", 2).lt(
-        "attempts", 5
-    ).lte("rank", 10).like("name", "Vol%").ilike("owner", "ada%").is_(
-        "deleted_at", None
-    ).execute()
+    _ = (
+        update.eq("id", 1)
+        .neq("state", "deleted")
+        .gt("score", 1)
+        .gte("priority", 2)
+        .lt("attempts", 5)
+        .lte("rank", 10)
+        .like("name", "Vol%")
+        .ilike("owner", "ada%")
+        .is_("deleted_at", None)
+        .execute()
+    )
 
     filters = transport.update_calls[0]["filters"]
     assert isinstance(filters, list)
@@ -931,11 +972,16 @@ def test_database_update_reuses_the_select_filter_vocabulary() -> None:
 def test_database_update_preserves_filters_applied_before_update() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
-    client.database("main").from_("items").eq("tenant_id", "tenant-1").update(
-        {"status": "published"}
-    ).eq("id", "item-1").execute()
+    _ = (
+        client.database("main")
+        .from_("items")
+        .eq("tenant_id", "tenant-1")
+        .update({"status": "published"})
+        .eq("id", "item-1")
+        .execute()
+    )
 
     assert transport.update_calls[0]["filters"] == [
         {"column": "tenant_id", "operator": "eq", "value": "tenant-1"},
@@ -946,7 +992,7 @@ def test_database_update_preserves_filters_applied_before_update() -> None:
 def test_database_delete_composes_captured_filters_and_current_credentials() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     statuses = ["draft", "archived"]
 
     delete = (
@@ -958,7 +1004,7 @@ def test_database_delete_composes_captured_filters_and_current_credentials() -> 
     )
     statuses.append("published")
     transport.next_access_token = "access-2"
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     assert delete.execute() == [{"id": "item-1"}]
     assert transport.delete_calls == [
@@ -980,11 +1026,11 @@ def test_database_delete_composes_captured_filters_and_current_credentials() -> 
 def test_query_builder_order_clauses_are_immutable() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     source = client.database("main").from_("items").select("*")
 
-    source.order("priority", ascending=False).order("id").execute()
-    source.execute()
+    _ = source.order("priority", ascending=False).order("id").execute()
+    _ = source.execute()
 
     assert transport.query_calls == [
         {
@@ -1001,11 +1047,11 @@ def test_query_builder_order_clauses_are_immutable() -> None:
 def test_query_builder_pagination_is_immutable() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     source = client.database("main").from_("items").select("*")
 
-    source.limit(10).offset(20).execute()
-    source.execute()
+    _ = source.limit(10).offset(20).execute()
+    _ = source.execute()
 
     assert transport.query_calls == [
         {"table": "items", "limit": 10, "offset": 20},
@@ -1020,16 +1066,16 @@ def test_each_request_reads_the_current_credentials() -> None:
         service_key="service-1",
         _transport=transport,
     )
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     query = client.database("main").from_("items").select("*")
     bucket = client.storage.from_("assets")
 
     transport.next_access_token = "access-2"
     client._anon_key = "anon-2"
-    client.auth.sign_in(email="user@example.com", password="secret")
-    query.execute()
-    bucket.upload("a.txt", b"bytes")
-    bucket.download("a.txt")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
+    _ = query.execute()
+    _ = bucket.upload("a.txt", b"bytes")
+    _ = bucket.download("a.txt")
     lease = client.locks.acquire("build", ttl=30)
     client._service_key = "service-2"
     client.locks.release("build", lease)
@@ -1061,11 +1107,11 @@ def test_sign_in_does_not_replace_a_session_adopted_during_the_request() -> None
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_signin = replace_session
     with pytest.raises(SessionChangedError):
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     assert client.auth.get_session() == replacement
 
@@ -1073,14 +1119,14 @@ def test_sign_in_does_not_replace_a_session_adopted_during_the_request() -> None
 def test_sign_in_does_not_restore_a_session_cleared_during_the_request() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     received: list[str] = []
-    client.auth.on_auth_state_change(lambda event, _session: received.append(event))
+    _ = client.auth.on_auth_state_change(lambda event, _session: received.append(event))
     received.clear()
     transport.on_signin = client.auth.sign_out
 
     with pytest.raises(SessionChangedError):
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     assert client.auth.get_session() is None
     assert received == ["SIGNED_OUT"]
@@ -1110,7 +1156,7 @@ def test_auth_state_subscription_reports_session_transitions() -> None:
 def test_auth_session_binding_preserves_lineage_across_token_refresh() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     generation, lineage, _session = client._capture_session_binding()
 
     refreshed = client.auth.refresh_session()
@@ -1124,7 +1170,7 @@ def test_auth_session_binding_preserves_lineage_across_token_refresh() -> None:
 def test_auth_session_binding_changes_lineage_across_reauthentication() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     generation, lineage, _session = client._capture_session_binding()
 
     client.auth.sign_out()
@@ -1136,7 +1182,7 @@ def test_auth_session_binding_changes_lineage_across_reauthentication() -> None:
     assert signed_out_lineage == lineage
     assert signed_out is None
 
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     signed_in_generation, signed_in_lineage, signed_in = (
         client._capture_session_binding()
     )
@@ -1156,7 +1202,7 @@ def test_auth_state_subscription_unsubscribes_idempotently() -> None:
 
     subscription.unsubscribe()
     subscription.unsubscribe()
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     assert events == [("INITIAL_SESSION", None)]
 
@@ -1186,8 +1232,8 @@ def test_auth_state_callback_failure_does_not_interrupt_other_subscribers() -> N
     def fail(_event: str, _session: Session | None) -> None:
         raise RuntimeError(_SUBSCRIBER_FAILED)
 
-    client.auth.on_auth_state_change(fail)
-    client.auth.on_auth_state_change(
+    _ = client.auth.on_auth_state_change(fail)
+    _ = client.auth.on_auth_state_change(
         lambda event, session: received.append((event, session))
     )
 
@@ -1208,8 +1254,8 @@ def test_auth_state_callbacks_preserve_order_during_reentrant_changes() -> None:
         if event == "SIGNED_IN":
             client.auth.sign_out()
 
-    client.auth.on_auth_state_change(sign_out_after_sign_in)
-    client.auth.on_auth_state_change(
+    _ = client.auth.on_auth_state_change(sign_out_after_sign_in)
+    _ = client.auth.on_auth_state_change(
         lambda event, session: received.append((event, session))
     )
     received.clear()
@@ -1231,7 +1277,7 @@ def test_auth_state_unsubscribe_skips_queued_reentrant_changes() -> None:
         if event == "SIGNED_IN":
             client.auth.sign_out()
 
-    client.auth.on_auth_state_change(sign_out_after_sign_in)
+    _ = client.auth.on_auth_state_change(sign_out_after_sign_in)
     subscription: AuthSubscription
 
     def unsubscribe_after_sign_in(event: str, _session: Session | None) -> None:
@@ -1242,7 +1288,7 @@ def test_auth_state_unsubscribe_skips_queued_reentrant_changes() -> None:
     subscription = client.auth.on_auth_state_change(unsubscribe_after_sign_in)
     received.clear()
 
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     assert received == ["SIGNED_IN"]
 
@@ -1257,11 +1303,11 @@ def test_auth_state_dispatch_recovers_after_a_base_exception() -> None:
             raise KeyboardInterrupt
 
     interrupting = client.auth.on_auth_state_change(interrupt_after_sign_in)
-    client.auth.on_auth_state_change(lambda event, _session: received.append(event))
+    _ = client.auth.on_auth_state_change(lambda event, _session: received.append(event))
     received.clear()
 
     with pytest.raises(KeyboardInterrupt):
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     interrupting.unsubscribe()
     client.auth.sign_out()
@@ -1279,10 +1325,10 @@ def test_auth_state_subscription_rolls_back_when_initial_delivery_aborts() -> No
         raise _SubscriberAbortError
 
     with pytest.raises(_SubscriberAbortError):
-        client.auth.on_auth_state_change(interrupt)
+        _ = client.auth.on_auth_state_change(interrupt)
 
-    client.auth.on_auth_state_change(lambda event, _session: observed.append(event))
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.on_auth_state_change(lambda event, _session: observed.append(event))
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     assert received == ["INITIAL_SESSION"]
     assert observed == ["INITIAL_SESSION", "SIGNED_IN"]
@@ -1300,8 +1346,8 @@ def test_auth_state_dispatch_preserves_concurrent_notifications_on_abort() -> No
             assert release.wait(timeout=1)
             raise _SubscriberAbortError
 
-    client.auth.on_auth_state_change(interrupt)
-    client.auth.on_auth_state_change(lambda event, _session: received.append(event))
+    _ = client.auth.on_auth_state_change(interrupt)
+    _ = client.auth.on_auth_state_change(lambda event, _session: received.append(event))
     received.clear()
 
     def sign_out() -> None:
@@ -1312,7 +1358,7 @@ def test_auth_state_dispatch_preserves_concurrent_notifications_on_abort() -> No
     sign_out_thread = Thread(target=sign_out)
     sign_out_thread.start()
     with pytest.raises(_SubscriberAbortError):
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
     sign_out_thread.join(timeout=1)
 
     assert not sign_out_thread.is_alive()
@@ -1341,16 +1387,15 @@ def test_sign_up_returns_immutable_acknowledgement_without_session_change() -> N
             "metadata": {"display_name": "New User"},
         }
     ]
-    mutable_result: Any = result
     with pytest.raises(FrozenInstanceError):
-        mutable_result.message = "changed"
+        assign_sign_up_message(result)
 
 
 def test_sign_up_uses_empty_metadata_without_creating_a_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
-    client.auth.sign_up(email="new@example.com", password="secret")
+    _ = client.auth.sign_up(email="new@example.com", password="secret")
 
     assert client.auth.get_session() is None
     assert transport.signup_calls[0]["metadata"] == {}
@@ -1392,14 +1437,14 @@ def test_signup_followup_does_not_replace_a_newer_session(replace_during: str) -
     replacement = Session("replacement", "refresh", "other")
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     if replace_during == "signup":
         transport.on_signup = replace_session
     else:
         transport.on_signin = replace_session
     with pytest.raises(SessionChangedError):
-        client.auth.sign_up(
+        _ = client.auth.sign_up(
             email="new@example.com", password="secret", sign_in_when_allowed=True
         )
     assert client.auth.get_session() == replacement
@@ -1419,7 +1464,7 @@ def test_sign_up_surfaces_followup_signin_failure_without_changing_session() -> 
 
     transport.on_signin = reject_signin
     with pytest.raises(AuthenticationError, match="Sign-in rejected"):
-        client.auth.sign_up(
+        _ = client.auth.sign_up(
             email="new@example.com", password="secret", sign_in_when_allowed=True
         )
     assert client.auth.get_session() is established
@@ -1432,7 +1477,7 @@ def test_sign_up_raises_typed_errors_without_changing_session() -> None:
     transport.signup_response = Response(403, {"error": "Signups are disabled"})
 
     with pytest.raises(AuthenticationError, match="Signups are disabled"):
-        client.auth.sign_up(email="new@example.com", password="secret")
+        _ = client.auth.sign_up(email="new@example.com", password="secret")
 
     assert client.auth.get_session() is established
 
@@ -1465,12 +1510,12 @@ def test_sign_in_anonymously_does_not_replace_a_newer_session() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_anonymous_signin = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.sign_in_anonymously()
+        _ = client.auth.sign_in_anonymously()
 
     assert client.auth.get_session() == replacement
 
@@ -1485,7 +1530,7 @@ def test_sign_in_anonymously_preserves_session_when_disabled() -> None:
     )
 
     with pytest.raises(AuthenticationError, match="Anonymous sign-ins are disabled"):
-        client.auth.sign_in_anonymously()
+        _ = client.auth.sign_in_anonymously()
 
     assert client.auth.get_session() is established
 
@@ -1530,7 +1575,9 @@ def test_convert_anonymous_requires_a_session() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(AuthenticationError, match="No active session"):
-        client.auth.convert_anonymous(email="converted@example.com", password="secret")
+        _ = client.auth.convert_anonymous(
+            email="converted@example.com", password="secret"
+        )
 
     assert transport.anonymous_conversion_calls == []
 
@@ -1538,7 +1585,7 @@ def test_convert_anonymous_requires_a_session() -> None:
 def test_convert_anonymous_does_not_return_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in_anonymously()
+    _ = client.auth.sign_in_anonymously()
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -1546,12 +1593,14 @@ def test_convert_anonymous_does_not_return_a_stale_response() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_anonymous_conversion = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.convert_anonymous(email="converted@example.com", password="secret")
+        _ = client.auth.convert_anonymous(
+            email="converted@example.com", password="secret"
+        )
 
     assert client.auth.get_session() == replacement
 
@@ -1574,7 +1623,7 @@ def test_request_email_change_returns_acknowledgement_without_session_change() -
 def test_request_email_change_accepts_optional_response_fields() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     transport.email_change_response = Response(200, {})
 
     result = client.auth.request_email_change(new_email="new@example.com")
@@ -1586,11 +1635,11 @@ def test_request_email_change_accepts_optional_response_fields() -> None:
 def test_request_email_change_rejects_a_non_object_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     transport.email_change_response = Response(200, [])
 
     with pytest.raises(TypeError, match="valid email-change acknowledgement"):
-        client.auth.request_email_change(new_email="new@example.com")
+        _ = client.auth.request_email_change(new_email="new@example.com")
 
 
 def test_request_email_change_requires_a_current_session() -> None:
@@ -1598,7 +1647,7 @@ def test_request_email_change_requires_a_current_session() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(AuthenticationError, match="No active session"):
-        client.auth.request_email_change(new_email="new@example.com")
+        _ = client.auth.request_email_change(new_email="new@example.com")
 
     assert transport.email_change_calls == []
 
@@ -1606,7 +1655,7 @@ def test_request_email_change_requires_a_current_session() -> None:
 def test_request_email_change_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -1614,12 +1663,12 @@ def test_request_email_change_rejects_a_stale_response() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_email_change = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.request_email_change(new_email="new@example.com")
+        _ = client.auth.request_email_change(new_email="new@example.com")
 
     assert client.auth.get_session() == replacement
 
@@ -1648,7 +1697,7 @@ def test_cancel_email_change_requires_a_current_session() -> None:
 def test_cancel_email_change_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -1656,7 +1705,7 @@ def test_cancel_email_change_rejects_a_stale_response() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_cancel_email_change = replace_session
 
@@ -1689,7 +1738,7 @@ def test_confirm_email_change_requires_a_current_session() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(AuthenticationError, match="No active session"):
-        client.auth.confirm_email_change(token="change-token")
+        _ = client.auth.confirm_email_change(token="change-token")
 
     assert transport.confirm_email_change_calls == []
 
@@ -1697,20 +1746,20 @@ def test_confirm_email_change_requires_a_current_session() -> None:
 def test_confirm_email_change_rejects_a_missing_user() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     transport.confirm_email_change_response = Response(
         200,
         AuthConfirmEmailChangeResponse200(),
     )
 
     with pytest.raises(AuthenticationError, match="complete user profile"):
-        client.auth.confirm_email_change(token="change-token")
+        _ = client.auth.confirm_email_change(token="change-token")
 
 
 def test_confirm_email_change_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -1718,12 +1767,12 @@ def test_confirm_email_change_rejects_a_stale_response() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_confirm_email_change = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.confirm_email_change(token="change-token")
+        _ = client.auth.confirm_email_change(token="change-token")
 
     assert client.auth.get_session() == replacement
 
@@ -1771,7 +1820,7 @@ def test_list_sessions_requires_a_current_session() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(AuthenticationError, match="No active session"):
-        client.auth.list_sessions()
+        _ = client.auth.list_sessions()
 
     assert transport.list_sessions_calls == []
 
@@ -1779,7 +1828,7 @@ def test_list_sessions_requires_a_current_session() -> None:
 def test_list_sessions_rejects_non_integer_pagination_values() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     payload = _sessions_page().to_dict()
     payload["total"] = "21"
     transport.list_sessions_response = Response(
@@ -1788,7 +1837,7 @@ def test_list_sessions_rejects_non_integer_pagination_values() -> None:
     )
 
     with pytest.raises(VolcanoError, match="Expected a complete session page"):
-        client.auth.list_sessions()
+        _ = client.auth.list_sessions()
 
 
 @pytest.mark.parametrize(
@@ -1801,7 +1850,7 @@ def test_list_sessions_rejects_invalid_session_scalars(
 ) -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     payload = _sessions_page().to_dict()
     payload["sessions"][0][field] = value
     transport.list_sessions_response = Response(
@@ -1810,13 +1859,13 @@ def test_list_sessions_rejects_invalid_session_scalars(
     )
 
     with pytest.raises(VolcanoError, match="Expected a complete session page"):
-        client.auth.list_sessions()
+        _ = client.auth.list_sessions()
 
 
 def test_list_sessions_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -1824,12 +1873,12 @@ def test_list_sessions_rejects_a_stale_response() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_list_sessions = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.list_sessions()
+        _ = client.auth.list_sessions()
 
     assert client.auth.get_session() == replacement
 
@@ -1859,7 +1908,7 @@ def test_list_linked_oauth_providers_requires_a_current_session() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(AuthenticationError, match="No active session"):
-        client.auth.list_linked_oauth_providers()
+        _ = client.auth.list_linked_oauth_providers()
 
     assert transport.list_oauth_providers_calls == []
 
@@ -1867,7 +1916,7 @@ def test_list_linked_oauth_providers_requires_a_current_session() -> None:
 def test_list_linked_oauth_providers_rejects_an_incomplete_item() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     transport.list_oauth_providers_response = Response(
         200,
         AuthListOAuthProvidersResponse200.from_dict(
@@ -1876,13 +1925,13 @@ def test_list_linked_oauth_providers_rejects_an_incomplete_item() -> None:
     )
 
     with pytest.raises(VolcanoError, match="Expected complete linked OAuth providers"):
-        client.auth.list_linked_oauth_providers()
+        _ = client.auth.list_linked_oauth_providers()
 
 
 def test_list_linked_oauth_providers_accepts_a_future_provider_name() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     transport.list_oauth_providers_response = Response(
         200,
         AuthListOAuthProvidersResponse200.from_dict(
@@ -1906,7 +1955,7 @@ def test_list_linked_oauth_providers_accepts_a_future_provider_name() -> None:
 def test_list_linked_oauth_providers_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -1914,12 +1963,12 @@ def test_list_linked_oauth_providers_rejects_a_stale_response() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_list_oauth_providers = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.list_linked_oauth_providers()
+        _ = client.auth.list_linked_oauth_providers()
 
     assert client.auth.get_session() == replacement
 
@@ -1947,7 +1996,7 @@ def test_link_oauth_provider_returns_an_authorization_url() -> None:
     ],
 )
 def test_get_hosted_auth_url_builds_the_canonical_action_url(
-    action: str,
+    action: Literal["login", "signup", "forgot-password"],
 ) -> None:
     client = VolcanoClient(
         api_url="https://api.example.com/root/",
@@ -1957,7 +2006,7 @@ def test_get_hosted_auth_url_builds_the_canonical_action_url(
 
     result = client.auth.get_hosted_auth_url(
         project_id="project/id",
-        action=cast("Any", action),
+        action=action,
         state="state value",
     )
 
@@ -1980,32 +2029,25 @@ def test_get_hosted_auth_url_rejects_empty_parameters(
     value: str,
 ) -> None:
     client = VolcanoClient(anon_key="anon", _transport=StateTransport())
-    options = {
-        "project_id": "project-id",
-        "action": "login",
-        "state": "state-value",
-        argument: value,
-    }
-
+    project_id = value if argument == "project_id" else "project-id"
+    state = value if argument == "state" else "state-value"
     with pytest.raises(ValueError, match="Hosted auth parameters must be non-empty"):
-        client.auth.get_hosted_auth_url(**cast("Any", options))
+        _ = client.auth.get_hosted_auth_url(
+            project_id=project_id, action="login", state=state
+        )
 
 
 def test_get_hosted_auth_url_rejects_an_unknown_action() -> None:
     client = VolcanoClient(anon_key="anon", _transport=StateTransport())
 
     with pytest.raises(ValueError, match="Unsupported hosted auth action"):
-        client.auth.get_hosted_auth_url(
-            project_id="project-id",
-            action=cast("Any", "device"),
-            state="state-value",
-        )
+        unsupported_hosted_auth_action(client.auth)
 
 
 def test_adopt_hosted_auth_session_validates_state_and_stores_an_owned_copy() -> None:
     client = VolcanoClient(anon_key="anon", _transport=StateTransport())
     received: list[tuple[str, Session | None]] = []
-    client.auth.on_auth_state_change(
+    _ = client.auth.on_auth_state_change(
         lambda event, session: received.append((event, session))
     )
     supplied = Session(
@@ -2038,7 +2080,7 @@ def test_hosted_auth_state_mismatch_preserves_current_session() -> None:
     )
 
     with pytest.raises(ValueError, match="Hosted auth state mismatch"):
-        client.auth.adopt_hosted_auth_session(
+        _ = client.auth.adopt_hosted_auth_session(
             returned,
             state="attacker-state",
             expected_state="expected-state",
@@ -2050,12 +2092,13 @@ def test_hosted_auth_state_mismatch_preserves_current_session() -> None:
 @pytest.mark.parametrize("argument", ["state", "expected_state"])
 def test_adopt_hosted_auth_session_rejects_empty_state(argument: str) -> None:
     client = VolcanoClient(anon_key="anon", _transport=StateTransport())
-    options = {"state": "state-value", "expected_state": "state-value", argument: " "}
+    session = Session(access_token="access", refresh_token="refresh", user_id="user")
+    state = " " if argument == "state" else "state-value"
+    expected_state = " " if argument == "expected_state" else "state-value"
 
     with pytest.raises(ValueError, match="Hosted auth parameters must be non-empty"):
-        client.auth.adopt_hosted_auth_session(
-            Session(access_token="access", refresh_token="refresh", user_id="user"),
-            **cast("Any", options),
+        _ = client.auth.adopt_hosted_auth_session(
+            session, state=state, expected_state=expected_state
         )
 
     assert client.auth.get_session() is None
@@ -2148,7 +2191,7 @@ def test_exchange_oauth_code_rejects_a_state_mismatch_without_a_request() -> Non
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(ValueError, match="OAuth state mismatch"):
-        client.auth.exchange_oauth_code(
+        _ = client.auth.exchange_oauth_code(
             code="oauth-code",
             redirect_to="https://app.example/callback",
             state="attacker-state",
@@ -2182,12 +2225,12 @@ def test_exchange_oauth_code_does_not_replace_a_concurrent_session() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_oauth_exchange = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.exchange_oauth_code(
+        _ = client.auth.exchange_oauth_code(
             code="oauth-code",
             redirect_to="https://app.example/callback",
             state="state-value",
@@ -2212,7 +2255,7 @@ def test_link_oauth_provider_requires_a_current_session() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(AuthenticationError, match="No active session"):
-        client.auth.link_oauth_provider(provider="google")
+        _ = client.auth.link_oauth_provider(provider="google")
 
     assert transport.link_oauth_provider_calls == []
 
@@ -2220,20 +2263,20 @@ def test_link_oauth_provider_requires_a_current_session() -> None:
 def test_link_oauth_provider_rejects_an_incomplete_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     transport.link_oauth_provider_response = Response(
         200,
         AuthLinkOAuthProviderResponse200(),
     )
 
     with pytest.raises(VolcanoError, match="Expected an OAuth authorization URL"):
-        client.auth.link_oauth_provider(provider="google")
+        _ = client.auth.link_oauth_provider(provider="google")
 
 
 def test_link_oauth_provider_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -2241,12 +2284,12 @@ def test_link_oauth_provider_rejects_a_stale_response() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_link_oauth_provider = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.link_oauth_provider(provider="google")
+        _ = client.auth.link_oauth_provider(provider="google")
 
     assert client.auth.get_session() == replacement
 
@@ -2287,7 +2330,7 @@ def test_unlink_oauth_provider_requires_a_current_session() -> None:
 def test_unlink_oauth_provider_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -2295,7 +2338,7 @@ def test_unlink_oauth_provider_rejects_a_stale_response() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_unlink_oauth_provider = replace_session
 
@@ -2340,7 +2383,7 @@ def test_get_oauth_provider_token_requires_a_current_session() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(AuthenticationError, match="No active session"):
-        client.auth.get_oauth_provider_token(provider="google")
+        _ = client.auth.get_oauth_provider_token(provider="google")
 
     assert transport.oauth_provider_token_status_calls == []
 
@@ -2363,7 +2406,7 @@ def test_get_oauth_provider_token_rejects_incomplete_status(
 ) -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     transport.oauth_provider_token_status_response = Response(
         200,
         GetOAuthProviderTokenResponse200.from_dict(payload),
@@ -2372,13 +2415,13 @@ def test_get_oauth_provider_token_rejects_incomplete_status(
     with pytest.raises(
         VolcanoError, match="Expected complete OAuth provider token status"
     ):
-        client.auth.get_oauth_provider_token(provider="google")
+        _ = client.auth.get_oauth_provider_token(provider="google")
 
 
 def test_get_oauth_provider_token_accepts_a_future_provider_name() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     transport.oauth_provider_token_status_response = Response(
         200,
         GetOAuthProviderTokenResponse200.from_dict(
@@ -2398,7 +2441,7 @@ def test_get_oauth_provider_token_accepts_a_future_provider_name() -> None:
 def test_get_oauth_provider_token_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -2406,12 +2449,12 @@ def test_get_oauth_provider_token_rejects_a_stale_response() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_oauth_provider_token_status = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.get_oauth_provider_token(provider="google")
+        _ = client.auth.get_oauth_provider_token(provider="google")
 
     assert client.auth.get_session() == replacement
 
@@ -2451,7 +2494,7 @@ def test_refresh_oauth_provider_token_requires_a_current_session() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(AuthenticationError, match="No active session"):
-        client.auth.refresh_oauth_provider_token(provider="google")
+        _ = client.auth.refresh_oauth_provider_token(provider="google")
 
     assert transport.refresh_oauth_provider_token_calls == []
 
@@ -2459,7 +2502,7 @@ def test_refresh_oauth_provider_token_requires_a_current_session() -> None:
 def test_refresh_oauth_provider_token_rejects_incomplete_status() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     transport.refresh_oauth_provider_token_response = Response(
         200,
         RefreshOAuthProviderTokenResponse200.from_dict(
@@ -2470,13 +2513,13 @@ def test_refresh_oauth_provider_token_rejects_incomplete_status() -> None:
     with pytest.raises(
         VolcanoError, match="Expected complete OAuth provider token status"
     ):
-        client.auth.refresh_oauth_provider_token(provider="google")
+        _ = client.auth.refresh_oauth_provider_token(provider="google")
 
 
 def test_refresh_oauth_provider_token_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -2484,12 +2527,12 @@ def test_refresh_oauth_provider_token_rejects_a_stale_response() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_refresh_oauth_provider_token = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.refresh_oauth_provider_token(provider="google")
+        _ = client.auth.refresh_oauth_provider_token(provider="google")
 
     assert client.auth.get_session() == replacement
 
@@ -2547,7 +2590,7 @@ def test_call_oauth_api_requires_a_current_session() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(AuthenticationError, match="No active session"):
-        client.auth.call_oauth_api(provider="github", endpoint="/user")
+        _ = client.auth.call_oauth_api(provider="github", endpoint="/user")
 
     assert transport.call_oauth_api_calls == []
 
@@ -2555,7 +2598,7 @@ def test_call_oauth_api_requires_a_current_session() -> None:
 def test_call_oauth_api_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -2563,12 +2606,12 @@ def test_call_oauth_api_rejects_a_stale_response() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_call_oauth_api = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.call_oauth_api(provider="github", endpoint="/user")
+        _ = client.auth.call_oauth_api(provider="github", endpoint="/user")
 
     assert client.auth.get_session() == replacement
 
@@ -2597,7 +2640,7 @@ def test_delete_all_other_sessions_requires_a_current_session() -> None:
 def test_delete_all_other_sessions_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -2605,7 +2648,7 @@ def test_delete_all_other_sessions_rejects_a_stale_response() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_delete_other_sessions = replace_session
 
@@ -2645,7 +2688,7 @@ def test_delete_session_rejects_a_stale_response() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
     session_id = "00000000-0000-4000-8000-000000000099"
-    client.auth.set_session(
+    _ = client.auth.set_session(
         Session(
             access_token=_access_token_with_session_id(session_id),
             refresh_token="original-refresh",
@@ -2659,7 +2702,7 @@ def test_delete_session_rejects_a_stale_response() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_delete_session = replace_session
 
@@ -2673,7 +2716,7 @@ def test_delete_session_clears_the_deleted_current_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
     session_id = "00000000-0000-4000-8000-0000000000ab"
-    client.auth.set_session(
+    _ = client.auth.set_session(
         Session(
             access_token=_access_token_with_session_id(session_id),
             refresh_token="current-refresh",
@@ -2690,7 +2733,7 @@ def test_delete_session_clears_current_state_when_the_response_is_lost() -> None
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
     session_id = "00000000-0000-4000-8000-000000000099"
-    client.auth.set_session(
+    _ = client.auth.set_session(
         Session(
             access_token=_access_token_with_session_id(session_id),
             refresh_token="current-refresh",
@@ -2718,7 +2761,7 @@ def test_delete_session_preserves_current_state_when_the_server_rejects_it() -> 
         refresh_token="current-refresh",
         user_id="current-user",
     )
-    client.auth.set_session(current)
+    _ = client.auth.set_session(current)
     stored = client.auth.get_session()
     transport.delete_session_response = Response(401, {"error": "expired"})
 
@@ -2753,15 +2796,12 @@ def test_get_user_returns_an_immutable_server_validated_profile() -> None:
     assert current.user is not None
     assert current.access_token == established.access_token
     assert current.user["user_metadata"] == user.user_metadata
-    mutable_user: Any = user
-    mutable_metadata: Any = user.user_metadata
-    mutable_app_metadata: Any = user.app_metadata
     with pytest.raises(FrozenInstanceError):
-        mutable_user.email = "changed@example.com"
+        assign_user_email(user)
     with pytest.raises(TypeError):
-        mutable_metadata["display_name"] = "Changed"
+        assign_metadata_value(user.user_metadata, "display_name", "Changed")
     with pytest.raises(TypeError):
-        mutable_app_metadata["provider"] = "oauth"
+        assign_metadata_value(user.app_metadata, "provider", "oauth")
 
 
 def test_reset_password_for_email_returns_the_generic_acknowledgement() -> None:
@@ -2888,7 +2928,7 @@ def test_get_user_accepts_a_server_profile_without_an_email() -> None:
     email = ""
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     transport.user_response = Response(200, _user_profile(email=email))
 
     user = client.auth.get_user()
@@ -2899,7 +2939,7 @@ def test_get_user_accepts_a_server_profile_without_an_email() -> None:
 def test_user_with_metadata_has_a_stable_hash() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     user = client.auth.get_user()
 
@@ -2911,7 +2951,7 @@ def test_get_user_without_a_session_fails_before_transport() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(AuthenticationError, match="No active session"):
-        client.auth.get_user()
+        _ = client.auth.get_user()
 
     assert transport.authorizations == []
 
@@ -2923,7 +2963,7 @@ def test_get_user_authentication_failure_preserves_the_refreshed_session() -> No
     transport.user_response = Response(401, {"error": "expired"})
 
     with pytest.raises(AuthenticationError, match="expired"):
-        client.auth.get_user()
+        _ = client.auth.get_user()
 
     current = client.auth.get_session()
     assert current is not None
@@ -2935,7 +2975,7 @@ def test_get_user_authentication_failure_preserves_the_refreshed_session() -> No
 def test_get_user_rejects_a_profile_loaded_for_a_replaced_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -2943,12 +2983,12 @@ def test_get_user_rejects_a_profile_loaded_for_a_replaced_session() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_get_user = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.get_user()
+        _ = client.auth.get_user()
 
     assert client.auth.get_session() == replacement
 
@@ -2984,7 +3024,7 @@ def test_update_user_without_a_session_fails_before_transport() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(AuthenticationError, match="No active session"):
-        client.auth.update_user(metadata={"display_name": "Grace"})
+        _ = client.auth.update_user(metadata={"display_name": "Grace"})
 
     assert transport.update_user_calls == []
 
@@ -2996,7 +3036,7 @@ def test_update_user_authentication_failure_preserves_the_refreshed_session() ->
     transport.update_user_response = Response(401, {"error": "expired"})
 
     with pytest.raises(AuthenticationError, match="expired"):
-        client.auth.update_user(password="new-secret")
+        _ = client.auth.update_user(password="new-secret")
 
     current = client.auth.get_session()
     assert current is not None
@@ -3008,7 +3048,7 @@ def test_update_user_authentication_failure_preserves_the_refreshed_session() ->
 def test_update_user_rejects_a_profile_for_a_replaced_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -3016,12 +3056,12 @@ def test_update_user_rejects_a_profile_for_a_replaced_session() -> None:
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_update_user = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.update_user(metadata={"display_name": "Grace"})
+        _ = client.auth.update_user(metadata={"display_name": "Grace"})
 
     assert client.auth.get_session() == replacement
 
@@ -3052,10 +3092,10 @@ def test_auth_facade_adopts_an_owned_session_without_transport(
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
     if existing_session:
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
     calls_before = list(transport.authorizations)
     received: list[tuple[str, Session | None]] = []
-    client.auth.on_auth_state_change(
+    _ = client.auth.on_auth_state_change(
         lambda event, session: received.append((event, session))
     )
     received.clear()
@@ -3072,7 +3112,7 @@ def test_auth_facade_adopts_an_owned_session_without_transport(
     assert client.auth.get_session() is adopted
     assert transport.authorizations == calls_before
     assert received == []
-    client.auth.on_auth_state_change(
+    _ = client.auth.on_auth_state_change(
         lambda event, session: received.append((event, session))
     )
     assert received == [("INITIAL_SESSION", adopted)]
@@ -3081,7 +3121,7 @@ def test_auth_facade_adopts_an_owned_session_without_transport(
 def test_auth_facade_adoption_replaces_the_current_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         access_token="replacement-access",
         refresh_token="replacement-refresh",
@@ -3113,7 +3153,7 @@ def test_auth_facade_rejects_incomplete_adoption_without_mutation(
     calls_after_sign_in = list(transport.authorizations)
 
     with pytest.raises(ValueError, match="complete Session"):
-        client.auth.set_session(invalid)
+        _ = client.auth.set_session(invalid)
 
     assert client.auth.get_session() is previous
     assert transport.authorizations == calls_after_sign_in
@@ -3150,7 +3190,7 @@ def test_refresh_without_a_session_fails_without_transport() -> None:
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
     with pytest.raises(AuthenticationError, match="No active session"):
-        client.auth.refresh_session()
+        _ = client.auth.refresh_session()
 
     assert transport.authorizations == []
 
@@ -3162,7 +3202,7 @@ def test_refresh_authentication_failure_clears_only_the_captured_session() -> No
     transport.refresh_response = Response(401, {"error": "expired"})
 
     with pytest.raises(AuthenticationError, match="expired"):
-        client.auth.refresh_session()
+        _ = client.auth.refresh_session()
 
     assert client.auth.get_session() is None
     assert established.refresh_token == "refresh-access-1"
@@ -3175,7 +3215,7 @@ def test_refresh_server_failure_preserves_the_captured_session() -> None:
     transport.refresh_response = Response(503, {"error": "unavailable"})
 
     with pytest.raises(ServerError, match="unavailable"):
-        client.auth.refresh_session()
+        _ = client.auth.refresh_session()
 
     assert client.auth.get_session() is established
 
@@ -3183,7 +3223,7 @@ def test_refresh_server_failure_preserves_the_captured_session() -> None:
 def test_refresh_does_not_replace_a_session_established_during_the_request() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         "replacement-access",
         "replacement-refresh",
@@ -3191,12 +3231,12 @@ def test_refresh_does_not_replace_a_session_established_during_the_request() -> 
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_refresh = replace_session
 
     with pytest.raises(SessionChangedError):
-        client.auth.refresh_session()
+        _ = client.auth.refresh_session()
 
     assert client.auth.get_session() == replacement
 
@@ -3204,7 +3244,7 @@ def test_refresh_does_not_replace_a_session_established_during_the_request() -> 
 def test_sign_out_revokes_and_clears_the_current_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     client.auth.sign_out()
 
@@ -3223,7 +3263,7 @@ def test_sign_out_without_a_session_succeeds_without_transport() -> None:
 def test_sign_out_server_failure_clears_then_raises() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     transport.logout_response = Response(503, {"error": "Logout unavailable"})
 
     with pytest.raises(ServerError, match="Logout unavailable"):
@@ -3235,13 +3275,13 @@ def test_sign_out_server_failure_clears_then_raises() -> None:
 def test_sign_out_does_not_clear_a_replacement_session() -> None:
     transport = StateTransport()
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     replacement = Session(
         "replacement-access", "replacement-refresh", "replacement-user"
     )
 
     def replace_session() -> None:
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     transport.on_logout = replace_session
     with pytest.raises(SessionChangedError):

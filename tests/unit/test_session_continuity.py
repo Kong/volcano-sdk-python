@@ -87,9 +87,9 @@ def test_refresh_cannot_replay_a_bootstrap_mutation_in_another_server_session(
 
     client = client_for(handle)
     if profile_first:
-        client.auth.get_user()
+        _ = client.auth.get_user()
     with pytest.raises(AuthenticationError):
-        client.database("main").from_("items").insert({"name": "example"}).execute()
+        _ = client.database("main").from_("items").insert({"name": "example"}).execute()
     assert client.current_session is not None
     assert client.current_session.access_token == access_token(SESSION_A)
     assert len([r for r in requests if r.url.path != "/auth/user"]) == 2
@@ -114,7 +114,7 @@ def test_unidentified_bootstrap_cannot_refresh_without_a_continuity_identifier()
         ),
     )
     with pytest.raises(AuthenticationError, match="session identifier"):
-        client.auth.refresh_session()
+        _ = client.auth.refresh_session()
     assert not requests
 
 
@@ -129,7 +129,7 @@ def test_sign_out_renews_expired_access_only_for_the_same_captured_session(
         requests.append(request)
         if request.url.path == "/auth/refresh":
             if replace:
-                client.auth.set_session(replacement)
+                _ = client.auth.set_session(replacement)
             return refreshed(SESSION_A)
         return expired_session_response(request)
 
@@ -151,7 +151,7 @@ def test_sign_out_prevents_a_new_refresh_of_the_same_server_session() -> None:
         if request.url.path == "/auth/refresh":
             return refreshed(SESSION_A)
         with pytest.raises(SessionChangedError):
-            client.auth.refresh_session()
+            _ = client.auth.refresh_session()
         return httpx.Response(204)
 
     client = client_for(handle)
@@ -178,12 +178,12 @@ def test_deeply_nested_access_claims_remain_untrusted(operation: str) -> None:
         return httpx.Response(204)
 
     client = client_for(handle)
-    client.auth.set_session(
+    _ = client.auth.set_session(
         Session(f"header.{encoded}.signature", "unverified-refresh", USER_A)
     )
     if operation == "refresh":
         with pytest.raises(AuthenticationError, match="without a session identifier"):
-            client.auth.refresh_session()
+            _ = client.auth.refresh_session()
         assert client.current_session is not None
     else:
         client = VolcanoClient(
@@ -246,14 +246,14 @@ def test_sign_out_joins_a_refresh_that_already_owns_the_rotating_token(
             assert sign_out_captured.wait(2)
             assert not signing_out.done()
             if replace_session:
-                client.auth.set_session(
+                _ = client.auth.set_session(
                     Session("replacement", "replacement-refresh", USER_B)
                 )
         finally:
             finish_refresh.set()
         # Logout may clear the lineage before the refresh caller reads it.
         with suppress(SessionChangedError):
-            refreshing.result(timeout=2)
+            _ = refreshing.result(timeout=2)
         if replace_session:
             with pytest.raises(SessionChangedError):
                 signing_out.result(timeout=2)
@@ -295,7 +295,7 @@ def test_sign_out_surfaces_the_refresh_it_joined_without_claiming_replacement(
 
     client = client_for(rejected_refresh_handler(requests, entered, release, status))
     if known_pair:
-        client.auth.sign_in(email="user@example.com", password="synthetic")
+        _ = client.auth.sign_in(email="user@example.com", password="synthetic")
         requests.clear()
     original = client.auth._sign_out_captured
 
@@ -319,7 +319,7 @@ def test_sign_out_surfaces_the_refresh_it_joined_without_claiming_replacement(
         finally:
             release.set()
         with suppress(VolcanoError):
-            refreshing.result(timeout=2)
+            _ = refreshing.result(timeout=2)
         if known_pair and status == 429:
             assert signing_out.result(timeout=2) is None
         else:
@@ -379,10 +379,10 @@ def test_sign_out_revokes_a_server_issued_pair_without_access_renewal(
         return verified_pair_response(request)
 
     client = client_for(handle)
-    client.auth.sign_in(email="user@example.com", password="synthetic")
+    _ = client.auth.sign_in(email="user@example.com", password="synthetic")
     if refresh_first:
         with pytest.raises(VolcanoError) as caught:
-            client.auth.refresh_session()
+            _ = client.auth.refresh_session()
         assert caught.value.status == 429
     owner = client._capture_session_binding()[1]
     client.auth.sign_out()
@@ -412,11 +412,11 @@ def test_explicit_adoption_does_not_inherit_server_pair_provenance(
     original = client.auth.sign_in(email="user@example.com", password="synthetic")
     supplied = Session(access_token(SESSION_B), original.refresh_token, USER_B)
     if hosted:
-        client.auth.adopt_hosted_auth_session(
+        _ = client.auth.adopt_hosted_auth_session(
             supplied, state="nonce", expected_state="nonce"
         )
     else:
-        client.auth.set_session(supplied)
+        _ = client.auth.set_session(supplied)
     client.auth.sign_out()
     assert [r.url.path for r in requests] == [
         "/auth/signin",
@@ -532,12 +532,12 @@ def test_supplied_profile_does_not_authorize_refresh_without_sid(
         return refreshed(SESSION_B)
 
     client = client_for(handle)
-    client.auth.set_session(Session("opaque", "foreign-refresh", USER_A))
+    _ = client.auth.set_session(Session("opaque", "foreign-refresh", USER_A))
     if enriched:
-        client.auth.get_user()
+        _ = client.auth.get_user()
         requests.clear()
     with pytest.raises(AuthenticationError, match="session identifier"):
-        client.auth.refresh_session()
+        _ = client.auth.refresh_session()
     assert not requests
     assert client.current_session is not None
     assert client.current_session.access_token == "opaque"
@@ -554,8 +554,8 @@ def test_delete_current_session_discards_retained_credentials(*, fails: bool) ->
         return httpx.Response(204)
 
     client = client_for(handle)
-    client.auth.sign_in(email="u@example.com", password="synthetic")
-    client.auth.refresh_session()
+    _ = client.auth.sign_in(email="u@example.com", password="synthetic")
+    _ = client.auth.refresh_session()
     _, owner, session = client._capture_session_binding()
     assert session is not None
     if fails:
@@ -589,7 +589,7 @@ def test_deletion_does_not_retain_a_later_refresh_result() -> None:
         finally:
             release.set()
         with pytest.raises(SessionChangedError):
-            refreshing.result(2)
+            _ = refreshing.result(2)
     assert client.current_session is None
     assert owner.refreshing is None
     assert owner._verified_pair is None
@@ -625,7 +625,7 @@ def test_local_clear_before_refresh_claim_prevents_io(
         finally:
             release.set()
         with pytest.raises(SessionChangedError):
-            refreshing.result(2)
+            _ = refreshing.result(2)
     assert len(requests) == 1
     assert requests[0].url.path == f"/auth/user/sessions/{SESSION_A}"
     assert client.current_session is None
@@ -648,11 +648,11 @@ def test_refresh_rechecks_ownership_after_notifying_subscribers(action: str) -> 
             if action == "sign_out":
                 client.auth.sign_out()
             else:
-                client.auth.set_session(replacement)
+                _ = client.auth.set_session(replacement)
 
-    client.auth.on_auth_state_change(on_change)
+    _ = client.auth.on_auth_state_change(on_change)
     with pytest.raises(SessionChangedError):
-        client.auth.refresh_session()
+        _ = client.auth.refresh_session()
     assert client.current_session == (None if action == "sign_out" else replacement)
 
 
