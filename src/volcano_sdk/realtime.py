@@ -48,8 +48,8 @@ _SubscriptionT = TypeVar("_SubscriptionT")
 _DefaultT = TypeVar("_DefaultT")
 _MessageT = TypeVar("_MessageT")
 
-MessageCallback = Callable[[object], object]
-RealtimeCallback = Callable[[object], object]
+MessageCallback: TypeAlias = Callable[[_MessageT], object]
+RealtimeCallback: TypeAlias = Callable[[_MessageT], object]
 _StoredCallback = Callable[..., object]
 UnsubscribeCallback = Callable[[], None]
 ChannelType: TypeAlias = Literal["broadcast", "presence", "postgres"]

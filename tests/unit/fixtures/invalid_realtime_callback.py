@@ -8,6 +8,7 @@ if TYPE_CHECKING:
         MessageCallback,
         Realtime,
         RealtimeCallback,
+        RealtimeConnectContext,
     )
 
 
@@ -27,6 +28,18 @@ def assign_callback_without_message() -> None:
     def receive_nothing() -> None:
         return None
 
-    message_callback: MessageCallback = receive_nothing  # type: ignore[assignment]
-    realtime_callback: RealtimeCallback = receive_nothing  # type: ignore[assignment]
+    message_callback: MessageCallback[str] = receive_nothing  # type: ignore[assignment]
+    realtime_callback: RealtimeCallback[RealtimeConnectContext] = receive_nothing  # type: ignore[assignment]
+    del message_callback, realtime_callback
+
+
+def assign_narrow_callbacks() -> None:
+    def receive_message(message: str) -> None:
+        del message
+
+    def connected(context: RealtimeConnectContext) -> None:
+        del context
+
+    message_callback: MessageCallback[str] = receive_message
+    realtime_callback: RealtimeCallback[RealtimeConnectContext] = connected
     del message_callback, realtime_callback
