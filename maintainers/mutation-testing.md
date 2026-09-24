@@ -22,6 +22,8 @@ A pytest internal error is a harness crash, not a killed mutant.
 The pinned Pyrefly check rejects type-invalid mutants in every handwritten
 runtime module before pytest;
 the report counts these as `type_checked`, separately from test-killed mutants.
+The runner checks the unmutated source first, so an existing type error cannot
+make every mutant appear invalid.
 Surviving, uncovered, timed-out, crashed, and incomplete mutants still fail.
 Mutmut passes pytest `-x` so a selected test's first assertion failure kills the
 mutant before a later selected test can hang on the same defect. Mutants that

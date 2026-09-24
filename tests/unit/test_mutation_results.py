@@ -38,6 +38,7 @@ case "$1" in
 esac
 """,
         "mutmut": "#!/bin/sh\nprintf '%s\\n' \"$@\" > mutation-args.txt\n",
+        "pyrefly": "#!/bin/sh\nexit 0\n",
         "python": "#!/bin/sh\nexit 0\n",
     }
     for name, content in stubs.items():
@@ -45,6 +46,8 @@ esac
         _ = stub.write_text(content, encoding="utf-8")
         stub.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    for name in ("MUTATION_FULL", "MUTATION_SHARD_INDEX", "MUTATION_SHARD_COUNT"):
+        monkeypatch.delenv(name, raising=False)
 
     result = subprocess.run(
         ["/bin/bash", "scripts/mutation.sh"],

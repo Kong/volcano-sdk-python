@@ -4,6 +4,9 @@ set -euo pipefail
 # Forked macOS workers must not query SystemConfiguration through urllib/httpx.
 export NO_PROXY='*' no_proxy='*'
 
+# An invalid baseline must not turn every mutant into a type-checked result.
+pyrefly check --output-format=json --project-excludes 'src/volcano_sdk/_generated/**' 'src/volcano_sdk/*.py'
+
 # Refresh mutmut's test-to-mutant map so newly added tests are selected.
 rm -rf -- mutants
 
