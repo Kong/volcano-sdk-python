@@ -24,6 +24,7 @@ from aws_durable_execution_sdk_python.config import (
 from aws_durable_execution_sdk_python.config import (
     ParallelBranch as EngineParallelBranch,
 )
+from aws_durable_execution_sdk_python.exceptions import WaitForConditionError
 from aws_durable_execution_sdk_python.retries import RetryDecision
 from aws_durable_execution_sdk_python.waits import (
     WaitForConditionConfig,
@@ -808,16 +809,23 @@ def test_wait_until_polls_until_the_condition_holds() -> None:
 
 
 def test_wait_until_fails_when_it_runs_out_of_attempts() -> None:
+    options = WaitUntilOptions(
+        until=lambda state: state,
+        initial_state=False,
+        interval="1s",
+        max_attempts=2,
+    )
+    configured = durable_authoring._Engine().wait_condition_options(options)
+    assert _is_wait_config(configured)
+    not_ready = False
+    with pytest.raises(WaitForConditionError, match="exhausted 2 attempts"):
+        _ = configured.wait_strategy(not_ready, 2)
+
     @durable
     def handler(_event: object, ctx: DurableContext) -> object:
         return ctx.wait_until(
-            lambda _state, _scope: {"ready": False},
-            WaitUntilOptions(
-                until=_ready,
-                initial_state={"ready": False},
-                interval="1s",
-                max_attempts=2,
-            ),
+            lambda _state, _scope: False,
+            options,
             "never-ready",
         )
 
