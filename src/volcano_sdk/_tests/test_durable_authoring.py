@@ -141,7 +141,7 @@ def test_retry_false_produces_an_immediate_no_retry_decision() -> None:
 @pytest.mark.order(0)
 def test_step_forwards_a_disabled_retry_before_scheduling() -> None:
     runtime = RecordingContext()
-    context = DurableContext(runtime, durable_authoring._Engine())
+    context = DurableContext(runtime, Engine())
 
     with pytest.raises(AssertionError, match="unexpected runtime operation"):
         _ = context.step("once", lambda _scope: "done", retry=False)
@@ -208,15 +208,13 @@ def test_wait_options_forward_predicate_timing_and_attempt_budget(
     assert configured.initial_state is False
 
 
-def test_durable_runtime_adapter_is_loaded_once(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(durable_authoring._Engine, "_loaded", None)
+def test_durable_runtime_adapter_is_loaded_once() -> None:
+    load_engine.cache_clear()
 
-    first = durable_authoring._Engine.load()
-    second = durable_authoring._Engine.load()
+    first = load_engine()
+    second = load_engine()
 
-    assert isinstance(first, durable_authoring._Engine)
+    assert isinstance(first, Engine)
     assert first is second
 
 
@@ -1019,7 +1017,7 @@ def test_wait_refuses_a_wait_longer_than_an_execution_may_run() -> None:
 
 
 def test_wait_until_refuses_a_timeout() -> None:
-    context = DurableContext(RecordingContext(), durable_authoring._Engine())
+    context = DurableContext(RecordingContext(), Engine())
 
     # Validate before handing the condition to the runtime, which may wait
     # indefinitely when the unsupported timeout is silently ignored.

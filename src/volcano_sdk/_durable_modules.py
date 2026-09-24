@@ -109,6 +109,10 @@ class WaitsModule(Protocol):
     WaitForConditionConfig: WaitConfigFactory
 
 
+def _import_module(name: str) -> object:
+    return importlib.import_module(name)
+
+
 def load_config() -> ConfigModule:
     """Validate the optional runtime's config module.
 
@@ -119,7 +123,7 @@ def load_config() -> ConfigModule:
         TypeError: The installed runtime lacks a required public export.
 
     """
-    module = importlib.import_module("aws_durable_execution_sdk_python.config")
+    module = _import_module("aws_durable_execution_sdk_python.config")
     if not isinstance(module, ConfigModule):
         message = (
             "aws_durable_execution_sdk_python.config does not provide ConfigModule"
@@ -138,7 +142,7 @@ def load_retries() -> RetriesModule:
         TypeError: The installed runtime lacks a required public export.
 
     """
-    module = importlib.import_module("aws_durable_execution_sdk_python.retries")
+    module = _import_module("aws_durable_execution_sdk_python.retries")
     if not isinstance(module, RetriesModule):
         message = (
             "aws_durable_execution_sdk_python.retries does not provide RetriesModule"
@@ -157,7 +161,7 @@ def load_waits() -> WaitsModule:
         TypeError: The installed runtime lacks a required public export.
 
     """
-    module = importlib.import_module("aws_durable_execution_sdk_python.waits")
+    module = _import_module("aws_durable_execution_sdk_python.waits")
     if not isinstance(module, WaitsModule):
         message = "aws_durable_execution_sdk_python.waits does not provide WaitsModule"
         raise TypeError(message)
@@ -174,7 +178,7 @@ def load_root() -> RootModule:
         TypeError: The installed runtime lacks a required public export.
 
     """
-    module = importlib.import_module("aws_durable_execution_sdk_python")
+    module = _import_module("aws_durable_execution_sdk_python")
     if not isinstance(module, RootModule):
         message = "aws_durable_execution_sdk_python does not provide RootModule"
         raise TypeError(message)

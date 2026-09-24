@@ -117,14 +117,14 @@ class VolcanoClient:
 
     def _facade_context(self) -> ClientContext:
         return ClientContext(
-            transport=lambda: self._transport,
-            auth=lambda: self._auth_requests,
-            anon_token=self._anon_token,
-            session_token=self._session_token,
-            function_token=self._function_token,
-            service_token=self._service_token,
-            api_base_url=self._api_base_url,
-            capture_session_binding=self._capture_session_binding,
+            _get_transport=lambda: self._transport,
+            _get_auth=lambda: self._auth_requests,
+            _get_anon_token=self._anon_token,
+            _get_session_token=self._session_token,
+            _get_function_token=self._function_token,
+            _get_service_token=self._service_token,
+            _get_api_base_url=self._api_base_url,
+            _get_capture_session_binding=self._capture_session_binding,
         )
 
     @property

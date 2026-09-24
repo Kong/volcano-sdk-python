@@ -51,7 +51,7 @@ class EndOfUploadSource:
 def test_upload_part_stops_reading_at_end_of_stream() -> None:
     source = EndOfUploadSource()
 
-    assert _read_upload_part(source, 4) == b""
+    assert read_upload_part(source, 4) == b""
     assert source.sizes == [4]
 
 
