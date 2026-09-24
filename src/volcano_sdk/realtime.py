@@ -48,8 +48,9 @@ _SubscriptionT = TypeVar("_SubscriptionT")
 _DefaultT = TypeVar("_DefaultT")
 _MessageT = TypeVar("_MessageT")
 
-MessageCallback = Callable[..., object]
-RealtimeCallback = Callable[..., object]
+MessageCallback = Callable[[object], object]
+RealtimeCallback = Callable[[object], object]
+_StoredCallback = Callable[..., object]
 UnsubscribeCallback = Callable[[], None]
 ChannelType: TypeAlias = Literal["broadcast", "presence", "postgres"]
 PostgresEvent: TypeAlias = Literal["INSERT", "UPDATE", "DELETE"]
@@ -703,7 +704,7 @@ def _presence_info(info: object) -> RealtimePresenceInfo:
 
 
 async def _run_connection_callback(
-    callback: RealtimeCallback,
+    callback: _StoredCallback,
     context: object,
 ) -> None:
     result = callback(context)
@@ -738,7 +739,7 @@ class Channel:
         self._name: str = name
         self._type: ChannelType = channel_type
         self._fetch_config: _PostgresFetchConfig = fetch_config
-        self._callbacks: dict[str, list[MessageCallback]] = {}
+        self._callbacks: dict[str, list[_StoredCallback]] = {}
         self._presence_state: dict[str, RealtimePresenceInfo] = {}
         self._presence_events: list[tuple[str, RealtimePresenceInfo]] = []
         self._presence_syncing: bool = False
@@ -1206,7 +1207,7 @@ class Channel:
 
     async def _run_callback(
         self,
-        callback: MessageCallback,
+        callback: _StoredCallback,
         delivery: _CallbackDelivery,
     ) -> None:
         if not self._callback_delivery_is_current(delivery):
@@ -1408,7 +1409,7 @@ class Realtime:
         self._channels: dict[str, Channel] = {}
         self._callback_tasks: set[asyncio.Task[None]] = set()
         self._removing_channels: set[str] = set()
-        self._connection_callbacks: dict[str, dict[int, RealtimeCallback]] = {
+        self._connection_callbacks: dict[str, dict[int, _StoredCallback]] = {
             "connect": {},
             "disconnect": {},
             "error": {},
@@ -1502,7 +1503,7 @@ class Realtime:
     def _register_connection_callback(
         self,
         event: str,
-        callback: RealtimeCallback,
+        callback: _StoredCallback,
     ) -> UnsubscribeCallback:
         require_callable(callback, CALLBACK_NOT_CALLABLE)
         callback_id = next(self._callback_ids)
