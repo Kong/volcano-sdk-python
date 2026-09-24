@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import gc
+import weakref
 from typing import TYPE_CHECKING
 
 import pytest
@@ -11,8 +13,15 @@ from test_realtime_fetch_worker import (
     fetch_job,
     passthrough_job,
 )
+from typing_extensions import override
 
-from volcano_sdk._realtime_fetch_worker import PostgresFetchOutcome, PostgresFetchWorker
+from volcano_sdk._realtime_fetch_worker import (
+    PostgresFetchJob,
+    PostgresFetchOutcome,
+    PostgresFetchWorker,
+    _StopWorker,
+    _wait_for_close,
+)
 
 if TYPE_CHECKING:
     from volcano_sdk.realtime import _PostgresFetchRequest
@@ -22,6 +31,57 @@ async def cancel_operation(task: asyncio.Task[None] | None) -> None:
     if task is not None:
         _ = task.cancel()
         _ = await asyncio.gather(task, return_exceptions=True)
+
+
+class CancellationAwareQueue(asyncio.Queue[PostgresFetchJob[str] | _StopWorker]):
+    def __init__(self) -> None:
+        super().__init__(maxsize=1)
+        self.cancelled = asyncio.Event()
+        self.release = asyncio.Event()
+        self.pending_put: asyncio.Task[None] | None = None
+
+    @override
+    async def put(self, item: PostgresFetchJob[str] | _StopWorker) -> None:
+        self.pending_put = asyncio.current_task()
+        try:
+            await super().put(item)
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            _ = await self.release.wait()
+            raise
+
+
+async def test_failed_close_waits_for_stop_task_cleanup() -> None:
+    failure = RuntimeError("worker failed")
+    cancellation_seen = asyncio.Event()
+    cleanup_release = asyncio.Event()
+
+    async def fail() -> None:
+        raise failure
+
+    async def stop() -> None:
+        try:
+            _ = await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancellation_seen.set()
+            _ = await cleanup_release.wait()
+            raise
+
+    worker_task = asyncio.create_task(fail())
+    stop_task = asyncio.create_task(stop())
+    waiter = asyncio.create_task(_wait_for_close(worker_task, stop_task))
+    try:
+        _ = await asyncio.wait_for(cancellation_seen.wait(), timeout=1)
+        assert not waiter.done()
+        cleanup_release.set()
+        with pytest.raises(RuntimeError, match="worker failed") as caught:
+            await asyncio.wait_for(waiter, timeout=1)
+        assert caught.value is failure
+        assert stop_task.done()
+    finally:
+        cleanup_release.set()
+        await cancel_operation(waiter)
+        await cancel_operation(stop_task)
 
 
 @pytest.mark.parametrize(
@@ -51,6 +111,8 @@ async def test_unused_worker_can_close_and_abort_repeatedly() -> None:
     worker = PostgresFetchWorker(fetch, deliver, queue_limit=1)
 
     await worker.close()
+    assert worker._stop_task is None
+    assert worker._queue.empty()
     await worker.close()
     await worker.abort()
     await worker.abort()
@@ -59,6 +121,168 @@ async def test_unused_worker_can_close_and_abort_repeatedly() -> None:
         await worker.enqueue(fetch_job(1))
     assert fetch.calls == []
     assert deliver.items == []
+
+
+async def test_closed_worker_rejects_new_jobs_before_abort() -> None:
+    worker = PostgresFetchWorker(
+        RecordingBatchFetch(), OutcomeRecorder(), queue_limit=1
+    )
+    await worker.enqueue(fetch_job(1))
+    await asyncio.wait_for(worker.close(), timeout=1)
+
+    with pytest.raises(RuntimeError, match="fetch worker is closed"):
+        await asyncio.wait_for(worker.enqueue(fetch_job(2)), timeout=1)
+
+
+async def test_abort_cancels_an_active_fetch() -> None:
+    fetch = BlockingRowFetch()
+    worker = PostgresFetchWorker(fetch, OutcomeRecorder(), queue_limit=1)
+    aborting: asyncio.Task[None] | None = None
+    try:
+        await worker.enqueue(fetch_job(1))
+        _ = await asyncio.wait_for(fetch.started.wait(), timeout=1)
+        aborting = asyncio.create_task(worker.abort())
+        _ = await asyncio.wait_for(fetch.cancelled.wait(), timeout=0.5)
+        await asyncio.wait_for(aborting, timeout=1)
+    finally:
+        fetch.release.set()
+        await cancel_operation(aborting)
+        await worker.abort()
+
+
+async def test_cancelled_enqueue_waits_for_its_queue_put_to_finish() -> None:
+    fetch = BlockingRowFetch()
+    worker = PostgresFetchWorker(fetch, OutcomeRecorder(), queue_limit=1)
+    queue = CancellationAwareQueue()
+    worker._queue = queue
+    enqueueing: asyncio.Task[None] | None = None
+    try:
+        await worker.enqueue(fetch_job(1))
+        _ = await asyncio.wait_for(fetch.started.wait(), timeout=1)
+        await worker.enqueue(fetch_job(2))
+        enqueueing = asyncio.create_task(worker.enqueue(fetch_job(3)))
+        await asyncio.sleep(0)
+        assert not enqueueing.done()
+
+        _ = enqueueing.cancel()
+        _ = await asyncio.wait_for(queue.cancelled.wait(), timeout=0.5)
+        assert not enqueueing.done()
+        queue.release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(enqueueing, timeout=1)
+    finally:
+        queue.release.set()
+        await cancel_operation(queue.pending_put)
+        await cancel_operation(enqueueing)
+        await worker.abort()
+
+
+async def test_enqueue_rejects_cancellation_after_queue_put_completes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker = PostgresFetchWorker(
+        RecordingBatchFetch(), OutcomeRecorder(), queue_limit=1
+    )
+
+    async def wait_forever() -> None:
+        _ = await asyncio.Event().wait()
+
+    task = asyncio.create_task(wait_forever())
+
+    async def cancel_after_put(
+        worker_task: asyncio.Task[None], put_task: asyncio.Task[None]
+    ) -> None:
+        await put_task
+        _ = worker_task.cancel()
+        _ = await asyncio.gather(worker_task, return_exceptions=True)
+
+    monkeypatch.setattr(worker, "_await_put_or_worker", cancel_after_put)
+    try:
+        with pytest.raises(RuntimeError, match="fetch worker is closed"):
+            await worker._put_while_running(fetch_job(1), task)
+    finally:
+        await cancel_operation(task)
+
+
+async def test_enqueues_release_completion_callbacks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fetch = BlockingRowFetch()
+    worker = PostgresFetchWorker(fetch, OutcomeRecorder(), queue_limit=1)
+    loop = asyncio.get_running_loop()
+    create_future = loop.create_future
+    created: list[weakref.ReferenceType[asyncio.Future[None]]] = []
+
+    def track_future() -> asyncio.Future[None]:
+        future: asyncio.Future[None] = create_future()
+        created.append(weakref.ref(future))
+        return future
+
+    try:
+        await worker.enqueue(fetch_job(1))
+        _ = await asyncio.wait_for(fetch.started.wait(), timeout=1)
+        with monkeypatch.context() as patch:
+            patch.setattr(loop, "create_future", track_future)
+            await worker.enqueue(fetch_job(2))
+
+        await asyncio.sleep(0)
+        _ = gc.collect()
+        assert len(created) == 1
+        assert created[0]() is None
+    finally:
+        await worker.abort()
+
+
+async def test_race_helper_handles_two_already_completed_tasks() -> None:
+    async def complete() -> None:
+        return
+
+    task = asyncio.create_task(complete())
+    put_task = asyncio.create_task(complete())
+    _ = await asyncio.gather(task, put_task)
+
+    await asyncio.wait_for(
+        PostgresFetchWorker._await_put_or_worker(task, put_task), timeout=1
+    )
+
+
+async def test_first_enqueue_finishes_before_worker_shutdown() -> None:
+    worker = PostgresFetchWorker(
+        RecordingBatchFetch(), OutcomeRecorder(), queue_limit=1
+    )
+    try:
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=0.5)
+        assert worker._task is not None
+        assert not worker._task.done()
+    finally:
+        await worker.abort()
+
+
+async def test_known_worker_failure_does_not_schedule_a_stop_request() -> None:
+    failure = RuntimeError("delivery failed")
+    delivery_started = asyncio.Event()
+    release_delivery = asyncio.Event()
+
+    async def fail_delivery(_outcome: PostgresFetchOutcome[str]) -> None:
+        delivery_started.set()
+        _ = await release_delivery.wait()
+        raise failure
+
+    worker = PostgresFetchWorker(RecordingBatchFetch(), fail_delivery, queue_limit=1)
+    try:
+        await worker.enqueue(fetch_job(1))
+        _ = await asyncio.wait_for(delivery_started.wait(), timeout=1)
+        release_delivery.set()
+        assert worker._task is not None
+        _ = await asyncio.gather(worker._task, return_exceptions=True)
+
+        with pytest.raises(RuntimeError, match="delivery failed") as caught:
+            await asyncio.wait_for(worker.close(), timeout=1)
+        assert caught.value is failure
+        assert worker._stop_task is None
+    finally:
+        release_delivery.set()
+        await worker.abort()
 
 
 async def test_close_failure_cancels_a_blocked_stop_request() -> None:
@@ -249,6 +473,7 @@ async def test_full_batch_flushes_before_close() -> None:
         await worker.enqueue(fetch_job(2))
         _ = await asyncio.wait_for(delivered.wait(), timeout=1)
         await asyncio.wait_for(worker.close(), timeout=1)
+        await asyncio.wait_for(worker._queue.join(), timeout=1)
 
         assert fetch.calls == [(1, 2)]
         assert outcomes == [

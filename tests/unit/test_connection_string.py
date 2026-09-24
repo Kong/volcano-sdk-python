@@ -77,6 +77,27 @@ def test_database_connection_string_drops_trailing_query_separator() -> None:
     )
 
 
+def test_database_connection_string_preserves_trailing_x_in_query_value() -> None:
+    assert database_connection_string("postgresql://host/db?label=X") == (
+        "postgresql://host/db?label=X&application_name=volcano_full_access"
+    )
+
+
+def test_database_connection_string_drops_empty_query_after_replaced_name() -> None:
+    assert (
+        database_connection_string(
+            "postgresql://host/db?label=one&&application_name=old&"
+        )
+        == "postgresql://host/db?label=one&application_name=volcano_full_access"
+    )
+
+
+def test_database_connection_string_replaces_name_without_a_path() -> None:
+    assert database_connection_string("postgres://host?application_name=old") == (
+        "postgres://host?application_name=volcano_full_access"
+    )
+
+
 def test_database_connection_string_drops_repeated_trailing_separators() -> None:
     assert database_connection_string("postgresql://host/db?sslmode=require&&&") == (
         "postgresql://host/db?sslmode=require&application_name=volcano_full_access"

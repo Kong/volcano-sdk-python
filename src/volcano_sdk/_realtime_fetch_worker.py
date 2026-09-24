@@ -145,8 +145,7 @@ class PostgresFetchWorker(Generic[FallbackT]):
             task = self._task
             if self._closed and (task is None or task.cancelled()):
                 return
-            if not self._closed:
-                self._closed = True
+            self._closed = True
             self._raise_worker_failure()
             if task is not None and self._stop_task is None:
                 self._stop_task = asyncio.create_task(self._queue.put(_STOP_WORKER))
@@ -157,15 +156,13 @@ class PostgresFetchWorker(Generic[FallbackT]):
     async def abort(self) -> None:
         """Discard obsolete jobs and stop without waiting for row fetches."""
         self._closed = True
-        task = self._task
-        stop_task = self._stop_task
-        if stop_task is not None and not stop_task.done():
-            _ = stop_task.cancel()
-        if task is not None and not task.done():
-            _ = task.cancel()
         pending = tuple(
-            candidate for candidate in (task, stop_task) if candidate is not None
+            candidate
+            for candidate in (self._stop_task, self._task)
+            if candidate is not None
         )
+        for candidate in pending:
+            _ = candidate.cancel()
         if pending:
             _ = await asyncio.gather(*pending, return_exceptions=True)
         self._discard_pending()
@@ -182,19 +179,35 @@ class PostgresFetchWorker(Generic[FallbackT]):
     ) -> None:
         put_task = asyncio.create_task(self._queue.put(job))
         try:
-            completed, _pending = await asyncio.wait(
-                (task, put_task),
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+            await self._await_put_or_worker(task, put_task)
         finally:
             if not put_task.done():
                 _ = put_task.cancel()
                 _ = await asyncio.gather(put_task, return_exceptions=True)
-        if task in completed:
+        if task.done():
             if task.cancelled():
                 raise RuntimeError(_WORKER_CLOSED)
             task.result()
         await put_task
+
+    @staticmethod
+    async def _await_put_or_worker(
+        task: asyncio.Task[None],
+        put_task: asyncio.Task[None],
+    ) -> None:
+        ready: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+
+        def notify(_completed: asyncio.Task[None]) -> None:
+            if not ready.done():
+                ready.set_result(None)
+
+        task.add_done_callback(notify)
+        put_task.add_done_callback(notify)
+        try:
+            await ready
+        finally:
+            _ = task.remove_done_callback(notify)
+            _ = put_task.remove_done_callback(notify)
 
     def _discard_pending(self) -> None:
         while not self._queue.empty():
