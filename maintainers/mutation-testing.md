@@ -14,6 +14,9 @@ select modules by name but returns success when mutants survive.
 `scripts/mutation_results.py` reads each selected module's native metadata. The
 report at `reports/mutation.json` distinguishes killed, statically invalid,
 surviving, uncovered, timed-out, crashed, interrupted, and missing results.
+Mutmut creates mutants inside functions. Export-only modules remain in the
+inventory; the runner verifies that they define no functions and records them
+as unmutatable. Coverage and installed-package checks still include them.
 A pytest internal error is a harness crash, not a killed mutant.
 The pinned Pyrefly check covers the handwritten runtime and rejects
 type-invalid mutants before pytest;
@@ -31,8 +34,9 @@ Mutmut uses its native forkserver isolation because forking from a process that
 has already run asyncio tests can crash a worker before its tests report a result.
 The mutation runner sets `NO_PROXY=*` for its hermetic transport tests because
 macOS system-proxy discovery can abort after a fork with active threads.
-The pinned pytest-order plugin runs bounded callback and presence assertions
-first when mutmut's unordered test selection could otherwise reach a blocked test.
+The pinned pytest-order plugin runs bounded callback, presence, and fetch-worker
+assertions first when mutmut's unordered test selection could otherwise reach a
+blocked test.
 
 The local and weekly full runs execute the inventory in one Mutmut process.
 Equivalent mutants require a reviewed, exact exception before a gate can

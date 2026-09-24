@@ -64,16 +64,13 @@ def _connection_parts(value: str) -> tuple[str, str]:
 
 
 def _query_parameters(query: str) -> list[str]:
-    if not query:
-        return []
     parameters = [
         parameter
         for parameter in query.split("&")
         if unquote(parameter.partition("=")[0]) != "application_name"
     ]
-    while parameters and not parameters[-1]:
-        _ = parameters.pop()
-    return parameters
+    serialized = "&".join(parameters).rstrip("&")
+    return serialized.split("&") if serialized else []
 
 
 def _database_application_name(user_id: str | None) -> str:

@@ -89,6 +89,19 @@ def test_database_connection_string_drops_only_empty_parameters() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "query", ["mode=X", "mode=with space", "mode=XX&XX", "mode=x&&other=y"]
+)
+def test_database_connection_string_preserves_unrelated_query_fields(
+    query: str,
+) -> None:
+    base = f"postgresql://host/db?{query}"
+
+    assert database_connection_string(base) == (
+        f"{base}&application_name=volcano_full_access"
+    )
+
+
 def test_database_connection_string_ignores_at_sign_in_query_value() -> None:
     assert database_connection_string("postgresql://host/db?options=foo@bar") == (
         "postgresql://host/db?options=foo@bar&application_name=volcano_full_access"
