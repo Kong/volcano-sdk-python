@@ -339,8 +339,14 @@ def local_runner(handler: FunctionHandler) -> Generator[DurableFunctionTestRunne
     ready = True
     assert wait_config.wait_strategy(not_ready, 1).should_continue is True
     assert wait_config.wait_strategy(ready, 1).should_continue is False
-    # An invalid no-retry decision can leave the scheduler waiting forever.
-    no_retry = engine._never_retry()(RuntimeError("preflight"), 1)
+    # An invalid retry policy can leave the scheduler waiting forever.
+    assert engine.step_options(retry=None, at_most_once=False).retry_strategy is None
+    assert engine.step_options(retry=True, at_most_once=False).retry_strategy is None
+    no_retry_strategy = engine.step_options(
+        retry=False, at_most_once=False
+    ).retry_strategy
+    assert no_retry_strategy is not None
+    no_retry = no_retry_strategy(RuntimeError("preflight"), 1)
     assert no_retry.should_retry is False
     assert no_retry.delay.to_seconds() == 0
     runner = DurableFunctionTestRunner(handler)
