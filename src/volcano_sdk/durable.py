@@ -388,7 +388,7 @@ def _is_json_scalar(value: object) -> TypeGuard[str | int | float | bool | None]
 
 def _is_utf8(value: str) -> bool:
     try:
-        _ = value.encode("utf-8")
+        _ = value.encode()
     except UnicodeEncodeError:
         return False
     return True
