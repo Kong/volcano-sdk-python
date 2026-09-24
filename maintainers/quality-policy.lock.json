@@ -6,14 +6,12 @@
       ],
       "extraPaths": [
         ".",
-        "src",
-        "features"
+        "src"
       ],
       "include": [
         "src",
         "tests",
         "scripts",
-        "features",
         "typings",
         "conftest.py"
       ],
@@ -62,7 +60,6 @@
     "mutmut": {
       "also_copy": [
         "conftest.py",
-        "features",
         "maintainers",
         "tests/fixtures",
         "typings",
@@ -131,13 +128,11 @@
         "src",
         "tests",
         "scripts",
-        "features",
         "typings",
         "conftest.py"
       ],
       "mypy_path": [
         "$MYPY_CONFIG_FILE_DIR/src",
-        "$MYPY_CONFIG_FILE_DIR/features",
         "$MYPY_CONFIG_FILE_DIR/typings"
       ],
       "python_version": "3.11",
@@ -161,23 +156,9 @@
           "types",
           "test",
           "coverage",
-          "contract-check",
           "package-check",
           "package-extras"
         ],
-        "contract-check": {
-          "env": {
-            "VOLCANO_SDK_CONTRACT_FIXTURE": "${POE_ROOT}/tests/fixtures/sdk-contract-dry-run.json"
-          },
-          "sequence": [
-            {
-              "cmd": "chmod 600 tests/fixtures/sdk-contract-dry-run.json"
-            },
-            {
-              "cmd": "behave features/contract --dry-run --no-snippets"
-            }
-          ]
-        },
         "coverage": {
           "interpreter": "bash",
           "shell": "set -euo pipefail\nreport_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$report_dir\"' EXIT\ntest_status=0\nuv run --locked --isolated --python 3.12.14 pytest -c pyproject.toml -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:\"$report_dir/coverage.json\" --junitxml=\"$report_dir/unit.xml\" || test_status=$?\nmkdir -p reports\nif test -s \"$report_dir/coverage.json\"; then\n  mv \"$report_dir/coverage.json\" reports/coverage.json\nelse\n  echo 'pytest-cov did not write a coverage report' >&2\n  if [[ $test_status -eq 0 ]]; then test_status=1; fi\nfi\nif test -s \"$report_dir/unit.xml\"; then\n  mv \"$report_dir/unit.xml\" reports/coverage-unit.xml\nelse\n  echo 'pytest did not write a JUnit report' >&2\n  if [[ $test_status -eq 0 ]]; then test_status=1; fi\nfi\nexit \"$test_status\"\n"
@@ -222,8 +203,7 @@
         ],
         "minversion": "9.1.1",
         "pythonpath": [
-          ".",
-          "features"
+          "."
         ],
         "strict": true,
         "testpaths": [
@@ -262,11 +242,6 @@
         "per-file-ignores": {
           "conftest.py": [
             "D"
-          ],
-          "features/**/*.py": [
-            "D",
-            "implicit-namespace-package",
-            "assert"
           ],
           "scripts/*.py": [
             "print"
