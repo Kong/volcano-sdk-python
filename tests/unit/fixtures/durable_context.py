@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, TypeVar
+
+from typing_extensions import override
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -44,6 +47,52 @@ class EmptyBatch(Generic[T]):
         return
 
 
+@dataclass(frozen=True)
+class RecordedFailure:
+    """Error fields preserved by the public batch result."""
+
+    message: str
+    type: str
+    data: str
+
+
+@dataclass
+class RecordedItem:
+    """One settled item in a recorded batch."""
+
+    index: int
+    status: object
+    result: str | None
+    error: object
+
+
+class RecordedBatch(EmptyBatch[str]):
+    """A settled success and failure with plain statuses and error details."""
+
+    success_count = 1
+    failure_count = 1
+    completion_reason: object = "FINISHED"
+
+    def __init__(self, error: object) -> None:
+        self._error = error
+
+    @override
+    def succeeded(self) -> list[_RuntimeBatchItem[str]]:
+        return [RecordedItem(1, "SUCCEEDED", "done", None)]
+
+    @override
+    def failed(self) -> list[_RuntimeBatchItem[str]]:
+        return [RecordedItem(0, "FAILED", None, self._error)]
+
+    @override
+    def get_results(self) -> list[str]:
+        return ["done"]
+
+    @override
+    def get_errors(self) -> list[object]:
+        return [self._error]
+
+
 class RecordingContext:
     """Implement the runtime context and capture its batch calls."""
 
@@ -81,7 +130,9 @@ class RecordingContext:
         config: object,
         name: str | None,
     ) -> T:
-        _ = (func, config, name)
+        _ = func
+        self.config = config
+        self.name = name
         raise AssertionError(_UNEXPECTED_OPERATION)
 
     def map(

@@ -25,13 +25,24 @@ from aws_durable_execution_sdk_python.config import (
     ParallelBranch as EngineParallelBranch,
 )
 from aws_durable_execution_sdk_python.retries import RetryDecision
+from aws_durable_execution_sdk_python.waits import (
+    WaitForConditionConfig,
+    WaitForConditionDecision,
+    WaitStrategyConfig,
+    create_wait_strategy,
+)
 from aws_durable_execution_sdk_python_testing import DurableFunctionTestRunner
-from fixtures.durable_context import RecordingContext
+from fixtures.durable_context import (
+    RecordedBatch,
+    RecordedFailure,
+    RecordingContext,
+)
 from fixtures.durable_engine import assert_runtime_surface
 from fixtures.invalid_callbacks import (
     decorate_non_callable,
     register_non_callable_branch,
     register_non_callable_map,
+    register_non_callable_wait,
     run_non_callable_operation,
     use_non_callable_retry,
 )
@@ -40,7 +51,9 @@ from fixtures.invalid_wait_options import invalid_wait_duration, non_callable_pr
 from volcano_sdk import durable_authoring
 from volcano_sdk.durable_authoring import (
     BatchFailure,
+    BatchItem,
     BatchOptions,
+    BatchResult,
     DurableContext,
     DurableRuntimeMissingError,
     FunctionHandler,
@@ -82,6 +95,10 @@ def _is_map_config(value: object) -> TypeGuard[MapConfig[object]]:
     return isinstance(value, MapConfig)
 
 
+def _is_wait_config(value: object) -> TypeGuard[WaitForConditionConfig[bool]]:
+    return isinstance(value, WaitForConditionConfig)
+
+
 def _ready(state: object) -> bool:
     if not _is_mapping(state):
         msg = "expected a state mapping"
@@ -109,6 +126,101 @@ def test_retry_false_produces_an_immediate_no_retry_decision() -> None:
     assert isinstance(decision, RetryDecision)
     assert decision.should_retry is False
     assert decision.delay.to_seconds() == 0
+
+
+def test_custom_retry_receives_the_original_error() -> None:
+    engine = durable_authoring._Engine()
+    failure = RuntimeError("failed")
+    seen: list[Exception] = []
+
+    def decide(error: Exception, _attempt: int) -> RetryDecision:
+        seen.append(error)
+        return RetryDecision(should_retry=False, delay=Duration.from_seconds(0))
+
+    retry = engine._custom_retry_strategy(decide)
+
+    assert retry(failure, 1).should_retry is False
+    assert seen == [failure]
+    assert seen[0] is failure
+
+
+def test_wait_options_forward_predicate_timing_and_attempt_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = durable_authoring._Engine()
+    captured: list[WaitStrategyConfig[bool]] = []
+
+    def record(
+        config: WaitStrategyConfig[bool],
+    ) -> Callable[[bool, int], WaitForConditionDecision]:
+        captured.append(config)
+        return create_wait_strategy(config)
+
+    monkeypatch.setattr(engine, "create_wait_strategy", record)
+    configured = engine.wait_condition_options(
+        WaitUntilOptions(
+            until=lambda state: state,
+            initial_state=False,
+            interval="3s",
+            max_interval="8s",
+            backoff_rate=1.25,
+            max_attempts=7,
+        )
+    )
+
+    assert len(captured) == 1
+    config = captured[0]
+    incomplete = False
+    complete = True
+    assert config.should_continue_polling(incomplete) is True
+    assert config.should_continue_polling(complete) is False
+    assert config.max_attempts == 7
+    assert config.initial_delay.to_seconds() == 3
+    assert config.max_delay.to_seconds() == 8
+    assert config.backoff_rate == pytest.approx(1.25)
+    assert _is_wait_config(configured)
+    assert configured.initial_state is False
+
+
+def test_wait_options_name_invalid_timing_fields() -> None:
+    engine = durable_authoring._Engine()
+
+    with pytest.raises(ValueError, match=r"^interval must be a duration"):
+        _ = engine.wait_condition_options(
+            WaitUntilOptions(
+                until=lambda state: state, initial_state=False, interval="bad"
+            )
+        )
+    with pytest.raises(ValueError, match=r"^max_interval must be a duration"):
+        _ = engine.wait_condition_options(
+            WaitUntilOptions(
+                until=lambda state: state,
+                initial_state=False,
+                max_interval="bad",
+            )
+        )
+
+
+def test_wait_until_validates_callback_and_forwards_name() -> None:
+    runtime = RecordingContext()
+    context = DurableContext(runtime, durable_authoring._Engine())
+    options = WaitUntilOptions(until=lambda state: state, initial_state=False)
+
+    with pytest.raises(TypeError, match=r"wait_until\(\) requires a function"):
+        register_non_callable_wait(context)
+    with pytest.raises(AssertionError, match="unexpected runtime operation"):
+        _ = context.wait_until(lambda state, _scope: state, options, "poll-ready")
+    assert runtime.name == "poll-ready"
+
+
+def test_wait_accepts_the_maximum_and_names_an_invalid_duration() -> None:
+    context = DurableContext(RecordingContext(), durable_authoring._Engine())
+    maximum = context._wait_duration(31_622_400)
+
+    assert isinstance(maximum, Duration)
+    assert maximum.to_seconds() == 31_622_400
+    with pytest.raises(ValueError, match=r"^wait must be a duration"):
+        _ = context._wait_duration("bad")
 
 
 def test_map_options_forward_both_batch_limits() -> None:
@@ -149,6 +261,32 @@ def test_map_requires_a_callable() -> None:
 
     with pytest.raises(TypeError, match=r"map\(\) requires a function to run"):
         register_non_callable_map(context)
+
+
+def test_batch_result_preserves_settled_items_and_failure_details() -> None:
+    failure = BatchFailure("failed", "RemoteError", "trace")
+    result = BatchResult(
+        RecordedBatch(RecordedFailure("failed", "RemoteError", "trace"))
+    )
+
+    assert result.items == (
+        BatchItem(0, "failed", None, failure),
+        BatchItem(1, "succeeded", "done", None),
+    )
+    assert result.results == ("done",)
+    assert result.errors == (failure,)
+    assert result.succeeded == 1
+    assert result.failed == 1
+    assert result.completed == 2
+    assert result.completion_reason == "finished"
+
+
+def test_batch_result_keeps_a_plain_exception_message() -> None:
+    failure = BatchFailure("boom")
+    result = BatchResult(RecordedBatch(RuntimeError("boom")))
+
+    assert result.items[0].error == failure
+    assert result.errors == (failure,)
 
 
 def test_parallel_forwards_branches_name_and_batch_limits() -> None:
@@ -588,6 +726,20 @@ def test_retry_config_keeps_unset_defaults_and_sets_requested_fields() -> None:
     assert config.max_delay.to_seconds() == 9
     assert config.backoff_rate == pytest.approx(1.25)
     assert config.retryable_error_types == [ValueError]
+
+
+@pytest.mark.parametrize(
+    ("options", "field"),
+    [
+        (RetryOptions(initial_delay="invalid"), "initial_delay"),
+        (RetryOptions(max_delay="invalid"), "max_delay"),
+    ],
+)
+def test_retry_config_names_an_invalid_duration(
+    options: RetryOptions, field: str
+) -> None:
+    with pytest.raises(ValueError, match=rf"^{field} must be a duration"):
+        _ = durable_authoring._Engine()._retry_config(options)
 
 
 def test_custom_retry_must_return_a_runtime_decision() -> None:

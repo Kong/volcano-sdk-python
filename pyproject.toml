@@ -462,6 +462,7 @@ type_check_command = [
   "src/volcano_sdk/auth.py",
   "src/volcano_sdk/storage.py",
   "src/volcano_sdk/functions.py",
+  "src/volcano_sdk/durable_authoring.py",
   "src/volcano_sdk/database.py",
   "src/volcano_sdk/_function_resolution.py",
   "src/volcano_sdk/_transport.py",

@@ -638,8 +638,8 @@ class BatchResult(Generic[T]):
             BatchItem(
                 index=item.index,
                 status=str(getattr(item.status, "value", item.status)).lower(),
-                result=getattr(item, "result", None),
-                error=_batch_failure(getattr(item, "error", None)),
+                result=item.result,
+                error=_batch_failure(item.error),
             )
             for item in _batch_items(batch)
         )
@@ -1178,7 +1178,7 @@ def _parse_duration(text: str, field_name: str) -> int:
 
 
 def _scan(text: str, start: int, accept: Callable[[str], bool]) -> int:
-    at = start
-    while at < len(text) and accept(text[at]):
-        at += 1
-    return at
+    for at in range(start, len(text)):
+        if not accept(text[at]):
+            return at
+    return len(text)
