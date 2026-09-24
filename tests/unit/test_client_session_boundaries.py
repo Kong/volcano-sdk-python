@@ -69,6 +69,7 @@ def test_lock_requests_require_a_service_key_before_transport() -> None:
 def test_profile_update_cannot_populate_an_absent_session() -> None:
     client = VolcanoClient(anon_key="anon")
     generation, session = client._capture_session()
+    assert isinstance(generation, int)
     assert session is None
 
     assert not client._update_session_user_if_current({"id": "user"}, generation)
@@ -87,9 +88,7 @@ def test_callback_dispatch_state_has_boolean_ownership_and_empty_failure() -> No
     client = make_client(lambda _request: refreshed_response())
     assert client._dispatching_auth_notifications is False
     events: list[str] = []
-    _ = client.auth.on_auth_state_change(
-        lambda event, _session: events.append(event)
-    )
+    _ = client.auth.on_auth_state_change(lambda event, _session: events.append(event))
     _ = client.auth.sign_in(email="user@example.com", password="example")
     assert events == ["INITIAL_SESSION", "SIGNED_IN"]
     assert client._dispatching_auth_notifications is False
