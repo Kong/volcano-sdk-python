@@ -51,11 +51,30 @@ else
   done < reports/mutation-changed.bin
 fi
 
+if [[ -n ${MUTATION_SHARD_INDEX:-} ]]; then
+  if [[ ${MUTATION_FULL:-0} != 1 || ! ${MUTATION_SHARD_INDEX} =~ ^[0-9]+$ || ! ${MUTATION_SHARD_COUNT:-} =~ ^[0-9]+$ || ${MUTATION_SHARD_COUNT:-0} -eq 0 || ${MUTATION_SHARD_INDEX} -ge ${MUTATION_SHARD_COUNT} ]]; then
+    echo 'Invalid full-mutation shard configuration' >&2
+    exit 1
+  fi
+  all_modules=("${modules[@]}")
+  modules=()
+  for index in "${!all_modules[@]}"; do
+    if (( index % MUTATION_SHARD_COUNT == MUTATION_SHARD_INDEX )); then
+      modules+=("${all_modules[index]}")
+    fi
+  done
+fi
+
+if (( ${#modules[@]} == 0 )); then
+  echo 'No runtime modules selected for mutation' >&2
+  exit 1
+fi
+
 for path in "${modules[@]}"; do
   printf '%s\0' "$path" >> "$targets"
 done
 
-if [[ ${MUTATION_FULL:-0} == 1 ]]; then
+if [[ ${MUTATION_FULL:-0} == 1 && -z ${MUTATION_SHARD_INDEX:-} ]]; then
   if ! mutmut run --max-children 1; then
     printf '%s\0' "full mutation run" >> "$failed"
   fi

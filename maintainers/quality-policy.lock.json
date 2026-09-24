@@ -415,7 +415,7 @@
         "policy": "bash scripts/check_quality_policy.sh",
         "quality": [
           "checks",
-          "mutation"
+          "mutation-full"
         ],
         "test": {
           "interpreter": "bash",
