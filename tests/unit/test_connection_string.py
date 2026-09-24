@@ -27,6 +27,18 @@ def test_database_connection_string_preserves_unrelated_query_encoding() -> None
     )
 
 
+def test_database_connection_string_keeps_multiple_unrelated_parameters() -> None:
+    base = (
+        "postgresql://db.example.com/app?"
+        "sslmode=require&connect_timeout=5&application_name=old"
+    )
+
+    assert database_connection_string(base) == (
+        "postgresql://db.example.com/app?"
+        "sslmode=require&connect_timeout=5&application_name=volcano_full_access"
+    )
+
+
 def test_database_connection_string_selects_encoded_user_access() -> None:
     assert database_connection_string(
         "postgres://user:password@db.example.com/app",

@@ -96,6 +96,7 @@ def test_callback_dispatch_state_has_boolean_ownership_and_empty_failure() -> No
     assert client._dispatching_auth_notifications is False
 
 
+@pytest.mark.order(0)
 def test_unsubscribe_releases_callback_ownership() -> None:
     client = VolcanoClient(anon_key="anon")
 

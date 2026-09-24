@@ -114,11 +114,11 @@ async def test_unused_worker_can_close_and_abort_repeatedly() -> None:
     assert worker._stop_task is None
     assert worker._queue.empty()
     await worker.close()
-    await worker.abort()
-    await worker.abort()
+    await asyncio.wait_for(worker.abort(), timeout=1)
+    await asyncio.wait_for(worker.abort(), timeout=1)
 
     with pytest.raises(RuntimeError, match="fetch worker is closed"):
-        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
     assert fetch.calls == []
     assert deliver.items == []
 
@@ -127,7 +127,7 @@ async def test_closed_worker_rejects_new_jobs_before_abort() -> None:
     worker = PostgresFetchWorker(
         RecordingBatchFetch(), OutcomeRecorder(), queue_limit=1
     )
-    await worker.enqueue(fetch_job(1))
+    await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
     await asyncio.wait_for(worker.close(), timeout=1)
 
     with pytest.raises(RuntimeError, match="fetch worker is closed"):
@@ -139,7 +139,7 @@ async def test_abort_cancels_an_active_fetch() -> None:
     worker = PostgresFetchWorker(fetch, OutcomeRecorder(), queue_limit=1)
     aborting: asyncio.Task[None] | None = None
     try:
-        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
         _ = await asyncio.wait_for(fetch.started.wait(), timeout=1)
         aborting = asyncio.create_task(worker.abort())
         _ = await asyncio.wait_for(fetch.cancelled.wait(), timeout=0.5)
@@ -147,7 +147,7 @@ async def test_abort_cancels_an_active_fetch() -> None:
     finally:
         fetch.release.set()
         await cancel_operation(aborting)
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
 
 
 async def test_cancelled_enqueue_waits_for_its_queue_put_to_finish() -> None:
@@ -157,9 +157,9 @@ async def test_cancelled_enqueue_waits_for_its_queue_put_to_finish() -> None:
     worker._queue = queue
     enqueueing: asyncio.Task[None] | None = None
     try:
-        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
         _ = await asyncio.wait_for(fetch.started.wait(), timeout=1)
-        await worker.enqueue(fetch_job(2))
+        await asyncio.wait_for(worker.enqueue(fetch_job(2)), timeout=1)
         enqueueing = asyncio.create_task(worker.enqueue(fetch_job(3)))
         await asyncio.sleep(0)
         assert not enqueueing.done()
@@ -174,7 +174,7 @@ async def test_cancelled_enqueue_waits_for_its_queue_put_to_finish() -> None:
         queue.release.set()
         await cancel_operation(queue.pending_put)
         await cancel_operation(enqueueing)
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
 
 
 async def test_enqueue_rejects_cancellation_after_queue_put_completes(
@@ -219,20 +219,21 @@ async def test_enqueues_release_completion_callbacks(
         return future
 
     try:
-        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
         _ = await asyncio.wait_for(fetch.started.wait(), timeout=1)
         with monkeypatch.context() as patch:
             patch.setattr(loop, "create_future", track_future)
-            await worker.enqueue(fetch_job(2))
+            await asyncio.wait_for(worker.enqueue(fetch_job(2)), timeout=1)
 
         await asyncio.sleep(0)
         _ = gc.collect()
         assert len(created) == 1
         assert created[0]() is None
     finally:
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
 
 
+@pytest.mark.order(0)
 async def test_race_helper_handles_two_already_completed_tasks() -> None:
     async def complete() -> None:
         return
@@ -255,7 +256,7 @@ async def test_first_enqueue_finishes_before_worker_shutdown() -> None:
         assert worker._task is not None
         assert not worker._task.done()
     finally:
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
 
 
 async def test_known_worker_failure_does_not_schedule_a_stop_request() -> None:
@@ -270,7 +271,7 @@ async def test_known_worker_failure_does_not_schedule_a_stop_request() -> None:
 
     worker = PostgresFetchWorker(RecordingBatchFetch(), fail_delivery, queue_limit=1)
     try:
-        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
         _ = await asyncio.wait_for(delivery_started.wait(), timeout=1)
         release_delivery.set()
         assert worker._task is not None
@@ -282,7 +283,7 @@ async def test_known_worker_failure_does_not_schedule_a_stop_request() -> None:
         assert worker._stop_task is None
     finally:
         release_delivery.set()
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
 
 
 async def test_close_failure_cancels_a_blocked_stop_request() -> None:
@@ -295,9 +296,9 @@ async def test_close_failure_cancels_a_blocked_stop_request() -> None:
     worker = PostgresFetchWorker(fetch, fail_delivery, queue_limit=1)
     closing = None
     try:
-        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
         _ = await asyncio.wait_for(fetch.started.wait(), timeout=1)
-        await worker.enqueue(fetch_job(2))
+        await asyncio.wait_for(worker.enqueue(fetch_job(2)), timeout=1)
         closing = asyncio.create_task(worker.close())
         await asyncio.sleep(0)
         stop_task = worker._stop_task
@@ -312,7 +313,7 @@ async def test_close_failure_cancels_a_blocked_stop_request() -> None:
         assert stop_task.cancelled()
         assert fetch.row_ids == [1]
     finally:
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
         await cancel_operation(closing)
 
 
@@ -322,9 +323,9 @@ async def test_abort_unblocks_close_with_a_full_queue() -> None:
     worker = PostgresFetchWorker(fetch, deliver, queue_limit=1)
     closing = None
     try:
-        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
         _ = await asyncio.wait_for(fetch.started.wait(), timeout=1)
-        await worker.enqueue(fetch_job(2))
+        await asyncio.wait_for(worker.enqueue(fetch_job(2)), timeout=1)
         closing = asyncio.create_task(worker.close())
         await asyncio.sleep(0)
         stop_task = worker._stop_task
@@ -340,7 +341,7 @@ async def test_abort_unblocks_close_with_a_full_queue() -> None:
         assert fetch.cancelled.is_set()
         assert deliver.items == []
     finally:
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
         await cancel_operation(closing)
 
 
@@ -350,9 +351,9 @@ async def test_abort_rejects_an_enqueue_waiting_for_capacity() -> None:
     worker = PostgresFetchWorker(fetch, deliver, queue_limit=1)
     enqueueing = None
     try:
-        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
         _ = await asyncio.wait_for(fetch.started.wait(), timeout=1)
-        await worker.enqueue(fetch_job(2))
+        await asyncio.wait_for(worker.enqueue(fetch_job(2)), timeout=1)
         enqueueing = asyncio.create_task(worker.enqueue(fetch_job(3)))
         await asyncio.sleep(0)
         assert not enqueueing.done()
@@ -364,7 +365,7 @@ async def test_abort_rejects_an_enqueue_waiting_for_capacity() -> None:
         assert fetch.cancelled.is_set()
         assert deliver.items == []
     finally:
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
         await cancel_operation(enqueueing)
 
 
@@ -380,13 +381,13 @@ async def test_wrong_batch_result_count_fails_before_delivery() -> None:
     deliver = OutcomeRecorder()
     worker = PostgresFetchWorker(no_results, deliver, queue_limit=1)
     try:
-        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
         release.set()
         with pytest.raises(RuntimeError, match="unexpected result count"):
             await asyncio.wait_for(worker.close(), timeout=1)
         assert deliver.items == []
     finally:
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
 
 
 async def test_fetch_cancellation_propagates_without_delivering_a_fallback() -> None:
@@ -403,7 +404,7 @@ async def test_fetch_cancellation_propagates_without_delivering_a_fallback() -> 
     deliver = OutcomeRecorder()
     worker = PostgresFetchWorker(cancelled_fetch, deliver, queue_limit=1)
     try:
-        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
         _ = await asyncio.wait_for(started.wait(), timeout=1)
         release.set()
 
@@ -412,7 +413,7 @@ async def test_fetch_cancellation_propagates_without_delivering_a_fallback() -> 
 
         assert deliver.items == []
     finally:
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
 
 
 async def test_batch_window_flushes_without_waiting_for_another_row_or_close() -> None:
@@ -427,13 +428,13 @@ async def test_batch_window_flushes_without_waiting_for_another_row_or_close() -
         fetch, deliver, queue_limit=2, max_batch_size=2, batch_window_seconds=0.1
     )
     try:
-        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
         _ = await asyncio.wait_for(delivered.wait(), timeout=1)
         await asyncio.wait_for(worker.close(), timeout=1)
 
         assert fetch.calls == [(1,)]
     finally:
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
 
 
 async def test_default_batch_window_flushes_before_another_row_arrives() -> None:
@@ -445,14 +446,14 @@ async def test_default_batch_window_flushes_before_another_row_arrives() -> None
 
     worker = PostgresFetchWorker(fetch, deliver, queue_limit=2, max_batch_size=2)
     try:
-        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
         _ = await asyncio.wait_for(delivered.wait(), timeout=0.5)
-        await worker.enqueue(fetch_job(2))
+        await asyncio.wait_for(worker.enqueue(fetch_job(2)), timeout=1)
         await asyncio.wait_for(worker.close(), timeout=1)
 
         assert fetch.calls == [(1,), (2,)]
     finally:
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
 
 
 async def test_full_batch_flushes_before_close() -> None:
@@ -469,8 +470,8 @@ async def test_full_batch_flushes_before_close() -> None:
         fetch, deliver, queue_limit=2, max_batch_size=2, batch_window_seconds=60
     )
     try:
-        await worker.enqueue(fetch_job(1))
-        await worker.enqueue(fetch_job(2))
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
+        await asyncio.wait_for(worker.enqueue(fetch_job(2)), timeout=1)
         _ = await asyncio.wait_for(delivered.wait(), timeout=1)
         await asyncio.wait_for(worker.close(), timeout=1)
         await asyncio.wait_for(worker._queue.join(), timeout=1)
@@ -481,7 +482,7 @@ async def test_full_batch_flushes_before_close() -> None:
             PostgresFetchOutcome(job=fetch_job(2), record={"id": 2}),
         ]
     finally:
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
 
 
 async def test_passthrough_does_not_enter_a_fetch_batch() -> None:
@@ -491,8 +492,10 @@ async def test_passthrough_does_not_enter_a_fetch_batch() -> None:
         fetch, deliver, queue_limit=2, max_batch_size=2, batch_window_seconds=0.01
     )
     try:
-        await worker.enqueue(passthrough_job("full-payload"))
-        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(
+            worker.enqueue(passthrough_job("full-payload")), timeout=1
+        )
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
         await asyncio.wait_for(worker.close(), timeout=1)
 
         assert fetch.calls == [(1,)]
@@ -501,7 +504,7 @@ async def test_passthrough_does_not_enter_a_fetch_batch() -> None:
             PostgresFetchOutcome(job=fetch_job(1), record={"id": 1}),
         ]
     finally:
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
 
 
 @pytest.mark.parametrize(("window", "expected"), [(0, [(1,), (2,)]), (60, [(1, 2)])])
@@ -514,12 +517,12 @@ async def test_batch_capacity_and_zero_window_preserve_delivery_order(
         fetch, deliver, queue_limit=2, max_batch_size=2, batch_window_seconds=window
     )
     try:
-        await worker.enqueue(fetch_job(1))
-        await worker.enqueue(fetch_job(2))
+        await asyncio.wait_for(worker.enqueue(fetch_job(1)), timeout=1)
+        await asyncio.wait_for(worker.enqueue(fetch_job(2)), timeout=1)
         await asyncio.wait_for(worker.close(), timeout=1)
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)
 
         assert fetch.calls == expected
         assert [item.record for item in deliver.items] == [{"id": 1}, {"id": 2}]
     finally:
-        await worker.abort()
+        await asyncio.wait_for(worker.abort(), timeout=1)

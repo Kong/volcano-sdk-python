@@ -391,7 +391,7 @@ async def test_closed_postgres_worker_reports_only_current_delivery_failures(
         enqueue = worker.enqueue
 
         async def stop_before_enqueue(job: PostgresFetchJob[_PostgresDelivery]) -> None:
-            await worker.abort()
+            await asyncio.wait_for(worker.abort(), timeout=1)
             if unsubscribe:
                 await channel.unsubscribe()
             await enqueue(job)

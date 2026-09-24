@@ -40,12 +40,11 @@ def database_connection_string(
 
     target, query = _connection_parts(base_connection_string)
     parameters = _query_parameters(query)
-    parameters.append(
-        urlencode(
-            {"application_name": _database_application_name(user_id)}, quote_via=quote
-        )
+    application = urlencode(
+        {"application_name": _database_application_name(user_id)}, quote_via=quote
     )
-    return f"{target}?{'&'.join(parameters)}"
+    separator = "&" if parameters else ""
+    return f"{target}?{parameters}{separator}{application}"
 
 
 def _connection_parts(value: str) -> tuple[str, str]:
@@ -64,13 +63,12 @@ def _connection_parts(value: str) -> tuple[str, str]:
     return value[: search_from + len(before_query)], query
 
 
-def _query_parameters(query: str) -> list[str]:
-    kept = "&".join(
+def _query_parameters(query: str) -> str:
+    return "&".join(
         parameter
         for parameter in query.split("&")
         if unquote(parameter.partition("=")[0]) != "application_name"
     ).rstrip("&")
-    return kept.split("&") if kept else []
 
 
 def _database_application_name(user_id: str | None) -> str:

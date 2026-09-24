@@ -206,8 +206,8 @@ class PostgresFetchWorker(Generic[FallbackT]):
         try:
             await ready
         finally:
+            # The worker may outlive this enqueue; the put task cannot.
             _ = task.remove_done_callback(notify)
-            _ = put_task.remove_done_callback(notify)
 
     def _discard_pending(self) -> None:
         while not self._queue.empty():

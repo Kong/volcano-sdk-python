@@ -356,11 +356,15 @@ def test_read_completes_before_a_queued_refresh_listener_changes_session() -> No
 def test_refresh_listener_can_wait_for_another_refresh_thread() -> None:
     completed: list[bool] = []
     workers: list[Thread] = []
+    notifications: list[str] = []
 
     client = make_client(handle_expired_read)
 
     def on_refresh(event: str, _session: Session | None) -> None:
         if event != "TOKEN_REFRESHED":
+            return
+        notifications.append(event)
+        if len(notifications) > 1:
             return
         subscription.unsubscribe()
         worker = Thread(target=client.auth.refresh_session)
@@ -374,6 +378,7 @@ def test_refresh_listener_can_wait_for_another_refresh_thread() -> None:
     for worker in workers:
         worker.join(timeout=5)
     assert completed == [True]
+    assert notifications == ["TOKEN_REFRESHED"]
 
 
 @pytest.mark.parametrize("replace_at", ["replay", "failed-refresh-listener"])
