@@ -23,5 +23,11 @@ def register_non_callable_branch(context: DurableContext) -> None:
     _ = context.parallel(["not a branch"])  # type: ignore[list-item]
 
 
+def run_non_callable_operation(context: DurableContext, operation: str) -> object:
+    if operation == "step":
+        return context.step("named", "not a function")  # type: ignore[arg-type]
+    return context.child("named", "not a function")  # type: ignore[arg-type]
+
+
 def use_non_callable_retry(context: DurableContext) -> None:
     context.step("charge", lambda _scope: None, retry="aggressively")  # type: ignore[arg-type]

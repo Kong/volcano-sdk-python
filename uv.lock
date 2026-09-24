@@ -2217,7 +2217,7 @@ requires-dist = [
     { name = "aws-durable-execution-sdk-python", marker = "extra == 'durable'", specifier = ">=2.0.0,<3.0.0" },
     { name = "centrifuge-python", specifier = ">=0.6.0,<0.7.0" },
     { name = "httpx", specifier = ">=0.28.1,<0.29.0" },
-    { name = "typing-extensions", specifier = ">=4.10.0" },
+    { name = "typing-extensions", specifier = ">=4.12.2" },
 ]
 provides-extras = ["durable"]
 

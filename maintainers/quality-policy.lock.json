@@ -6,6 +6,15 @@
       ],
       "executionEnvironments": [
         {
+          "reportExplicitAny": "error",
+          "root": "src/volcano_sdk/durable_authoring.py"
+        },
+        {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "root": "tests/unit/test_durable_authoring.py"
+        },
+        {
           "reportAny": "error",
           "reportExplicitAny": "error",
           "reportImplicitStringConcatenation": "error",
@@ -335,6 +344,15 @@
         "$MYPY_CONFIG_FILE_DIR/features",
         "$MYPY_CONFIG_FILE_DIR/typings"
       ],
+      "overrides": [
+        {
+          "disallow_any_explicit": true,
+          "module": [
+            "volcano_sdk.durable_authoring",
+            "test_durable_authoring"
+          ]
+        }
+      ],
       "python_version": "3.11",
       "strict": true,
       "strict_bytes": true,
@@ -548,12 +566,18 @@
               "python",
               "-I",
               "-c",
-              "from importlib.metadata import version; assert version('typing-extensions') == '4.10.0'; import volcano_sdk"
+              "from importlib.metadata import version; assert version('typing-extensions') == '4.12.2'"
+            ],
+            [
+              "python",
+              "-I",
+              "tests/package/optional_dependency.py",
+              "base"
             ]
           ],
           "constrain_package_deps": true,
           "deps": [
-            "typing-extensions==4.10.0"
+            "typing-extensions==4.12.2"
           ]
         },
         "package-types": {

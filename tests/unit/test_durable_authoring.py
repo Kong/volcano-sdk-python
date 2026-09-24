@@ -10,17 +10,28 @@ import importlib
 import inspect
 import json
 import logging
+from collections.abc import Mapping
 from contextlib import contextmanager
 from types import ModuleType, SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, TypeGuard
 
 import pytest
-from aws_durable_execution_sdk_python.config import Duration
+from aws_durable_execution_sdk_python.config import (
+    Duration,
+    MapConfig,
+    ParallelConfig,
+)
+from aws_durable_execution_sdk_python.config import (
+    ParallelBranch as EngineParallelBranch,
+)
 from aws_durable_execution_sdk_python.retries import RetryDecision
 from aws_durable_execution_sdk_python_testing import DurableFunctionTestRunner
+from fixtures.durable_context import RecordingContext
+from fixtures.durable_engine import assert_runtime_surface
 from fixtures.invalid_callbacks import (
     decorate_non_callable,
     register_non_callable_branch,
+    run_non_callable_operation,
     use_non_callable_retry,
 )
 from fixtures.invalid_wait_options import invalid_wait_duration, non_callable_predicate
@@ -58,6 +69,74 @@ pytestmark = pytest.mark.filterwarnings(
 _EXPECTED_FAILURE = "expected the execution to fail"
 
 
+def _is_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, Mapping)
+
+
+def _is_object_list(value: object) -> TypeGuard[list[object]]:
+    return isinstance(value, list)
+
+
+def _ready(state: object) -> bool:
+    if not _is_mapping(state):
+        msg = "expected a state mapping"
+        raise TypeError(msg)
+    ready: object = state.get("ready")
+    if not isinstance(ready, bool):
+        msg = "expected a boolean ready state"
+        raise TypeError(msg)
+    return ready
+
+
+def test_an_omitted_mapping_duration_part_is_zero() -> None:
+    assert to_seconds({"seconds": 5}, "wait") == 5
+
+
+@pytest.mark.parametrize("value", [{1: 5}, {"seconds": 5, 1: 3}])
+def test_duration_mapping_refuses_non_string_keys(value: object) -> None:
+    with pytest.raises(TypeError, match="must be a duration string"):
+        _ = to_seconds(value, "wait")
+
+
+def test_retry_false_produces_an_immediate_no_retry_decision() -> None:
+    decision = durable_authoring._Engine()._never_retry()(RuntimeError("failed"), 1)
+
+    assert isinstance(decision, RetryDecision)
+    assert decision.should_retry is False
+    assert decision.delay.to_seconds() == 0
+
+
+def test_map_options_forward_both_batch_limits() -> None:
+    config = durable_authoring._Engine().map_options(
+        BatchOptions(concurrency=2, min_succeeded=1)
+    )
+
+    assert isinstance(config, MapConfig)
+    assert config.max_concurrency == 2
+    assert config.completion_config.min_successful == 1
+
+
+def test_parallel_forwards_branches_name_and_batch_limits() -> None:
+    runtime = RecordingContext()
+    context = DurableContext(runtime, durable_authoring._Engine())
+    result = context.parallel(
+        [ParallelBranch(lambda _child: "named", name="alpha"), lambda _child: "bare"],
+        "fan-out",
+        BatchOptions(concurrency=2, min_succeeded=1),
+    )
+
+    assert result.completed == 0
+    assert runtime.name == "fan-out"
+    assert isinstance(runtime.config, ParallelConfig)
+    assert runtime.config.max_concurrency == 2
+    assert runtime.config.completion_config.min_successful == 1
+    assert runtime.branches is not None
+    assert len(runtime.branches) == 2
+    assert isinstance(runtime.branches[0], EngineParallelBranch)
+    assert runtime.branches[0].name == "alpha"
+    assert callable(runtime.branches[1])
+
+
 @contextmanager
 def local_runner(handler: FunctionHandler) -> Generator[DurableFunctionTestRunner]:
     """Run a handler on the local runner, then close what it leaves open.
@@ -70,6 +149,9 @@ def local_runner(handler: FunctionHandler) -> Generator[DurableFunctionTestRunne
     Yields:
         The local runner, closed when the context exits.
     """
+    # Fail an unavailable or malformed runtime before entering the scheduler:
+    # it otherwise waits for a result that the handler cannot produce.
+    assert_runtime_surface()
     runner = DurableFunctionTestRunner(handler)
     try:
         yield runner
@@ -81,7 +163,7 @@ def local_runner(handler: FunctionHandler) -> Generator[DurableFunctionTestRunne
             loop.close()
 
 
-def run_handler(handler: Any, event: object = None) -> Any:
+def run_handler(handler: FunctionHandler, event: object = None) -> object:
     """Run a durable handler to completion on the local runner.
 
     Returns:
@@ -97,7 +179,7 @@ def run_handler(handler: Any, event: object = None) -> Any:
     return None if result.result is None else json.loads(result.result)
 
 
-def failing_handler(handler: Any, event: object = None) -> str:
+def failing_handler(handler: FunctionHandler, event: object = None) -> str:
     """Run a handler expected to fail.
 
     Returns:
@@ -115,7 +197,7 @@ def failing_handler(handler: Any, event: object = None) -> str:
 
 def test_a_step_result_is_recorded_and_returned() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         return ctx.step("charge", lambda scope: {"id": "ch_1", "on": scope.attempt})
 
     assert run_handler(handler, {"order_id": "o-1"}) == {"id": "ch_1", "on": 1}
@@ -123,7 +205,7 @@ def test_a_step_result_is_recorded_and_returned() -> None:
 
 def test_an_unnamed_step_still_runs() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         return ctx.step(lambda _scope: "done")
 
     assert run_handler(handler) == "done"
@@ -131,7 +213,7 @@ def test_an_unnamed_step_still_runs() -> None:
 
 def test_the_handler_receives_the_execution_input() -> None:
     @durable
-    def handler(event: Any, ctx: DurableContext) -> Any:
+    def handler(event: dict[str, str], ctx: DurableContext) -> object:
         return ctx.step("echo", lambda _scope: event["order_id"])
 
     assert run_handler(handler, {"order_id": "o-42"}) == "o-42"
@@ -139,7 +221,7 @@ def test_the_handler_receives_the_execution_input() -> None:
 
 def test_a_wait_suspends_and_resumes_the_execution() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         first = ctx.step("first", lambda _scope: 1)
         ctx.wait("settle", "1s")
         return first + ctx.step("second", lambda _scope: 1)
@@ -149,7 +231,7 @@ def test_a_wait_suspends_and_resumes_the_execution() -> None:
 
 def test_a_wait_takes_a_duration_alone() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         ctx.wait("1s")
         return "resumed"
 
@@ -158,7 +240,7 @@ def test_a_wait_takes_a_duration_alone() -> None:
 
 def test_operations_are_recorded_under_their_names() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         _ = ctx.step("charge", lambda _scope: "ch_1")
         ctx.wait("settle", "1s")
         return ctx.child("fulfil", lambda child: child.step("ship", lambda _s: "ok"))
@@ -177,7 +259,7 @@ def test_operations_are_recorded_under_their_names() -> None:
 
 def test_a_child_context_groups_its_own_operations() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         return ctx.child(
             "fulfil",
             lambda child: {
@@ -191,7 +273,7 @@ def test_a_child_context_groups_its_own_operations() -> None:
 
 def test_map_runs_the_work_over_every_item() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         batch = ctx.map(
             [1, 2, 3],
             lambda item, child, _index: child.step(lambda _s: item * 10),
@@ -218,7 +300,7 @@ def test_map_runs_the_work_over_every_item() -> None:
 
 def test_map_respects_a_concurrency_limit() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         batch = ctx.map(
             [1, 2, 3, 4],
             lambda item, child, _index: child.step(lambda _s: item),
@@ -232,7 +314,7 @@ def test_map_respects_a_concurrency_limit() -> None:
 
 def test_parallel_runs_named_and_bare_branches() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         branches: list[Callable[[DurableContext], str] | ParallelBranch[str]] = [
             ParallelBranch(lambda child: child.step(lambda _s: "a"), name="alpha"),
             lambda child: child.step(lambda _s: "b"),
@@ -243,9 +325,17 @@ def test_parallel_runs_named_and_bare_branches() -> None:
     assert run_handler(handler) == {"results": ["a", "b"], "completed": 2}
 
 
+def test_parallel_options_apply_both_batch_limits() -> None:
+    engine = durable_authoring._Engine.load()
+    config = engine.parallel_options(BatchOptions(concurrency=2, min_succeeded=1))
+
+    assert config.max_concurrency == 2
+    assert config.completion_config.min_successful == 1
+
+
 def test_a_batch_reports_the_item_that_failed() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         def work(item: int, child: DurableContext, _index: int) -> int:
             def run(_scope: StepScope) -> int:
                 if item == 2:
@@ -290,7 +380,7 @@ def test_a_failure_is_reported_in_the_facade_s_own_shape() -> None:
     """
 
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         batch = ctx.map([1, 2], fail_second_item, "one-fails")
         # Found rather than indexed. `items` carries the items that settled,
         # and a batch can come back the moment the failure does -- leaving the
@@ -328,7 +418,7 @@ def test_an_early_completion_reports_only_what_finished() -> None:
     """
 
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         def work(item: int, child: DurableContext, _index: int) -> int:
             def run(_scope: StepScope) -> int:
                 # The later items outlive the completion threshold, so the batch
@@ -347,17 +437,19 @@ def test_an_early_completion_reports_only_what_finished() -> None:
         }
 
     result = run_handler(handler)
-
-    assert "started" not in result["statuses"], (
+    assert _is_mapping(result)
+    statuses: object = result.get("statuses")
+    assert _is_object_list(statuses)
+    assert "started" not in statuses, (
         "an in-flight item is not guaranteed to come back on a replay"
     )
-    assert result["completed"] == len(result["statuses"])
+    assert result["completed"] == len(statuses)
     assert result["reason"] == "min_successful_reached"
 
 
 def test_throw_if_failed_surfaces_a_batch_failure() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         def work(_item: int, child: DurableContext, _index: int) -> int:
             def run(_scope: StepScope) -> int:
                 message = "always bad"
@@ -373,7 +465,7 @@ def test_throw_if_failed_surfaces_a_batch_failure() -> None:
 
 def test_a_step_retries_until_it_succeeds() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         def flaky(scope: StepScope) -> int:
             if scope.attempt < 3:
                 message = f"attempt {scope.attempt} failed"
@@ -391,7 +483,7 @@ def test_a_step_retries_until_it_succeeds() -> None:
 
 def test_retry_false_fails_on_the_first_error() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         def always(scope: StepScope) -> int:
             message = f"failed on attempt {scope.attempt}"
             raise RuntimeError(message)
@@ -405,7 +497,7 @@ def test_retry_false_fails_on_the_first_error() -> None:
 
 def test_retry_options_stop_after_their_attempt_budget() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         def always(scope: StepScope) -> int:
             message = f"failed on attempt {scope.attempt}"
             raise RuntimeError(message)
@@ -421,7 +513,7 @@ def test_retry_options_stop_after_their_attempt_budget() -> None:
 
 def test_retry_on_limits_which_errors_are_retried() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         def always(scope: StepScope) -> int:
             message = f"unretryable on attempt {scope.attempt}"
             raise RuntimeError(message)
@@ -439,9 +531,39 @@ def test_retry_on_limits_which_errors_are_retried() -> None:
     assert "unretryable on attempt 1" in failing_handler(handler)
 
 
+def test_retry_config_keeps_unset_defaults_and_sets_requested_fields() -> None:
+    engine = durable_authoring._Engine.load()
+    defaults = engine.retry_strategy_config()
+    config = engine._retry_config(
+        RetryOptions(
+            max_delay="9s",
+            backoff_rate=1.25,
+            retry_on_types=[ValueError],
+        )
+    )
+
+    assert config.max_attempts == defaults.max_attempts
+    assert config.initial_delay == defaults.initial_delay
+    assert config.max_delay.to_seconds() == 9
+    assert config.backoff_rate == pytest.approx(1.25)
+    assert config.retryable_error_types == [ValueError]
+
+
+def test_custom_retry_must_return_a_runtime_decision() -> None:
+    engine = durable_authoring._Engine.load()
+
+    def invalid_retry(_error: Exception, _attempt: int) -> str:
+        return "invalid"
+
+    retry = engine._custom_retry_strategy(invalid_retry)
+
+    with pytest.raises(TypeError, match="retry must be False"):
+        _ = retry(RuntimeError("failed"), 1)
+
+
 def test_a_custom_retry_callable_decides_per_attempt() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         def decide(_error: Exception, attempt: int) -> RetryDecision:
             return RetryDecision(
                 should_retry=attempt < 2,
@@ -461,7 +583,7 @@ def test_a_custom_retry_callable_decides_per_attempt() -> None:
 
 def test_at_most_once_runs_the_step_once() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         return ctx.step("charge", lambda _scope: "charged", at_most_once=True)
 
     assert run_handler(handler) == "charged"
@@ -471,15 +593,17 @@ def test_wait_until_polls_until_the_condition_holds() -> None:
     polls = {"count": 0}
 
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
-        def check(_state: Any, _scope: StepScope) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
+        def check(
+            _state: dict[str, int | bool], _scope: StepScope
+        ) -> dict[str, int | bool]:
             polls["count"] += 1
             return {"ready": polls["count"] >= 3, "polls": polls["count"]}
 
         return ctx.wait_until(
             check,
-            WaitUntilOptions(
-                until=lambda state: bool(state["ready"]),
+            WaitUntilOptions[dict[str, int | bool]](
+                until=_ready,
                 initial_state={"ready": False, "polls": 0},
                 interval="1s",
                 max_attempts=10,
@@ -492,11 +616,11 @@ def test_wait_until_polls_until_the_condition_holds() -> None:
 
 def test_wait_until_fails_when_it_runs_out_of_attempts() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         return ctx.wait_until(
             lambda _state, _scope: {"ready": False},
             WaitUntilOptions(
-                until=lambda state: bool(state["ready"]),
+                until=_ready,
                 initial_state={"ready": False},
                 interval="1s",
                 max_attempts=2,
@@ -547,7 +671,7 @@ def test_a_replacement_logger_is_installed() -> None:
     recorder = Recorder()
 
     @durable(logger=recorder)
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         ctx.log.info("from the handler")
         return "logged"
 
@@ -557,11 +681,11 @@ def test_a_replacement_logger_is_installed() -> None:
 
 def test_durable_is_usable_bare_and_called() -> None:
     @durable
-    def bare(_event: Any, _ctx: DurableContext) -> Any:
+    def bare(_event: object, _ctx: DurableContext) -> object:
         return "bare"
 
     @durable()
-    def called(_event: Any, _ctx: DurableContext) -> Any:
+    def called(_event: object, _ctx: DurableContext) -> object:
         return "called"
 
     assert run_handler(bare) == "bare"
@@ -569,7 +693,7 @@ def test_durable_is_usable_bare_and_called() -> None:
 
 
 def test_the_wrapper_keeps_the_handler_name() -> None:
-    def order_pipeline(_event: Any, _ctx: DurableContext) -> Any:
+    def order_pipeline(_event: object, _ctx: DurableContext) -> object:
         """Handle an order.
 
         Returns:
@@ -592,16 +716,17 @@ def test_durable_refuses_something_that_is_not_callable() -> None:
 @pytest.mark.parametrize("operation", ["step", "child"])
 def test_an_operation_refuses_a_non_callable(operation: str) -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
-        return getattr(ctx, operation)("named", "not a function")
+    def handler(_event: object, ctx: DurableContext) -> object:
+        return run_non_callable_operation(ctx, operation)
 
     assert f"{operation}() requires a function to run" in failing_handler(handler)
 
 
 def test_wait_refuses_a_name_that_is_not_a_string() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
-        return ctx.wait(30, "30s")
+    def handler(_event: object, ctx: DurableContext) -> object:
+        ctx.wait(30, "30s")
+        return None
 
     assert "takes a name and a duration" in failing_handler(handler)
 
@@ -615,23 +740,25 @@ def test_wait_refuses_a_name_that_is_not_a_string() -> None:
 )
 def test_wait_refuses_a_wait_of_nothing(duration: object) -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
-        return invalid_wait_duration(ctx, duration)
+    def handler(_event: object, ctx: DurableContext) -> object:
+        invalid_wait_duration(ctx, duration)
+        return None
 
     assert "wait must be at least 1 second" in failing_handler(handler)
 
 
 def test_wait_refuses_a_wait_longer_than_an_execution_may_run() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
-        return ctx.wait("cool-off", {"days": 367})
+    def handler(_event: object, ctx: DurableContext) -> object:
+        ctx.wait("cool-off", {"days": 367})
+        return None
 
     assert "wait must be at most 31622400 seconds" in failing_handler(handler)
 
 
 def test_wait_until_refuses_a_timeout() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         return ctx.wait_until(
             lambda state, _scope: state,
             WaitUntilOptions(until=bool, initial_state=False, timeout="1h"),
@@ -644,10 +771,10 @@ def test_wait_until_refuses_a_timeout() -> None:
 
 def test_wait_until_requires_an_initial_state() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         return ctx.wait_until(
             lambda state, _scope: state,
-            WaitUntilOptions(until=bool),
+            WaitUntilOptions[object](until=bool),
         )
 
     assert "requires an `initial_state`" in failing_handler(handler)
@@ -670,10 +797,13 @@ def test_missing_batch_completion_reason_remains_absent(batch: object) -> None:
 
 def test_wait_until_accepts_none_as_an_initial_state() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
+        def check(_state: str | None, _scope: StepScope) -> str | None:
+            return "ready"
+
         return ctx.wait_until(
-            lambda _state, _scope: "ready",
-            WaitUntilOptions(
+            check,
+            WaitUntilOptions[str | None](
                 until=lambda state: bool(state == "ready"),
                 initial_state=None,
                 interval="1s",
@@ -688,7 +818,7 @@ def test_wait_until_accepts_none_as_an_initial_state() -> None:
 
 def test_map_refuses_a_string_of_items() -> None:
     @durable
-    def handler(_event: Any, ctx: DurableContext) -> Any:
+    def handler(_event: object, ctx: DurableContext) -> object:
         return ctx.map("abc", lambda item, _child, _index: item)
 
     # A string is a sequence, so mapping over one would otherwise run the work
@@ -772,6 +902,50 @@ def test_an_unknown_duration_field_names_what_it_accepts() -> None:
         _ = to_seconds({"milliseconds": 500}, "interval")
 
 
+@pytest.mark.parametrize(
+    ("value", "error_type", "message"),
+    [
+        (
+            True,
+            TypeError,
+            (
+                "interval must be a duration string, a whole number of seconds, "
+                "or a mapping of days, hours, minutes, seconds"
+            ),
+        ),
+        (
+            1.5,
+            TypeError,
+            "interval must be a whole number of seconds, not a fraction",
+        ),
+        (
+            {"seconds": 1, "years": 2, "milliseconds": 3},
+            TypeError,
+            (
+                "interval duration takes days, hours, minutes, seconds "
+                "(got milliseconds, years)"
+            ),
+        ),
+        (
+            {},
+            TypeError,
+            "interval duration needs one of days, hours, minutes, seconds",
+        ),
+        (
+            {"seconds": -1},
+            ValueError,
+            "interval duration seconds must be a non-negative whole number",
+        ),
+    ],
+)
+def test_invalid_duration_reports_the_field_and_reason(
+    value: object, error_type: type[Exception], message: str
+) -> None:
+    with pytest.raises(error_type) as raised:
+        _ = to_seconds(value, "interval")
+    assert str(raised.value) == message
+
+
 @pytest.fixture
 def without_engine(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Hide the durable engine and clear the cached load either side."""
@@ -793,7 +967,7 @@ def without_engine(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 @pytest.mark.usefixtures("without_engine")
 def test_a_missing_runtime_is_reported_on_invocation() -> None:
     @durable
-    def handler(_event: Any, _ctx: DurableContext) -> Any:
+    def handler(_event: object, _ctx: DurableContext) -> object:
         return None
 
     # Decorating has to succeed without the engine: the SDK also runs in
@@ -806,21 +980,24 @@ def test_a_missing_runtime_is_reported_on_invocation() -> None:
 @pytest.mark.usefixtures("without_engine")
 def test_the_missing_runtime_error_says_to_deploy_as_durable() -> None:
     @durable
-    def handler(_event: Any, _ctx: DurableContext) -> Any:
+    def handler(_event: object, _ctx: DurableContext) -> object:
         return None
 
     with pytest.raises(DurableRuntimeMissingError) as raised:
         _ = handler({}, None)
 
-    message = str(raised.value)
-    # Volcano installs the runtime when it builds a durable function, so the
-    # fix is a deploy rather than an install. A function's requirements.txt
-    # never names the runtime, and the error must not send a reader to add it.
-    assert "deploy this one that way" in message
-    assert "kind: durable" in message
-    assert "does not run locally" in message
-    assert "requirements.txt" not in message
-    assert "aws-durable-execution-sdk-python" not in message
+    assert str(raised.value) == (
+        "Durable execution is not available here. Volcano provides the "
+        "durable runtime when it builds a function deployed as durable, so "
+        "deploy this one that way (`volcano cloud durable deploy`, or "
+        "`kind: durable` in volcano-config.yaml). Durable execution is a "
+        "cloud capability and does not run locally; to exercise a handler "
+        "in your own tests, install `volcano-sdk-python[durable]`."
+    )
+    assert isinstance(raised.value.__cause__, ImportError)
 
-    # The extra is still the answer for one case, and only that one.
-    assert "in your own tests, install `volcano-sdk-python[durable]`" in message
+
+def test_runtime_missing_error_preserves_an_explicit_cause() -> None:
+    cause = ImportError("missing runtime")
+
+    assert DurableRuntimeMissingError(cause).__cause__ is cause
