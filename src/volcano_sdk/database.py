@@ -86,10 +86,8 @@ class _OrderClause(TypedDict):
 class FilterBuilder:
     """Shared immutable filters for database operations."""
 
-    _filters: tuple[_FilterCondition, ...] = ()
-
-    def _with_filters(self, filters: tuple[_FilterCondition, ...]) -> Self:
-        del filters
+    def _append_filter(self, condition: _FilterCondition) -> Self:
+        del condition
         raise NotImplementedError
 
     def eq(self, column: str, value: object) -> Self:
@@ -208,7 +206,7 @@ class FilterBuilder:
             "operator": operator,
             "value": _snapshot_filter_value(value),
         }
-        return self._with_filters((*self._filters, condition))
+        return self._append_filter(condition)
 
 
 @dataclass(frozen=True, slots=True)
@@ -319,8 +317,8 @@ class QueryBuilder(FilterBuilder):
         return replace(self, _offset=count)
 
     @override
-    def _with_filters(self, filters: tuple[_FilterCondition, ...]) -> QueryBuilder:
-        return replace(self, _filters=filters)
+    def _append_filter(self, condition: _FilterCondition) -> QueryBuilder:
+        return replace(self, _filters=(*self._filters, condition))
 
     def _request_body(self) -> dict[str, object]:
         body: dict[str, object] = {"table": self._table}
@@ -402,8 +400,8 @@ class UpdateBuilder(FilterBuilder):
     _filters: tuple[_FilterCondition, ...] = ()
 
     @override
-    def _with_filters(self, filters: tuple[_FilterCondition, ...]) -> UpdateBuilder:
-        return replace(self, _filters=filters)
+    def _append_filter(self, condition: _FilterCondition) -> UpdateBuilder:
+        return replace(self, _filters=(*self._filters, condition))
 
     def execute(self) -> list[dict[str, object]]:
         """Update matching rows and return them.
@@ -440,8 +438,8 @@ class DeleteBuilder(FilterBuilder):
     _filters: tuple[_FilterCondition, ...] = ()
 
     @override
-    def _with_filters(self, filters: tuple[_FilterCondition, ...]) -> DeleteBuilder:
-        return replace(self, _filters=filters)
+    def _append_filter(self, condition: _FilterCondition) -> DeleteBuilder:
+        return replace(self, _filters=(*self._filters, condition))
 
     def execute(self) -> list[dict[str, object]]:
         """Delete matching rows and return them.

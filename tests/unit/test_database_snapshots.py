@@ -52,4 +52,6 @@ def test_filter_snapshots_nested_mappings_lists_and_tuples(operation: str) -> No
 
 def test_filter_base_requires_a_concrete_builder() -> None:
     with pytest.raises(NotImplementedError):
-        _ = FilterBuilder()._with_filters(())
+        _ = FilterBuilder()._append_filter(
+            {"column": "id", "operator": "eq", "value": 1}
+        )
