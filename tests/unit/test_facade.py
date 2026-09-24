@@ -641,6 +641,7 @@ def test_storage_list_normalizes_an_empty_terminal_cursor() -> None:
     _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     assert client.storage.from_("assets").list().next_cursor is None
+    assert transport.calls[-1][1]["prefix"] == ""
 
 
 def test_locks_gets_immutable_current_state() -> None:
@@ -958,6 +959,16 @@ def test_storage_creates_an_immutable_upload_session() -> None:
     ) == ("videos/demo.mp4", "video/mp4", 20_000_000, 8_388_608)
 
 
+def test_storage_session_uses_the_default_binary_content_type() -> None:
+    transport = FakeTransport()
+    client = signed_in_client(transport)
+
+    _ = client.storage.from_("assets").create_upload_session("file.bin", total_size=4)
+
+    request = require_request(transport.calls[-1][1], StorageUploadSessionRequest)
+    assert request.content_type == "application/octet-stream"
+
+
 def test_storage_uploads_a_part_and_returns_immutable_metadata() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
@@ -1105,7 +1116,11 @@ def test_storage_uploads_bytes_with_server_selected_chunks() -> None:
         "completeUploadSession",
     ]
     create_request = require_request(storage_calls[0][1], StorageUploadSessionRequest)
-    assert (create_request.total_size, create_request.part_size) == (10, 6)
+    assert (
+        create_request.total_size,
+        create_request.part_size,
+        create_request.content_type,
+    ) == (10, 6, "video/mp4")
     assert [
         require_request(call[1], StorageUploadPartRequest).data
         for call in storage_calls[1:4]
@@ -1115,6 +1130,18 @@ def test_storage_uploads_bytes_with_server_selected_chunks() -> None:
         b"ij",
     ]
     assert object_.name == "videos/demo.mp4"
+
+
+def test_storage_resumable_upload_uses_the_default_binary_content_type() -> None:
+    transport = FakeTransport()
+    transport.upload_session_part_size = 4
+    transport.upload_session_total_parts = 1
+    client = signed_in_client(transport)
+
+    _ = client.storage.from_("assets").upload_resumable("file.bin", b"abcd")
+
+    request = require_request(transport.calls[-3][1], StorageUploadSessionRequest)
+    assert request.content_type == "application/octet-stream"
 
 
 def test_storage_reports_progress_after_each_uploaded_part() -> None:
@@ -1512,6 +1539,36 @@ def test_storage_get_public_url_encodes_path_segments_without_a_request() -> Non
         "https://api.test.volcano.dev/public/project-123/assets/avatars/Ada%20photo.png"
     )
     assert transport.calls == []
+
+
+def test_storage_public_url_encodes_project_and_bucket_slashes() -> None:
+    client = VolcanoClient(
+        api_url="https://api.test.volcano.dev",
+        anon_key=anon_key_with_project_id("MaYJ?h5V2/team"),
+    )
+
+    assert client.storage.from_("assets/private").get_public_url("file.bin") == (
+        "https://api.test.volcano.dev/public/"
+        "MaYJ%3Fh5V2%2Fteam/assets%2Fprivate/file.bin"
+    )
+
+
+def test_storage_public_url_accepts_a_single_padding_character() -> None:
+    client = VolcanoClient(anon_key=anon_key_with_project_id("xxxxxxxx"))
+    assert (
+        client.storage.from_("assets")
+        .get_public_url("file.bin")
+        .endswith("/public/xxxxxxxx/assets/file.bin")
+    )
+
+
+def test_storage_public_url_rejects_invalid_characters_inside_base64() -> None:
+    valid = anon_key_with_project_id("project-123").split(".")
+    malformed = f"{valid[0]}.{valid[1][:2]}%%%%{valid[1][2:]}.{valid[2]}"
+    client = VolcanoClient(anon_key=malformed)
+
+    with pytest.raises(ValueError, match="project ID"):
+        _ = client.storage.from_("assets").get_public_url("file.bin")
 
 
 @pytest.mark.parametrize(

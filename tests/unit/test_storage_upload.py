@@ -99,6 +99,17 @@ def test_upload_rejects_non_string_content_type_before_reading() -> None:
     assert source.tell() == 0
 
 
+def test_upload_requires_a_session_before_consuming_a_stream() -> None:
+    client = VolcanoClient(anon_key="anon")
+    source = BytesIO(b"private")
+
+    with pytest.raises(RuntimeError, match="active session"):
+        _ = client.storage.from_("assets").upload("payload.bin", source)
+
+    assert source.tell() == 0
+    assert not source.closed
+
+
 @pytest.mark.parametrize("payload", [[], {1: "unexpected"}])
 def test_upload_rejects_malformed_success_payload(payload: object) -> None:
     client = VolcanoClient(anon_key="anon", _transport=UploadPayloadTransport(payload))

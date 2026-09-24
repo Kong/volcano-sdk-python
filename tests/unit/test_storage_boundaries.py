@@ -10,6 +10,7 @@ from typing_extensions import override
 
 from volcano_sdk import VolcanoClient
 from volcano_sdk.storage import (
+    _has_seekable_methods,
     _optional_datetime,
     _read_upload_part,
     _remaining_upload_bytes,
@@ -56,6 +57,12 @@ class SeekLookupFailure(BytesIO):
             message = "seek capability unavailable"
             raise OSError(message)
         return cast("object", super().__getattribute__(name))
+
+
+class ReadOnlyBinaryInput:
+    def read(self, size: int = -1, /) -> bytes:
+        del size
+        return b""
 
 
 _STORAGE_OPERATIONS: tuple[Callable[[StorageBucket], object], ...] = (
@@ -145,6 +152,7 @@ def test_storage_object_rejects_invalid_field_types(field: str, value: object) -
         ("metadata", {"nested": object()}),
         ("metadata", {"nested": {1: "bad key"}}),
         ("metadata", {"nested": ["valid", object()]}),
+        ("metadata", {"nested": {"invalid": object()}}),
     ],
 )
 def test_storage_object_rejects_untyped_response_fields(
@@ -279,6 +287,28 @@ def test_upload_status_rejects_untyped_response_fields(
         _ = _upload_session_status(payload)
 
 
+@pytest.mark.parametrize(
+    "state", ["pending", "uploading", "completing", "completed", "aborted"]
+)
+def test_upload_status_preserves_each_server_state(state: str) -> None:
+    status = _upload_session_status(
+        {
+            "session_id": "session",
+            "status": state,
+            "path": "file.bin",
+            "content_type": "application/octet-stream",
+            "total_size": 4,
+            "part_size": 4,
+            "total_parts": 1,
+            "parts_uploaded": 0,
+            "bytes_uploaded": 0,
+            "expires_at": "2026-09-23T12:00:00Z",
+            "created_at": "2026-09-23T11:00:00Z",
+        }
+    )
+    assert status.status == state
+
+
 @pytest.mark.parametrize("payload", [None, [], 1, {"objects": {}}, {"objects": None}])
 def test_storage_page_rejects_invalid_collections(payload: object) -> None:
     with pytest.raises(TypeError, match="Expected a complete storage page"):
@@ -314,6 +344,22 @@ def test_upload_size_probe_restores_position_after_end_seek_fails() -> None:
         assert _remaining_upload_bytes(source) is None
         assert source.tell() == 7
         assert source.read() == b"payload"
+
+
+def test_upload_size_probe_measures_remaining_bytes_from_current_position() -> None:
+    with BytesIO(b"prefix-payload") as source:
+        _ = source.seek(7)
+        assert _remaining_upload_bytes(source) == len(b"payload")
+        assert source.tell() == 7
+
+
+def test_seek_capability_probe_rejects_lookup_failures() -> None:
+    with SeekLookupFailure(b"payload") as source:
+        assert not _has_seekable_methods(source)
+
+
+def test_seek_capability_probe_rejects_read_only_inputs() -> None:
+    assert not _has_seekable_methods(ReadOnlyBinaryInput())
 
 
 def test_upload_spools_when_seek_capability_lookup_raises() -> None:
