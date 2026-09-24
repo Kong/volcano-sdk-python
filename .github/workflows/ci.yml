@@ -67,7 +67,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -83,7 +83,7 @@ jobs:
       - name: Mutate all handwritten runtime modules in this shard
         env:
           MUTATION_SHARD_INDEX: ${{ matrix.shard }}
-          MUTATION_SHARD_COUNT: 8
+          MUTATION_SHARD_COUNT: 23
         run: uv run --locked poe mutation-full
       - name: Preserve mutation outcomes
         if: ${{ always() }}
@@ -115,7 +115,7 @@ jobs:
       - name: Require every runtime module in one mutation shard
         run: |
           git ls-files -z 'src/volcano_sdk/*.py' > reports/shards/source.bin
-          python -m scripts.check_mutation_shards reports/shards reports/shards/source.bin 8
+          python -m scripts.check_mutation_shards reports/shards reports/shards/source.bin 23
       - name: Require every mandatory job to succeed
         env:
           RESULTS: ${{ toJSON(needs.*.result) }}

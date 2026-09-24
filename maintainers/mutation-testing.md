@@ -13,9 +13,10 @@ their combined results cover every tracked source module. GitHub's matrix
 reports job success without checking that source inventory.
 `scripts/mutation.sh` assigns Git-tracked runtime modules to shards,
 `scripts/mutation_results.py` reads each shard's native metadata, and
-`scripts/check_mutation_shards.py` checks that all eight reports cover each
-handwritten module exactly once. The
-report at `reports/mutation.json` distinguishes killed, statically invalid,
+`scripts/check_mutation_shards.py` checks that all 23 reports cover each
+handwritten module exactly once. The export-only `__init__.py` shares a shard
+with a mutatable module. `reports/mutation.json` distinguishes killed,
+statically invalid,
 surviving, uncovered, timed-out, crashed, interrupted, and missing results.
 A pytest internal error is a harness crash, not a killed mutant.
 The pinned Pyrefly check rejects type-invalid mutants in every handwritten
