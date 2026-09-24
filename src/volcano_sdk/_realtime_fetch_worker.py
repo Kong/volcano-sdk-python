@@ -293,9 +293,11 @@ class PostgresFetchWorker(Generic[FallbackT]):
         if isinstance(result, BaseException):
             await self._deliver_failure(jobs, result)
             return
-        if len(result) != len(jobs):
-            raise RuntimeError(_INVALID_RESULT_COUNT)
-        for job, record in zip(jobs, result, strict=True):
+        try:
+            pairs = tuple(zip(jobs, result, strict=True))
+        except ValueError:
+            raise RuntimeError(_INVALID_RESULT_COUNT) from None
+        for job, record in pairs:
             await self._deliver(PostgresFetchOutcome(job=job, record=record))
 
     async def _deliver_failure(

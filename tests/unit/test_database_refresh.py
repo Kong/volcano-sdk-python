@@ -362,6 +362,9 @@ def test_refresh_listener_can_wait_for_another_refresh_thread() -> None:
     def on_refresh(event: str, _session: Session | None) -> None:
         if event != "TOKEN_REFRESHED":
             return
+        if workers:
+            completed.append(False)
+            return
         subscription.unsubscribe()
         worker = Thread(target=client.auth.refresh_session)
         workers.append(worker)
