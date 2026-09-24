@@ -603,7 +603,7 @@ def test_functions_rejects_subclass_spoofed_surrogates() -> None:
 
 def test_functions_rejects_integers_the_json_encoder_cannot_render() -> None:
     limit = sys.get_int_max_str_digits()
-    value = 10 ** (limit or 4300)
+    value = 1 << (4 * (limit or 4300))
     transport = FakeFunctionsTransport()
     client = functions_client(transport)
 

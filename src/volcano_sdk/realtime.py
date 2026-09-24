@@ -10,7 +10,6 @@ from itertools import count
 from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
-    Any,
     Literal,
     Protocol,
     TypeAlias,
@@ -47,9 +46,10 @@ if TYPE_CHECKING:
 _PostgresFetchRequest: TypeAlias = PostgresFetchRequest
 _SubscriptionT = TypeVar("_SubscriptionT")
 _DefaultT = TypeVar("_DefaultT")
+_MessageT = TypeVar("_MessageT")
 
-MessageCallback = Callable[[Any], object]
-RealtimeCallback = Callable[[Any], object]
+MessageCallback = Callable[..., object]
+RealtimeCallback = Callable[..., object]
 UnsubscribeCallback = Callable[[], None]
 ChannelType: TypeAlias = Literal["broadcast", "presence", "postgres"]
 PostgresEvent: TypeAlias = Literal["INSERT", "UPDATE", "DELETE"]
@@ -787,7 +787,7 @@ class Channel:
         """Canonical channel name sent to realtime."""
         return self._name
 
-    def on(self, event: str, callback: MessageCallback) -> Channel:
+    def on(self, event: str, callback: Callable[[_MessageT], object]) -> Channel:
         """Register a callback for messages or presence events.
 
         Returns
@@ -852,7 +852,9 @@ class Channel:
 
         return unsubscribe
 
-    def on_presence_sync(self, callback: MessageCallback) -> UnsubscribeCallback:
+    def on_presence_sync(
+        self, callback: Callable[[Mapping[str, RealtimePresenceInfo]], object]
+    ) -> UnsubscribeCallback:
         """Observe immutable snapshots of a presence channel's current state.
 
         Requires a presence channel.
@@ -1458,7 +1460,9 @@ class Realtime:
             for request in requests
         )
 
-    def on_connect(self, callback: RealtimeCallback) -> UnsubscribeCallback:
+    def on_connect(
+        self, callback: Callable[[RealtimeConnectContext], object]
+    ) -> UnsubscribeCallback:
         """Register a connection callback.
 
         Returns
@@ -1469,7 +1473,9 @@ class Realtime:
         """
         return self._register_connection_callback("connect", callback)
 
-    def on_disconnect(self, callback: RealtimeCallback) -> UnsubscribeCallback:
+    def on_disconnect(
+        self, callback: Callable[[RealtimeDisconnectContext], object]
+    ) -> UnsubscribeCallback:
         """Register a disconnection callback.
 
         Returns
@@ -1480,7 +1486,9 @@ class Realtime:
         """
         return self._register_connection_callback("disconnect", callback)
 
-    def on_error(self, callback: RealtimeCallback) -> UnsubscribeCallback:
+    def on_error(
+        self, callback: Callable[[RealtimeErrorContext], object]
+    ) -> UnsubscribeCallback:
         """Register a transport-error callback.
 
         Returns
