@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.3](https://github.com/Kong/volcano-sdk-python/compare/v0.13.2...v0.13.3) (2026-09-24)
+
+
+### Bug Fixes
+
+* **python:** harden transport and session boundaries ([#362](https://github.com/Kong/volcano-sdk-python/issues/362)) ([ad077f1](https://github.com/Kong/volcano-sdk-python/commit/ad077f19db4b2148f3be63ec3fc4f112d79e16ea))
+
 ## [0.13.2](https://github.com/Kong/volcano-sdk-python/compare/v0.13.1...v0.13.2) (2026-09-24)
 
 
