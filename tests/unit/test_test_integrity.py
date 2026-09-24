@@ -9,12 +9,12 @@ INTEGRITY = (Path(__file__).parents[1] / "conftest.py").read_text()
 
 @pytest.fixture
 def guarded(pytester: pytest.Pytester) -> pytest.Pytester:
-    pytester.makeconftest(INTEGRITY)
+    _ = pytester.makeconftest(INTEGRITY)
     return pytester
 
 
 def test_complete_run_passes(guarded: pytest.Pytester) -> None:
-    guarded.makepyfile("def test_passes(): assert True")
+    _ = guarded.makepyfile("def test_passes(): assert True")
     result = guarded.runpytest_subprocess()
     result.assert_outcomes(passed=1)
     assert result.ret == pytest.ExitCode.OK
@@ -23,7 +23,7 @@ def test_complete_run_passes(guarded: pytest.Pytester) -> None:
 def test_collect_only_discovers_tests_without_execution(
     guarded: pytest.Pytester,
 ) -> None:
-    guarded.makepyfile("def test_discovered(): assert True")
+    _ = guarded.makepyfile("def test_discovered(): assert True")
     result = guarded.runpytest_subprocess("--collect-only", "-q")
     assert result.ret == pytest.ExitCode.OK
     result.stdout.fnmatch_lines(["*1 test collected*"])
@@ -48,7 +48,7 @@ def test_collect_only_discovers_tests_without_execution(
     ],
 )
 def test_disabled_tests_fail(guarded: pytest.Pytester, source: str) -> None:
-    guarded.makepyfile(source)
+    _ = guarded.makepyfile(source)
     result = guarded.runpytest_subprocess()
     assert result.ret == pytest.ExitCode.TESTS_FAILED
     result.stdout.fnmatch_lines(["*Incomplete test run:*"])
@@ -72,7 +72,7 @@ def test_empty_discovery_fails(guarded: pytest.Pytester) -> None:
     ],
 )
 def test_collection_skips_fail(guarded: pytest.Pytester, source: str) -> None:
-    guarded.makepyfile(
+    _ = guarded.makepyfile(
         test_skipped=source, test_passed="def test_passes(): assert True"
     )
     result = guarded.runpytest_subprocess()
@@ -82,10 +82,10 @@ def test_collection_skips_fail(guarded: pytest.Pytester, source: str) -> None:
 
 
 def test_missing_execution_fails(guarded: pytest.Pytester) -> None:
-    guarded.makeconftest(
+    _ = guarded.makeconftest(
         INTEGRITY + "\ndef pytest_runtest_protocol(item, nextitem): return True\n",
     )
-    guarded.makepyfile("def test_omitted(): assert True")
+    _ = guarded.makepyfile("def test_omitted(): assert True")
     result = guarded.runpytest_subprocess()
     assert result.ret == pytest.ExitCode.TESTS_FAILED
     result.stdout.fnmatch_lines(
@@ -94,7 +94,7 @@ def test_missing_execution_fails(guarded: pytest.Pytester) -> None:
 
 
 def test_repeated_execution_fails(guarded: pytest.Pytester) -> None:
-    guarded.makepyfile("def test_repeated(): assert True")
+    _ = guarded.makepyfile("def test_repeated(): assert True")
     result = guarded.runpytest_subprocess(
         "--keep-duplicates",
         "test_repeated_execution_fails.py",
@@ -106,7 +106,7 @@ def test_repeated_execution_fails(guarded: pytest.Pytester) -> None:
 
 
 def test_real_failure_stays_failed(guarded: pytest.Pytester) -> None:
-    guarded.makepyfile("def test_failure(): assert False")
+    _ = guarded.makepyfile("def test_failure(): assert False")
     result = guarded.runpytest_subprocess()
     result.assert_outcomes(failed=1)
     assert result.ret == pytest.ExitCode.TESTS_FAILED

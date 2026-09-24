@@ -24,7 +24,7 @@ class UploadResponse:
 class UploadPayloadTransport(GeneratedTransport):
     def __init__(self, payload: object) -> None:
         super().__init__(api_url="https://api.test.volcano.dev")
-        self.payload = payload
+        self.payload: object = payload
 
     @override
     def upload_storage_object(
@@ -55,9 +55,9 @@ def test_upload_sends_the_file_content_type(content_type: str | None) -> None:
         httpx_transport=httpx.MockTransport(handle),
     )
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.set_session(Session("access", "refresh", "user"))
+    _ = client.auth.set_session(Session("access", "refresh", "user"))
     source = BytesIO(b"skip-hello\x00\xff")
-    source.seek(5)
+    _ = source.seek(5)
 
     options = {} if content_type is None else {"content_type": content_type}
     result = client.storage.from_("assets").upload("payload.bin", source, **options)
@@ -77,11 +77,11 @@ def test_upload_sends_the_file_content_type(content_type: str | None) -> None:
 )
 def test_upload_rejects_invalid_content_type_before_reading(content_type: str) -> None:
     client = VolcanoClient(api_url="http://127.0.0.1:1", anon_key="anon")
-    client.auth.set_session(Session("access", "refresh", "user"))
+    _ = client.auth.set_session(Session("access", "refresh", "user"))
     source = BytesIO(b"unchanged")
 
     with pytest.raises(ValueError, match="content_type"):
-        client.storage.from_("assets").upload(
+        _ = client.storage.from_("assets").upload(
             "payload.bin", source, content_type=content_type
         )
 
@@ -90,7 +90,7 @@ def test_upload_rejects_invalid_content_type_before_reading(content_type: str) -
 
 def test_upload_rejects_non_string_content_type_before_reading() -> None:
     client = VolcanoClient(api_url="http://127.0.0.1:1", anon_key="anon")
-    client.auth.set_session(Session("access", "refresh", "user"))
+    _ = client.auth.set_session(Session("access", "refresh", "user"))
     source = BytesIO(b"unchanged")
 
     with pytest.raises(ValueError, match="content_type"):
@@ -102,7 +102,7 @@ def test_upload_rejects_non_string_content_type_before_reading() -> None:
 @pytest.mark.parametrize("payload", [[], {1: "unexpected"}])
 def test_upload_rejects_malformed_success_payload(payload: object) -> None:
     client = VolcanoClient(anon_key="anon", _transport=UploadPayloadTransport(payload))
-    client.auth.set_session(Session("access", "refresh", "user"))
+    _ = client.auth.set_session(Session("access", "refresh", "user"))
 
     with pytest.raises(TypeError, match="Expected a storage upload response object"):
-        client.storage.from_("assets").upload("payload.bin", b"payload")
+        _ = client.storage.from_("assets").upload("payload.bin", b"payload")

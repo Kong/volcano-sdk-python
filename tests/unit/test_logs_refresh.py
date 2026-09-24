@@ -28,7 +28,7 @@ def make_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCl
             httpx_transport=httpx.MockTransport(handler),
         ),
     )
-    client.auth.set_session(
+    _ = client.auth.set_session(
         Session(
             access_token("old"), "old-refresh", "00000000-0000-4000-8000-000000000001"
         )
@@ -107,9 +107,9 @@ def test_logs_snapshot_nested_values_before_refresh_callbacks(operation: str) ->
 
     client = make_client(handle)
 
-    client.auth.on_auth_state_change(mutate_selector_on_refresh(selector))
+    _ = client.auth.on_auth_state_change(mutate_selector_on_refresh(selector))
     method = client.logs.search if operation == "search" else client.logs.activity
-    method("00000000-0000-4000-8000-000000000001", {"resource": selector})
+    _ = method("00000000-0000-4000-8000-000000000001", {"resource": selector})
 
     assert selector == {"type": "frontend"}
     assert requests[0].content == requests[2].content
@@ -143,7 +143,7 @@ def test_logs_never_retry_under_a_replacement_session(operation: str) -> None:
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         if request.url.path == "/auth/refresh":
-            client.auth.set_session(replacement)
+            _ = client.auth.set_session(replacement)
             return refresh_response()
         return httpx.Response(401, json={"error": "expired"})
 

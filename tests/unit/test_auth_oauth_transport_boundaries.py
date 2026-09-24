@@ -31,17 +31,17 @@ def test_linked_provider_operation_requires_transport_capability(
     operation: Callable[[Auth], object],
 ) -> None:
     client = VolcanoClient(anon_key="anon", _transport=RejectingTransport())
-    client.auth.set_session(Session("access", "refresh", "user"))
+    _ = client.auth.set_session(Session("access", "refresh", "user"))
 
     with pytest.raises(TypeError, match="requested auth operation"):
-        operation(client.auth)
+        _ = operation(client.auth)
 
 
 def test_oauth_exchange_requires_transport_capability() -> None:
     client = VolcanoClient(anon_key="anon", _transport=RejectingTransport())
 
     with pytest.raises(TypeError, match="requested auth operation"):
-        client.auth.exchange_oauth_code(
+        _ = client.auth.exchange_oauth_code(
             code="code",
             redirect_to="https://example.com/callback",
             state="state",

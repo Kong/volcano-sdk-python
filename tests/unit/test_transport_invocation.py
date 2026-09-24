@@ -53,7 +53,7 @@ def test_invocation_retains_the_original_http_failure(message: str) -> None:
         httpx.Client(transport=httpx.MockTransport(fail_with(original))) as client,
         pytest.raises(TransportError) as caught,
     ):
-        invoke(client.get, "https://api.volcano.test/items")
+        _ = invoke(client.get, "https://api.volcano.test/items")
 
     assert str(caught.value) == (message or "Volcano transport failed")
     assert caught.value.__cause__ is original
@@ -66,7 +66,7 @@ async def test_async_invocation_retains_the_original_http_failure(message: str) 
         transport=httpx.MockTransport(fail_with(original))
     ) as client:
         with pytest.raises(TransportError) as caught:
-            await invoke_async(client.get, "https://api.volcano.test/items")
+            _ = await invoke_async(client.get, "https://api.volcano.test/items")
 
     assert str(caught.value) == (message or "Volcano transport failed")
     assert caught.value.__cause__ is original
@@ -78,7 +78,7 @@ def test_invocation_preserves_non_http_failures() -> None:
         httpx.Client(transport=httpx.MockTransport(fail_with(original))) as client,
         pytest.raises(ValueError, match="invalid transport configuration") as caught,
     ):
-        invoke(client.get, "https://api.volcano.test/items")
+        _ = invoke(client.get, "https://api.volcano.test/items")
 
     assert caught.value is original
 
@@ -91,6 +91,6 @@ async def test_async_invocation_preserves_non_http_failures() -> None:
         with pytest.raises(
             ValueError, match="invalid transport configuration"
         ) as caught:
-            await invoke_async(client.get, "https://api.volcano.test/items")
+            _ = await invoke_async(client.get, "https://api.volcano.test/items")
 
     assert caught.value is original

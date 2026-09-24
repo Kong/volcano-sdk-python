@@ -37,21 +37,22 @@ def make_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCl
             httpx_transport=httpx.MockTransport(handler),
         ),
     )
-    client.auth.set_session(Session(access_token("old"), "old-refresh", USER_ID))
+    _ = client.auth.set_session(Session(access_token("old"), "old-refresh", USER_ID))
     return client
 
 
+def refresh_payload() -> dict[str, object]:
+    return {
+        "access_token": access_token("new"),
+        "refresh_token": "new-refresh",
+        "token_type": "bearer",
+        "expires_in": 3600,
+        "user": {"id": USER_ID, "email": "user@example.com", "status": "active"},
+    }
+
+
 def refreshed_response() -> httpx.Response:
-    return httpx.Response(
-        200,
-        json={
-            "access_token": access_token("new"),
-            "refresh_token": "new-refresh",
-            "token_type": "bearer",
-            "expires_in": 3600,
-            "user": {"id": USER_ID, "email": "user@example.com", "status": "active"},
-        },
-    )
+    return httpx.Response(200, json=refresh_payload())
 
 
 def resolved_response(invoke_url: str | None = None) -> httpx.Response:
@@ -136,7 +137,7 @@ def test_function_rejects_replacement_session_before_return_or_dispatch(
     def handle(request: httpx.Request) -> httpx.Response:
         current = "resolve" if request.url.path == "/functions/resolve" else "invoke"
         if current == stage:
-            client.auth.set_session(
+            _ = client.auth.set_session(
                 Session(access_token("replacement"), "replacement-refresh", USER_ID)
             )
         if current == "invoke":
@@ -146,7 +147,7 @@ def test_function_rejects_replacement_session_before_return_or_dispatch(
 
     client = make_client(handle)
     with pytest.raises(SessionChangedError):
-        client.functions.invoke("echo")
+        _ = client.functions.invoke("echo")
     assert len(invokes) == (0 if stage == "resolve" else 1)
     assert client.current_session is not None
     assert client.current_session.refresh_token == "replacement-refresh"
@@ -171,7 +172,7 @@ def test_function_bounds_retry_and_preserves_original_rejection(
         )
 
     with pytest.raises(AuthenticationError, match="original denial") as failure:
-        make_client(handle).functions.invoke("echo")
+        _ = make_client(handle).functions.invoke("echo")
     assert failure.value.status == 401
     assert failure.value.code == "original"
     assert requests.count("/auth/refresh") == 1
@@ -220,7 +221,7 @@ def test_function_never_replays_forbidden_or_uncertain_requests(
         return resolved_response()
 
     with pytest.raises(TransportError if failure == "network" else VolcanoError):
-        make_client(handle).functions.invoke("echo")
+        _ = make_client(handle).functions.invoke("echo")
     assert len(paths) == (1 if stage == "resolve" else 2)
     assert "/auth/refresh" not in paths
 
@@ -243,7 +244,7 @@ def test_function_does_not_refresh_key_credentials(key: str) -> None:
         ),
     )
     with pytest.raises(AuthenticationError, match="invalid key"):
-        client.functions.invoke("echo")
+        _ = client.functions.invoke("echo")
     assert paths == ["/functions/resolve"]
 
 
@@ -252,7 +253,7 @@ def replace_session_on_refresh(
 ) -> Callable[[str, Session | None], None]:
     def listener(event: str, _session: Session | None) -> None:
         if event == "TOKEN_REFRESHED":
-            client.auth.set_session(replacement)
+            _ = client.auth.set_session(replacement)
 
     return listener
 
@@ -264,14 +265,14 @@ def assert_invocation_outcome(
         assert call.result(timeout=5).data == {"ok": True}
         return
     with pytest.raises(AuthenticationError, match="invocation rejected"):
-        call.result(timeout=5)
+        _ = call.result(timeout=5)
 
 
 def refresh_invocation_response(
     request: httpx.Request, refreshes: list[str]
 ) -> httpx.Response:
     refreshes.append(request.url.path)
-    result = refreshed_response().json()
+    result = refresh_payload()
     result["access_token"] = access_token(f"renewed-{len(refreshes)}")
     result["refresh_token"] = f"refresh-{len(refreshes)}"
     return httpx.Response(200, json=result)
@@ -288,17 +289,17 @@ def test_function_does_not_dispatch_after_refresh_replaces_session(
         paths.append(request.url.path)
         if request.url.path == "/auth/refresh":
             if replace_at == "refresh":
-                client.auth.set_session(replacement)
+                _ = client.auth.set_session(replacement)
             return refreshed_response()
         return httpx.Response(401, json={"error": "expired"})
 
     client = make_client(handle)
     if replace_at == "listener":
-        client.auth.on_auth_state_change(
+        _ = client.auth.on_auth_state_change(
             replace_session_on_refresh(client, replacement)
         )
     with pytest.raises(SessionChangedError):
-        client.functions.invoke("echo")
+        _ = client.functions.invoke("echo")
     assert paths == ["/functions/resolve", "/auth/refresh"]
     assert client.current_session == replacement
 
@@ -355,7 +356,7 @@ def concurrent_invocation_handler(
         if request.url.path == "/functions/resolve":
             return resolved_response()
         if request.headers["authorization"] == f"Bearer {access_token('old')}":
-            initial_calls.wait()
+            _ = initial_calls.wait()
             return httpx.Response(401, json={"error": "invocation rejected"})
         return httpx.Response(200, json={"ok": True})
 

@@ -63,11 +63,11 @@ class Handler(BaseHTTPRequestHandler):
         respond: Responder,
         recorder: Recorder,
     ) -> None:
-        self.respond = respond
-        self.recorder = recorder
+        self.respond: Responder = respond
+        self.recorder: Recorder = recorder
         super().__init__(request, client_address, server)
 
-    protocol_version = "HTTP/1.1"
+    protocol_version: str = "HTTP/1.1"
 
     def _handle(self) -> None:
         length = int(self.headers.get("Content-Length") or 0)
@@ -94,7 +94,7 @@ class Handler(BaseHTTPRequestHandler):
         for name, value in extra.items():
             self.send_header(name, value)
         self.end_headers()
-        self.wfile.write(encoded)
+        _ = self.wfile.write(encoded)
 
     def do_GET(self) -> None:
         self._handle()
@@ -106,18 +106,20 @@ class Handler(BaseHTTPRequestHandler):
 class Server(ThreadingHTTPServer):
     # The default backlog of 5 resets connections when a test opens
     # several at once, which reads as a transport failure in the SDK.
-    request_queue_size = 128
-    daemon_threads = True
+    request_queue_size: int = 128
+    daemon_threads: bool = True
 
 
 class _Server:
     """A local HTTP server that answers from a caller-supplied handler."""
 
     def __init__(self, respond: Responder, recorder: Recorder) -> None:
-        self.recorder = recorder
+        self.recorder: Recorder = recorder
         handler = partial(Handler, respond=respond, recorder=recorder)
-        self._httpd = Server(("127.0.0.1", 0), handler)
-        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+        self._httpd: Server = Server(("127.0.0.1", 0), handler)
+        self._thread: threading.Thread = threading.Thread(
+            target=self._httpd.serve_forever, daemon=True
+        )
         self._thread.start()
 
     @property
@@ -229,7 +231,7 @@ def test_an_unknown_name_is_not_re_resolved_on_every_attempt() -> None:
         client = _client(api.url)
         for _ in range(3):
             with pytest.raises(NotFoundError):
-                client.functions.invoke("missing-function")
+                _ = client.functions.invoke("missing-function")
 
         assert api_requests.paths() == ["/functions/resolve?name=missing-function"]
     finally:

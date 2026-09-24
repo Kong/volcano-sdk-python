@@ -38,14 +38,14 @@ def client_for(payload: object) -> tuple[VolcanoClient, list[httpx.Request]]:
             httpx_transport=httpx.MockTransport(handle),
         ),
     )
-    client.auth.set_session(Session("access", "refresh", "user"))
+    _ = client.auth.set_session(Session("access", "refresh", "user"))
     return client, requests
 
 
 @pytest.mark.parametrize("payload", [None, [], True, 42, "invalid"])
 def test_execution_rejects_non_object_responses(payload: object) -> None:
     with pytest.raises(TypeError, match="complete durable execution"):
-        _durable_execution(payload)
+        _ = _durable_execution(payload)
 
 
 @pytest.mark.parametrize(
@@ -69,7 +69,7 @@ def test_execution_rejects_malformed_failure_and_timestamps(
     payload = execution_payload()
     payload[field] = value
     with pytest.raises(TypeError, match="complete durable execution"):
-        _durable_execution(payload)
+        _ = _durable_execution(payload)
 
 
 @pytest.mark.parametrize(
@@ -89,7 +89,7 @@ def test_execution_rejects_malformed_failure_and_timestamps(
 )
 def test_pages_reject_malformed_collections_and_metadata(payload: object) -> None:
     with pytest.raises(TypeError, match="complete durable execution page"):
-        _durable_execution_page(payload)
+        _ = _durable_execution_page(payload)
 
 
 @pytest.mark.parametrize("payload", [{}, {"data": None}])

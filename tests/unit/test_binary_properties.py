@@ -28,10 +28,10 @@ def test_upload_preserves_remaining_binary_stream(payload: BinaryPayload) -> Non
         api_url="https://api.example.test", httpx_transport=httpx.MockTransport(handle)
     )
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.set_session(Session("access", "refresh", "user"))
+    _ = client.auth.set_session(Session("access", "refresh", "user"))
     source = BytesIO(b"prefix" + payload)
-    source.seek(6)
-    client.storage.from_("assets").upload("payload.bin", source)
+    _ = source.seek(6)
+    _ = client.storage.from_("assets").upload("payload.bin", source)
     assert len(requests) == 1
     assert b"\r\n\r\n" + payload + b"\r\n" in requests[0].content
     assert requests[0].headers["authorization"] == "Bearer access"
@@ -52,5 +52,5 @@ def test_download_preserves_arbitrary_bytes(payload: BinaryPayload) -> None:
         api_url="https://api.example.test", httpx_transport=httpx.MockTransport(handle)
     )
     client = VolcanoClient(anon_key="anon", _transport=transport)
-    client.auth.set_session(Session("access", "refresh", "user"))
+    _ = client.auth.set_session(Session("access", "refresh", "user"))
     assert client.storage.from_("assets").download("payload.bin") == payload

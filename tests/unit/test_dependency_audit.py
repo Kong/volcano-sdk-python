@@ -41,7 +41,7 @@ def test_audit_preserves_export_and_scanner_failures(
     expected: int,
 ) -> None:
     executable = tmp_path / "uv"
-    executable.write_text(FAKE_UV)
+    _ = executable.write_text(FAKE_UV)
     executable.chmod(0o700)
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("EXPORT_STATUS", str(export_status))

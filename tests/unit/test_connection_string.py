@@ -147,7 +147,7 @@ def test_database_connection_string_rejects_invalid_url(value: str) -> None:
             "connection URL"
         ),
     ):
-        database_connection_string(value)
+        _ = database_connection_string(value)
 
 
 def test_database_connection_string_requires_a_value() -> None:
@@ -158,4 +158,4 @@ def test_database_connection_string_requires_a_value() -> None:
             "is required"
         ),
     ):
-        database_connection_string("")
+        _ = database_connection_string("")

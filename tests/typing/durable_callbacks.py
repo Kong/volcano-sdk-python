@@ -14,12 +14,12 @@ def preserved_signatures() -> None:
     unnamed, unnamed_callback = _named(label, None, "step")
     omitted, omitted_callback = _named(None, label, "step")
     checked = _callable(label, "map")
-    assert_type(named, str | None)
-    assert_type(unnamed, str | None)
-    assert_type(omitted, str | None)
-    assert_type(named_callback(1, prefix="order-"), str)
-    assert_type(unnamed_callback(2, prefix="order-"), str)
-    assert_type(omitted_callback(3, prefix="order-"), str)
-    assert_type(checked(4, prefix="order-"), str)
-    named_callback("wrong", prefix="order-")  # type: ignore[arg-type]
+    _ = assert_type(named, str | None)
+    _ = assert_type(unnamed, str | None)
+    _ = assert_type(omitted, str | None)
+    _ = assert_type(named_callback(1, prefix="order-"), str)
+    _ = assert_type(unnamed_callback(2, prefix="order-"), str)
+    _ = assert_type(omitted_callback(3, prefix="order-"), str)
+    _ = assert_type(checked(4, prefix="order-"), str)
+    _ = named_callback("wrong", prefix="order-")  # type: ignore[arg-type]
     unnamed_callback(1, wrong="order-")  # type: ignore[call-arg]

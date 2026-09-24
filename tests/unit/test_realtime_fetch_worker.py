@@ -15,9 +15,9 @@ from volcano_sdk._realtime_fetch_worker import (
 
 class BlockingRowFetch:
     def __init__(self) -> None:
-        self.started = asyncio.Event()
-        self.release = asyncio.Event()
-        self.cancelled = asyncio.Event()
+        self.started: asyncio.Event = asyncio.Event()
+        self.release: asyncio.Event = asyncio.Event()
+        self.cancelled: asyncio.Event = asyncio.Event()
         self.row_ids: list[int] = []
 
     async def __call__(
@@ -31,7 +31,7 @@ class BlockingRowFetch:
         if row_id == 1:
             self.started.set()
             try:
-                await self.release.wait()
+                _ = await self.release.wait()
             except asyncio.CancelledError:
                 self.cancelled.set()
                 raise
@@ -40,7 +40,7 @@ class BlockingRowFetch:
 
 class FailingThenSuccessfulFetch:
     def __init__(self, failure: Exception) -> None:
-        self.failure = failure
+        self.failure: Exception = failure
 
     async def __call__(
         self,
@@ -104,7 +104,7 @@ def test_postgres_fetch_worker_bounds_and_orders_fetches() -> None:
 
         worker = PostgresFetchWorker(fetch, deliver, queue_limit=1)
         await worker.enqueue(fetch_job(1))
-        await asyncio.wait_for(fetch.started.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(fetch.started.wait(), timeout=0.2)
         await worker.enqueue(fetch_job(2))
         third_enqueue = asyncio.create_task(worker.enqueue(fetch_job(3)))
         await asyncio.sleep(0)
@@ -220,7 +220,7 @@ def test_postgres_fetch_worker_orders_passthrough_after_pending_fetch() -> None:
 
         worker = PostgresFetchWorker(fetch, deliver, queue_limit=1)
         await worker.enqueue(fetch_job(1))
-        await asyncio.wait_for(fetch.started.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(fetch.started.wait(), timeout=0.2)
         await worker.enqueue(passthrough_job("full-payload"))
 
         assert outcomes == []
@@ -245,7 +245,7 @@ def test_postgres_fetch_worker_aborts_obsolete_jobs_without_waiting() -> None:
 
         worker = PostgresFetchWorker(fetch, deliver, queue_limit=1)
         await worker.enqueue(fetch_job(1))
-        await asyncio.wait_for(fetch.started.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(fetch.started.wait(), timeout=0.2)
         await worker.enqueue(fetch_job(2))
 
         await asyncio.wait_for(worker.abort(), timeout=0.2)
@@ -260,7 +260,7 @@ def test_postgres_fetch_worker_rejects_an_unbounded_queue() -> None:
     deliver = OutcomeRecorder()
 
     with pytest.raises(ValueError, match="queue_limit must be positive"):
-        PostgresFetchWorker(BlockingRowFetch(), deliver, queue_limit=0)
+        _ = PostgresFetchWorker(BlockingRowFetch(), deliver, queue_limit=0)
 
 
 def test_postgres_fetch_worker_delivers_fallback_and_continues_after_failure() -> None:
@@ -294,7 +294,7 @@ def test_postgres_fetch_worker_rejects_work_after_delivery_failure() -> None:
 
         async def fail_delivery(_outcome: PostgresFetchOutcome[str]) -> None:
             delivery_started.set()
-            await release_delivery.wait()
+            _ = await release_delivery.wait()
             raise failure
 
         worker = PostgresFetchWorker(
@@ -303,7 +303,7 @@ def test_postgres_fetch_worker_rejects_work_after_delivery_failure() -> None:
             queue_limit=1,
         )
         await worker.enqueue(fetch_job(2))
-        await delivery_started.wait()
+        _ = await delivery_started.wait()
         release_delivery.set()
         await asyncio.sleep(0)
 
@@ -323,12 +323,12 @@ def test_postgres_fetch_worker_recovers_from_cancelled_close() -> None:
 
         worker = PostgresFetchWorker(fetch, deliver, queue_limit=1)
         await worker.enqueue(fetch_job(1))
-        await asyncio.wait_for(fetch.started.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(fetch.started.wait(), timeout=0.2)
         await worker.enqueue(fetch_job(2))
 
         interrupted_close = asyncio.create_task(worker.close())
         await asyncio.sleep(0)
-        interrupted_close.cancel()
+        _ = interrupted_close.cancel()
         with suppress(asyncio.CancelledError):
             await interrupted_close
 
@@ -338,8 +338,8 @@ def test_postgres_fetch_worker_recovers_from_cancelled_close() -> None:
         finally:
             task = worker._task
             if task is not None and not task.done():
-                task.cancel()
-                await asyncio.gather(task, return_exceptions=True)
+                _ = task.cancel()
+                _ = await asyncio.gather(task, return_exceptions=True)
 
         assert [outcome.record for outcome in outcomes] == [{"id": 1}, {"id": 2}]
 
@@ -354,7 +354,7 @@ def test_postgres_fetch_worker_unblocks_a_full_enqueue_after_failure() -> None:
 
         async def fail_delivery(_outcome: PostgresFetchOutcome[str]) -> None:
             delivery_started.set()
-            await release_delivery.wait()
+            _ = await release_delivery.wait()
             raise failure
 
         worker = PostgresFetchWorker(
@@ -363,7 +363,7 @@ def test_postgres_fetch_worker_unblocks_a_full_enqueue_after_failure() -> None:
             queue_limit=1,
         )
         await worker.enqueue(fetch_job(2))
-        await delivery_started.wait()
+        _ = await delivery_started.wait()
         await worker.enqueue(fetch_job(3))
         blocked_enqueue = asyncio.create_task(worker.enqueue(fetch_job(4)))
         await asyncio.sleep(0)
@@ -376,7 +376,7 @@ def test_postgres_fetch_worker_unblocks_a_full_enqueue_after_failure() -> None:
         finally:
             task = worker._task
             if task is not None:
-                await asyncio.gather(task, return_exceptions=True)
+                _ = await asyncio.gather(task, return_exceptions=True)
 
         assert raised.value is failure
 

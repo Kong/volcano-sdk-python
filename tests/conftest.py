@@ -43,7 +43,8 @@ class _TestIntegrity:
         expected = {item.nodeid for item in session.items}
         if not expected:
             self.violations.add("empty test discovery")
-        if not session.config.option.collectonly and expected - self.completed:
+        collecting = bool(session.config.getoption("--collect-only"))
+        if not collecting and expected - self.completed:
             self.violations.add("selected tests did not execute")
         if self.violations and session.exitstatus == pytest.ExitCode.OK:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
@@ -56,4 +57,4 @@ class _TestIntegrity:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    config.pluginmanager.register(_TestIntegrity(), "sdk-test-integrity")
+    _ = config.pluginmanager.register(_TestIntegrity(), "sdk-test-integrity")

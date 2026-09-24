@@ -159,7 +159,7 @@ def test_a_wait_takes_a_duration_alone() -> None:
 def test_operations_are_recorded_under_their_names() -> None:
     @durable
     def handler(_event: Any, ctx: DurableContext) -> Any:
-        ctx.step("charge", lambda _scope: "ch_1")
+        _ = ctx.step("charge", lambda _scope: "ch_1")
         ctx.wait("settle", "1s")
         return ctx.child("fulfil", lambda child: child.step("ship", lambda _s: "ok"))
 
@@ -759,17 +759,17 @@ def test_durations_read_as_whole_seconds(value: object, expected: int) -> None:
 )
 def test_unusable_durations_are_refused(value: object) -> None:
     with pytest.raises((TypeError, ValueError)):
-        to_seconds(value, "wait")
+        _ = to_seconds(value, "wait")
 
 
 def test_a_negative_number_of_seconds_is_refused() -> None:
     with pytest.raises(ValueError, match="non-negative"):
-        to_seconds(-1, "wait")
+        _ = to_seconds(-1, "wait")
 
 
 def test_an_unknown_duration_field_names_what_it_accepts() -> None:
     with pytest.raises(TypeError, match="days, hours, minutes, seconds"):
-        to_seconds({"milliseconds": 500}, "interval")
+        _ = to_seconds({"milliseconds": 500}, "interval")
 
 
 @pytest.fixture
@@ -800,7 +800,7 @@ def test_a_missing_runtime_is_reported_on_invocation() -> None:
     # standard functions and scripts, where merely importing a module that
     # mentions a durable handler must not fail.
     with pytest.raises(DurableRuntimeMissingError, match="durable runtime"):
-        handler({}, None)
+        _ = handler({}, None)
 
 
 @pytest.mark.usefixtures("without_engine")
@@ -810,7 +810,7 @@ def test_the_missing_runtime_error_says_to_deploy_as_durable() -> None:
         return None
 
     with pytest.raises(DurableRuntimeMissingError) as raised:
-        handler({}, None)
+        _ = handler({}, None)
 
     message = str(raised.value)
     # Volcano installs the runtime when it builds a durable function, so the

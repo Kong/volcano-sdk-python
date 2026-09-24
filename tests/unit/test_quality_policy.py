@@ -95,7 +95,7 @@ def test_nested_config_fails(tmp_path: Path) -> None:
 def test_unlinted_python_file_fails(tmp_path: Path, name: str) -> None:
     source = tmp_path / name
     source.parent.mkdir(parents=True)
-    source.write_text("def untested() -> bool: return True\n", encoding="utf-8")
+    _ = source.write_text("def untested() -> bool: return True\n", encoding="utf-8")
 
     assert f"Ruff omitted tracked Python file: {name}" in check_inventory(
         tmp_path, {name}, set()
@@ -106,7 +106,7 @@ def test_unapproved_ruff_suppression_fails(tmp_path: Path) -> None:
     name = "src/volcano_sdk/new_module.py"
     source = tmp_path / name
     source.parent.mkdir(parents=True)
-    source.write_text(
+    _ = source.write_text(
         "def unsafe():\n    return True  # ruff: ignore[S603]\n", encoding="utf-8"
     )
 
@@ -119,7 +119,7 @@ def test_multiple_ruff_directives_fail(tmp_path: Path) -> None:
     name = "scripts/generate_openapi.py"
     source = tmp_path / name
     source.parent.mkdir(parents=True)
-    source.write_text(
+    _ = source.write_text(
         "def generate():\n    return True  # ruff: ignore[S603] ruff: ignore[S607]\n",
         encoding="utf-8",
     )
@@ -135,7 +135,7 @@ def test_file_wide_action_comment_fails(tmp_path: Path, comment: str) -> None:
     name = "src/volcano_sdk/new_module.py"
     source = tmp_path / name
     source.parent.mkdir(parents=True)
-    source.write_text(f"{comment}\n", encoding="utf-8")
+    _ = source.write_text(f"{comment}\n", encoding="utf-8")
 
     assert any(
         "forbidden suppression" in error
@@ -147,11 +147,15 @@ def test_type_check_opt_out_fails(tmp_path: Path) -> None:
     name = "src/volcano_sdk/new_module.py"
     source = tmp_path / name
     source.parent.mkdir(parents=True)
-    source.write_text(
-        "from typing import no_type_check\n"
-        "@no_type_check\n"
-        "def unsafe() -> str:\n"
-        "    return 1\n",
+    fixture_lines = (
+        "from typing import no_type_check",
+        "@no_type_check",
+        "def unsafe() -> str:",
+        "    return 1",
+        "",
+    )
+    _ = source.write_text(
+        "\n".join(fixture_lines),
         encoding="utf-8",
     )
 
@@ -165,10 +169,27 @@ def test_type_ignore_outside_diagnostic_fixture_fails(tmp_path: Path) -> None:
     name = "tests/unit/test_new_behavior.py"
     source = tmp_path / name
     source.parent.mkdir(parents=True)
-    source.write_text("value: str = 1  # type: ignore[assignment]\n", encoding="utf-8")
+    _ = source.write_text(
+        "value: str = 1  # type: ignore[assignment]\n", encoding="utf-8"
+    )
 
     assert any(
         "type ignore outside diagnostic fixture" in error
+        for error in check_comments(tmp_path, {name}, [])
+    )
+
+
+def test_pyright_ignore_outside_diagnostic_fixture_fails(tmp_path: Path) -> None:
+    name = "tests/unit/test_new_behavior.py"
+    source = tmp_path / name
+    source.parent.mkdir(parents=True)
+    _ = source.write_text(
+        "value: str = 1  # pyright: ignore[reportAssignmentType]\n",
+        encoding="utf-8",
+    )
+
+    assert any(
+        "pyright ignore outside diagnostic fixture" in error
         for error in check_comments(tmp_path, {name}, [])
     )
 
@@ -177,7 +198,22 @@ def test_type_fixture_cannot_hide_other_suppression(tmp_path: Path) -> None:
     name = "tests/unit/fixtures/invalid_arguments.py"
     source = tmp_path / name
     source.parent.mkdir(parents=True)
-    source.write_text("value = 1  # noqa: S101\n", encoding="utf-8")
+    _ = source.write_text("value = 1  # noqa: S101\n", encoding="utf-8")
+
+    assert any(
+        "forbidden suppression" in error
+        for error in check_comments(tmp_path, {name}, [])
+    )
+
+
+def test_type_fixture_cannot_hide_pyright_suppression(tmp_path: Path) -> None:
+    name = "tests/unit/fixtures/invalid_arguments.py"
+    source = tmp_path / name
+    source.parent.mkdir(parents=True)
+    _ = source.write_text(
+        "value: str = 1  # pyright: ignore[reportAssignmentType]\n",
+        encoding="utf-8",
+    )
 
     assert any(
         "forbidden suppression" in error

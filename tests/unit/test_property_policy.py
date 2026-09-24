@@ -12,8 +12,8 @@ def test_failing_property_preserves_seed_and_counterexample(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("VOLCANO_PROPERTY_SEED", "12345")
-    pytester.makepyfile(property_support=PROPERTY_SUPPORT)
-    pytester.makepyfile(
+    _ = pytester.makepyfile(property_support=PROPERTY_SUPPORT)
+    _ = pytester.makepyfile(
         """
         from hypothesis import given, seed, strategies as st
         from property_support import PROPERTY_SEED

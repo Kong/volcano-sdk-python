@@ -98,4 +98,4 @@ def test_channel_rejects_unsupported_events(channel_type: ChannelType) -> None:
         "events", channel_type=channel_type
     )
     with pytest.raises(ValueError, match="unsupported realtime event: invalid"):
-        channel.on("invalid", lambda _value: None)
+        _ = channel.on("invalid", lambda _value: None)

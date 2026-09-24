@@ -62,6 +62,7 @@ FORBIDDEN = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 TYPE_IGNORE = re.compile(r"\btype:\s*ignore(?:\[[^]]+\])?(?=$|[\s#])", re.IGNORECASE)
+PYRIGHT_IGNORE = re.compile(r"\bpyright:\s*ignore\[[A-Za-z0-9, ]+\]", re.IGNORECASE)
 RUFF_IGNORE = re.compile(r"\bruff:\s*ignore\[([A-Z0-9, ]+)\]", re.IGNORECASE)
 
 
@@ -218,11 +219,14 @@ def check_comment(
 
     """
     location = f"{name}:{token.start[0]}"
+    pyright_ignores = PYRIGHT_IGNORE.findall(token.string)
     errors = (
         [f"{location}: forbidden suppression"] if FORBIDDEN.search(token.string) else []
     )
     if TYPE_IGNORE.search(token.string) and name not in TYPE_FIXTURES:
         errors.append(f"{location}: type ignore outside diagnostic fixture")
+    if pyright_ignores and name not in TYPE_FIXTURES:
+        errors.append(f"{location}: pyright ignore outside diagnostic fixture")
     errors.extend(check_ruff_comment(name, source, token, approved, used))
     return errors
 

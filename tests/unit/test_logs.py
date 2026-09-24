@@ -27,7 +27,7 @@ class FakeResponse:
 class FakeLogsTransport(RejectingTransport):
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, object]]] = []
-        self.search_response = FakeResponse(
+        self.search_response: FakeResponse = FakeResponse(
             200,
             {
                 "data": [
@@ -44,7 +44,7 @@ class FakeLogsTransport(RejectingTransport):
             },
             {},
         )
-        self.activity_response = FakeResponse(
+        self.activity_response: FakeResponse = FakeResponse(
             200,
             {
                 "data": [
@@ -78,7 +78,7 @@ def logs_client(transport: FakeLogsTransport) -> VolcanoClient:
         anon_key="anon-key",
         _transport=transport,
     )
-    client.auth.set_session(
+    _ = client.auth.set_session(
         Session(
             access_token="access-token", refresh_token="refresh-token", user_id="user-1"
         )
@@ -88,14 +88,14 @@ def logs_client(transport: FakeLogsTransport) -> VolcanoClient:
 
 def test_logs_requires_a_transport_with_log_methods() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=RejectingTransport())
-    client.auth.set_session(
+    _ = client.auth.set_session(
         Session(
             access_token="access-token", refresh_token="refresh-token", user_id="user-1"
         )
     )
 
     with pytest.raises(TypeError, match="Transport does not support project logs"):
-        client.logs.search("project-1", {"resource": {"type": "function"}})
+        _ = client.logs.search("project-1", {"resource": {"type": "function"}})
 
 
 def test_logs_search_returns_an_immutable_page() -> None:
@@ -156,7 +156,7 @@ def test_logs_rejects_an_empty_project_id(project_id: str) -> None:
     transport = FakeLogsTransport()
 
     with pytest.raises(ValueError, match="project_id"):
-        logs_client(transport).logs.search(
+        _ = logs_client(transport).logs.search(
             project_id,
             {"resource": {"type": "function"}},
         )
@@ -182,7 +182,7 @@ def test_logs_maps_platform_errors() -> None:
     )
 
     with pytest.raises(ServerError, match="logs unavailable") as raised:
-        logs_client(transport).logs.search(
+        _ = logs_client(transport).logs.search(
             "project-1",
             {"resource": {"type": "function"}},
         )

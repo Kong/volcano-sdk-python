@@ -42,9 +42,9 @@ def test_optional_lock_operations_require_transport_capabilities() -> None:
     lease = LockLease(key="build", token=OWNER_TOKEN, expires_at=None, fencing_token=7)
 
     with pytest.raises(TypeError, match="requested lock operation"):
-        client.locks.get("build")
+        _ = client.locks.get("build")
     with pytest.raises(TypeError, match="requested lock operation"):
-        client.locks.renew("build", lease, ttl=30)
+        _ = client.locks.renew("build", lease, ttl=30)
     with pytest.raises(TypeError, match="requested lock operation"):
         client.locks.force_release("build")
 
@@ -138,7 +138,7 @@ def test_acquire_bounds_retries_and_preserves_failure(
         )
 
     with pytest.raises(VolcanoError) as caught:
-        make_client(handle).locks.acquire(
+        _ = make_client(handle).locks.acquire(
             "build", ttl=30, token=OWNER_TOKEN, request_id=REQUEST_ID
         )
     assert caught.value.status == status
@@ -157,7 +157,7 @@ def test_acquire_stops_after_two_transport_failures() -> None:
         raise httpx.ReadError(message, request=request)
 
     with pytest.raises(VolcanoError):
-        make_client(handle).locks.acquire(
+        _ = make_client(handle).locks.acquire(
             "build", ttl=30, token=OWNER_TOKEN, request_id=REQUEST_ID
         )
     assert len(requests) == 2
@@ -176,7 +176,7 @@ def test_acquire_rejects_invalid_identifiers_before_a_request(
         return httpx.Response(201, json=LEASE)
 
     with pytest.raises(ValueError, match=f"^{name} must be a UUID string$"):
-        make_client(handle).locks.acquire("build", ttl=30, **{name: value})
+        _ = make_client(handle).locks.acquire("build", ttl=30, **{name: value})
     assert not requests
 
 
@@ -271,7 +271,7 @@ def test_release_operations_reject_a_non_no_content_response(operation: str) -> 
 
 def test_lock_response_rejects_a_non_object_payload() -> None:
     with pytest.raises(TypeError, match="Expected a complete lock response"):
-        _lock_values([])
+        _ = _lock_values([])
 
 
 @pytest.mark.parametrize(
@@ -283,7 +283,7 @@ def test_get_rejects_invalid_lock_response_fields(payload: object) -> None:
         return httpx.Response(200, json=payload)
 
     with pytest.raises(TypeError, match="Expected a complete lock response"):
-        make_client(handle).locks.get("build")
+        _ = make_client(handle).locks.get("build")
 
 
 @pytest.mark.parametrize("value", [None, "seven", True])
@@ -295,7 +295,7 @@ def test_acquisition_rejects_invalid_fencing_tokens(value: object) -> None:
         )
 
     with pytest.raises(TypeError, match="Expected a complete lock response"):
-        make_client(handle).locks.acquire("build", ttl=30)
+        _ = make_client(handle).locks.acquire("build", ttl=30)
 
 
 def test_renew_rejects_a_non_integer_fencing_token() -> None:
@@ -307,7 +307,7 @@ def test_renew_rejects_a_non_integer_fencing_token() -> None:
 
     lease = LockLease(key="build", token=OWNER_TOKEN, expires_at=None, fencing_token=7)
     with pytest.raises(TypeError, match="Expected a complete lock response"):
-        make_client(handle).locks.renew("build", lease, ttl=30)
+        _ = make_client(handle).locks.renew("build", lease, ttl=30)
 
 
 def test_acquire_keeps_the_original_service_credential_on_retry() -> None:
@@ -321,7 +321,7 @@ def test_acquire_keeps_the_original_service_credential_on_retry() -> None:
         return httpx.Response(201, json=LEASE)
 
     client = make_client(handle)
-    client.locks.acquire("build", ttl=30)
+    _ = client.locks.acquire("build", ttl=30)
     assert [r.headers["authorization"] for r in requests] == ["Bearer service"] * 2
 
 
@@ -443,7 +443,7 @@ def test_repeated_unparseable_503_preserves_status_and_retry_bound(body: bytes) 
         return httpx.Response(503, content=body)
 
     with pytest.raises(VolcanoError) as caught:
-        make_client(handle).locks.acquire("build", ttl=30)
+        _ = make_client(handle).locks.acquire("build", ttl=30)
     assert caught.value.status == 503
     assert len(requests) == 2
     assert requests[0].headers == requests[1].headers

@@ -44,8 +44,8 @@ def running_execution(**overrides: object) -> dict[str, object]:
 class FakeDurableTransport(RejectingTransport):
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, object]]] = []
-        self.start_response = FakeResponse(202, running_execution(), {})
-        self.get_response = FakeResponse(
+        self.start_response: FakeResponse = FakeResponse(202, running_execution(), {})
+        self.get_response: FakeResponse = FakeResponse(
             200,
             running_execution(
                 status="succeeded",
@@ -54,7 +54,7 @@ class FakeDurableTransport(RejectingTransport):
             ),
             {},
         )
-        self.list_response = FakeResponse(
+        self.list_response: FakeResponse = FakeResponse(
             200,
             {
                 "data": [running_execution(), running_execution(status="succeeded")],
@@ -65,7 +65,7 @@ class FakeDurableTransport(RejectingTransport):
             },
             {},
         )
-        self.stop_response = FakeResponse(200, running_execution(), {})
+        self.stop_response: FakeResponse = FakeResponse(200, running_execution(), {})
 
     def start_durable_execution_from_application(
         self, **kwargs: object
@@ -99,7 +99,7 @@ def durable_client(
         _transport=transport,
     )
     if session:
-        client.auth.set_session(
+        _ = client.auth.set_session(
             Session(
                 access_token="access-token",
                 refresh_token="refresh-token",
@@ -117,7 +117,7 @@ def test_durable_requires_a_transport_with_execution_methods() -> None:
     with pytest.raises(
         TypeError, match="Transport does not support durable executions"
     ):
-        client.durable.start("order-pipeline")
+        _ = client.durable.start("order-pipeline")
 
 
 def test_start_returns_the_accepted_execution_handle() -> None:
@@ -149,7 +149,7 @@ def test_start_returns_the_accepted_execution_handle() -> None:
 def test_start_sends_the_execution_name_as_an_idempotency_key() -> None:
     transport = FakeDurableTransport()
 
-    durable_client(transport, session=False).durable.start(
+    _ = durable_client(transport, session=False).durable.start(
         "order-pipeline",
         {"order_id": "order-42"},
         execution_name="order-42",
@@ -161,7 +161,7 @@ def test_start_sends_the_execution_name_as_an_idempotency_key() -> None:
 def test_start_prefers_a_session_over_the_service_key() -> None:
     transport = FakeDurableTransport()
 
-    durable_client(transport).durable.start("order-pipeline")
+    _ = durable_client(transport).durable.start("order-pipeline")
 
     assert transport.calls[0][1]["authorization"] == "access-token"
     assert transport.calls[0][1]["payload"] == {}
@@ -171,7 +171,7 @@ def test_start_falls_back_to_the_anon_key() -> None:
     transport = FakeDurableTransport()
     anon_key = "ak-0000000000000000000000000000000000000000"
 
-    durable_client(
+    _ = durable_client(
         transport,
         anon_key=anon_key,
         service_key=None,
@@ -287,7 +287,7 @@ def test_list_returns_an_immutable_page() -> None:
 def test_list_omits_filters_it_was_not_given() -> None:
     transport = FakeDurableTransport()
 
-    durable_client(transport).durable.list(PROJECT_ID, "order-pipeline")
+    _ = durable_client(transport).durable.list(PROJECT_ID, "order-pipeline")
 
     assert transport.calls[0][1]["request"] == DurableExecutionListRequest()
 
@@ -349,7 +349,7 @@ def test_start_rejects_an_empty_function_name_before_transport(
     transport = FakeDurableTransport()
 
     with pytest.raises(ValueError, match="function_name"):
-        durable_client(transport).durable.start(function_name)
+        _ = durable_client(transport).durable.start(function_name)
 
     assert transport.calls == []
 
@@ -361,7 +361,7 @@ def test_start_rejects_an_empty_execution_name_before_transport(
     transport = FakeDurableTransport()
 
     with pytest.raises(ValueError, match="execution_name"):
-        durable_client(transport).durable.start(
+        _ = durable_client(transport).durable.start(
             "order-pipeline", execution_name=execution_name
         )
 
@@ -387,9 +387,9 @@ def test_owner_scoped_reads_reject_empty_path_segments(
     client = durable_client(transport)
 
     with pytest.raises(ValueError, match=expected):
-        client.durable.get(project_id, function_name, execution_id)
+        _ = client.durable.get(project_id, function_name, execution_id)
     with pytest.raises(ValueError, match=expected):
-        client.durable.stop(project_id, function_name, execution_id)
+        _ = client.durable.stop(project_id, function_name, execution_id)
 
     assert transport.calls == []
 
@@ -404,7 +404,7 @@ def test_start_refuses_an_execution_name_over_the_platform_limit() -> None:
     client = durable_client(transport)
 
     with pytest.raises(ValueError, match="at most 255 characters"):
-        client.durable.start("order-pipeline", {}, execution_name="x" * 256)
+        _ = client.durable.start("order-pipeline", {}, execution_name="x" * 256)
 
     assert transport.calls == []
 
@@ -421,7 +421,7 @@ def test_owner_scoped_reads_send_the_session_token() -> None:
     transport = FakeDurableTransport()
     client = durable_client(transport)
 
-    client.durable.get(PROJECT_ID, "order-pipeline", EXECUTION_ID)
+    _ = client.durable.get(PROJECT_ID, "order-pipeline", EXECUTION_ID)
 
     assert transport.calls[0][1]["authorization"] == "access-token"
 
@@ -431,7 +431,7 @@ def test_owner_scoped_reads_refuse_a_service_key_alone() -> None:
     client = durable_client(transport, session=False)
 
     with pytest.raises(RuntimeError, match="No active session"):
-        client.durable.get(PROJECT_ID, "order-pipeline", EXECUTION_ID)
+        _ = client.durable.get(PROJECT_ID, "order-pipeline", EXECUTION_ID)
 
     assert transport.calls == [], "a credential the route refuses must not be sent"
 
@@ -443,7 +443,7 @@ def test_get_raises_not_found_for_a_missing_execution() -> None:
     )
 
     with pytest.raises(NotFoundError, match="execution not found") as raised:
-        durable_client(transport).durable.get(
+        _ = durable_client(transport).durable.get(
             PROJECT_ID, "order-pipeline", EXECUTION_ID
         )
 
@@ -460,7 +460,7 @@ def test_start_raises_conflict_when_the_concurrency_cap_is_reached() -> None:
     )
 
     with pytest.raises(ConflictError, match="too many running executions") as raised:
-        durable_client(transport, session=False).durable.start("order-pipeline")
+        _ = durable_client(transport, session=False).durable.start("order-pipeline")
 
     assert raised.value.status == 409
     assert raised.value.code == "durable_concurrency_cap"
@@ -475,7 +475,7 @@ def test_start_raises_for_a_platform_failure() -> None:
     )
 
     with pytest.raises(ServerError, match="durable execution is unavailable") as raised:
-        durable_client(transport, session=False).durable.start("order-pipeline")
+        _ = durable_client(transport, session=False).durable.start("order-pipeline")
 
     assert raised.value.status == 503
     assert raised.value.code == "durable_unavailable"
@@ -486,7 +486,7 @@ def test_a_malformed_execution_payload_is_refused() -> None:
     transport.start_response = FakeResponse(202, {"id": EXECUTION_ID}, {})
 
     with pytest.raises(TypeError, match="complete durable execution"):
-        durable_client(transport, session=False).durable.start("order-pipeline")
+        _ = durable_client(transport, session=False).durable.start("order-pipeline")
 
 
 def test_owner_scoped_reads_reject_identifiers_that_are_not_uuids() -> None:
@@ -500,9 +500,9 @@ def test_owner_scoped_reads_reject_identifiers_that_are_not_uuids() -> None:
     client = durable_client(transport)
 
     with pytest.raises(ValueError, match="project_id must be a UUID"):
-        client.durable.get("not-a-uuid", "order-pipeline", EXECUTION_ID)
+        _ = client.durable.get("not-a-uuid", "order-pipeline", EXECUTION_ID)
     with pytest.raises(ValueError, match="execution_id must be a UUID"):
-        client.durable.get(PROJECT_ID, "order-pipeline", "exec-abc")
+        _ = client.durable.get(PROJECT_ID, "order-pipeline", "exec-abc")
 
     assert transport.calls == []
 
@@ -526,7 +526,7 @@ def test_execution_requires_nonempty_string_fields(field: str, value: object) ->
     transport.get_response = FakeResponse(200, payload, {})
 
     with pytest.raises(TypeError, match="complete durable execution"):
-        durable_client(transport).durable.get(
+        _ = durable_client(transport).durable.get(
             PROJECT_ID, "order-pipeline", EXECUTION_ID
         )
 
@@ -541,7 +541,7 @@ def test_execution_requires_all_identity_fields(field: str) -> None:
     transport.get_response = FakeResponse(200, payload, {})
 
     with pytest.raises(TypeError, match="complete durable execution"):
-        durable_client(transport).durable.get(
+        _ = durable_client(transport).durable.get(
             PROJECT_ID, "order-pipeline", EXECUTION_ID
         )
 
@@ -554,6 +554,6 @@ def test_execution_rejects_non_boolean_expiration(value: object) -> None:
     )
 
     with pytest.raises(TypeError, match="complete durable execution"):
-        durable_client(transport).durable.get(
+        _ = durable_client(transport).durable.get(
             PROJECT_ID, "order-pipeline", EXECUTION_ID
         )

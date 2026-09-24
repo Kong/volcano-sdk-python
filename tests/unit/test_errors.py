@@ -66,7 +66,7 @@ def test_http_failures_map_to_stable_error_categories(
     client = client_for(handle)
 
     with pytest.raises(expected) as caught:
-        client.auth.sign_in(email="user@example.com", password="wrong")
+        _ = client.auth.sign_in(email="user@example.com", password="wrong")
 
     assert str(caught.value) == "contract failure"
     assert type(caught.value) is expected
@@ -101,7 +101,7 @@ def test_invalid_retry_delay_preserves_the_rate_limit_error(retry_after: str) ->
     client = client_for(handle)
 
     with pytest.raises(RateLimitedError, match="rate limited") as caught:
-        client.auth.sign_in(email="user@example.com", password="wrong")
+        _ = client.auth.sign_in(email="user@example.com", password="wrong")
 
     assert caught.value.status == 429
     assert caught.value.code == "rate_limit_exceeded"
@@ -137,7 +137,7 @@ def test_network_failure_maps_to_transport_error() -> None:
     client = client_for(handle)
 
     with pytest.raises(TransportError) as caught:
-        client.auth.sign_in(email="user@example.com", password="secret")
+        _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     assert caught.value.status is None
     assert caught.value.code is None

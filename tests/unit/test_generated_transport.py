@@ -531,7 +531,7 @@ def test_generated_transport_rejects_a_malformed_session_page() -> None:
     )
 
     with pytest.raises(VolcanoError, match="Expected a complete session page"):
-        transport.auth_get_my_sessions(
+        _ = transport.auth_get_my_sessions(
             authorization="access-token",
             page=1,
             limit=20,
@@ -553,7 +553,7 @@ def test_generated_transport_preserves_a_malformed_session_auth_error() -> None:
     )
 
     with pytest.raises(AuthenticationError) as caught:
-        response_payload(response, 200)
+        _ = response_payload(response, 200)
 
     assert caught.value.status == 401
 
@@ -598,7 +598,7 @@ def test_generated_transport_rejects_malformed_linked_oauth_providers() -> None:
     )
 
     with pytest.raises(VolcanoError, match="Expected complete linked OAuth providers"):
-        transport.auth_list_oauth_providers(authorization="access-token")
+        _ = transport.auth_list_oauth_providers(authorization="access-token")
 
 
 def test_generated_transport_preserves_a_malformed_oauth_auth_error() -> None:
@@ -612,7 +612,7 @@ def test_generated_transport_preserves_a_malformed_oauth_auth_error() -> None:
     response = transport.auth_list_oauth_providers(authorization="access-token")
 
     with pytest.raises(AuthenticationError) as caught:
-        response_payload(response, 200)
+        _ = response_payload(response, 200)
 
     assert caught.value.status == 401
 
@@ -652,7 +652,7 @@ def test_generated_transport_rejects_a_malformed_oauth_link_response() -> None:
     )
 
     with pytest.raises(VolcanoError, match="Expected an OAuth authorization URL"):
-        transport.auth_link_oauth_provider(
+        _ = transport.auth_link_oauth_provider(
             authorization="access-token",
             provider="google",
         )
@@ -672,7 +672,7 @@ def test_generated_transport_preserves_a_malformed_oauth_link_auth_error() -> No
     )
 
     with pytest.raises(AuthenticationError) as caught:
-        response_payload(response, 200)
+        _ = response_payload(response, 200)
 
     assert caught.value.status == 401
 
@@ -819,7 +819,7 @@ def test_generated_transport_normalizes_immutable_oauth_api_body() -> None:
         httpx_transport=httpx.MockTransport(handle),
     )
 
-    transport.auth_call_oauth_api(
+    _ = transport.auth_call_oauth_api(
         authorization="access-token",
         provider="github",
         endpoint="/user/repos",
@@ -953,7 +953,7 @@ def test_generated_transport_preserves_a_malformed_rate_limit_response() -> None
     )
 
     with pytest.raises(RateLimitedError) as caught:
-        response_payload(response, 200)
+        _ = response_payload(response, 200)
 
     assert caught.value.status == 429
     assert caught.value.retry_after == 17
@@ -1085,7 +1085,7 @@ def test_generated_transport_normalizes_malformed_current_user_json() -> None:
     )
 
     with pytest.raises(AuthenticationError, match="Expected a complete user profile"):
-        transport.auth_get_user(authorization="access-token")
+        _ = transport.auth_get_user(authorization="access-token")
 
 
 def test_generated_transport_updates_the_current_user() -> None:
@@ -1150,7 +1150,7 @@ def test_generated_transport_omits_absent_update_fields() -> None:
         httpx_transport=httpx.MockTransport(handle),
     )
 
-    transport.auth_update_user(
+    _ = transport.auth_update_user(
         authorization="access-token",
         password=None,
         metadata=None,
@@ -1952,7 +1952,7 @@ def test_generated_transport_starts_a_durable_execution_without_a_name() -> None
         httpx_transport=httpx.MockTransport(handle),
     )
 
-    transport.start_durable_execution_from_application(
+    _ = transport.start_durable_execution_from_application(
         authorization="service-key",
         function_id="charge-order",
         payload={"order": 7},
@@ -2046,7 +2046,7 @@ def test_generated_transport_lists_durable_executions_without_filters() -> None:
         httpx_transport=httpx.MockTransport(handle),
     )
 
-    transport.list_durable_executions(
+    _ = transport.list_durable_executions(
         authorization="platform-token",
         project_id="00000000-0000-4000-8000-000000000001",
         function_id="charge-order",

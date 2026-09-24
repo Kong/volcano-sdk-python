@@ -40,7 +40,7 @@ def test_bootstrap_rejects_extra_keys_in_a_structural_credentials_subtype() -> N
     with pytest.raises(
         TypeError, match="Unexpected keyword argument: misspelled_token"
     ):
-        _bootstrap_session(credentials)
+        _ = _bootstrap_session(credentials)
 
 
 def test_lock_requests_require_a_service_key_before_transport() -> None:
@@ -58,7 +58,7 @@ def test_lock_requests_require_a_service_key_before_transport() -> None:
         ),
     )
     with pytest.raises(RuntimeError, match="No service key configured"):
-        client.locks.get("build")
+        _ = client.locks.get("build")
     assert requests == []
 
 
@@ -86,11 +86,11 @@ def test_reentrant_subscription_receives_initial_state_after_current_dispatch() 
     def first(event: AuthChangeEvent, session: Session | None) -> None:
         received.append(("first", event, session))
         if event == "SIGNED_IN":
-            client.auth.on_auth_state_change(late)
+            _ = client.auth.on_auth_state_change(late)
             received.append(("subscribed", event, session))
 
-    client.auth.on_auth_state_change(first)
-    client.auth.on_auth_state_change(
+    _ = client.auth.on_auth_state_change(first)
+    _ = client.auth.on_auth_state_change(
         lambda event, session: received.append(("second", event, session))
     )
     received.clear()
@@ -113,15 +113,15 @@ def test_dispatch_removes_all_aborted_subscribers_and_preserves_the_first_failur
     second_error = SubscriberAbortError("second")
     failures: list[SubscriberAbortError] = []
     events: list[tuple[str, Session | None]] = []
-    client.auth.on_auth_state_change(failing_subscriber(first_error, failures))
-    client.auth.on_auth_state_change(failing_subscriber(second_error, failures))
-    client.auth.on_auth_state_change(
+    _ = client.auth.on_auth_state_change(failing_subscriber(first_error, failures))
+    _ = client.auth.on_auth_state_change(failing_subscriber(second_error, failures))
+    _ = client.auth.on_auth_state_change(
         lambda event, session: events.append((event, session))
     )
     events.clear()
 
     with pytest.raises(SubscriberAbortError) as caught:
-        client.auth.sign_in(email="user@example.com", password="example")
+        _ = client.auth.sign_in(email="user@example.com", password="example")
 
     first_session = client.current_session
     assert caught.value is first_error

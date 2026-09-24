@@ -8,4 +8,4 @@ if TYPE_CHECKING:
 
 def register_non_callable(realtime: Realtime) -> None:
     # Native mypy must report arg-type; unused-ignore rejects a missing diagnostic.
-    realtime.on_connect(None)  # type: ignore[arg-type]
+    _ = realtime.on_connect(None)  # type: ignore[arg-type]

@@ -5,12 +5,13 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import SEEK_END, BytesIO, StringIO
-from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeVar, cast, runtime_checkable
 
 import pytest
 from fixtures.invalid_arguments import (
     bytes_storage_paths,
     integer_visibility,
+    multiple_public_url_paths,
     string_visibility,
 )
 from state_assertions import assert_same
@@ -30,6 +31,11 @@ from volcano_sdk import (
 )
 from volcano_sdk import _lock_guard as guard_module
 from volcano_sdk import locks as locks_module
+from volcano_sdk._transport import (
+    StorageUploadPartRequest,
+    StorageUploadSessionReference,
+    StorageUploadSessionRequest,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -40,24 +46,35 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class FakeResponse:
     status_code: int
-    payload: Any = None
+    payload: object = None
     content: bytes = b""
     headers: dict[str, str] | None = None
 
 
+_TRequest = TypeVar("_TRequest")
+
+
+def require_request(
+    arguments: dict[str, object], expected_type: type[_TRequest]
+) -> _TRequest:
+    request = arguments["request"]
+    assert isinstance(request, expected_type)
+    return request
+
+
 class FakeTransport:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, Any]]] = []
-        self.list_cursor = "cursor-2"
-        self.range_download_status = 206
-        self.include_upload_session_parts = True
-        self.upload_session_part_size = 8_388_608
-        self.upload_session_total_parts = 3
+        self.calls: list[tuple[str, dict[str, object]]] = []
+        self.list_cursor: str | None = "cursor-2"
+        self.range_download_status: int = 206
+        self.include_upload_session_parts: bool = True
+        self.upload_session_part_size: int = 8_388_608
+        self.upload_session_total_parts: int = 3
         self.fail_upload_part_number: int | None = None
-        self.fail_abort_upload = False
-        self.raise_abort_error = False
+        self.fail_abort_upload: bool = False
+        self.raise_abort_error: bool = False
 
-    def auth_signin(self, **kwargs: Any) -> FakeResponse:
+    def auth_signin(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("authSignin", kwargs))
         return FakeResponse(
             200,
@@ -68,32 +85,32 @@ class FakeTransport:
             },
         )
 
-    def query_database_select(self, **kwargs: Any) -> FakeResponse:
+    def query_database_select(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("queryDatabaseSelect", kwargs))
         return FakeResponse(200, {"data": [{"slug": "a"}], "count": 1})
 
-    def query_database_insert(self, **kwargs: Any) -> FakeResponse:
+    def query_database_insert(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("queryDatabaseInsert", kwargs))
         return FakeResponse(200, {"data": [{"slug": "new"}], "count": 1})
 
-    def query_database_update(self, **kwargs: Any) -> FakeResponse:
+    def query_database_update(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("queryDatabaseUpdate", kwargs))
         return FakeResponse(200, {"data": [{"slug": "updated"}], "count": 1})
 
-    def query_database_delete(self, **kwargs: Any) -> FakeResponse:
+    def query_database_delete(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("queryDatabaseDelete", kwargs))
         return FakeResponse(200, {"data": [{"slug": "updated"}], "count": 1})
 
-    def upload_storage_object(self, **kwargs: Any) -> FakeResponse:
+    def upload_storage_object(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("uploadStorageObject", kwargs))
         return FakeResponse(201, {"name": "a.txt", "size": 5})
 
-    def download_storage_object(self, **kwargs: Any) -> FakeResponse:
+    def download_storage_object(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("downloadStorageObject", kwargs))
         status = self.range_download_status if kwargs.get("byte_range") else 200
         return FakeResponse(status, content=b"hello")
 
-    def create_upload_session(self, **kwargs: Any) -> FakeResponse:
+    def create_upload_session(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("createUploadSession", kwargs))
         return FakeResponse(
             201,
@@ -105,9 +122,9 @@ class FakeTransport:
             },
         )
 
-    def upload_part(self, **kwargs: Any) -> FakeResponse:
+    def upload_part(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("uploadPart", kwargs))
-        request = kwargs["request"]
+        request = require_request(kwargs, StorageUploadPartRequest)
         if request.part_number == self.fail_upload_part_number:
             return FakeResponse(500, {"error": "part upload failed"})
         return FakeResponse(
@@ -119,9 +136,9 @@ class FakeTransport:
             },
         )
 
-    def complete_upload_session(self, **kwargs: Any) -> FakeResponse:
+    def complete_upload_session(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("completeUploadSession", kwargs))
-        request = kwargs["request"]
+        request = require_request(kwargs, StorageUploadSessionReference)
         return FakeResponse(
             200,
             {
@@ -137,10 +154,10 @@ class FakeTransport:
             },
         )
 
-    def get_upload_session(self, **kwargs: Any) -> FakeResponse:
+    def get_upload_session(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("getUploadSession", kwargs))
-        request = kwargs["request"]
-        payload = {
+        request = require_request(kwargs, StorageUploadSessionReference)
+        payload: dict[str, object] = {
             "session_id": request.session_id,
             "status": "uploading",
             "path": request.path,
@@ -163,7 +180,7 @@ class FakeTransport:
             ]
         return FakeResponse(200, payload)
 
-    def abort_upload_session(self, **kwargs: Any) -> FakeResponse:
+    def abort_upload_session(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("abortUploadSession", kwargs))
         if self.raise_abort_error:
             msg = "abort transport failed"
@@ -172,7 +189,7 @@ class FakeTransport:
             return FakeResponse(500, {"error": "abort failed"})
         return FakeResponse(200, {"message": "upload session aborted"})
 
-    def list_storage_objects(self, **kwargs: Any) -> FakeResponse:
+    def list_storage_objects(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("listStorageObjects", kwargs))
         return FakeResponse(
             200,
@@ -196,11 +213,11 @@ class FakeTransport:
             },
         )
 
-    def delete_storage_object(self, **kwargs: Any) -> FakeResponse:
+    def delete_storage_object(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("deleteStorageObject", kwargs))
         return FakeResponse(200)
 
-    def move_storage_object(self, **kwargs: Any) -> FakeResponse:
+    def move_storage_object(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("moveStorageObject", kwargs))
         return FakeResponse(
             200,
@@ -214,7 +231,7 @@ class FakeTransport:
             },
         )
 
-    def copy_storage_object(self, **kwargs: Any) -> FakeResponse:
+    def copy_storage_object(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("copyStorageObject", kwargs))
         return FakeResponse(
             201,
@@ -228,7 +245,7 @@ class FakeTransport:
             },
         )
 
-    def update_storage_object_visibility(self, **kwargs: Any) -> FakeResponse:
+    def update_storage_object_visibility(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("updateStorageObjectVisibility", kwargs))
         return FakeResponse(
             200,
@@ -247,18 +264,18 @@ class FakeTransport:
             },
         )
 
-    def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
+    def acquire_project_lock(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("acquireProjectLock", kwargs))
         return FakeResponse(
             201,
             {"expires_at": "2026-08-26T12:00:30Z", "fencing_token": 7},
         )
 
-    def release_project_lock(self, **kwargs: Any) -> FakeResponse:
+    def release_project_lock(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("releaseProjectLock", kwargs))
         return FakeResponse(204)
 
-    def get_project_lock(self, **kwargs: Any) -> FakeResponse:
+    def get_project_lock(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("getProjectLock", kwargs))
         return FakeResponse(
             200,
@@ -269,14 +286,14 @@ class FakeTransport:
             },
         )
 
-    def renew_project_lock(self, **kwargs: Any) -> FakeResponse:
+    def renew_project_lock(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("renewProjectLock", kwargs))
         return FakeResponse(
             200,
             {"expires_at": "2026-08-26T12:01:00Z", "fencing_token": 7},
         )
 
-    def force_release_project_lock(self, **kwargs: Any) -> FakeResponse:
+    def force_release_project_lock(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("forceReleaseProjectLock", kwargs))
         return FakeResponse(204)
 
@@ -306,8 +323,8 @@ class ShortReadBytesIO(BoundedBytesIO):
 
 class BoundedNonSeekableReader:
     def __init__(self, value: bytes) -> None:
-        self._value = value
-        self._offset = 0
+        self._value: bytes = value
+        self._offset: int = 0
         self.read_sizes: list[int] = []
 
     def read(self, size: int = -1) -> bytes:
@@ -352,7 +369,7 @@ class TemporarilyUnavailableReader:
 
 class ReadOnlyStream:
     def __init__(self, value: bytes) -> None:
-        self._source = BytesIO(value)
+        self._source: BytesIO = BytesIO(value)
 
     def read(self, size: int = -1) -> bytes:
         return self._source.read(size)
@@ -382,7 +399,7 @@ class FailingSeekableReader(BoundedBytesIO):
 class RestoreFailingBytesIO(BytesIO):
     def __init__(self, value: bytes) -> None:
         super().__init__(value)
-        self._end_was_probed = False
+        self._end_was_probed: bool = False
 
     @override
     def seek(self, offset: int, whence: int = 0) -> int:
@@ -403,7 +420,7 @@ def anon_key_with_project_id(project_id: str | None) -> str:
 
 def signed_in_client(transport: FakeTransport) -> VolcanoClient:
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     return client
 
 
@@ -576,9 +593,9 @@ def test_storage_upload_reads_a_caller_owned_binary_stream_from_its_position() -
     transport = FakeTransport()
     client = signed_in_client(transport)
     source = BytesIO(b"skip-uploaded")
-    source.seek(5)
+    _ = source.seek(5)
 
-    client.storage.from_("assets").upload("a.txt", source)
+    _ = client.storage.from_("assets").upload("a.txt", source)
 
     assert not source.closed
     assert source.tell() == len(b"skip-uploaded")
@@ -599,7 +616,7 @@ def test_storage_upload_rejects_text_streams_before_transport() -> None:
     client = signed_in_client(transport)
 
     with pytest.raises(TypeError, match="binary"):
-        unchecked_upload(client.storage.from_("assets"), StringIO("text"))
+        _ = unchecked_upload(client.storage.from_("assets"), StringIO("text"))
 
     assert all(operation != "uploadStorageObject" for operation, _ in transport.calls)
 
@@ -609,7 +626,7 @@ def test_storage_upload_reports_temporarily_unavailable_streams() -> None:
     client = signed_in_client(transport)
 
     with pytest.raises(BlockingIOError, match="temporarily unavailable"):
-        client.storage.from_("assets").upload(
+        _ = client.storage.from_("assets").upload(
             "a.txt",
             TemporarilyUnavailableReader(),
         )
@@ -621,7 +638,7 @@ def test_storage_list_normalizes_an_empty_terminal_cursor() -> None:
     transport = FakeTransport()
     transport.list_cursor = ""
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     assert client.storage.from_("assets").list().next_cursor is None
 
@@ -697,7 +714,7 @@ def test_locks_with_lock_renews_an_unsafe_initial_lease_before_yielding(
 
     class SlowAcquireTransport(FakeTransport):
         @override
-        def acquire_project_lock(self, **kwargs: Any) -> FakeResponse:
+        def acquire_project_lock(self, **kwargs: object) -> FakeResponse:
             response = super().acquire_project_lock(**kwargs)
             clock[0] = 104.0
             return response
@@ -712,8 +729,8 @@ def test_locks_with_lock_renews_an_unsafe_initial_lease_before_yielding(
             ttl: int,
         ) -> None:
             del locks, key, guard, ttl
-            self.started = False
-            self.stopped = False
+            self.started: bool = False
+            self.stopped: bool = False
             renewers.append(self)
 
         def start(self) -> None:
@@ -762,7 +779,7 @@ def test_locks_with_lock_reports_renewal_failure_after_release(
             ttl: int,
         ) -> None:
             del locks, key, ttl
-            self.guard = guard
+            self.guard: LockGuard = guard
 
         def start(self) -> None:
             pass
@@ -794,7 +811,7 @@ def test_locks_with_lock_preserves_body_failure_and_releases(
 
     class FailingReleaseTransport(FakeTransport):
         @override
-        def release_project_lock(self, **kwargs: Any) -> FakeResponse:
+        def release_project_lock(self, **kwargs: object) -> FakeResponse:
             self.calls.append(("releaseProjectLock", kwargs))
             raise RuntimeError(release_failure)
 
@@ -843,7 +860,7 @@ def test_locks_rejects_invalid_acquisition_ttl(ttl: object) -> None:
     )
 
     with pytest.raises(ValueError, match="between 5 seconds and 90 days"):
-        client.locks.acquire("build", ttl=cast("int", ttl))
+        _ = client.locks.acquire("build", ttl=cast("int", ttl))
 
     assert transport.calls == []
 
@@ -864,7 +881,7 @@ def test_locks_rejects_invalid_renewal_ttl(ttl: object) -> None:
     )
 
     with pytest.raises(ValueError, match="between 5 seconds and 90 days"):
-        client.locks.renew("build", lease, ttl=cast("int", ttl))
+        _ = client.locks.renew("build", lease, ttl=cast("int", ttl))
 
     assert transport.calls == []
 
@@ -891,7 +908,7 @@ def test_locks_force_releases_without_an_ownership_token() -> None:
 def test_storage_remove_accepts_one_path() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     assert client.storage.from_("assets").remove("archive/a.txt") == ("archive/a.txt",)
 
@@ -900,7 +917,7 @@ def test_storage_download_accepts_a_full_response_when_range_is_ignored() -> Non
     transport = FakeTransport()
     transport.range_download_status = 200
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     downloaded = client.storage.from_("assets").download(
         "a.txt",
@@ -913,7 +930,7 @@ def test_storage_download_accepts_a_full_response_when_range_is_ignored() -> Non
 def test_storage_creates_an_immutable_upload_session() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     session = client.storage.from_("assets").create_upload_session(
         "videos/demo.mp4",
@@ -932,7 +949,7 @@ def test_storage_creates_an_immutable_upload_session() -> None:
     assert operation == "createUploadSession"
     assert arguments["authorization"] == "access-token"
     assert arguments["bucket_name"] == "assets"
-    request = arguments["request"]
+    request = require_request(arguments, StorageUploadSessionRequest)
     assert (
         request.path,
         request.content_type,
@@ -944,7 +961,7 @@ def test_storage_creates_an_immutable_upload_session() -> None:
 def test_storage_uploads_a_part_and_returns_immutable_metadata() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     part = client.storage.from_("assets").upload_part(
         "videos/demo.mp4",
@@ -956,7 +973,7 @@ def test_storage_uploads_a_part_and_returns_immutable_metadata() -> None:
     assert part == UploadPart(part_number=1, etag="etag-part-1", size=6)
     operation, arguments = transport.calls[-1]
     assert operation == "uploadPart"
-    request = arguments["request"]
+    request = require_request(arguments, StorageUploadPartRequest)
     assert (request.path, request.session_id, request.part_number, request.data) == (
         "videos/demo.mp4",
         "session-123",
@@ -968,7 +985,7 @@ def test_storage_uploads_a_part_and_returns_immutable_metadata() -> None:
 def test_storage_completes_an_upload_session_and_returns_the_object() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     object_ = client.storage.from_("assets").complete_upload_session(
         "videos/demo.mp4",
@@ -988,7 +1005,7 @@ def test_storage_completes_an_upload_session_and_returns_the_object() -> None:
     assert operation == "completeUploadSession"
     assert arguments["authorization"] == "access-token"
     assert arguments["bucket_name"] == "assets"
-    request = arguments["request"]
+    request = require_request(arguments, StorageUploadSessionReference)
     assert (request.path, request.session_id) == (
         "videos/demo.mp4",
         "session-123",
@@ -998,7 +1015,7 @@ def test_storage_completes_an_upload_session_and_returns_the_object() -> None:
 def test_storage_gets_immutable_upload_session_status() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     status = client.storage.from_("assets").get_upload_session(
         "videos/demo.mp4",
@@ -1023,7 +1040,7 @@ def test_storage_gets_immutable_upload_session_status() -> None:
     assert operation == "getUploadSession"
     assert arguments["authorization"] == "access-token"
     assert arguments["bucket_name"] == "assets"
-    request = arguments["request"]
+    request = require_request(arguments, StorageUploadSessionReference)
     assert (request.path, request.session_id) == (
         "videos/demo.mp4",
         "session-123",
@@ -1034,7 +1051,7 @@ def test_storage_defaults_omitted_upload_parts_to_an_empty_snapshot() -> None:
     transport = FakeTransport()
     transport.include_upload_session_parts = False
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     status = client.storage.from_("assets").get_upload_session(
         "videos/demo.mp4",
@@ -1047,7 +1064,7 @@ def test_storage_defaults_omitted_upload_parts_to_an_empty_snapshot() -> None:
 def test_storage_aborts_an_upload_session() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     client.storage.from_("assets").abort_upload_session(
         "videos/demo.mp4",
@@ -1058,7 +1075,7 @@ def test_storage_aborts_an_upload_session() -> None:
     assert operation == "abortUploadSession"
     assert arguments["authorization"] == "access-token"
     assert arguments["bucket_name"] == "assets"
-    request = arguments["request"]
+    request = require_request(arguments, StorageUploadSessionReference)
     assert (request.path, request.session_id) == (
         "videos/demo.mp4",
         "session-123",
@@ -1070,7 +1087,7 @@ def test_storage_uploads_bytes_with_server_selected_chunks() -> None:
     transport.upload_session_part_size = 4
     transport.upload_session_total_parts = 3
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     object_ = client.storage.from_("assets").upload_resumable(
         "videos/demo.mp4",
@@ -1087,9 +1104,12 @@ def test_storage_uploads_bytes_with_server_selected_chunks() -> None:
         "uploadPart",
         "completeUploadSession",
     ]
-    create_request = storage_calls[0][1]["request"]
+    create_request = require_request(storage_calls[0][1], StorageUploadSessionRequest)
     assert (create_request.total_size, create_request.part_size) == (10, 6)
-    assert [call[1]["request"].data for call in storage_calls[1:4]] == [
+    assert [
+        require_request(call[1], StorageUploadPartRequest).data
+        for call in storage_calls[1:4]
+    ] == [
         b"abcd",
         b"efgh",
         b"ij",
@@ -1102,10 +1122,10 @@ def test_storage_reports_progress_after_each_uploaded_part() -> None:
     transport.upload_session_part_size = 4
     transport.upload_session_total_parts = 3
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     progress: list[tuple[int, int]] = []
 
-    client.storage.from_("assets").upload_resumable(
+    _ = client.storage.from_("assets").upload_resumable(
         "file.bin",
         b"abcdefghij",
         on_progress=lambda uploaded, total: progress.append((uploaded, total)),
@@ -1119,14 +1139,14 @@ def test_storage_aborts_when_a_progress_callback_fails() -> None:
     transport.upload_session_part_size = 4
     transport.upload_session_total_parts = 2
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     def fail_progress(_uploaded: int, _total: int) -> None:
         message = "progress failed"
         raise RuntimeError(message)
 
     with pytest.raises(RuntimeError, match="progress failed"):
-        client.storage.from_("assets").upload_resumable(
+        _ = client.storage.from_("assets").upload_resumable(
             "file.bin",
             b"abcdefgh",
             on_progress=fail_progress,
@@ -1145,10 +1165,10 @@ def test_storage_aborts_after_part_failure_without_masking_the_error() -> None:
     transport.fail_upload_part_number = 2
     transport.fail_abort_upload = True
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     with pytest.raises(ServerError, match="part upload failed") as raised:
-        client.storage.from_("assets").upload_resumable("file.bin", b"abcdefgh")
+        _ = client.storage.from_("assets").upload_resumable("file.bin", b"abcdefgh")
 
     assert getattr(raised.value, "status", None) == 500
     assert [operation for operation, _ in transport.calls[1:]] == [
@@ -1164,15 +1184,17 @@ def test_storage_streams_seekable_uploads_with_server_selected_reads() -> None:
     transport.upload_session_part_size = 4
     transport.upload_session_total_parts = 3
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     source = BoundedBytesIO(b"abcdefghij")
 
-    client.storage.from_("assets").upload_resumable("file.bin", source)
+    _ = client.storage.from_("assets").upload_resumable("file.bin", source)
 
     assert source.read_sizes
     assert max(source.read_sizes) <= 4
     upload_calls = [call for call in transport.calls if call[0] == "uploadPart"]
-    assert [call[1]["request"].data for call in upload_calls] == [
+    assert [
+        require_request(call[1], StorageUploadPartRequest).data for call in upload_calls
+    ] == [
         b"abcd",
         b"efgh",
         b"ij",
@@ -1183,25 +1205,25 @@ def test_storage_clamps_a_seekable_source_positioned_past_eof() -> None:
     transport = FakeTransport()
     transport.upload_session_total_parts = 0
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     source = BytesIO(b"a")
-    source.seek(2)
+    _ = source.seek(2)
 
-    client.storage.from_("assets").upload_resumable("file.bin", source)
+    _ = client.storage.from_("assets").upload_resumable("file.bin", source)
 
     create_call = next(
         call for call in transport.calls if call[0] == "createUploadSession"
     )
-    assert create_call[1]["request"].total_size == 0
+    assert require_request(create_call[1], StorageUploadSessionRequest).total_size == 0
 
 
 def test_storage_surfaces_a_failed_seekable_position_restore() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     with pytest.raises(OSError, match="restore failed"):
-        client.storage.from_("assets").upload_resumable(
+        _ = client.storage.from_("assets").upload_resumable(
             "file.bin",
             RestoreFailingBytesIO(b"abcdefgh"),
         )
@@ -1214,15 +1236,17 @@ def test_storage_fills_parts_when_a_seekable_source_returns_short_reads() -> Non
     transport.upload_session_part_size = 4
     transport.upload_session_total_parts = 3
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
-    client.storage.from_("assets").upload_resumable(
+    _ = client.storage.from_("assets").upload_resumable(
         "file.bin",
         ShortReadBytesIO(b"abcdefghij"),
     )
 
     upload_calls = [call for call in transport.calls if call[0] == "uploadPart"]
-    assert [call[1]["request"].data for call in upload_calls] == [
+    assert [
+        require_request(call[1], StorageUploadPartRequest).data for call in upload_calls
+    ] == [
         b"abcd",
         b"efgh",
         b"ij",
@@ -1239,10 +1263,10 @@ def test_storage_spools_non_seekable_uploads_with_bounded_reads(
     transport.upload_session_part_size = 4
     transport.upload_session_total_parts = 3
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     source = source_type(b"abcdefghij")
 
-    client.storage.from_("assets").upload_resumable(
+    _ = client.storage.from_("assets").upload_resumable(
         "file.bin",
         source,
     )
@@ -1250,7 +1274,9 @@ def test_storage_spools_non_seekable_uploads_with_bounded_reads(
     assert source.read_sizes
     assert max(source.read_sizes) <= 1_048_576
     upload_calls = [call for call in transport.calls if call[0] == "uploadPart"]
-    assert [call[1]["request"].data for call in upload_calls] == [
+    assert [
+        require_request(call[1], StorageUploadPartRequest).data for call in upload_calls
+    ] == [
         b"abcd",
         b"efgh",
         b"ij",
@@ -1262,15 +1288,17 @@ def test_storage_spools_read_only_streams_without_a_seekability_probe() -> None:
     transport.upload_session_part_size = 4
     transport.upload_session_total_parts = 2
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
-    client.storage.from_("assets").upload_resumable(
+    _ = client.storage.from_("assets").upload_resumable(
         "file.bin",
         ReadOnlyStream(b"abcdefgh"),
     )
 
     upload_calls = [call for call in transport.calls if call[0] == "uploadPart"]
-    assert [call[1]["request"].data for call in upload_calls] == [b"abcd", b"efgh"]
+    assert [
+        require_request(call[1], StorageUploadPartRequest).data for call in upload_calls
+    ] == [b"abcd", b"efgh"]
 
 
 def test_storage_aborts_when_a_stream_reader_raises_an_unexpected_error() -> None:
@@ -1278,10 +1306,10 @@ def test_storage_aborts_when_a_stream_reader_raises_an_unexpected_error() -> Non
     transport.upload_session_part_size = 4
     transport.upload_session_total_parts = 2
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     with pytest.raises(RuntimeError, match="reader failed"):
-        client.storage.from_("assets").upload_resumable(
+        _ = client.storage.from_("assets").upload_resumable(
             "file.bin",
             FailingSeekableReader(b"abcdefgh"),
         )
@@ -1298,10 +1326,10 @@ def test_storage_preserves_reader_error_when_abort_cleanup_raises() -> None:
     transport.upload_session_total_parts = 2
     transport.raise_abort_error = True
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     with pytest.raises(RuntimeError, match="reader failed"):
-        client.storage.from_("assets").upload_resumable(
+        _ = client.storage.from_("assets").upload_resumable(
             "file.bin",
             FailingSeekableReader(b"abcdefgh"),
         )
@@ -1310,11 +1338,11 @@ def test_storage_preserves_reader_error_when_abort_cleanup_raises() -> None:
 def test_storage_rejects_temporarily_unavailable_nonblocking_sources() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     source = TemporarilyUnavailableReader()
 
     with pytest.raises(BlockingIOError, match="temporarily unavailable"):
-        client.storage.from_("assets").upload_resumable(
+        _ = client.storage.from_("assets").upload_resumable(
             "file.bin",
             source,
         )
@@ -1328,7 +1356,7 @@ def test_storage_validates_authentication_before_spooling() -> None:
     source = BoundedNonSeekableReader(b"abcdefghij")
 
     with pytest.raises(RuntimeError, match="active session"):
-        client.storage.from_("assets").upload_resumable(
+        _ = client.storage.from_("assets").upload_resumable(
             "file.bin",
             source,
         )
@@ -1339,11 +1367,11 @@ def test_storage_validates_authentication_before_spooling() -> None:
 def test_storage_validates_path_before_spooling() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     source = BoundedNonSeekableReader(b"abcdefghij")
 
     with pytest.raises(ValueError, match="non-empty string"):
-        client.storage.from_("assets").upload_resumable(
+        _ = client.storage.from_("assets").upload_resumable(
             "",
             source,
         )
@@ -1357,11 +1385,11 @@ def test_storage_remove_rejects_invalid_paths_before_transport(
 ) -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     calls_after_sign_in = transport.calls.copy()
 
     with pytest.raises((TypeError, ValueError), match="non-empty strings"):
-        client.storage.from_("assets").remove(invalid_paths)
+        _ = client.storage.from_("assets").remove(invalid_paths)
 
     assert transport.calls == calls_after_sign_in
 
@@ -1369,7 +1397,7 @@ def test_storage_remove_rejects_invalid_paths_before_transport(
 def test_storage_remove_rejects_bytes_before_transport() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     calls_after_sign_in = transport.calls.copy()
 
     with pytest.raises(ValueError, match="non-empty strings"):
@@ -1381,7 +1409,7 @@ def test_storage_remove_rejects_bytes_before_transport() -> None:
 def test_storage_move_returns_the_destination_object() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     moved = client.storage.from_("assets").move(
         "drafts/a.txt",
@@ -1403,7 +1431,7 @@ def test_storage_move_returns_the_destination_object() -> None:
 def test_storage_copy_returns_the_destination_object() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     copied = client.storage.from_("assets").copy(
         "templates/a.txt",
@@ -1419,7 +1447,7 @@ def test_storage_copy_returns_the_destination_object() -> None:
 def test_storage_update_visibility_returns_server_confirmed_metadata() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     updated = client.storage.from_("assets").update_visibility(
         "avatars/a.png",
@@ -1444,11 +1472,11 @@ def test_storage_update_visibility_returns_server_confirmed_metadata() -> None:
 def test_storage_update_visibility_rejects_empty_path_before_transport() -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     calls_after_sign_in = transport.calls.copy()
 
     with pytest.raises((TypeError, ValueError)):
-        client.storage.from_("assets").update_visibility("", is_public=True)
+        _ = client.storage.from_("assets").update_visibility("", is_public=True)
 
     assert transport.calls == calls_after_sign_in
 
@@ -1459,7 +1487,7 @@ def test_storage_update_visibility_rejects_non_boolean_before_transport(
 ) -> None:
     transport = FakeTransport()
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    client.auth.sign_in(email="user@example.com", password="secret")
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
     calls_after_sign_in = transport.calls.copy()
 
     with pytest.raises(TypeError, match="boolean"):
@@ -1494,7 +1522,7 @@ def test_storage_get_public_url_rejects_invalid_anon_keys(anon_key: str) -> None
     client = VolcanoClient(anon_key=anon_key, _transport=FakeTransport())
 
     with pytest.raises(ValueError, match="project ID"):
-        client.storage.from_("assets").get_public_url("avatars/a.png")
+        _ = client.storage.from_("assets").get_public_url("avatars/a.png")
 
 
 def test_storage_get_public_url_rejects_an_empty_path() -> None:
@@ -1505,7 +1533,7 @@ def test_storage_get_public_url_rejects_an_empty_path() -> None:
     )
 
     with pytest.raises(ValueError, match="non-empty string"):
-        client.storage.from_("assets").get_public_url("")
+        _ = client.storage.from_("assets").get_public_url("")
 
     assert transport.calls == []
 
@@ -1519,7 +1547,7 @@ def test_storage_get_public_url_rejects_dot_segments(path: str) -> None:
     )
 
     with pytest.raises(ValueError, match="dot segments"):
-        client.storage.from_("assets").get_public_url(path)
+        _ = client.storage.from_("assets").get_public_url(path)
 
     assert transport.calls == []
 
@@ -1530,9 +1558,7 @@ def test_storage_get_public_url_rejects_multiple_paths() -> None:
         anon_key=anon_key_with_project_id("project-123"),
         _transport=transport,
     )
-    paths: Any = ["first.txt", "second.txt"]
-
     with pytest.raises(TypeError, match="non-empty string"):
-        client.storage.from_("assets").get_public_url(paths)
+        _ = multiple_public_url_paths(client.storage.from_("assets"))
 
     assert transport.calls == []

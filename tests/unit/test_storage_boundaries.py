@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from io import SEEK_END, BufferedReader, BytesIO, RawIOBase
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from transport_fixtures import RejectingTransport
@@ -55,7 +55,7 @@ class SeekLookupFailure(BytesIO):
         if name in {"seekable", "tell", "seek"}:
             message = "seek capability unavailable"
             raise OSError(message)
-        return super().__getattribute__(name)
+        return cast("object", super().__getattribute__(name))
 
 
 _STORAGE_OPERATIONS: tuple[Callable[[StorageBucket], object], ...] = (
@@ -96,13 +96,13 @@ def test_optional_storage_operation_requires_transport_capability(
     client = VolcanoClient(anon_key="anon", _transport=RejectingTransport())
 
     with pytest.raises(TypeError, match="requested storage operation"):
-        operation(client.storage.from_("assets"))
+        _ = operation(client.storage.from_("assets"))
 
 
 @pytest.mark.parametrize("payload", [None, [], "invalid", 1])
 def test_storage_object_rejects_non_mapping_payloads(payload: object) -> None:
     with pytest.raises(TypeError, match="Expected a complete storage page"):
-        _storage_object(payload)
+        _ = _storage_object(payload)
 
 
 @pytest.mark.parametrize(
@@ -129,7 +129,7 @@ def test_storage_object_rejects_invalid_field_types(field: str, value: object) -
     }
     payload[field] = value
     with pytest.raises(TypeError, match="Expected a complete storage page"):
-        _storage_object(payload)
+        _ = _storage_object(payload)
 
 
 @pytest.mark.parametrize(
@@ -161,7 +161,7 @@ def test_storage_object_rejects_untyped_response_fields(
     payload[field] = value
 
     with pytest.raises(TypeError, match="Expected a complete storage page"):
-        _storage_object(payload)
+        _ = _storage_object(payload)
 
 
 def test_storage_object_rejects_non_string_response_keys() -> None:
@@ -176,7 +176,7 @@ def test_storage_object_rejects_non_string_response_keys() -> None:
     }
 
     with pytest.raises(TypeError, match="Expected a complete storage page"):
-        _storage_object(payload)
+        _ = _storage_object(payload)
 
 
 def test_storage_object_preserves_nested_json_metadata() -> None:
@@ -217,7 +217,7 @@ def test_upload_session_rejects_untyped_response_fields(
     payload[field] = value
 
     with pytest.raises(TypeError, match="Expected a complete storage page"):
-        _upload_session(payload)
+        _ = _upload_session(payload)
 
 
 def test_upload_session_accepts_a_datetime_from_a_typed_transport() -> None:
@@ -243,7 +243,7 @@ def test_upload_part_rejects_untyped_response_fields(field: str, value: object) 
     payload[field] = value
 
     with pytest.raises(TypeError, match="Expected a complete storage page"):
-        _upload_part(payload)
+        _ = _upload_part(payload)
 
 
 @pytest.mark.parametrize(
@@ -276,13 +276,13 @@ def test_upload_status_rejects_untyped_response_fields(
     payload[field] = value
 
     with pytest.raises(TypeError, match="Expected a complete storage page"):
-        _upload_session_status(payload)
+        _ = _upload_session_status(payload)
 
 
 @pytest.mark.parametrize("payload", [None, [], 1, {"objects": {}}, {"objects": None}])
 def test_storage_page_rejects_invalid_collections(payload: object) -> None:
     with pytest.raises(TypeError, match="Expected a complete storage page"):
-        _storage_page(payload)
+        _ = _storage_page(payload)
 
 
 def test_storage_page_defaults_to_an_empty_terminal_page() -> None:
@@ -299,18 +299,18 @@ def test_optional_storage_timestamp_preserves_a_datetime() -> None:
 @pytest.mark.parametrize("value", [False, 1, [], {}])
 def test_optional_storage_timestamp_rejects_non_string_values(value: object) -> None:
     with pytest.raises(TypeError, match="Expected a complete storage page"):
-        _optional_datetime(value)
+        _ = _optional_datetime(value)
 
 
 @pytest.mark.parametrize("paths", [None, 1, {"path": "file.bin"}])
 def test_storage_paths_reject_non_sequences(paths: object) -> None:
     with pytest.raises(TypeError, match="Storage paths must be non-empty strings"):
-        _storage_paths(paths)
+        _ = _storage_paths(paths)
 
 
 def test_upload_size_probe_restores_position_after_end_seek_fails() -> None:
     with EndSeekFailure(b"prefix-payload") as source:
-        source.seek(7)
+        _ = source.seek(7)
         assert _remaining_upload_bytes(source) is None
         assert source.tell() == 7
         assert source.read() == b"payload"
@@ -336,7 +336,7 @@ def test_spooling_reports_a_temporarily_unavailable_binary_source() -> None:
 def test_part_read_reports_a_temporarily_unavailable_binary_source() -> None:
     with BufferedReader(UnavailableRawStream()) as source:
         with pytest.raises(BlockingIOError, match="temporarily unavailable"):
-            _read_upload_part(source, 4)
+            _ = _read_upload_part(source, 4)
         assert not source.closed
 
 
@@ -351,7 +351,7 @@ def test_part_read_preserves_a_short_final_part(payload: bytes) -> None:
 def test_public_url_rejects_non_object_project_claims() -> None:
     client = VolcanoClient(anon_key="header.W10.signature")
     with pytest.raises(ValueError, match="Anon key must contain a project ID"):
-        client.storage.from_("assets").get_public_url("file.bin")
+        _ = client.storage.from_("assets").get_public_url("file.bin")
 
 
 @pytest.mark.parametrize("data", [None, "text", bytearray(b"binary")])
@@ -359,4 +359,4 @@ def test_simple_upload_rejects_values_without_a_binary_read_method(
     data: object,
 ) -> None:
     with pytest.raises(TypeError, match="bytes or a readable binary stream"):
-        _simple_upload_bytes(data)
+        _ = _simple_upload_bytes(data)
