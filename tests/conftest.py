@@ -8,6 +8,17 @@ import pytest
 
 pytest_plugins = ["pytester"]
 
+_WARNING_PREFIX = "ignore:'asyncio.iscoroutinefunction' is deprecated"
+_REVIEWED_WARNING = f"{_WARNING_PREFIX}:{DeprecationWarning.__name__}"
+
+
+def _reviewed_warning_filter(item: pytest.Item, marker: pytest.Mark) -> bool:
+    return (
+        item.nodeid.startswith("tests/unit/test_durable_authoring.py::")
+        and marker.args == (_REVIEWED_WARNING,)
+        and not marker.kwargs
+    )
+
 
 class _TerminalSummary(Protocol):
     def write_sep(self, sep: str, title: str, *, red: bool) -> None: ...
@@ -24,6 +35,16 @@ class _TestIntegrity:
             forbidden = {"skip", "skipif", "xfail"}
             if forbidden.intersection(marker.name for marker in item.iter_markers()):
                 self.violations.add(f"disabled test marker: {item.nodeid}")
+            if any(
+                marker.name == "filterwarnings"
+                and not _reviewed_warning_filter(item, marker)
+                for marker in item.iter_markers()
+            ):
+                self.violations.add(f"unreviewed warning filter: {item.nodeid}")
+
+    def pytest_deselected(self, items: list[pytest.Item]) -> None:
+        if items:
+            self.violations.add(f"deselected tests: {items[0].nodeid}")
 
     def pytest_collectreport(self, report: pytest.CollectReport) -> None:
         if report.skipped:
@@ -57,4 +78,11 @@ class _TestIntegrity:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    _ = config.pluginmanager.register(_TestIntegrity(), "sdk-test-integrity")
+    integrity = _TestIntegrity()
+    if config.getoption("ignore") or config.getoption("ignore_glob"):
+        integrity.violations.add("ignored test paths")
+    if config.getoption("pythonwarnings"):
+        integrity.violations.add("per-run warning filters")
+    if config.getoption("collectonly") and config.getoption("xmlpath") is not None:
+        integrity.violations.add("test report requested without execution")
+    _ = config.pluginmanager.register(integrity, "sdk-test-integrity")

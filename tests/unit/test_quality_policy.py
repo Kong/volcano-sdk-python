@@ -11,6 +11,7 @@ from typing import cast
 import pytest
 
 from scripts.check_quality_policy import (
+    REVIEWED_WARNING,
     check_comments,
     check_config,
     check_inventory,
@@ -242,3 +243,25 @@ def test_unused_reviewed_exception_fails(tmp_path: Path) -> None:
         "unused exception: scripts/generate_openapi.py:generate S603"
         in check_comments(tmp_path, set(), [])
     )
+
+
+def test_reviewed_warning_filter_must_remain_exact(tmp_path: Path) -> None:
+    name = "tests/unit/test_durable_authoring.py"
+    source = tmp_path / name
+    source.parent.mkdir(parents=True)
+    exceptions = cast(
+        "list[dict[str, str]]",
+        json.loads((ROOT / "maintainers/quality-exceptions.json").read_text()),
+    )
+    unused = (
+        "unused exception: tests/unit/test_durable_authoring.py:pytestmark "
+        "pytest.filterwarnings"
+    )
+    assignment = f"pytestmark = pytest.mark.filterwarnings({REVIEWED_WARNING!r})"
+    _ = source.write_text(f"import pytest\n{assignment}\n")
+    assert unused not in check_comments(tmp_path, {name}, exceptions)
+
+    _ = source.write_text(
+        "import pytest\npytestmark = pytest.mark.filterwarnings('ignore')\n"
+    )
+    assert unused in check_comments(tmp_path, {name}, exceptions)

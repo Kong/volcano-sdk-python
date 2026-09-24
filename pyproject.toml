@@ -449,10 +449,34 @@ format-check = "ruff format --check --config pyproject.toml ."
 types = ["mypy", "basedpyright"]
 mypy = "mypy --config-file pyproject.toml"
 basedpyright = "basedpyright --project pyproject.toml"
-test = "pytest -c pyproject.toml tests/unit -q --junitxml=reports/unit.xml"
-coverage = "uv run --locked --isolated --python 3.12 pytest -c pyproject.toml tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:reports/coverage.json --junitxml=reports/coverage-unit.xml"
 mutation = "bash scripts/mutation.sh"
 mutation-full = "MUTATION_FULL=1 bash scripts/mutation.sh"
+
+[tool.poe.tasks.test]
+interpreter = "bash"
+shell = """
+set -euo pipefail
+report_dir="$(mktemp -d)"
+trap 'rm -rf "$report_dir"' EXIT
+pytest -c pyproject.toml tests/unit -q --junitxml="$report_dir/unit.xml"
+test -s "$report_dir/unit.xml"
+mkdir -p reports
+mv "$report_dir/unit.xml" reports/unit.xml
+"""
+
+[tool.poe.tasks.coverage]
+interpreter = "bash"
+shell = """
+set -euo pipefail
+report_dir="$(mktemp -d)"
+trap 'rm -rf "$report_dir"' EXIT
+uv run --locked --isolated --python 3.12 pytest -c pyproject.toml tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:"$report_dir/coverage.json" --junitxml="$report_dir/unit.xml"
+test -s "$report_dir/coverage.json"
+test -s "$report_dir/unit.xml"
+mkdir -p reports
+mv "$report_dir/coverage.json" reports/coverage.json
+mv "$report_dir/unit.xml" reports/coverage-unit.xml
+"""
 
 [tool.poe.tasks.contract-check]
 sequence = [

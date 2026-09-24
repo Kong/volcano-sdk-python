@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 GENERATED = "src/volcano_sdk/_generated"
-LOCK_SHA256 = "4a229a5884c7d3c0992baa4af1100de14a1ef677e2eeacd74c5698d689179759"
+LOCK_SHA256 = "40283271adfd5f71cd5ed2b03920e6c333751eec78751480a0b7494c75025f3c"
 TYPE_FIXTURES = {
     "tests/typing/contract_steps.py",
     "tests/typing/durable_callbacks.py",
@@ -48,9 +48,18 @@ CONFIG_NAMES = {
     ".coveragerc",
 }
 APPROVED_EXCEPTION_SHA256 = (
-    "a00f1cb0e255bea7f8ac7ada615ae8953e3e30c20ca5580a7a41333e695bfb23"
+    "e97935a8767e870713640b4cf9ec1d65ec65464b68cb156ea4e40e8e9c763cf7"
 )
-APPROVED_RULES = {("scripts/generate_openapi.py:generate", "S603")}
+APPROVED_RULES = {
+    ("scripts/generate_openapi.py:generate", "S603"),
+    ("tests/unit/test_durable_authoring.py:pytestmark", "pytest.filterwarnings"),
+}
+WARNING_PREFIX = "ignore:'asyncio.iscoroutinefunction' is deprecated"
+REVIEWED_WARNING = f"{WARNING_PREFIX}:{DeprecationWarning.__name__}"
+REVIEWED_WARNING_FILTER = ast.dump(
+    ast.parse(f"pytestmark = pytest.mark.filterwarnings({REVIEWED_WARNING!r})").body[0],
+    include_attributes=False,
+)
 FORBIDDEN = re.compile(
     r"""
     \b(?:noqa|nosec|pragma:\s*no\s+(?:cover|branch))\b
@@ -278,6 +287,15 @@ def check_comments(
         source = (root / name).read_text(encoding="utf-8")
         for token in tokenize.generate_tokens(io.StringIO(source).readline):
             errors.extend(check_token(name, source, token, approved, used))
+        if (
+            name == "tests/unit/test_durable_authoring.py"
+            and sum(
+                ast.dump(statement, include_attributes=False) == REVIEWED_WARNING_FILTER
+                for statement in ast.parse(source).body
+            )
+            == 1
+        ):
+            used.add((f"{name}:pytestmark", "pytest.filterwarnings"))
     errors.extend(
         f"unused exception: {scope} {rule}" for scope, rule in sorted(approved - used)
     )

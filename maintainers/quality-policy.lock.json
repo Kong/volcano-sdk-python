@@ -345,7 +345,10 @@
             }
           ]
         },
-        "coverage": "uv run --locked --isolated --python 3.12 pytest -c pyproject.toml tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:reports/coverage.json --junitxml=reports/coverage-unit.xml",
+        "coverage": {
+          "interpreter": "bash",
+          "shell": "set -euo pipefail\nreport_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$report_dir\"' EXIT\nuv run --locked --isolated --python 3.12 pytest -c pyproject.toml tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:\"$report_dir/coverage.json\" --junitxml=\"$report_dir/unit.xml\"\ntest -s \"$report_dir/coverage.json\"\ntest -s \"$report_dir/unit.xml\"\nmkdir -p reports\nmv \"$report_dir/coverage.json\" reports/coverage.json\nmv \"$report_dir/unit.xml\" reports/coverage-unit.xml\n"
+        },
         "format-check": "ruff format --check --config pyproject.toml .",
         "generated": "python -m scripts.check_openapi",
         "lint": "ruff check --config pyproject.toml .",
@@ -364,7 +367,10 @@
           "checks",
           "mutation"
         ],
-        "test": "pytest -c pyproject.toml tests/unit -q --junitxml=reports/unit.xml",
+        "test": {
+          "interpreter": "bash",
+          "shell": "set -euo pipefail\nreport_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$report_dir\"' EXIT\npytest -c pyproject.toml tests/unit -q --junitxml=\"$report_dir/unit.xml\"\ntest -s \"$report_dir/unit.xml\"\nmkdir -p reports\nmv \"$report_dir/unit.xml\" reports/unit.xml\n"
+        },
         "types": [
           "mypy",
           "basedpyright"
