@@ -223,7 +223,8 @@ async def test_enqueues_release_completion_callbacks(
         _ = await asyncio.wait_for(fetch.started.wait(), timeout=1)
         with monkeypatch.context() as patch:
             patch.setattr(loop, "create_future", track_future)
-            await asyncio.wait_for(worker.enqueue(fetch_job(2)), timeout=1)
+            async with asyncio.timeout(1):
+                await worker.enqueue(fetch_job(2))
 
         await asyncio.sleep(0)
         _ = gc.collect()
