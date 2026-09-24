@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
+import httpx
+
 if TYPE_CHECKING:
     from .errors import NotFoundError
 
@@ -125,7 +127,9 @@ def _absolute_url_scheme(value: str) -> str:
         # Reading the authority is the validation: an unclosed IPv6 literal or
         # a port out of range raises here rather than at request time.
         host, _port = parsed.hostname, parsed.port
-    except ValueError:
+        # urlsplit accepts controls that HTTPX rejects when invoking the URL.
+        _ = httpx.URL(value)
+    except (ValueError, httpx.InvalidURL):
         return ""
     return parsed.scheme.lower() if host else ""
 
