@@ -1,20 +1,29 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Never
 
 import httpx
 import pytest
-from test_session_continuity import SESSION_A, USER_A, client_for, refreshed
+from test_session_continuity import (
+    SESSION_A,
+    SESSION_B,
+    USER_A,
+    access_token,
+    client_for,
+    refreshed,
+)
 
 from volcano_sdk import AuthenticationError, Session, SessionChangedError, VolcanoClient
 from volcano_sdk import auth as auth_module
 from volcano_sdk._session_operations import SessionOperations
+from volcano_sdk._transport import GeneratedTransport
+from volcano_sdk.auth import Auth, AuthContext
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from volcano_sdk import User
-    from volcano_sdk._transport import TransportResponse
+    from volcano_sdk._transport import Transport, TransportResponse
     from volcano_sdk.models import JSONValue
 
 
@@ -58,6 +67,99 @@ def test_session_request_requires_credentials_before_running_the_operation() -> 
         _ = client.auth._session_request(operation)
 
 
+_CAPTURED_SESSION_OPERATIONS: tuple[Callable[[Auth], object], ...] = (
+    lambda auth: auth.convert_anonymous(email="new@example.com", password="password"),
+    lambda auth: auth.request_email_change(new_email="new@example.com"),
+    lambda auth: auth.cancel_email_change(),
+    lambda auth: auth.confirm_email_change(token="token"),
+    lambda auth: auth.delete_all_other_sessions(),
+    lambda auth: auth.list_sessions(),
+    lambda auth: auth.list_linked_oauth_providers(),
+    lambda auth: auth.link_oauth_provider(provider="github"),
+    lambda auth: auth.unlink_oauth_provider(provider="github"),
+    lambda auth: auth.get_oauth_provider_token(provider="github"),
+    lambda auth: auth.refresh_oauth_provider_token(provider="github"),
+    lambda auth: auth.delete_session(session_id="other-session"),
+    lambda auth: auth.get_user(),
+    lambda auth: auth.update_user(metadata={"name": "new"}),
+)
+
+
+@pytest.mark.parametrize(
+    "operation",
+    _CAPTURED_SESSION_OPERATIONS,
+    ids=(
+        "convert-anonymous",
+        "request-email-change",
+        "cancel-email-change",
+        "confirm-email-change",
+        "delete-other-sessions",
+        "list-sessions",
+        "list-oauth-providers",
+        "link-oauth",
+        "unlink-oauth",
+        "get-oauth-token",
+        "refresh-oauth-token",
+        "delete-session",
+        "get-user",
+        "update-user",
+    ),
+)
+def test_auth_request_keeps_its_captured_session_when_transport_becomes_available(
+    operation: Callable[[Auth], object],
+) -> None:
+    old_session = Session("old-access", "old-refresh", USER_A)
+    new_session = Session("new-access", "new-refresh", "other-user")
+    binding = (0, SessionOperations(old_session), old_session)
+    replacement = (1, SessionOperations(new_session), new_session)
+    current = binding
+    requests: list[httpx.Request] = []
+
+    def capture() -> tuple[int, SessionOperations, Session | None]:
+        return current
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200, json={"user": {"id": new_session.user_id, "email": "new@example.com"}}
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    def replace_before_request() -> Transport:
+        nonlocal current
+        current = replacement
+        return transport
+
+    def unused(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail("the stale request must not reach another client operation")
+
+    auth = Auth(
+        AuthContext(
+            transport=replace_before_request,
+            current_session=unused,
+            anon_token=unused,
+            api_base_url=unused,
+            set_session=unused,
+            capture_session=unused,
+            capture_session_binding=capture,
+            update_session_user_if_current=unused,
+            set_session_if_current=unused,
+            clear_session_if_current=unused,
+            subscribe_auth_state_change=unused,
+        )
+    )
+
+    with pytest.raises(SessionChangedError):
+        _ = operation(auth)
+
+    assert requests == []
+    assert current is replacement
+
+
 def test_refresh_adopts_an_already_completed_refresh_without_rotating_again() -> None:
     requests: list[httpx.Request] = []
 
@@ -77,6 +179,81 @@ def test_refresh_adopts_an_already_completed_refresh_without_rotating_again() ->
     assert client.current_session is completed
     assert [request.url.path for request in requests] == ["/auth/refresh"]
     assert notifications == []
+
+
+def test_rejected_refresh_defers_sign_out_notification_until_owner_unwinds() -> None:
+    client = client_for(
+        lambda _request: httpx.Response(401, json={"error": "refresh rejected"})
+    )
+    events: list[str] = []
+    _ = client.auth.on_auth_state_change(lambda event, _session: events.append(event))
+    events.clear()
+    binding = client._capture_session_binding()
+    current = binding[2]
+    assert current is not None
+    assert current.refresh_token is not None
+    notifications: list[Callable[[], None]] = []
+
+    with pytest.raises(AuthenticationError):
+        _ = client.auth._refresh_with_recovery(
+            (current, current.refresh_token), binding, notifications, verified=False
+        )
+
+    assert client.current_session is None
+    assert events == []
+    assert len(notifications) == 1
+    notifications[0]()
+    assert events == ["SIGNED_OUT"]
+
+
+@pytest.mark.order(0)
+def test_stale_refresh_binding_after_local_sign_out_is_session_changed() -> None:
+    client = VolcanoClient(anon_key="anon")
+    _ = client.auth.set_session(Session("access", "refresh", "user"))
+    binding = client._capture_session_binding()
+    assert client._clear_session_if_current(binding[0], event="SIGNED_OUT")
+
+    with pytest.raises(SessionChangedError):
+        _ = client.auth._owned_refresh_session(binding)
+
+
+def test_auth_facade_rejects_a_refresh_from_another_server_session() -> None:
+    current = Session(access_token(SESSION_A), "refresh", USER_A)
+    binding = (0, SessionOperations(current), current)
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return refreshed(SESSION_B)
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    def unused(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail("an invalid refresh must not reach the client state adapter")
+
+    auth = Auth(
+        AuthContext(
+            transport=lambda: transport,
+            current_session=unused,
+            anon_token=lambda: "anon",
+            api_base_url=unused,
+            set_session=unused,
+            capture_session=unused,
+            capture_session_binding=lambda: binding,
+            update_session_user_if_current=unused,
+            set_session_if_current=unused,
+            clear_session_if_current=unused,
+            subscribe_auth_state_change=unused,
+        )
+    )
+
+    with pytest.raises(AuthenticationError, match="session"):
+        _ = auth.refresh_session()
+
+    assert [request.url.path for request in requests] == ["/auth/refresh"]
 
 
 def test_empty_captured_sign_out_has_no_work_or_notifications() -> None:

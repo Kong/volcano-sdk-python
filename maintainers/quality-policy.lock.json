@@ -269,7 +269,8 @@
         "pyrefly",
         "check",
         "--output-format=json",
-        "src/volcano_sdk/realtime.py"
+        "src/volcano_sdk/realtime.py",
+        "src/volcano_sdk/auth.py"
       ]
     },
     "mypy": {

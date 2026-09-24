@@ -351,6 +351,7 @@ class StateTransport(OAuthTransport):
             },
         )
         self.signup_calls: list[dict[str, object]] = []
+        self.signin_calls: list[dict[str, object]] = []
         self.anonymous_signin_response = Response(
             201,
             {
@@ -435,6 +436,7 @@ class StateTransport(OAuthTransport):
 
     def auth_signin(self, **kwargs: object) -> Response:
         self.authorizations.append(("auth", _authorization(kwargs)))
+        self.signin_calls.append(kwargs)
         if self.on_signin is not None:
             self.on_signin()
         return Response(
@@ -1393,12 +1395,17 @@ def test_sign_up_returns_immutable_acknowledgement_without_session_change() -> N
 
 def test_sign_up_uses_empty_metadata_without_creating_a_session() -> None:
     transport = StateTransport()
+    transport.signup_response = Response(
+        201, {"confirmation_required": False, "message": "Accepted"}
+    )
     client = VolcanoClient(anon_key="anon", _transport=transport)
 
-    _ = client.auth.sign_up(email="new@example.com", password="secret")
+    result = client.auth.sign_up(email="new@example.com", password="secret")
 
+    assert result.session is None
     assert client.auth.get_session() is None
     assert transport.signup_calls[0]["metadata"] == {}
+    assert transport.authorizations == [("signup", "anon")]
 
 
 @pytest.mark.parametrize("confirmation_required", [True, False])
@@ -1424,6 +1431,11 @@ def test_sign_up_only_signs_in_when_opted_in_and_allowed(
     assert result.message == "Accepted"
     assert transport.authorizations == [("signup", "anon")] + (
         [("auth", "anon")] if signed_in else []
+    )
+    assert transport.signin_calls == (
+        [{"authorization": "anon", "email": "new@example.com", "password": "secret"}]
+        if signed_in
+        else []
     )
 
 
@@ -1823,6 +1835,18 @@ def test_list_sessions_requires_a_current_session() -> None:
         _ = client.auth.list_sessions()
 
     assert transport.list_sessions_calls == []
+
+
+def test_list_sessions_uses_the_documented_first_page_defaults() -> None:
+    transport = StateTransport()
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    _ = client.auth.sign_in(email="user@example.com", password="secret")
+
+    _ = client.auth.list_sessions()
+
+    assert transport.list_sessions_calls == [
+        {"authorization": "access-1", "page": 1, "limit": 20}
+    ]
 
 
 def test_list_sessions_rejects_non_integer_pagination_values() -> None:

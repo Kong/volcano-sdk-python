@@ -4,7 +4,7 @@ import base64
 import json
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
-from threading import Event, current_thread
+from threading import Event, Thread, current_thread
 from typing import TYPE_CHECKING
 
 import httpx
@@ -631,6 +631,27 @@ def test_local_clear_before_refresh_claim_prevents_io(
     assert client.current_session is None
 
 
+def _refresh_until_session_changes(
+    client: VolcanoClient, finished: Event, outcomes: list[str]
+) -> None:
+    try:
+        _ = client.auth.refresh_session()
+    except SessionChangedError:
+        outcomes.append("changed")
+    finally:
+        finished.set()
+
+
+def _sign_out_and_signal(
+    client: VolcanoClient, finished: Event, outcomes: list[str]
+) -> None:
+    try:
+        client.auth.sign_out()
+        outcomes.append("signed_out")
+    finally:
+        finished.set()
+
+
 @pytest.mark.parametrize("action", ["sign_out", "replace"])
 def test_refresh_rechecks_ownership_after_notifying_subscribers(action: str) -> None:
     def handle(request: httpx.Request) -> httpx.Response:
@@ -651,9 +672,49 @@ def test_refresh_rechecks_ownership_after_notifying_subscribers(action: str) -> 
                 _ = client.auth.set_session(replacement)
 
     _ = client.auth.on_auth_state_change(on_change)
-    with pytest.raises(SessionChangedError):
-        _ = client.auth.refresh_session()
+    finished = Event()
+    outcomes: list[str] = []
+    worker = Thread(
+        target=_refresh_until_session_changes,
+        args=(client, finished, outcomes),
+        daemon=True,
+    )
+    worker.start()
+    assert finished.wait(2), "refresh callback blocked the session owner"
+    worker.join(timeout=0)
+    assert outcomes == ["changed"]
     assert client.current_session == (None if action == "sign_out" else replacement)
+
+
+def test_signed_out_notification_can_join_completed_sign_out() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(204)
+
+    client = client_for(handle)
+
+    def join_sign_out(event: str, _session: Session | None) -> None:
+        if event == "SIGNED_OUT":
+            client.auth.sign_out()
+
+    _ = client.auth.on_auth_state_change(join_sign_out)
+    finished = Event()
+    outcomes: list[str] = []
+    worker = Thread(
+        target=_sign_out_and_signal,
+        args=(client, finished, outcomes),
+        daemon=True,
+    )
+    worker.start()
+    assert finished.wait(2), "sign-out notification blocked the session owner"
+    worker.join(timeout=0)
+    assert outcomes == ["signed_out"]
+    assert client.current_session is None
+    assert [request.url.path for request in requests] == [
+        f"/auth/user/sessions/{SESSION_A}"
+    ]
 
 
 def test_failed_sign_out_does_not_store_a_credential_bearing_traceback() -> None:

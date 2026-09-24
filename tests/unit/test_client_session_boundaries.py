@@ -6,10 +6,14 @@ import httpx
 import pytest
 from test_function_refresh import make_client, refreshed_response
 
-from volcano_sdk import Session, VolcanoClient
+from volcano_sdk import AuthenticationError, Session, VolcanoClient
 from volcano_sdk._session import validate_refresh_identity
 from volcano_sdk._transport import GeneratedTransport
-from volcano_sdk.client import _bootstrap_session, _BootstrapCredentials
+from volcano_sdk.client import (
+    _bootstrap_session,
+    _BootstrapCredentials,
+    _CallbackOutcome,
+)
 
 if TYPE_CHECKING:
     from volcano_sdk.models import AuthChangeEvent, AuthStateCallback
@@ -65,6 +69,7 @@ def test_lock_requests_require_a_service_key_before_transport() -> None:
 def test_profile_update_cannot_populate_an_absent_session() -> None:
     client = VolcanoClient(anon_key="anon")
     generation, session = client._capture_session()
+    assert isinstance(generation, int)
     assert session is None
 
     assert not client._update_session_user_if_current({"id": "user"}, generation)
@@ -74,6 +79,36 @@ def test_profile_update_cannot_populate_an_absent_session() -> None:
 def test_refresh_identity_without_a_previous_session_has_no_constraint() -> None:
     refreshed = Session("access", "refresh", "user")
     validate_refresh_identity(None, refreshed)
+
+
+def test_callback_dispatch_state_has_boolean_ownership_and_empty_failure() -> None:
+    outcome = _CallbackOutcome()
+    assert outcome.error is None
+
+    client = make_client(lambda _request: refreshed_response())
+    assert client._dispatching_auth_notifications is False
+    events: list[str] = []
+    _ = client.auth.on_auth_state_change(lambda event, _session: events.append(event))
+    _ = client.auth.sign_in(email="user@example.com", password="example")
+    assert events == ["INITIAL_SESSION", "SIGNED_IN"]
+    assert client._dispatching_auth_notifications is False
+
+
+def test_refresh_commit_rejects_a_changed_user_before_replacing_credentials() -> None:
+    client = VolcanoClient(anon_key="anon")
+    original = client.auth.set_session(Session("access", "refresh", "user-a"))
+    generation, captured = client._capture_session()
+    assert captured is original
+
+    with pytest.raises(AuthenticationError, match="different user"):
+        _ = client._set_session_if_current(
+            Session("new-access", "new-refresh", "user-b"),
+            generation,
+            event="TOKEN_REFRESHED",
+        )
+
+    assert client.current_session is original
+    assert client._capture_session()[0] == generation
 
 
 def test_reentrant_subscription_receives_initial_state_after_current_dispatch() -> None:

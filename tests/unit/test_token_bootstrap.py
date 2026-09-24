@@ -14,6 +14,7 @@ from volcano_sdk import (
     VolcanoClient,
     VolcanoError,
 )
+from volcano_sdk import client as client_module
 from volcano_sdk._transport import GeneratedTransport
 
 if TYPE_CHECKING:
@@ -48,6 +49,39 @@ def token_client(
             httpx_transport=httpx.MockTransport(handler),
         ),
     )
+
+
+def test_default_api_url_is_used_for_hosted_auth_urls() -> None:
+    client = VolcanoClient(anon_key="anon")
+    assert client.auth.get_hosted_auth_url(project_id="project", state="state") == (
+        "https://api.volcano.dev/projects/project/auth/hosted"
+        "?action=login&anon_key=anon&state=state"
+    )
+
+
+def test_api_url_preserves_a_non_slash_path_suffix() -> None:
+    client = VolcanoClient(api_url="https://api.example.com/rootX", anon_key="anon")
+
+    assert client.auth.get_hosted_auth_url(project_id="project", state="state") == (
+        "https://api.example.com/rootX/projects/project/auth/hosted"
+        "?action=login&anon_key=anon&state=state"
+    )
+
+
+def test_default_transport_uses_the_documented_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[tuple[str, float]] = []
+    transport_type = GeneratedTransport
+
+    def make_transport(*, api_url: str, timeout: float) -> GeneratedTransport:
+        observed.append((api_url, timeout))
+        return transport_type(api_url=api_url, timeout=timeout)
+
+    monkeypatch.setattr(client_module, "GeneratedTransport", make_transport)
+    _ = VolcanoClient(anon_key="anon")
+
+    assert observed == [("https://api.volcano.dev", 60.0)]
 
 
 def test_token_bootstrap_is_local_until_profile_validation() -> None:
@@ -168,13 +202,21 @@ def test_bootstrap_does_not_relax_complete_session_adoption() -> None:
 
 @pytest.mark.parametrize("access_token", ["", " "])
 def test_bootstrap_rejects_empty_access_tokens(access_token: str) -> None:
-    with pytest.raises(ValueError, match="access_token"):
+    with pytest.raises(ValueError, match=r"^access_token must be a non-empty string$"):
         _ = VolcanoClient(anon_key="anon", access_token=access_token)
 
 
 def test_bootstrap_rejects_refresh_without_access_token() -> None:
     with pytest.raises(ValueError, match="access_token"):
         _ = VolcanoClient(anon_key="anon", refresh_token="refresh")
+
+
+@pytest.mark.parametrize("refresh_token", ["", " "])
+def test_bootstrap_rejects_empty_refresh_tokens(refresh_token: str) -> None:
+    with pytest.raises(ValueError, match=r"^refresh_token must be a non-empty string$"):
+        _ = VolcanoClient(
+            anon_key="anon", access_token="access", refresh_token=refresh_token
+        )
 
 
 @pytest.mark.parametrize("enrich_during_refresh", [False, True])
