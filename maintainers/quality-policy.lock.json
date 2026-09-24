@@ -274,7 +274,8 @@
         "src/volcano_sdk/storage.py",
         "src/volcano_sdk/functions.py",
         "src/volcano_sdk/database.py",
-        "src/volcano_sdk/_function_resolution.py"
+        "src/volcano_sdk/_function_resolution.py",
+        "src/volcano_sdk/_transport.py"
       ]
     },
     "mypy": {
