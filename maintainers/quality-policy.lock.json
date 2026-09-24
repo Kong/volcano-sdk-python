@@ -197,6 +197,9 @@
         "openapi-python-client.yaml",
         "README.md"
       ],
+      "cache_invalidation_files": [
+        "tests/**/*.py"
+      ],
       "do_not_mutate": [
         "src/volcano_sdk/_generated/*"
       ],

@@ -121,6 +121,7 @@ async def test_connection_callback_failure_does_not_interrupt_later_callbacks(
     assert isinstance(loop_errors[0]["exception"], type(failure))
 
 
+@pytest.mark.order(0)
 async def test_dispatcher_failure_reports_the_channel_and_releases_the_task(
     monkeypatch: pytest.MonkeyPatch, loop_errors: list[dict[str, object]]
 ) -> None:
@@ -137,8 +138,15 @@ async def test_dispatcher_failure_reports_the_channel_and_releases_the_task(
     assert channel._callback_queue.qsize() == 2
     task = channel._callback_task
     assert task is not None
+    # A broken done callback can strand an awaiter even after this task finishes.
+    for _ in range(10):
+        if task.done():
+            break
+        await asyncio.sleep(0)
+    assert task.done()
     with pytest.raises(RuntimeError, match="dispatcher failed"):
-        await task
+        task.result()
+    await asyncio.sleep(0)
     await asyncio.wait_for(channel._callback_queue.join(), timeout=2)
 
     assert loop_errors == [
@@ -179,6 +187,15 @@ async def test_stale_delivery_is_rejected_before_dispatch_and_callback_execution
         assert received == ["current"]
     finally:
         await client.realtime.disconnect()
+
+
+async def test_delivery_with_no_remaining_callback_is_safe() -> None:
+    channel = VolcanoClient(anon_key="anon").realtime.channel("messages")
+    channel._paused = False
+
+    await channel._dispatch_delivery(
+        _CallbackDelivery("message", "removed", delivery_epoch=channel._delivery_epoch)
+    )
 
 
 def test_non_callable_connection_callback_is_rejected_at_runtime() -> None:

@@ -3579,7 +3579,10 @@ async def test_realtime_callback_failure_does_not_stop_later_callbacks() -> None
             await asyncio.sleep(0)
         assert received == ["second"]
         assert len(errors) == 1
-        assert isinstance(errors[0].get("exception"), RuntimeError)
+        assert set(errors[0]) == {"message", "exception", "channel"}
+        assert errors[0]["message"] == "Volcano realtime callback failed"
+        assert errors[0]["channel"] == channel.name
+        assert isinstance(errors[0]["exception"], RuntimeError)
     finally:
         loop.set_exception_handler(previous_handler)
         await client.realtime.disconnect()
