@@ -1,4 +1,4 @@
-"""A typed runtime context that records parallel calls without scheduling them."""
+"""A typed runtime context that records batch calls without scheduling them."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 U = TypeVar("U")
-_UNEXPECTED_OPERATION = "unexpected runtime operation in parallel test"
+_UNEXPECTED_OPERATION = "unexpected runtime operation in batch test"
 
 
 class EmptyBatch(Generic[T]):
@@ -45,7 +45,7 @@ class EmptyBatch(Generic[T]):
 
 
 class RecordingContext:
-    """Implement the runtime context and capture its parallel call."""
+    """Implement the runtime context and capture its batch calls."""
 
     logger: DurableLogger = logging.getLogger(__name__)
 
@@ -53,6 +53,8 @@ class RecordingContext:
         self.branches: list[object] | None = None
         self.name: str | None = None
         self.config: object = None
+        self.map_items: list[object] | None = None
+        self.map_result: object = None
 
     def step(
         self,
@@ -89,8 +91,13 @@ class RecordingContext:
         name: str | None,
         config: object,
     ) -> _RuntimeBatch[T]:
-        _ = (items, func, name, config)
-        raise AssertionError(_UNEXPECTED_OPERATION)
+        if not items:
+            raise AssertionError(_UNEXPECTED_OPERATION)
+        self.name = name
+        self.config = config
+        self.map_items = list(items)
+        self.map_result = func(self, items[0], 7, items)
+        return EmptyBatch[T]()
 
     def parallel(
         self,

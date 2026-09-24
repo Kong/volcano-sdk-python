@@ -23,6 +23,10 @@ def register_non_callable_branch(context: DurableContext) -> None:
     _ = context.parallel(["not a branch"])  # type: ignore[list-item]
 
 
+def register_non_callable_map(context: DurableContext) -> None:
+    _ = context.map([1], None)  # type: ignore[arg-type]
+
+
 def run_non_callable_operation(context: DurableContext, operation: str) -> object:
     if operation == "step":
         return context.step("named", "not a function")  # type: ignore[arg-type]

@@ -31,6 +31,7 @@ from fixtures.durable_engine import assert_runtime_surface
 from fixtures.invalid_callbacks import (
     decorate_non_callable,
     register_non_callable_branch,
+    register_non_callable_map,
     run_non_callable_operation,
     use_non_callable_retry,
 )
@@ -77,6 +78,10 @@ def _is_object_list(value: object) -> TypeGuard[list[object]]:
     return isinstance(value, list)
 
 
+def _is_map_config(value: object) -> TypeGuard[MapConfig[object]]:
+    return isinstance(value, MapConfig)
+
+
 def _ready(state: object) -> bool:
     if not _is_mapping(state):
         msg = "expected a state mapping"
@@ -116,6 +121,36 @@ def test_map_options_forward_both_batch_limits() -> None:
     assert config.completion_config.min_successful == 1
 
 
+def test_map_forwards_items_callback_index_name_and_batch_limits() -> None:
+    runtime = RecordingContext()
+    context = DurableContext(runtime, durable_authoring._Engine())
+    observed: list[tuple[int, int]] = []
+
+    def run(item: int, _child: DurableContext, index: int) -> int:
+        observed.append((item, index))
+        return item * 10
+
+    result = context.map(
+        [2, 3], run, "batch", BatchOptions(concurrency=2, min_succeeded=1)
+    )
+
+    assert result.completed == 0
+    assert runtime.map_items == [2, 3]
+    assert runtime.map_result == 20
+    assert observed == [(2, 7)]
+    assert runtime.name == "batch"
+    assert _is_map_config(runtime.config)
+    assert runtime.config.max_concurrency == 2
+    assert runtime.config.completion_config.min_successful == 1
+
+
+def test_map_requires_a_callable() -> None:
+    context = DurableContext(RecordingContext(), durable_authoring._Engine())
+
+    with pytest.raises(TypeError, match=r"map\(\) requires a function to run"):
+        register_non_callable_map(context)
+
+
 def test_parallel_forwards_branches_name_and_batch_limits() -> None:
     runtime = RecordingContext()
     context = DurableContext(runtime, durable_authoring._Engine())
@@ -152,6 +187,12 @@ def local_runner(handler: FunctionHandler) -> Generator[DurableFunctionTestRunne
     # Fail an unavailable or malformed runtime before entering the scheduler:
     # it otherwise waits for a result that the handler cannot produce.
     assert_runtime_surface()
+    # An invalid no-retry decision can leave the scheduler waiting forever.
+    no_retry = durable_authoring._Engine.load()._never_retry()(
+        RuntimeError("preflight"), 1
+    )
+    assert no_retry.should_retry is False
+    assert no_retry.delay.to_seconds() == 0
     runner = DurableFunctionTestRunner(handler)
     try:
         yield runner
@@ -827,11 +868,10 @@ def test_map_refuses_a_string_of_items() -> None:
 
 
 def test_parallel_refuses_a_branch_that_is_not_callable() -> None:
-    @durable
-    def handler(_event: object, ctx: DurableContext) -> None:
-        register_non_callable_branch(ctx)
+    context = DurableContext(RecordingContext(), durable_authoring._Engine())
 
-    assert "a parallel branch is a callable" in failing_handler(handler)
+    with pytest.raises(TypeError, match="a parallel branch is a callable"):
+        register_non_callable_branch(context)
 
 
 def test_a_step_refuses_an_unusable_retry() -> None:
