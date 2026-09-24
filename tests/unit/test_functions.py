@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from types import MappingProxyType
 
@@ -500,9 +501,10 @@ def test_functions_preserves_a_response_without_headers() -> None:
     assert result.data == {"ok": True}
 
 
-def test_functions_rejects_non_json_response_payloads() -> None:
+@pytest.mark.parametrize("invalid", [{1, 2}, math.nan, math.inf, -math.inf])
+def test_functions_rejects_non_json_response_payloads(invalid: object) -> None:
     transport = FakeFunctionsTransport()
-    transport.invoke_response = FakeResponse(200, {"bad": {1, 2}}, {})
+    transport.invoke_response = FakeResponse(200, {"bad": invalid}, {})
 
     with pytest.raises(TypeError, match="Function data must be JSON-compatible"):
         _ = functions_client(transport).functions.invoke("send-welcome")

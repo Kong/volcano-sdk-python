@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Callable, Mapping
 from types import MappingProxyType
@@ -401,6 +402,8 @@ def _json_value(value: object) -> JSONValue:
         return _json_mapping(value)
     if _is_sequence(value):
         return tuple(_json_value(item) for item in value)
+    if isinstance(value, float) and not math.isfinite(value):
+        raise TypeError(_INVALID_FUNCTION_DATA)
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     raise TypeError(_INVALID_FUNCTION_DATA)

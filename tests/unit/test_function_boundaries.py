@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import httpx
@@ -103,7 +104,16 @@ def test_function_payload_rejects_non_mappings(payload: object) -> None:
         _ = _function_payload(payload)
 
 
-@pytest.mark.parametrize("payload", [{1: "invalid"}, {"nested": {1, 2}}])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {1: "invalid"},
+        {"nested": {1, 2}},
+        {"nested": [math.nan]},
+        {"nested": [math.inf]},
+        {"nested": [-math.inf]},
+    ],
+)
 def test_function_payload_rejects_non_json_values(payload: object) -> None:
     with pytest.raises(TypeError, match=r"JSON|JSON-compatible"):
         _ = _function_payload(payload)
