@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -8,7 +9,11 @@ import pytest
 from test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory
 
 from volcano_sdk import PostgresChange, VolcanoClient
-from volcano_sdk._realtime_fetch_worker import PostgresFetchJob, PostgresFetchOutcome
+from volcano_sdk._realtime_fetch_worker import (
+    PostgresFetchJob,
+    PostgresFetchOutcome,
+    PostgresFetchRequest,
+)
 from volcano_sdk.realtime import _PostgresDelivery
 
 if TYPE_CHECKING:
@@ -68,6 +73,70 @@ async def test_presence_sync_without_a_subscription_has_no_work() -> None:
 
     assert channel.get_presence_state() == {}
     assert not channel._presence_syncing
+
+
+async def test_queued_callbacks_keep_their_delivery_identity() -> None:
+    client = make_client()
+    presence = client.realtime.channel("lobby", channel_type="presence")
+    postgres = client.realtime.channel("public:messages", channel_type="postgres")
+    _ = presence.on("join", lambda _info: None)
+    _ = postgres.on("*", lambda _change: None)
+
+    async def hold() -> None:
+        _ = await asyncio.Event().wait()
+
+    blocker = asyncio.create_task(hold())
+    presence._callback_task = blocker
+    postgres._callback_task = blocker
+    try:
+        await presence._emit("join", Peer("alice"))
+        presence_delivery = presence._callback_queue.get_nowait()
+        presence._callback_queue.task_done()
+        assert presence_delivery.delivery_epoch == presence._presence_epoch
+        assert presence_delivery.postgres_identity is None
+
+        identity = postgres._capture_postgres_delivery_identity()
+        await postgres._emit(
+            "*",
+            PostgresChange(type="INSERT", schema="public", table="messages"),
+            postgres_identity=identity,
+        )
+        postgres_delivery = postgres._callback_queue.get_nowait()
+        postgres._callback_queue.task_done()
+        assert postgres_delivery.postgres_identity is identity
+        assert postgres_delivery.delivery_epoch is None
+    finally:
+        presence._callback_task = None
+        postgres._callback_task = None
+        _ = blocker.cancel()
+        _ = await asyncio.gather(blocker, return_exceptions=True)
+
+
+async def test_missing_postgres_row_reports_its_identity() -> None:
+    channel = make_client().realtime.channel("public:messages", channel_type="postgres")
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+    errors: list[dict[str, object]] = []
+
+    def record(_loop: asyncio.AbstractEventLoop, context: dict[str, object]) -> None:
+        errors.append(context)
+
+    loop.set_exception_handler(record)
+    try:
+        channel._report_postgres_fetch_failure(
+            PostgresChange(type="INSERT", schema="public", table="messages"),
+            PostgresFetchRequest("main", "access", "messages", 42),
+            None,
+        )
+    finally:
+        loop.set_exception_handler(previous_handler)
+
+    assert len(errors) == 1
+    assert errors[0]["message"] == "Volcano realtime Postgres row fetch failed"
+    assert errors[0]["channel"] == channel.name
+    failure = errors[0]["exception"]
+    assert isinstance(failure, LookupError)
+    assert str(failure) == "Postgres row not found: public.messages:42"
 
 
 async def test_presence_snapshot_replays_join_and_leave_received_during_sync() -> None:

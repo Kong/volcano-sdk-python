@@ -1146,7 +1146,7 @@ class Channel:
             return
         for callback in tuple(self._callbacks.get(delivery.event, [])):
             if not self._callback_delivery_is_current(delivery):
-                break
+                return
             # Isolate a callback's own cancellation from later delivery.
             (error,) = await asyncio.gather(
                 self._run_callback(callback, delivery),
@@ -1240,7 +1240,7 @@ class Channel:
     ) -> None:
         if event == "join":
             self._presence_state[presence.client] = presence
-        else:
+        if event == "leave":
             _ = self._presence_state.pop(presence.client, None)
 
     async def _presence_join(self, info: object) -> None:

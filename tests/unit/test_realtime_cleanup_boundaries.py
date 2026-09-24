@@ -4,6 +4,7 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from state_assertions import assert_same
 from test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory
 
 from volcano_sdk import PostgresChange, Session, VolcanoClient
@@ -152,6 +153,36 @@ async def test_presence_sync_stopped_before_start_releases_its_task() -> None:
     assert channel._presence_sync_task is None
     assert channel.get_presence_state() == {}
     assert client.realtime._connection is None
+
+
+async def test_cancelling_presence_sync_drains_the_running_task() -> None:
+    channel = make_client().realtime.channel("lobby", channel_type="presence")
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    stopped = asyncio.Event()
+
+    async def blocked_sync() -> None:
+        entered.set()
+        try:
+            _ = await release.wait()
+        finally:
+            stopped.set()
+
+    task = asyncio.create_task(blocked_sync())
+    channel._presence_sync_task = task
+    try:
+        _ = await asyncio.wait_for(entered.wait(), timeout=0.2)
+        await channel._cancel_presence_sync()
+
+        assert task.done()
+        assert stopped.is_set()
+        assert_same(channel._presence_sync_task, expected=None)
+    finally:
+        release.set()
+        _ = task.cancel()
+        _ = await asyncio.wait_for(
+            asyncio.gather(task, return_exceptions=True), timeout=0.2
+        )
 
 
 async def test_removing_an_unsubscribed_channel_preserves_a_new_registration() -> None:

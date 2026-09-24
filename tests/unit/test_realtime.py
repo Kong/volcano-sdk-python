@@ -2256,6 +2256,13 @@ def test_realtime_presence_sync_tracks_initial_join_and_leave_state() -> None:
 
         stop_sync()
         stop_sync()
+        snapshots_before_unsubscribe = len(sync_states)
+        await official.subscription.emit_join(
+            SimpleNamespace(client="carol-client", user="carol", conn_info={})
+        )
+        await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+        assert len(sync_states) == snapshots_before_unsubscribe
+        assert "carol-client" in channel.get_presence_state()
         await client.realtime.remove_channel("lobby", channel_type="presence")
         await client.realtime.disconnect()
 

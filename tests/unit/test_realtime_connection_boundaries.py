@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
 from test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory
 from typing_extensions import override
 
-from volcano_sdk import Session, VolcanoClient
+from volcano_sdk import (
+    RealtimeDisconnectContext,
+    RealtimeErrorContext,
+    Session,
+    VolcanoClient,
+)
 from volcano_sdk import realtime as realtime_module
 from volcano_sdk.realtime import (
     _centrifuge_client,
@@ -201,3 +207,23 @@ async def test_server_subscription_events_do_not_dispatch_project_callbacks() ->
     assert received == []
     assert realtime._connection_callback_queue.empty()
     assert realtime._connection_callback_task is None
+
+
+async def test_malformed_native_connection_contexts_are_sanitized() -> None:
+    realtime = VolcanoClient(anon_key="anon").realtime
+    disconnected: list[RealtimeDisconnectContext] = []
+    errors: list[RealtimeErrorContext] = []
+    realtime.on_disconnect(disconnected.append)
+    realtime.on_error(errors.append)
+    events = _ClientEvents(realtime)
+
+    await events.on_disconnected(SimpleNamespace(code="invalid", reason=5))
+    await events.on_error(SimpleNamespace(code="invalid", error=None))
+    await events.on_error(SimpleNamespace(code="invalid", error="wire error"))
+    await asyncio.wait_for(realtime._connection_callback_queue.join(), timeout=0.2)
+
+    assert disconnected == [RealtimeDisconnectContext(code=None, reason=None)]
+    assert errors == [
+        RealtimeErrorContext(code=None, message=None, error=None),
+        RealtimeErrorContext(code=None, message="wire error", error=None),
+    ]

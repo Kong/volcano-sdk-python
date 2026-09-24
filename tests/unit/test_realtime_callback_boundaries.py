@@ -198,6 +198,25 @@ async def test_delivery_with_no_remaining_callback_is_safe() -> None:
     )
 
 
+def test_presence_reconnect_invalidates_only_presence_callback_epochs() -> None:
+    channel = VolcanoClient(anon_key="anon").realtime.channel(
+        "lobby", channel_type="presence"
+    )
+    channel._paused = False
+    pending = {
+        event: _CallbackDelivery(
+            event, object(), delivery_epoch=channel._callback_epoch(event)
+        )
+        for event in ("join", "leave", "presence_sync", "message")
+    }
+
+    channel._discard_callbacks(presence_only=True)
+
+    for event in ("join", "leave", "presence_sync"):
+        assert not channel._callback_delivery_is_current(pending[event])
+    assert channel._callback_delivery_is_current(pending["message"])
+
+
 def test_non_callable_connection_callback_is_rejected_at_runtime() -> None:
     realtime = VolcanoClient(anon_key="anon").realtime
     with pytest.raises(TypeError, match="callback must be callable"):
