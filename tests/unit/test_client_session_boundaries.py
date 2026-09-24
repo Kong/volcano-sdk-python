@@ -9,7 +9,11 @@ from test_function_refresh import make_client, refreshed_response
 from volcano_sdk import AuthenticationError, Session, VolcanoClient
 from volcano_sdk._session import validate_refresh_identity
 from volcano_sdk._transport import GeneratedTransport
-from volcano_sdk.client import _bootstrap_session, _BootstrapCredentials
+from volcano_sdk.client import (
+    _bootstrap_session,
+    _BootstrapCredentials,
+    _CallbackOutcome,
+)
 
 if TYPE_CHECKING:
     from volcano_sdk.models import AuthChangeEvent, AuthStateCallback
@@ -74,6 +78,21 @@ def test_profile_update_cannot_populate_an_absent_session() -> None:
 def test_refresh_identity_without_a_previous_session_has_no_constraint() -> None:
     refreshed = Session("access", "refresh", "user")
     validate_refresh_identity(None, refreshed)
+
+
+def test_callback_dispatch_state_has_boolean_ownership_and_empty_failure() -> None:
+    outcome = _CallbackOutcome()
+    assert outcome.error is None
+
+    client = make_client(lambda _request: refreshed_response())
+    assert client._dispatching_auth_notifications is False
+    events: list[str] = []
+    _ = client.auth.on_auth_state_change(
+        lambda event, _session: events.append(event)
+    )
+    _ = client.auth.sign_in(email="user@example.com", password="example")
+    assert events == ["INITIAL_SESSION", "SIGNED_IN"]
+    assert client._dispatching_auth_notifications is False
 
 
 def test_refresh_commit_rejects_a_changed_user_before_replacing_credentials() -> None:

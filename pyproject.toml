@@ -420,7 +420,7 @@ partial_branches = []
 
 [tool.mutmut]
 source_paths = ["src/volcano_sdk"]
-type_check_command = ["pyrefly", "check", "--output-format=json", "src/volcano_sdk/realtime.py", "src/volcano_sdk/auth.py", "src/volcano_sdk/client.py"]
+type_check_command = ["pyrefly", "check", "--output-format=json", "src/volcano_sdk/realtime.py", "src/volcano_sdk/auth.py"]
 cache_invalidation_files = ["tests/**/*.py"]
 pytest_add_cli_args_test_selection = ["tests/unit"]
 pytest_add_cli_args = ["-c", "pyproject.toml", "-x"]
