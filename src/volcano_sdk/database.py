@@ -4,19 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Protocol, Self, TypedDict, TypeGuard, cast
+from typing import TYPE_CHECKING, Protocol, Self, TypedDict, TypeGuard
 
 from typing_extensions import override
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from .auth import Auth
+    from ._auth_requests import AuthRequests
     from .models import JSONValue
 
+from ._database_response import database_rows
 from ._transport import Transport, invoke, response_payload
-
-_INVALID_DATABASE_ROWS = "Expected a list of database rows with string keys"
 
 
 def _is_object_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
@@ -27,28 +26,6 @@ def _is_object_sequence(
     value: object,
 ) -> TypeGuard[list[object] | tuple[object, ...]]:
     return isinstance(value, (list, tuple))
-
-
-def _is_database_row(value: object) -> TypeGuard[dict[str, object]]:
-    if not isinstance(value, dict):
-        return False
-    row = cast("dict[object, object]", value)
-    return all(isinstance(key, str) for key in row)
-
-
-def _database_rows(payload: object) -> list[dict[str, object]]:
-    if not isinstance(payload, Mapping):
-        raise TypeError(_INVALID_DATABASE_ROWS)
-    values = cast("Mapping[object, object]", payload)
-    raw_rows = values.get("data")
-    if not isinstance(raw_rows, list):
-        raise TypeError(_INVALID_DATABASE_ROWS)
-    rows: list[dict[str, object]] = []
-    for row in cast("list[object]", raw_rows):
-        if not _is_database_row(row):
-            raise TypeError(_INVALID_DATABASE_ROWS)
-        rows.append(row)
-    return rows
 
 
 def _snapshot_json(value: JSONValue) -> JSONValue:
@@ -74,10 +51,17 @@ def _snapshot_filter_value(value: object) -> object:
 class DatabaseContext(Protocol):
     """Client capabilities required by database queries."""
 
-    _transport: Transport
-    auth: Auth
+    def transport(self) -> Transport:
+        """Return the active typed transport."""
+        ...
 
-    def _session_token(self) -> str: ...
+    def auth(self) -> AuthRequests:
+        """Return the shared session request coordinator."""
+        ...
+
+    def session_token(self) -> str:
+        """Return the active session credential."""
+        ...
 
 
 class _FilterCondition(TypedDict):
@@ -96,7 +80,8 @@ class FilterBuilder:
 
     def _append_filter(self, condition: _FilterCondition) -> Self:
         del condition
-        raise NotImplementedError
+        message = f"{type(self).__name__} must implement immutable filters"
+        raise NotImplementedError(message)
 
     def eq(self, column: str, value: object) -> Self:
         """Add an equality filter.
@@ -355,16 +340,16 @@ class QueryBuilder(FilterBuilder):
 
         """
         body = self._request_body()
-        response = self._client.auth._session_request(
+        response = self._client.auth().request(
             lambda token: invoke(
-                self._client._transport.query_database_select,
+                self._client.transport().query_database_select,
                 authorization=token,
                 database_name=self._database_name,
                 body=body,
             )
         )
         payload: object = response_payload(response, 200)
-        return _database_rows(payload)
+        return database_rows(payload)
 
 
 @dataclass(frozen=True, slots=True)
@@ -385,16 +370,16 @@ class InsertBuilder:
             Inserted rows returned by the server.
 
         """
-        response = self._client.auth._session_request(
+        response = self._client.auth().request(
             lambda token: invoke(
-                self._client._transport.query_database_insert,
+                self._client.transport().query_database_insert,
                 authorization=token,
                 database_name=self._database_name,
                 body={"table": self._table, "values": _snapshot_row(self._values)},
             )
         )
         payload: object = response_payload(response, 200)
-        return _database_rows(payload)
+        return database_rows(payload)
 
 
 @dataclass(frozen=True, slots=True)
@@ -420,9 +405,9 @@ class UpdateBuilder(FilterBuilder):
             Updated rows returned by the server.
 
         """
-        response = self._client.auth._session_request(
+        response = self._client.auth().request(
             lambda token: invoke(
-                self._client._transport.query_database_update,
+                self._client.transport().query_database_update,
                 authorization=token,
                 database_name=self._database_name,
                 body={
@@ -433,7 +418,7 @@ class UpdateBuilder(FilterBuilder):
             )
         )
         payload: object = response_payload(response, 200)
-        return _database_rows(payload)
+        return database_rows(payload)
 
 
 @dataclass(frozen=True, slots=True)
@@ -458,16 +443,16 @@ class DeleteBuilder(FilterBuilder):
             Deleted rows returned by the server.
 
         """
-        response = self._client.auth._session_request(
+        response = self._client.auth().request(
             lambda token: invoke(
-                self._client._transport.query_database_delete,
+                self._client.transport().query_database_delete,
                 authorization=token,
                 database_name=self._database_name,
                 body={"table": self._table, "filters": list(self._filters)},
             )
         )
         payload: object = response_payload(response, 200)
-        return _database_rows(payload)
+        return database_rows(payload)
 
 
 @dataclass(frozen=True, slots=True)

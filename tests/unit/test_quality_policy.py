@@ -196,7 +196,7 @@ def test_pyright_ignore_outside_diagnostic_fixture_fails(tmp_path: Path) -> None
 
 
 def test_type_fixture_cannot_hide_other_suppression(tmp_path: Path) -> None:
-    name = "tests/unit/fixtures/invalid_arguments.py"
+    name = "src/volcano_sdk/_tests/fixtures/invalid_arguments.py"
     source = tmp_path / name
     source.parent.mkdir(parents=True)
     _ = source.write_text("value = 1  # noqa: S101\n", encoding="utf-8")
@@ -208,7 +208,7 @@ def test_type_fixture_cannot_hide_other_suppression(tmp_path: Path) -> None:
 
 
 def test_type_fixture_cannot_hide_pyright_suppression(tmp_path: Path) -> None:
-    name = "tests/unit/fixtures/invalid_arguments.py"
+    name = "src/volcano_sdk/_tests/fixtures/invalid_arguments.py"
     source = tmp_path / name
     source.parent.mkdir(parents=True)
     _ = source.write_text(
@@ -246,7 +246,7 @@ def test_unused_reviewed_exception_fails(tmp_path: Path) -> None:
 
 
 def test_reviewed_warning_filter_must_remain_exact(tmp_path: Path) -> None:
-    name = "tests/unit/test_durable_authoring.py"
+    name = "src/volcano_sdk/_tests/test_durable_authoring.py"
     source = tmp_path / name
     source.parent.mkdir(parents=True)
     exceptions = cast(
@@ -254,7 +254,7 @@ def test_reviewed_warning_filter_must_remain_exact(tmp_path: Path) -> None:
         json.loads((ROOT / "maintainers/quality-exceptions.json").read_text()),
     )
     unused = (
-        "unused exception: tests/unit/test_durable_authoring.py:pytestmark "
+        "unused exception: src/volcano_sdk/_tests/test_durable_authoring.py:pytestmark "
         "pytest.filterwarnings"
     )
     assignment = f"pytestmark = pytest.mark.filterwarnings({REVIEWED_WARNING!r})"
@@ -265,3 +265,58 @@ def test_reviewed_warning_filter_must_remain_exact(tmp_path: Path) -> None:
         "import pytest\npytestmark = pytest.mark.filterwarnings('ignore')\n"
     )
     assert unused in check_comments(tmp_path, {name}, exceptions)
+
+
+def test_native_expected_errors_are_limited_to_invalid_fixtures(tmp_path: Path) -> None:
+    name = "src/volcano_sdk/_tests/fixtures/invalid_arguments.py"
+    target = tmp_path / name
+    target.parent.mkdir(parents=True)
+    source = (
+        "value: str = 1  # type: ignore[assignment]  "
+        "# pyright: ignore[reportAssignmentType]\n"
+    )
+    _ = target.write_text(source, encoding="utf-8")
+
+    errors = check_comments(tmp_path, {name}, [])
+
+    assert not any("forbidden suppression" in error for error in errors)
+    assert not any("outside diagnostic fixture" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import subprocess as runner  # ruff: ignore[S404]\n",
+        "from subprocess import run  # ruff: ignore[S404]\n",
+        "import subprocess, sys  # ruff: ignore[S404]\n",
+        "def changed_scope():\n    import subprocess  # ruff: ignore[S404]\n",
+        "import subprocess\nvalue = 1  # ruff: ignore[S404]\n",
+    ],
+)
+def test_subprocess_import_exception_requires_its_exact_syntax(
+    tmp_path: Path, source: str
+) -> None:
+    name = "scripts/generate_openapi.py"
+    target = tmp_path / name
+    target.parent.mkdir(parents=True)
+    _ = target.write_text(source, encoding="utf-8")
+
+    errors = check_comments(tmp_path, {name}, [])
+
+    assert any("unapproved S404" in error for error in errors)
+    assert (
+        "unused exception: scripts/generate_openapi.py:import:subprocess S404" in errors
+    )
+
+
+def test_reviewed_subprocess_import_cannot_be_repeated(tmp_path: Path) -> None:
+    name = "scripts/generate_openapi.py"
+    target = tmp_path / name
+    target.parent.mkdir(parents=True)
+    _ = target.write_text(
+        "import subprocess  # ruff: ignore[S404]\n" * 2, encoding="utf-8"
+    )
+
+    errors = check_comments(tmp_path, {name}, [])
+
+    assert any("repeated S404" in error for error in errors)

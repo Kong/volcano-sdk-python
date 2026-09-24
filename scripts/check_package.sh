@@ -66,6 +66,7 @@ assert package.version == os.environ["PACKAGE_VERSION"]
 assert VolcanoClient
 assert package.read_text("WHEEL")
 assert files("volcano_sdk").joinpath("py.typed").is_file()
+assert not files("volcano_sdk").joinpath("_tests").is_dir()
 print(f"Installed {package.metadata['Name']} {package.version}; volcano_sdk import OK")
 PY
   env -i PATH="$PATH" HOME="$smoke_dir" \

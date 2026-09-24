@@ -10,11 +10,65 @@
   },
   {
     "rule": "pytest.filterwarnings",
-    "scope": "tests/unit/test_durable_authoring.py:pytestmark",
+    "scope": "src/volcano_sdk/_tests/test_durable_authoring.py:pytestmark",
     "rationale": "The AWS durable local test runner calls asyncio.iscoroutinefunction, deprecated in Python 3.14. This exact upstream warning does not originate in SDK code; all other warnings remain errors.",
     "evidence": "The module-scoped marker was introduced in commit f97aeee6 (PR #133) with its upstream-runner rationale at tests/unit/test_durable_authoring.py:48-56.",
     "approved_by": "subnetmarco",
     "approved_at": "2026-09-19",
     "approval_evidence": "Existing filter shipped in PR #133, merged by subnetmarco on 2026-09-19."
+  },
+  {
+    "rule": "S404",
+    "scope": "scripts/generate_openapi.py:import:subprocess",
+    "rationale": "The pinned OpenAPI generator runs under the current Python interpreter with isolated mode, fixed switches, and an argument list. Paths are passed as data; no shell is used.",
+    "evidence": "https://docs.astral.sh/ruff/rules/suspicious-subprocess-import/ \u2014 this diagnostic flags importing subprocess regardless of how it is used. Existing call-site security diagnostics remain enabled.",
+    "approved_by": "swkeever",
+    "approved_at": "2026-09-24",
+    "approval_evidence": "User explicitly approved all six exact subprocess import scopes in the Codex strict SDK guardrails conversation on 2026-09-24."
+  },
+  {
+    "rule": "S404",
+    "scope": "tests/unit/test_dependency_audit.py:import:subprocess",
+    "rationale": "The test invokes /bin/bash with the repository dependency-audit script as a fixed argument and controls temporary tool stubs to verify exit-status propagation. subprocess.run does not use shell=True.",
+    "evidence": "https://docs.astral.sh/ruff/rules/suspicious-subprocess-import/ \u2014 this diagnostic flags importing subprocess regardless of how it is used. Existing call-site security diagnostics remain enabled.",
+    "approved_by": "swkeever",
+    "approved_at": "2026-09-24",
+    "approval_evidence": "User explicitly approved all six exact subprocess import scopes in the Codex strict SDK guardrails conversation on 2026-09-24."
+  },
+  {
+    "rule": "S404",
+    "scope": "tests/unit/test_generation.py:import:subprocess",
+    "rationale": "Generator and provenance tests invoke the current Python interpreter with fixed module or script arguments. Temporary paths remain individual argv entries; no shell is used.",
+    "evidence": "https://docs.astral.sh/ruff/rules/suspicious-subprocess-import/ \u2014 this diagnostic flags importing subprocess regardless of how it is used. Existing call-site security diagnostics remain enabled.",
+    "approved_by": "swkeever",
+    "approved_at": "2026-09-24",
+    "approval_evidence": "User explicitly approved all six exact subprocess import scopes in the Codex strict SDK guardrails conversation on 2026-09-24."
+  },
+  {
+    "rule": "S404",
+    "scope": "tests/unit/test_mutation_results.py:import:subprocess",
+    "rationale": "Mutation harness tests invoke /bin/bash with the repository mutation script as a fixed argument in temporary fixture checkouts. Controlled stubs exercise failure reporting; subprocess.run does not use shell=True.",
+    "evidence": "https://docs.astral.sh/ruff/rules/suspicious-subprocess-import/ \u2014 this diagnostic flags importing subprocess regardless of how it is used. Existing call-site security diagnostics remain enabled.",
+    "approved_by": "swkeever",
+    "approved_at": "2026-09-24",
+    "approval_evidence": "User explicitly approved all six exact subprocess import scopes in the Codex strict SDK guardrails conversation on 2026-09-24."
+  },
+  {
+    "rule": "S404",
+    "scope": "tests/unit/test_quality_configuration.py:import:subprocess",
+    "rationale": "The isolation test invokes the current Python interpreter with fixed -I -m pip_audit --help arguments to prove local modules cannot shadow the auditor. No shell is used.",
+    "evidence": "https://docs.astral.sh/ruff/rules/suspicious-subprocess-import/ \u2014 this diagnostic flags importing subprocess regardless of how it is used. Existing call-site security diagnostics remain enabled.",
+    "approved_by": "swkeever",
+    "approved_at": "2026-09-24",
+    "approval_evidence": "User explicitly approved all six exact subprocess import scopes in the Codex strict SDK guardrails conversation on 2026-09-24."
+  },
+  {
+    "rule": "S404",
+    "scope": "tests/unit/test_test_integrity.py:import:subprocess",
+    "rationale": "The test invokes the repository test-harness entrypoint using a fixed argument list and controlled temporary fixture files to verify incomplete-run refusal. No shell is used.",
+    "evidence": "https://docs.astral.sh/ruff/rules/suspicious-subprocess-import/ \u2014 this diagnostic flags importing subprocess regardless of how it is used. Existing call-site security diagnostics remain enabled.",
+    "approved_by": "swkeever",
+    "approved_at": "2026-09-24",
+    "approval_evidence": "User explicitly approved all six exact subprocess import scopes in the Codex strict SDK guardrails conversation on 2026-09-24."
   }
 ]

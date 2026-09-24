@@ -6,9 +6,12 @@ import threading
 from collections import deque
 from dataclasses import replace
 from itertools import count
-from typing import TYPE_CHECKING, TypedDict, Unpack
+from typing import TYPE_CHECKING, Unpack
 from uuid import UUID
 
+from ._auth_requests import AuthRequests
+from ._client_context import ClientContext
+from ._client_session import BootstrapCredentials, CallbackOutcome, bootstrap_session
 from ._session import validate_refresh_identity
 from ._session_operations import SessionOperations
 from ._transport import GeneratedTransport, Transport
@@ -32,63 +35,10 @@ from .storage import Storage
 if TYPE_CHECKING:
     from _thread import LockType
     from collections.abc import Callable, Mapping
-    from types import TracebackType
 
 _NO_ACTIVE_SESSION = "No active session"
 _NO_SERVICE_KEY = "No service key configured"
 _PROFILE_USER_MISMATCH = "Profile user does not match the active session"
-_BOOTSTRAP_ACCESS_REQUIRED = "refresh_token requires access_token"
-
-
-class _BootstrapCredentials(TypedDict, total=False):
-    access_token: str | None
-    refresh_token: str | None
-
-
-def _validate_bootstrap_credential(name: str, token: object) -> None:
-    if token is not None and (not isinstance(token, str) or not token.strip()):
-        message = f"{name} must be a non-empty string"
-        raise ValueError(message)
-
-
-def _bootstrap_session(
-    credentials: _BootstrapCredentials,
-) -> Session | None:
-    unknown = credentials.keys() - {"access_token", "refresh_token"}
-    if unknown:
-        message = f"Unexpected keyword argument: {next(iter(unknown))}"
-        raise TypeError(message)
-    access_token = credentials.get("access_token")
-    refresh_token = credentials.get("refresh_token")
-    if access_token is None:
-        if refresh_token is not None:
-            raise ValueError(_BOOTSTRAP_ACCESS_REQUIRED)
-        return None
-    for name, token in (
-        ("access_token", access_token),
-        ("refresh_token", refresh_token),
-    ):
-        _validate_bootstrap_credential(name, token)
-    return Session(access_token=access_token, refresh_token=refresh_token)
-
-
-class _CallbackOutcome:
-    """Capture a callback failure without unwinding dispatcher ownership."""
-
-    def __init__(self) -> None:
-        self.error: BaseException | None = None
-
-    def __enter__(self) -> None:
-        return None
-
-    def __exit__(
-        self,
-        _error_type: type[BaseException] | None,
-        error: BaseException | None,
-        _traceback: TracebackType | None,
-    ) -> bool:
-        self.error = error
-        return error is not None
 
 
 class VolcanoClient:
@@ -103,19 +53,19 @@ class VolcanoClient:
         timeout: float = 60.0,
         _transport: Transport | None = None,
         _realtime_client_factory: CentrifugeFactory | None = None,
-        **credentials: Unpack[_BootstrapCredentials],
+        **credentials: Unpack[BootstrapCredentials],
     ) -> None:
         """Create a client for a Volcano project."""
         self._api_url: str = api_url.rstrip("/")
         self._anon_key: str = anon_key
         self._service_key: str | None = service_key
         self._session_lock: LockType = threading.Lock()
-        self._generation_ids = count()
+        self._generation_ids: count[int] = count()
         self._session_generation: int = next(self._generation_ids)
         self._session_lineage: SessionOperations = SessionOperations()
-        self._current_session: Session | None = _bootstrap_session(credentials)
+        self._current_session: Session | None = bootstrap_session(credentials)
         self._auth_callbacks: dict[int, AuthStateCallback] = {}
-        self._auth_callback_ids = count()
+        self._auth_callback_ids: count[int] = count()
         self._auth_notifications: deque[
             tuple[
                 tuple[int, ...],
@@ -135,26 +85,27 @@ class VolcanoClient:
         ]:
             return self._capture_session_binding()
 
-        self.auth: Auth = Auth(
-            AuthContext(
-                transport=lambda: self._transport,
-                current_session=lambda: self.current_session,
-                anon_token=self._anon_token,
-                api_base_url=self._api_base_url,
-                set_session=self._set_session,
-                capture_session=self._capture_session,
-                capture_session_binding=capture_auth_session_binding,
-                update_session_user_if_current=self._update_session_user_if_current,
-                set_session_if_current=self._set_session_if_current,
-                clear_session_if_current=self._clear_session_if_current,
-                subscribe_auth_state_change=self._subscribe_auth_state_change,
-            )
+        auth_context = AuthContext(
+            transport=lambda: self._transport,
+            current_session=lambda: self.current_session,
+            anon_token=self._anon_token,
+            api_base_url=self._api_base_url,
+            set_session=self._set_session,
+            capture_session=self._capture_session,
+            capture_session_binding=capture_auth_session_binding,
+            update_session_user_if_current=self._update_session_user_if_current,
+            set_session_if_current=self._set_session_if_current,
+            clear_session_if_current=self._clear_session_if_current,
+            subscribe_auth_state_change=self._subscribe_auth_state_change,
         )
-        self.functions: Functions = Functions(self)
-        self.durable: Durable = Durable(self)
-        self.logs: Logs = Logs(self)
-        self.storage: Storage = Storage(self)
-        self.locks: Locks = Locks(self)
+        self._auth_requests: AuthRequests = AuthRequests(auth_context)
+        self.auth: Auth = Auth(auth_context, _requests=self._auth_requests)
+        self._facades: ClientContext = self._facade_context()
+        self.functions: Functions = Functions(self._facades)
+        self.durable: Durable = Durable(self._facades)
+        self.logs: Logs = Logs(self._facades)
+        self.storage: Storage = Storage(self._facades)
+        self.locks: Locks = Locks(self._facades)
         if _realtime_client_factory is None:
             self.realtime: Realtime = Realtime(self, api_url=self._api_url)
         else:
@@ -163,6 +114,18 @@ class VolcanoClient:
                 api_url=self._api_url,
                 client_factory=_realtime_client_factory,
             )
+
+    def _facade_context(self) -> ClientContext:
+        return ClientContext(
+            transport=lambda: self._transport,
+            auth=lambda: self._auth_requests,
+            anon_token=self._anon_token,
+            session_token=self._session_token,
+            function_token=self._function_token,
+            service_token=self._service_token,
+            api_base_url=self._api_base_url,
+            capture_session_binding=self._capture_session_binding,
+        )
 
     @property
     def current_session(self) -> Session | None:
@@ -176,7 +139,7 @@ class VolcanoClient:
             A query facade bound to the named database.
 
         """
-        return Database(self, name)
+        return Database(self._facades, name)
 
     def _anon_token(self) -> str:
         return self._anon_key
@@ -380,7 +343,7 @@ class VolcanoClient:
                 callback = self._auth_callbacks.get(callback_id)
             if callback is None:
                 continue
-            outcome = _CallbackOutcome()
+            outcome = CallbackOutcome()
             with outcome:
                 callback(event, session)
             if outcome.error is None or isinstance(outcome.error, Exception):

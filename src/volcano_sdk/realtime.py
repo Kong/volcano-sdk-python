@@ -22,6 +22,8 @@ from centrifuge import CentrifugeError, Client
 from typing_extensions import override
 
 from ._callbacks import require_callable
+from ._database_response import database_rows
+from ._json_values import freeze_json
 from ._realtime_fetch_worker import (
     PostgresFetchJob,
     PostgresFetchOutcome,
@@ -34,8 +36,7 @@ from ._transport import (
     invoke_async,
     response_payload,
 )
-from .database import _database_rows
-from .models import JSONValue, _freeze_json
+from .models import JSONValue
 
 if TYPE_CHECKING:
     from typing import TypeGuard
@@ -91,7 +92,7 @@ def _empty_presence_data() -> Mapping[str, JSONValue]:
 
 
 def _freeze_mapping(value: Mapping[str, JSONValue]) -> Mapping[str, JSONValue]:
-    return MappingProxyType({key: _freeze_json(item) for key, item in value.items()})
+    return MappingProxyType({key: freeze_json(item) for key, item in value.items()})
 
 
 def _consume_presence_result(task: asyncio.Task[object]) -> None:
@@ -181,7 +182,7 @@ class PostgresChange:
             object.__setattr__(self, "record", _freeze_mapping(self.record))
         if self.old_record is not None:
             object.__setattr__(self, "old_record", _freeze_mapping(self.old_record))
-        object.__setattr__(self, "id", _freeze_json(self.id))
+        object.__setattr__(self, "id", freeze_json(self.id))
 
 
 def _normalize_postgres_delete(change: PostgresChange) -> PostgresChange:
@@ -1451,7 +1452,7 @@ class Realtime:
         )
         rows = tuple(
             _checked_postgres_row(row)
-            for row in _database_rows(response_payload(response, 200))
+            for row in database_rows(response_payload(response, 200))
         )
         return tuple(
             next(

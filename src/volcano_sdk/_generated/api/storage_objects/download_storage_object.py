@@ -16,7 +16,7 @@ from typing import cast
 
 
 
-def _get_kwargs(
+def request_kwargs(
     bucket_name: str,
     path: str,
     *,
@@ -87,7 +87,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error | File]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error | File]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -131,7 +131,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         bucket_name=bucket_name,
 path=path,
 range_=range_,
@@ -143,7 +143,7 @@ x_upload_session=x_upload_session,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
     bucket_name: str,
@@ -224,7 +224,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         bucket_name=bucket_name,
 path=path,
 range_=range_,
@@ -236,7 +236,7 @@ x_upload_session=x_upload_session,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
     bucket_name: str,

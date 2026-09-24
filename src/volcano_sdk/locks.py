@@ -2,39 +2,43 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from contextlib import contextmanager, suppress
-from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
-from uuid import UUID, uuid4
 
-from typing_extensions import TypeIs
-
-from ._lock_guard import LockGuard, lease_now
+from ._lock_guard import LockGuard, ManagedLockGuard, lease_now
+from ._lock_values import (
+    INVALID_LOCK_RESPONSE,
+    fencing_token,
+    lease_fields,
+    lock_values,
+    parse_datetime,
+    request_uuid,
+    validate_ttl,
+)
 from ._lock_worker import LockRenewer
 from ._transport import Transport, invoke, response_payload
 from .errors import ServerError, TransportError
 from .models import LockLease, LockState
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Generator, Mapping
 
     from ._transport import TransportResponse
 
-_MIN_LOCK_TTL_SECONDS = 5
-_MAX_LOCK_TTL_SECONDS = 7_776_000
-_INVALID_LOCK_TTL = "ttl must be an integer between 5 seconds and 90 days"
 _MISSING_RENEWAL_FAILURE = "lock guard rejected renewal without a failure"
-_INVALID_LOCK_RESPONSE = "Expected a complete lock response"
 _INVALID_LOCK_TRANSPORT = "Transport does not support the requested lock operation"
 
 
 class LocksContext(Protocol):
     """Client capabilities required by distributed locks."""
 
-    _transport: Transport
+    def transport(self) -> Transport:
+        """Return the active typed transport."""
+        ...
 
-    def _service_token(self) -> str: ...
+    def service_token(self) -> str:
+        """Return the configured service credential."""
+        ...
 
 
 @runtime_checkable
@@ -84,56 +88,6 @@ class LockForceReleaseTransport(Protocol):
         ...
 
 
-def _parse_datetime(value: object) -> datetime | None:
-    if value is None:
-        return None
-    return datetime.fromisoformat(str(value))
-
-
-def _is_lock_mapping(payload: object) -> TypeIs[Mapping[object, object]]:
-    return isinstance(payload, Mapping)
-
-
-def _lock_values(payload: object) -> Mapping[object, object]:
-    if not _is_lock_mapping(payload):
-        raise TypeError(_INVALID_LOCK_RESPONSE)
-    return payload
-
-
-def _fencing_token(value: object) -> int | None:
-    if value is None or type(value) is int:
-        return value
-    raise TypeError(_INVALID_LOCK_RESPONSE)
-
-
-def _lease_fields(payload: Mapping[object, object]) -> tuple[datetime, int]:
-    expires_at = payload.get("expires_at")
-    fencing_token = payload.get("fencing_token")
-    if not isinstance(expires_at, str) or type(fencing_token) is not int:
-        raise TypeError(_INVALID_LOCK_RESPONSE)
-    return datetime.fromisoformat(expires_at), fencing_token
-
-
-def _validate_ttl(ttl: object) -> None:
-    if (
-        isinstance(ttl, bool)
-        or not isinstance(ttl, int)
-        or not _MIN_LOCK_TTL_SECONDS <= ttl <= _MAX_LOCK_TTL_SECONDS
-    ):
-        raise ValueError(_INVALID_LOCK_TTL)
-
-
-def _request_uuid(value: str | None, name: str) -> str:
-    if value is None:
-        return str(uuid4())
-    try:
-        _ = UUID(value)
-    except (AttributeError, ValueError) as error:
-        message = f"{name} must be a UUID string"
-        raise ValueError(message) from error
-    return value
-
-
 class Locks:
     """Acquire and release project-scoped distributed locks."""
 
@@ -155,23 +109,23 @@ class Locks:
             The transport lacks lock inspection or the response is incomplete.
 
         """
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, LockGetTransport):
             raise TypeError(_INVALID_LOCK_TRANSPORT)
         response = invoke(
             transport.get_project_lock,
-            authorization=self._client._service_token(),
+            authorization=self._client.service_token(),
             key=key,
-            request_id=_request_uuid(request_id, "request_id"),
+            request_id=request_uuid(request_id, "request_id"),
         )
-        payload = _lock_values(response_payload(response, 200))
+        payload = lock_values(response_payload(response, 200))
         held = payload.get("held")
         if not isinstance(held, bool):
-            raise TypeError(_INVALID_LOCK_RESPONSE)
+            raise TypeError(INVALID_LOCK_RESPONSE)
         return LockState(
             held=held,
-            expires_at=_parse_datetime(payload.get("expires_at")),
-            fencing_token=_fencing_token(payload.get("fencing_token")),
+            expires_at=parse_datetime(payload.get("expires_at")),
+            fencing_token=fencing_token(payload.get("fencing_token")),
         )
 
     def acquire(
@@ -203,10 +157,10 @@ class Locks:
         token: str | None,
         request_id: str | None,
     ) -> tuple[LockLease, float]:
-        _validate_ttl(ttl)
-        token = _request_uuid(token, "token")
-        request_id = _request_uuid(request_id, "request_id")
-        authorization = self._client._service_token()
+        validate_ttl(ttl)
+        token = request_uuid(token, "token")
+        request_id = request_uuid(request_id, "request_id")
+        authorization = self._client.service_token()
         started_at = lease_now()
         try:
             payload = self._acquire_payload(key, ttl, token, request_id, authorization)
@@ -215,7 +169,7 @@ class Locks:
                 raise
             started_at = lease_now()
             payload = self._acquire_payload(key, ttl, token, request_id, authorization)
-        expires_at, fencing_token = _lease_fields(payload)
+        expires_at, fencing_token = lease_fields(payload)
         lease = LockLease(
             key=key,
             token=token,
@@ -228,14 +182,14 @@ class Locks:
         self, key: str, ttl: int, token: str, request_id: str, authorization: str
     ) -> Mapping[object, object]:
         response = invoke(
-            self._client._transport.acquire_project_lock,
+            self._client.transport().acquire_project_lock,
             authorization=authorization,
             key=key,
             ttl=ttl,
             token=token,
             request_id=request_id,
         )
-        return _lock_values(response_payload(response, 201))
+        return lock_values(response_payload(response, 201))
 
     def renew(
         self, key: str, lease: LockLease, *, ttl: int, request_id: str | None = None
@@ -254,20 +208,20 @@ class Locks:
             The transport does not support this lock operation.
 
         """
-        _validate_ttl(ttl)
-        transport = self._client._transport
+        validate_ttl(ttl)
+        transport = self._client.transport()
         if not isinstance(transport, LockRenewTransport):
             raise TypeError(_INVALID_LOCK_TRANSPORT)
         response = invoke(
             transport.renew_project_lock,
-            authorization=self._client._service_token(),
+            authorization=self._client.service_token(),
             key=key,
-            request_id=_request_uuid(request_id, "request_id"),
+            request_id=request_uuid(request_id, "request_id"),
             ttl=ttl,
             token=lease.token,
         )
-        payload = _lock_values(response_payload(response, 200))
-        expires_at, fencing_token = _lease_fields(payload)
+        payload = lock_values(response_payload(response, 200))
+        expires_at, fencing_token = lease_fields(payload)
         return LockLease(
             key=key,
             token=lease.token,
@@ -280,10 +234,10 @@ class Locks:
     ) -> None:
         """Release a lock lease."""
         response = invoke(
-            self._client._transport.release_project_lock,
-            authorization=self._client._service_token(),
+            self._client.transport().release_project_lock,
+            authorization=self._client.service_token(),
             key=key,
-            request_id=_request_uuid(request_id, "request_id"),
+            request_id=request_uuid(request_id, "request_id"),
             token=lease.token,
         )
         _ = response_payload(response, 204)
@@ -295,14 +249,14 @@ class Locks:
             TypeError: The transport does not support this lock operation.
 
         """
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, LockForceReleaseTransport):
             raise TypeError(_INVALID_LOCK_TRANSPORT)
         response = invoke(
             transport.force_release_project_lock,
-            authorization=self._client._service_token(),
+            authorization=self._client.service_token(),
             key=key,
-            request_id=_request_uuid(request_id, "request_id"),
+            request_id=request_uuid(request_id, "request_id"),
         )
         _ = response_payload(response, 204)
 
@@ -324,12 +278,12 @@ class Locks:
             stops renewal and attempts to release the lease.
 
         """
-        _validate_ttl(ttl)
+        validate_ttl(ttl)
         started_at = lease_now()
         lease, lease_started_at = self._acquire_with_start(
             key, ttl=ttl, token=token, request_id=request_id
         )
-        guard = LockGuard(
+        guard = ManagedLockGuard(
             lease, ttl=ttl, started_at=started_at, lease_started_at=lease_started_at
         )
         renewer = LockRenewer(self, key, guard, ttl=ttl)
@@ -350,14 +304,14 @@ class Locks:
             finally:
                 self._finish_guard(key, guard, body_failed=body_failed)
 
-    def _prepare_guard(self, key: str, guard: LockGuard, *, ttl: int) -> None:
+    def _prepare_guard(self, key: str, guard: ManagedLockGuard, *, ttl: int) -> None:
         if guard.renewal_delay() != 0:
             return
         started_at = lease_now()
         renewed = self.renew(key, guard.lease, ttl=ttl)
         if guard.replace_lease(renewed, started_at=started_at):
             return
-        failure = guard._renewal_failure()
+        failure = guard.renewal_failure()
         if failure is None:
             raise RuntimeError(_MISSING_RENEWAL_FAILURE)
         raise failure
@@ -365,11 +319,11 @@ class Locks:
     def _finish_guard(
         self,
         key: str,
-        guard: LockGuard,
+        guard: ManagedLockGuard,
         *,
         body_failed: bool,
     ) -> None:
-        failure = guard._renewal_failure()
+        failure = guard.renewal_failure()
         try:
             if body_failed or failure is not None:
                 with suppress(Exception):
@@ -377,7 +331,7 @@ class Locks:
             else:
                 self.release(key, guard.lease)
         finally:
-            guard._close()
+            guard.close()
         if body_failed:
             return
         if failure is not None:

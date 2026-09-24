@@ -15,9 +15,9 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    id: UUID,
-    frontend_id: UUID,
+def request_kwargs(
+    id: UUID | str,
+    frontend_id: UUID | str,
 
 ) -> dict[str, Any]:
     
@@ -99,7 +99,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | Frontend]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | Frontend]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -109,8 +109,8 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    id: UUID,
-    frontend_id: UUID,
+    id: UUID | str,
+    frontend_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
@@ -138,7 +138,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 frontend_id=frontend_id,
 
@@ -148,11 +148,11 @@ frontend_id=frontend_id,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    id: UUID,
-    frontend_id: UUID,
+    id: UUID | str,
+    frontend_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
@@ -188,8 +188,8 @@ client=client,
     ).parsed
 
 async def asyncio_detailed(
-    id: UUID,
-    frontend_id: UUID,
+    id: UUID | str,
+    frontend_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
@@ -217,7 +217,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 frontend_id=frontend_id,
 
@@ -227,11 +227,11 @@ frontend_id=frontend_id,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    id: UUID,
-    frontend_id: UUID,
+    id: UUID | str,
+    frontend_id: UUID | str,
     *,
     client: AuthenticatedClient,
 

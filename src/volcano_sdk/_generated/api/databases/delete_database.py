@@ -15,8 +15,8 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    id: UUID,
+def request_kwargs(
+    id: UUID | str,
     database_name: str,
 
 ) -> dict[str, Any]:
@@ -75,7 +75,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | DeleteDatabaseResponse202 | Error]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | DeleteDatabaseResponse202 | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -85,7 +85,7 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    id: UUID,
+    id: UUID | str,
     database_name: str,
     *,
     client: AuthenticatedClient,
@@ -115,7 +115,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 database_name=database_name,
 
@@ -125,10 +125,10 @@ database_name=database_name,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    id: UUID,
+    id: UUID | str,
     database_name: str,
     *,
     client: AuthenticatedClient,
@@ -166,7 +166,7 @@ client=client,
     ).parsed
 
 async def asyncio_detailed(
-    id: UUID,
+    id: UUID | str,
     database_name: str,
     *,
     client: AuthenticatedClient,
@@ -196,7 +196,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 database_name=database_name,
 
@@ -206,10 +206,10 @@ database_name=database_name,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    id: UUID,
+    id: UUID | str,
     database_name: str,
     *,
     client: AuthenticatedClient,

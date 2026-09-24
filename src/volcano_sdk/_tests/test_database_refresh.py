@@ -1,0 +1,454 @@
+from __future__ import annotations
+
+import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier, Event, Thread
+from typing import TYPE_CHECKING
+
+import httpx
+import pytest
+
+from volcano_sdk import (
+    AuthenticationError,
+    Session,
+    SessionChangedError,
+    TransportError,
+    VolcanoClient,
+)
+from volcano_sdk._transport import GeneratedTransport
+
+from .session_fixtures import access_token
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+
+def make_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoClient:
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handler),
+    )
+    client = VolcanoClient(anon_key="anon", _transport=transport)
+    _ = client.auth.set_session(
+        Session(
+            access_token("old"), "old-refresh", "00000000-0000-4000-8000-000000000001"
+        )
+    )
+    return client
+
+
+def refreshed_response() -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "access_token": access_token("new"),
+            "refresh_token": "new-refresh",
+            "token_type": "bearer",
+            "expires_in": 3600,
+            "user": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "email": "user@example.com",
+                "status": "active",
+            },
+        },
+    )
+
+
+def rows_response() -> httpx.Response:
+    return httpx.Response(200, json={"data": [{"id": 1}], "count": 1})
+
+
+def handle_expired_read(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/auth/refresh":
+        return refreshed_response()
+    if request.headers["authorization"] == f"Bearer {access_token('old')}":
+        return httpx.Response(401, json={"error": "expired"})
+    return rows_response()
+
+
+def replace_session_on(
+    client: VolcanoClient, replacement: Session, expected_event: str
+) -> Callable[[str, Session | None], None]:
+    def listener(event: str, _session: Session | None) -> None:
+        if event == expected_event:
+            _ = client.auth.set_session(replacement)
+
+    return listener
+
+
+def mutation_response(
+    request: httpx.Request, outcome: str, rejection: bytes
+) -> httpx.Response:
+    if outcome == "network":
+        message = "timeout"
+        raise httpx.ReadTimeout(message, request=request)
+    if (
+        request.headers["authorization"] == f"Bearer {access_token('old')}"
+        or outcome == "denied"
+    ):
+        return httpx.Response(401, content=rejection)
+    return rows_response()
+
+
+def assert_mutation_outcome(mutation: Callable[[], object], outcome: str) -> None:
+    if outcome == "success":
+        assert mutation() == [{"id": 1}]
+        return
+    errors = {
+        "denied": AuthenticationError,
+        "replaced": SessionChangedError,
+        "network": TransportError,
+    }
+    with pytest.raises(errors[outcome]):
+        _ = mutation()
+
+
+def assert_mutation_requests(
+    requests: list[httpx.Request], operation: str, outcome: str
+) -> None:
+    expected_requests = {"success": 3, "denied": 3, "replaced": 2, "network": 1}
+    assert len(requests) == expected_requests[outcome]
+    assert requests[0].url.path.endswith(f"/{operation}")
+    if len(requests) == 3:
+        assert requests[0].content == requests[2].content
+        assert requests[2].headers["authorization"] == f"Bearer {access_token('new')}"
+
+
+@pytest.mark.parametrize("columns", [(), ("*",), ("id", "title")])
+def test_select_preserves_zero_pagination_and_query_clauses(
+    columns: tuple[str, ...],
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return rows_response()
+
+    query = make_client(handle).database("db").from_("items")
+    result = (
+        query.select(*columns)
+        .eq("id", 1)
+        .order("title", ascending=False)
+        .limit(0)
+        .offset(0)
+        .execute()
+    )
+    expected: dict[str, object] = {
+        "table": "items",
+        "filters": [{"column": "id", "operator": "eq", "value": 1}],
+        "order": [{"column": "title", "ascending": False}],
+        "limit": 0,
+        "offset": 0,
+    }
+    if columns == ("id", "title"):
+        expected["select"] = list(columns)
+    assert result == [{"id": 1}]
+    assert len(requests) == 1
+    assert json.loads(requests[0].content) == expected
+
+
+def test_select_omits_unset_query_options() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return rows_response()
+
+    assert make_client(handle).database("db").from_("items").execute() == [{"id": 1}]
+    assert len(requests) == 1
+    assert json.loads(requests[0].content) == {"table": "items"}
+
+
+def test_select_refreshes_once_and_replays_the_same_query() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/refresh":
+            return refreshed_response()
+        if request.headers["authorization"] == f"Bearer {access_token('old')}":
+            return httpx.Response(401, json={"error": "expired"})
+        return rows_response()
+
+    client = make_client(handle)
+    query = client.database("db").from_("items").select("id").eq("id", 1).limit(2)
+
+    assert query.execute() == [{"id": 1}]
+    assert [request.headers["authorization"] for request in requests] == [
+        f"Bearer {access_token('old')}",
+        "Bearer anon",
+        f"Bearer {access_token('new')}",
+    ]
+    assert requests[0].content == requests[2].content
+    assert json.loads(requests[1].content)["refresh_token"] == "old-refresh"
+
+
+def test_second_401_is_returned_without_another_refresh() -> None:
+    paths: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path == "/auth/refresh":
+            return refreshed_response()
+        return httpx.Response(401, json={"error": "denied"})
+
+    client = make_client(handle)
+    with pytest.raises(AuthenticationError, match="denied"):
+        _ = client.database("db").from_("items").execute()
+    assert len(paths) == 3
+    assert paths.count("/auth/refresh") == 1
+
+
+@pytest.mark.parametrize("body", [b"", b"not json", b"{}"])
+def test_select_refreshes_on_401_without_a_valid_error_body(body: bytes) -> None:
+    paths: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path == "/auth/refresh":
+            return refreshed_response()
+        if request.headers["authorization"] == f"Bearer {access_token('old')}":
+            return httpx.Response(401, content=body)
+        return rows_response()
+
+    client = make_client(handle)
+    assert client.database("db").from_("items").execute() == [{"id": 1}]
+    assert len(paths) == 3
+
+
+@pytest.mark.parametrize("refresh_status", [401, 503])
+def test_failed_refresh_preserves_original_read_error(refresh_status: int) -> None:
+    paths: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path == "/auth/refresh":
+            return httpx.Response(refresh_status, json={"error": "refresh failed"})
+        return httpx.Response(401, json={"error": "read expired", "code": "expired"})
+
+    client = make_client(handle)
+    with pytest.raises(AuthenticationError, match="read expired") as caught:
+        _ = client.database("db").from_("items").execute()
+    assert caught.value.code == "expired"
+    assert len(paths) == 2
+    assert (client.current_session is None) == (refresh_status == 401)
+
+
+@pytest.mark.parametrize("replace_at", ["read", "refresh", "listener"])
+def test_read_never_retries_under_a_replacement_session(replace_at: str) -> None:
+    paths: list[str] = []
+    replacement = Session("replacement", "replacement-refresh", "other-user")
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        stage = "refresh" if request.url.path == "/auth/refresh" else "read"
+        if stage == replace_at:
+            _ = client.auth.set_session(replacement)
+        return (
+            refreshed_response()
+            if stage == "refresh"
+            else httpx.Response(401, json={"error": "expired"})
+        )
+
+    client = make_client(handle)
+    if replace_at == "listener":
+        _ = client.auth.on_auth_state_change(
+            replace_session_on(client, replacement, "TOKEN_REFRESHED")
+        )
+    with pytest.raises(SessionChangedError):
+        _ = client.database("db").from_("items").execute()
+    assert client.current_session == replacement
+    assert len(paths) == (1 if replace_at == "read" else 2)
+
+
+def test_concurrent_reads_share_refresh_for_the_captured_session() -> None:
+    initial_reads = Barrier(2, timeout=5)
+    refresh_requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/refresh":
+            refresh_requests.append(request)
+            return refreshed_response()
+        if request.headers["authorization"] == f"Bearer {access_token('old')}":
+            _ = initial_reads.wait()
+            return httpx.Response(401, json={"error": "expired"})
+        return rows_response()
+
+    client = make_client(handle)
+    query = client.database("db").from_("items")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        reads = [pool.submit(query.execute) for _ in range(2)]
+        results = [read.result(timeout=5) for read in reads]
+    assert results == [[{"id": 1}], [{"id": 1}]]
+    assert len(refresh_requests) == 1
+
+
+@pytest.mark.parametrize("payload", [{}, {"access_token": "invalid"}])
+def test_malformed_refresh_preserves_read_error(payload: dict[str, str]) -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/refresh":
+            return httpx.Response(200, json=payload)
+        return httpx.Response(401, json={"error": "read expired"})
+
+    client = make_client(handle)
+    with pytest.raises(AuthenticationError, match="read expired"):
+        _ = client.database("db").from_("items").execute()
+
+
+@pytest.mark.parametrize("status", [401, 503])
+def test_failed_refresh_detects_replacement(status: int) -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/refresh":
+            _ = client.auth.set_session(Session("replacement", "refresh", "other"))
+            return httpx.Response(status, json={"error": "refresh failed"})
+        return httpx.Response(401, json={"error": "read expired"})
+
+    client = make_client(handle)
+    with pytest.raises(SessionChangedError):
+        _ = client.database("db").from_("items").execute()
+
+
+def test_concurrent_failed_refresh_preserves_each_read_error() -> None:
+    barrier = Barrier(2, timeout=5)
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/refresh":
+            return httpx.Response(401, json={"error": "refresh failed"})
+        _ = barrier.wait()
+        return httpx.Response(401, json={"error": "read expired"})
+
+    client = make_client(handle)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        reads = [
+            pool.submit(client.database("db").from_("items").execute) for _ in range(2)
+        ]
+        for read in reads:
+            with pytest.raises(AuthenticationError, match="read expired"):
+                _ = read.result(timeout=5)
+
+
+def test_read_completes_before_a_queued_refresh_listener_changes_session() -> None:
+    listening = Event()
+    release = Event()
+    replacement = Session("replacement", "refresh", "other")
+
+    client = make_client(handle_expired_read)
+
+    def on_auth_change(event: str, _session: Session | None) -> None:
+        if event == "INITIAL_SESSION":
+            listening.set()
+            _ = release.wait(timeout=5)
+        if event == "TOKEN_REFRESHED":
+            _ = client.auth.set_session(replacement)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        registration = pool.submit(client.auth.on_auth_state_change, on_auth_change)
+        try:
+            assert listening.wait(timeout=5)
+            read = pool.submit(client.database("db").from_("items").execute)
+            assert read.result(timeout=2) == [{"id": 1}]
+            assert client.current_session != replacement
+        finally:
+            release.set()
+        registration.result(timeout=5).unsubscribe()
+    assert client.current_session == replacement
+
+
+def test_refresh_listener_can_wait_for_another_refresh_thread() -> None:
+    completed: list[bool] = []
+    workers: list[Thread] = []
+
+    client = make_client(handle_expired_read)
+
+    def on_refresh(event: str, _session: Session | None) -> None:
+        if event != "TOKEN_REFRESHED":
+            return
+        subscription.unsubscribe()
+        worker = Thread(target=client.auth.refresh_session)
+        workers.append(worker)
+        worker.start()
+        worker.join(timeout=1)
+        completed.append(not worker.is_alive())
+
+    subscription = client.auth.on_auth_state_change(on_refresh)
+    _ = client.database("db").from_("items").execute()
+    for worker in workers:
+        worker.join(timeout=5)
+    assert completed == [True]
+
+
+@pytest.mark.parametrize("replace_at", ["replay", "failed-refresh-listener"])
+def test_read_rechecks_session_after_replay_or_failure_notification(
+    replace_at: str,
+) -> None:
+    replacement = Session("replacement", "replacement-refresh", "other")
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/refresh":
+            if replace_at == "failed-refresh-listener":
+                return httpx.Response(401, json={"error": "refresh failed"})
+            return refreshed_response()
+        if request.headers["authorization"] == f"Bearer {access_token('old')}":
+            return httpx.Response(401, json={"error": "read expired"})
+        _ = client.auth.set_session(replacement)
+        return rows_response()
+
+    client = make_client(handle)
+
+    _ = client.auth.on_auth_state_change(
+        replace_session_on(client, replacement, "SIGNED_OUT")
+    )
+    with pytest.raises(SessionChangedError):
+        _ = client.database("db").from_("items").execute()
+    assert client.current_session == replacement
+
+
+@pytest.mark.parametrize("operation", ["select", "insert", "update", "delete"])
+def test_database_403_is_not_eligible_for_refresh(operation: str) -> None:
+    paths: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(403, json={"error": "denied"})
+
+    client = make_client(handle)
+    table = client.database("db").from_("items")
+    queries = {
+        "select": table.execute,
+        "insert": table.insert({"id": 1}).execute,
+        "update": table.update({"id": 1}).execute,
+        "delete": table.delete().execute,
+    }
+    with pytest.raises(AuthenticationError):
+        _ = queries[operation]()
+    assert len(paths) == 1
+
+
+@pytest.mark.parametrize("operation", ["insert", "update", "delete"])
+@pytest.mark.parametrize("outcome", ["success", "denied", "replaced", "network"])
+@pytest.mark.parametrize("rejection", [b'{"error":"expired"}', b"", b"not json", b"{}"])
+def test_mutation_retries_only_an_explicit_401_under_the_same_session(
+    operation: str, outcome: str, rejection: bytes
+) -> None:
+    requests: list[httpx.Request] = []
+    replacement = Session("replacement", "replacement-refresh", "other")
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/auth/refresh":
+            if outcome == "replaced":
+                _ = client.auth.set_session(replacement)
+            return refreshed_response()
+        return mutation_response(request, outcome, rejection)
+
+    client = make_client(handle)
+    table = client.database("db").from_("items").eq("id", 1)
+    mutation = {
+        "insert": table.insert({"id": 1}).execute,
+        "update": table.update({"id": 1}).execute,
+        "delete": table.delete().execute,
+    }[operation]
+    assert_mutation_outcome(mutation, outcome)
+    assert_mutation_requests(requests, operation, outcome)
+    if outcome == "replaced":
+        assert client.auth.get_session() == replacement

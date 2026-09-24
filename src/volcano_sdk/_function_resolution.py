@@ -66,7 +66,7 @@ class _Entry:
 
 
 _lock = threading.Lock()
-_entries: dict[tuple[str, str, str], _Entry] = {}
+entries: dict[tuple[str, str, str], _Entry] = {}
 _stripes = [threading.Lock() for _ in range(_LOCK_STRIPES)]
 
 
@@ -146,11 +146,11 @@ def lookup(api_url: str, authorization: str, name: str) -> CachedOutcome | None:
     key = (api_url, authorization, name)
     now = _now()
     with _lock:
-        entry = _entries.get(key)
+        entry = entries.get(key)
         if entry is None:
             return None
         if entry.expires_at <= now:
-            del _entries[key]
+            del entries[key]
             return None
         return entry.outcome
 
@@ -188,22 +188,22 @@ def _store(
 ) -> None:
     now = _now()
     with _lock:
-        _entries[key] = _Entry(outcome=outcome, expires_at=now + ttl_seconds)
-        if len(_entries) <= MAX_ENTRIES:
+        entries[key] = _Entry(outcome=outcome, expires_at=now + ttl_seconds)
+        if len(entries) <= MAX_ENTRIES:
             return
-        for expired in [k for k, v in _entries.items() if v.expires_at <= now]:
-            del _entries[expired]
-        while len(_entries) > MAX_ENTRIES:
-            del _entries[min(_entries, key=lambda k: _entries[k].expires_at)]
+        for expired in [k for k, v in entries.items() if v.expires_at <= now]:
+            del entries[expired]
+        while len(entries) > MAX_ENTRIES:
+            del entries[min(entries, key=lambda k: entries[k].expires_at)]
 
 
 def forget(api_url: str, authorization: str, name: str) -> None:
     """Drop one cached resolution that turned out to be stale."""
     with _lock:
-        _ = _entries.pop((api_url, authorization, name), None)
+        _ = entries.pop((api_url, authorization, name), None)
 
 
 def clear() -> None:
     """Drop every cached resolution. Used by tests for isolation."""
     with _lock:
-        _entries.clear()
+        entries.clear()

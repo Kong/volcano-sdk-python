@@ -23,7 +23,7 @@ add_module() {
 if [[ ${MUTATION_FULL:-0} == 1 ]]; then
   git ls-files -z 'src/volcano_sdk/*.py' > reports/mutation-source.bin
   while IFS= read -r -d '' path; do
-    if [[ $path != src/volcano_sdk/_generated/* && -f $path ]]; then
+    if [[ $path != src/volcano_sdk/_generated/* && $path != src/volcano_sdk/_tests/* && -f $path ]]; then
       add_module "$path"
     fi
   done < reports/mutation-source.bin
@@ -45,7 +45,7 @@ else
   }
   changed > reports/mutation-changed.bin
   while IFS= read -r -d '' path; do
-    if [[ $path == src/volcano_sdk/*.py && $path != src/volcano_sdk/_generated/* && -f $path ]]; then
+    if [[ $path == src/volcano_sdk/*.py && $path != src/volcano_sdk/_generated/* && $path != src/volcano_sdk/_tests/* && -f $path ]]; then
       add_module "$path"
     fi
   done < reports/mutation-changed.bin

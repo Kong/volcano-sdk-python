@@ -16,18 +16,18 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
+def request_kwargs(
     key: str,
     *,
     body: ProjectLockLeaseRequest,
-    x_volcano_lock_token: UUID,
-    x_volcano_request_id: UUID,
+    x_volcano_lock_token: UUID | str,
+    x_volcano_request_id: UUID | str,
 
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
-    headers["X-Volcano-Lock-Token"] = x_volcano_lock_token
+    headers["X-Volcano-Lock-Token"] = str(x_volcano_lock_token)
 
-    headers["X-Volcano-Request-Id"] = x_volcano_request_id
+    headers["X-Volcano-Request-Id"] = str(x_volcano_request_id)
 
 
 
@@ -105,7 +105,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | ProjectLockLease]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | ProjectLockLease]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -119,8 +119,8 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: ProjectLockLeaseRequest,
-    x_volcano_lock_token: UUID,
-    x_volcano_request_id: UUID,
+    x_volcano_lock_token: UUID | str,
+    x_volcano_request_id: UUID | str,
 
 ) -> Response[Error | ProjectLockLease]:
     """ Renew a project lock
@@ -145,7 +145,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         key=key,
 body=body,
 x_volcano_lock_token=x_volcano_lock_token,
@@ -157,15 +157,15 @@ x_volcano_request_id=x_volcano_request_id,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
     key: str,
     *,
     client: AuthenticatedClient,
     body: ProjectLockLeaseRequest,
-    x_volcano_lock_token: UUID,
-    x_volcano_request_id: UUID,
+    x_volcano_lock_token: UUID | str,
+    x_volcano_request_id: UUID | str,
 
 ) -> Error | ProjectLockLease | None:
     """ Renew a project lock
@@ -204,8 +204,8 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: ProjectLockLeaseRequest,
-    x_volcano_lock_token: UUID,
-    x_volcano_request_id: UUID,
+    x_volcano_lock_token: UUID | str,
+    x_volcano_request_id: UUID | str,
 
 ) -> Response[Error | ProjectLockLease]:
     """ Renew a project lock
@@ -230,7 +230,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         key=key,
 body=body,
 x_volcano_lock_token=x_volcano_lock_token,
@@ -242,15 +242,15 @@ x_volcano_request_id=x_volcano_request_id,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
     key: str,
     *,
     client: AuthenticatedClient,
     body: ProjectLockLeaseRequest,
-    x_volcano_lock_token: UUID,
-    x_volcano_request_id: UUID,
+    x_volcano_lock_token: UUID | str,
+    x_volcano_request_id: UUID | str,
 
 ) -> Error | ProjectLockLease | None:
     """ Renew a project lock

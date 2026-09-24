@@ -41,6 +41,7 @@ Changelog = "https://github.com/Kong/volcano-sdk-python/releases"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/volcano_sdk"]
+exclude = ["/src/volcano_sdk/_tests"]
 
 [dependency-groups]
 build = ["hatchling==1.32.4"]
@@ -100,13 +101,14 @@ build-constraint-dependencies = [
 ]
 
 [tool.mypy]
-files = ["src", "tests", "scripts", "features", "typings"]
+files = ["src", "tests", "scripts", "features", "typings", "conftest.py"]
 python_version = "3.11"
 strict = true
 strict_equality_for_none = true
 strict_bytes = true
 disallow_any_unimported = true
 disallow_any_decorated = true
+disallow_any_explicit = true
 warn_unreachable = true
 warn_unused_ignores = true
 enable_error_code = [
@@ -126,227 +128,20 @@ enable_error_code = [
 explicit_package_bases = true
 mypy_path = [
   "$MYPY_CONFIG_FILE_DIR/src",
-  "$MYPY_CONFIG_FILE_DIR/tests/unit",
   "$MYPY_CONFIG_FILE_DIR/features",
   "$MYPY_CONFIG_FILE_DIR/typings",
 ]
 exclude = ["src/volcano_sdk/_generated/"]
 
-[[tool.mypy.overrides]]
-module = ["volcano_sdk.durable_authoring", "test_durable_authoring"]
-disallow_any_explicit = true
-
 [tool.basedpyright]
 stubPath = "typings"
-include = ["src", "tests", "scripts", "features", "typings"]
-extraPaths = ["src", "tests/unit", "features"]
+include = ["src", "tests", "scripts", "features", "typings", "conftest.py"]
+extraPaths = [".", "src", "features"]
 exclude = ["src/volcano_sdk/_generated"]
 pythonVersion = "3.11"
 venvPath = "."
 venv = ".venv"
-typeCheckingMode = "strict"
-reportUnnecessaryTypeIgnoreComment = "error"
-reportUnreachable = "error"
-reportUninitializedInstanceVariable = "error"
-reportImplicitOverride = "error"
-reportPropertyTypeMismatch = "error"
-reportMissingModuleSource = "error"
-reportImportCycles = "error"
-reportIgnoreCommentWithoutRule = "error"
-reportUnsafeMultipleInheritance = "error"
-reportImplicitAbstractClass = "error"
-reportIncompatibleUnannotatedOverride = "error"
-reportInvalidAbstractMethod = "error"
-reportSelfClsDefault = "error"
-reportPrivateLocalImportUsage = "error"
-reportUnusedParameter = "error"
-reportCallInDefaultInitializer = "error"
-reportImplicitRelativeImport = "error"
-reportUnnecessaryCast = "error"
-reportUnnecessaryComparison = "error"
-reportUnusedCallResult = "error"
-reportIncompatibleVariableOverride = "error"
-# Package-level collaborators intentionally share private implementation details;
-# Ruff still enforces private access everywhere else.
-reportPrivateUsage = false
-
-[[tool.basedpyright.executionEnvironments]]
-root = "src/volcano_sdk/durable_authoring.py"
-reportExplicitAny = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/test_durable_authoring.py"
-reportAny = "error"
-reportExplicitAny = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "src/volcano_sdk/storage.py"
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportImplicitStringConcatenation = "error"
-reportUnannotatedClassAttribute = "error"
-reportUnusedCallResult = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "src/volcano_sdk/realtime.py"
-reportUnannotatedClassAttribute = "error"
-reportUnusedCallResult = "error"
-reportAny = "error"
-reportExplicitAny = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "src/volcano_sdk/auth.py"
-reportAny = "error"
-reportExplicitAny = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "src/volcano_sdk/functions.py"
-reportAny = "error"
-reportExplicitAny = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "src/volcano_sdk/_transport.py"
-reportUnannotatedClassAttribute = "error"
-reportAny = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/test_state.py"
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportImplicitStringConcatenation = "error"
-reportUnannotatedClassAttribute = "error"
-reportUnusedCallResult = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/test_realtime.py"
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportImplicitStringConcatenation = "error"
-reportUnannotatedClassAttribute = "error"
-reportUnusedCallResult = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/test_functions.py"
-reportAny = "error"
-reportExplicitAny = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/test_logs.py"
-reportAny = "error"
-reportExplicitAny = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/test_auth_facade_recovery.py"
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportImplicitStringConcatenation = "error"
-reportUnannotatedClassAttribute = "error"
-reportUnusedCallResult = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/test_session_continuity.py"
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportImplicitStringConcatenation = "error"
-reportUnannotatedClassAttribute = "error"
-reportUnusedCallResult = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/test_token_bootstrap.py"
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportImplicitStringConcatenation = "error"
-reportUnannotatedClassAttribute = "error"
-reportUnusedCallResult = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "features"
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportImplicitStringConcatenation = "error"
-reportUnannotatedClassAttribute = "error"
-reportUnusedCallResult = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/contract"
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportImplicitStringConcatenation = "error"
-reportPrivateUsage = "error"
-reportUnannotatedClassAttribute = "error"
-reportUnusedCallResult = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/package"
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportImplicitStringConcatenation = "error"
-reportPrivateUsage = "error"
-reportUnannotatedClassAttribute = "error"
-reportUnusedCallResult = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/test_realtime_callback_boundaries.py"
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportUnannotatedClassAttribute = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/test_realtime_cleanup_boundaries.py"
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportUnannotatedClassAttribute = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/test_realtime_connection_boundaries.py"
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportUnannotatedClassAttribute = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/test_realtime_delivery_boundaries.py"
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportUnannotatedClassAttribute = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/test_realtime_input_boundaries.py"
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportUnannotatedClassAttribute = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "tests/unit/test_mutation_results.py"
-extraPaths = [".", "src", "tests/unit", "features"]
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportUnannotatedClassAttribute = "error"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "scripts"
-extraPaths = [".", "src", "tests/unit", "features"]
-reportAny = "error"
-reportExplicitAny = "error"
-reportInvalidCast = "error"
-reportImplicitStringConcatenation = "error"
-reportPrivateUsage = "error"
-reportUnannotatedClassAttribute = "error"
-reportUnusedCallResult = "error"
+typeCheckingMode = "all"
 
 [tool.ruff]
 required-version = "==0.16.4"
@@ -356,79 +151,49 @@ extend-exclude = ["src/volcano_sdk/_generated"]
 
 [tool.ruff.lint]
 preview = true
-explicit-preview-rules = true
-select = [
-  "ALL",
-  "ASYNC119",
-  "B901",
-  "B909",
-  "DOC201",
-  "DOC501",
-  "D420",
-  "PLE4703",
-  "PLW0244",
-  "PLW0717",
-  "PLW1514",
-  "PLW3201",
-  "PT029",
-  "RUF045",
-  "RUF066",
-  "RUF069",
-  "RUF071",
-  "RUF074",
-  "RUF105",
-]
+select = ["ALL"]
 ignore = [
   # The repository license covers source files without per-file headers.
-  "CPY001",
+  "missing-copyright-notice",
   # Ruff format uses the opposite convention or supersedes these rules.
-  "COM812",
-  "COM819",
-  "D203",
-  "D206",
-  "D213",
-  "D300",
-  "E111",
-  "E114",
-  "E117",
-  "ISC001",
-  "ISC002",
-  "Q000",
-  "Q001",
-  "Q002",
-  "Q003",
-  "W191",
+  "missing-trailing-comma",
+  "prohibited-trailing-comma",
+  "incorrect-blank-line-before-class",
+  "docstring-tab-indentation",
+  "multi-line-summary-second-line",
+  "triple-single-quotes",
+  "indentation-with-invalid-multiple",
+  "indentation-with-invalid-multiple-comment",
+  "over-indented",
+  "single-line-implicit-string-concatenation",
+  "multi-line-implicit-string-concatenation",
+  "bad-quotes-inline-string",
+  "bad-quotes-multiline-string",
+  "bad-quotes-docstring",
+  "avoidable-escaped-quote",
+  "tab-indentation",
 ]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 5
 
 [tool.ruff.lint.per-file-ignores]
-"features/**/*.py" = ["D", "INP001", "S101"]
-"scripts/*.py" = ["T201"]
-"src/volcano_sdk/auth.py" = ["SLF001"]
-"src/volcano_sdk/database.py" = ["SLF001"]
-"src/volcano_sdk/durable.py" = ["SLF001"]
-"src/volcano_sdk/durable_authoring.py" = ["ANN401"]
-"src/volcano_sdk/functions.py" = ["SLF001"]
-"src/volcano_sdk/logs.py" = ["SLF001"]
-"src/volcano_sdk/locks.py" = ["SLF001"]
-"src/volcano_sdk/realtime.py" = ["ANN401", "SLF001"]
-"src/volcano_sdk/storage.py" = ["SLF001"]
-"tests/**/*.py" = [
-  "ANN401",
+"conftest.py" = ["D"]
+"features/**/*.py" = ["D", "implicit-namespace-package", "assert"]
+"scripts/*.py" = ["print"]
+"{tests,src/volcano_sdk/_tests}/**/*.py" = [
   "D",
-  "INP001",
-  "PLR2004",
-  "S101",
-  "S105",
-  "S106",
-  "SLF001",
+  "implicit-namespace-package",
+  "magic-value-comparison",
+  "assert",
+  "hardcoded-password-string",
+  "hardcoded-password-func-arg",
 ]
 
 [tool.pytest.ini_options]
 minversion = "9.1.1"
-addopts = "--disable-socket --allow-unix-socket"
+addopts = "--disable-socket --allow-unix-socket --import-mode=importlib"
+testpaths = ["tests/unit", "src/volcano_sdk/_tests"]
 pythonpath = [".", "features"]
 strict = true
 empty_parameter_set_mark = "fail_at_collect"
@@ -441,7 +206,7 @@ filterwarnings = ["error"]
 [tool.coverage.run]
 branch = true
 source_dirs = ["src/volcano_sdk"]
-omit = ["src/volcano_sdk/_generated/*"]
+omit = ["src/volcano_sdk/_generated/*", "src/volcano_sdk/_tests/*"]
 
 [tool.coverage.report]
 fail_under = 100
@@ -469,13 +234,14 @@ type_check_command = [
   "src/volcano_sdk/_session.py",
   "src/volcano_sdk/_session_operations.py",
 ]
-cache_invalidation_files = ["tests/**/*.py"]
-pytest_add_cli_args_test_selection = ["tests/unit"]
+cache_invalidation_files = ["tests/**/*.py", "src/volcano_sdk/_tests/**/*.py", "conftest.py"]
+pytest_add_cli_args_test_selection = ["tests/unit", "src/volcano_sdk/_tests"]
 pytest_add_cli_args = ["-c", "pyproject.toml", "-x"]
-do_not_mutate = ["src/volcano_sdk/_generated/*"]
+do_not_mutate = ["src/volcano_sdk/_generated/*", "src/volcano_sdk/_tests/*"]
 on_dependency_change = "rerun"
 process_isolation = "forkserver"
 also_copy = [
+  "conftest.py",
   "features",
   "maintainers",
   "tests/fixtures",
@@ -507,7 +273,7 @@ set -euo pipefail
 report_dir="$(mktemp -d)"
 trap 'rm -rf "$report_dir"' EXIT
 test_status=0
-pytest -c pyproject.toml tests/unit -q --junitxml="$report_dir/unit.xml" || test_status=$?
+pytest -c pyproject.toml -q --junitxml="$report_dir/unit.xml" || test_status=$?
 mkdir -p reports
 if test -s "$report_dir/unit.xml"; then
   mv "$report_dir/unit.xml" reports/unit.xml
@@ -525,7 +291,7 @@ set -euo pipefail
 report_dir="$(mktemp -d)"
 trap 'rm -rf "$report_dir"' EXIT
 test_status=0
-uv run --locked --isolated --python 3.12 pytest -c pyproject.toml tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:"$report_dir/coverage.json" --junitxml="$report_dir/unit.xml" || test_status=$?
+uv run --locked --isolated --python 3.12.14 pytest -c pyproject.toml -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:"$report_dir/coverage.json" --junitxml="$report_dir/unit.xml" || test_status=$?
 mkdir -p reports
 if test -s "$report_dir/coverage.json"; then
   mv "$report_dir/coverage.json" reports/coverage.json

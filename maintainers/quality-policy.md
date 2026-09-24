@@ -19,10 +19,11 @@ Runtime coverage uses
 so unimported modules count toward the 100% line and branch threshold.
 
 Diagnostic fixtures deliberately call public APIs with invalid types. Their
-`type: ignore[code]` comments are limited to named files and must still mask a
-real error under [mypy `warn_unused_ignores`](https://mypy.readthedocs.io/en/stable/config_file.html).
+exact mypy and basedpyright expected-error comments are limited to named files.
+Both native checkers reject an expectation when its diagnostic disappears.
 Ruff's `RUF100` rejects unused Ruff suppressions. The reviewed `S603` exception
-is pinned to one function and must remain used. Basedpyright's
+is pinned to one function; six `S404` records cover exact shell-free subprocess
+imports. These directives must remain used, and call-site security rules stay active. Basedpyright's
 [native configuration](https://docs.basedpyright.com/latest/configuration/config-files/)
 remains independently active; this policy lock does not replace type checking.
 

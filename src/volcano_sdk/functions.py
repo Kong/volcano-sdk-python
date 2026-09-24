@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import json
-import math
-import re
-from collections.abc import Callable, Mapping
-from types import MappingProxyType
-from typing import TYPE_CHECKING, Protocol, TypeGuard, TypeVar, cast, runtime_checkable
+from collections.abc import Mapping
+from typing import Protocol, cast, runtime_checkable
 
+from ._function_requests import FunctionAuth, FunctionsContext
 from ._function_resolution import (
     FunctionResolution,
     forget,
@@ -18,101 +15,28 @@ from ._function_resolution import (
     store_missing,
     valid_invoke_url,
 )
-from ._transport import Transport, TransportResponse, invoke, response_payload
+from ._function_values import (
+    FUNCTION_INVOKED_HEADER,
+    FUNCTION_VERSION_HEADER,
+    HTTP_NOT_FOUND,
+    HTTP_SUCCESS_MIN,
+    HTTP_SUCCESS_STATUSES,
+    HTTP_UNAUTHORIZED,
+    INVALID_FUNCTION_RESPONSE,
+    INVALID_FUNCTION_TRANSPORT,
+    function_data,
+    function_name,
+    function_payload,
+    header,
+    stale_mapping,
+)
+from ._transport import TransportResponse, invoke, response_payload
 from .errors import (
-    AuthenticationError,
     NotFoundError,
-    SessionChangedError,
-    VolcanoError,
 )
 from .models import FunctionResponse, JSONValue
 
-if TYPE_CHECKING:
-    from ._session_operations import SessionOperations
-    from .auth import Auth
-    from .models import Session
-
-_FUNCTION_NAME = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
-_INVALID_FUNCTION_NAME = (
-    "Function name must be DNS-safe: lowercase letters, numbers, and hyphens; "
-    "1-63 characters"
-)
-_INVALID_FUNCTION_RESPONSE = "Expected a complete function response"
-_INVALID_FUNCTION_PAYLOAD = "Function payload must be a mapping"
-_INVALID_FUNCTION_JSON_KEY = "Function JSON object keys must be strings"
-_INVALID_FUNCTION_DATA = "Function data must be JSON-compatible"
-_INVALID_FUNCTION_TRANSPORT = "Transport does not support function invocation"
-_HTTP_SUCCESS_MIN = 200
-_HTTP_SUCCESS_MAX = 300
-_HTTP_SUCCESS_STATUSES = range(_HTTP_SUCCESS_MIN, _HTTP_SUCCESS_MAX)
-_HTTP_NOT_FOUND = 404
-_HTTP_UNAUTHORIZED = 401
 # Present only once the platform has dispatched to the function.
-_FUNCTION_INVOKED_HEADER = "X-Volcano-Function-Invoked"
-_FUNCTION_VERSION_HEADER = "X-Volcano-Version"
-_CONTENT_TYPE_HEADER = "Content-Type"
-_FUNCTION_TEXT_ENCODING = "utf-8-sig"
-
-
-_Result = TypeVar("_Result")
-
-
-class FunctionsContext(Protocol):
-    """Client capabilities required by function invocation."""
-
-    _transport: Transport
-    auth: Auth
-
-    def _capture_session_binding(
-        self,
-    ) -> tuple[int, SessionOperations, Session | None]: ...
-
-    def _function_token(self) -> str: ...
-
-    def _api_base_url(self) -> str: ...
-
-
-class _FunctionAuth:
-    def __init__(self, client: FunctionsContext) -> None:
-        self._client: FunctionsContext = client
-        self._binding: tuple[int, SessionOperations, Session | None] = (
-            client._capture_session_binding()
-        )
-        self._fallback_token: str = client._function_token()
-
-    def run(self, operation: Callable[[str], _Result]) -> _Result:
-        if self._binding[2] is not None:
-            self._binding = self._client.auth._owned_refresh_session(self._binding)
-        try:
-            return self._run(operation)
-        finally:
-            if self._binding[2] is not None:
-                self._client.auth._validate_read_failure(self._binding)
-            elif self._client._capture_session_binding()[1] != self._binding[1]:
-                raise SessionChangedError
-
-    def _run(self, operation: Callable[[str], _Result]) -> _Result:
-        try:
-            return operation(self._token())
-        except AuthenticationError as original:
-            if self._binding[2] is None or original.status != _HTTP_UNAUTHORIZED:
-                raise
-            try:
-                # Resolve has released its cache lock before refresh callbacks run.
-                _ = self._client.auth._refresh_session_for_binding(self._binding)
-            except SessionChangedError:
-                raise
-            except VolcanoError:
-                raise original from None
-            return operation(self._token())
-
-    def _token(self) -> str:
-        if self._binding[2] is None:
-            if self._client._capture_session_binding()[1] != self._binding[1]:
-                raise SessionChangedError
-            return self._fallback_token
-        session = self._client.auth._owned_refresh_session(self._binding)[2]
-        return session.access_token
 
 
 @runtime_checkable
@@ -149,6 +73,9 @@ class FunctionsTransport(Protocol):
         ...
 
 
+__all__ = ["Functions", "FunctionsContext", "FunctionsTransport"]
+
+
 class Functions:
     """Invoke deployed Volcano functions by name."""
 
@@ -157,9 +84,9 @@ class Functions:
         self._client: FunctionsContext = client
 
     def _function_transport(self) -> FunctionsTransport:
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, FunctionsTransport):
-            raise TypeError(_INVALID_FUNCTION_TRANSPORT)
+            raise TypeError(INVALID_FUNCTION_TRANSPORT)
         return transport
 
     def invoke(
@@ -176,9 +103,9 @@ class Functions:
             returned by the function are preserved; platform failures raise.
 
         """
-        auth = _FunctionAuth(self._client)
-        name = _function_name(name)
-        request_payload = _function_payload(payload)
+        auth = FunctionAuth(self._client)
+        name = function_name(name)
+        request_payload = function_payload(payload)
         transport = self._function_transport()
         authorization, resolution = auth.run(
             lambda token: (token, self._resolve(transport, token, name))
@@ -188,10 +115,10 @@ class Functions:
                 transport, token, resolution, request_payload
             )
         )
-        if _stale_mapping(response):
+        if stale_mapping(response):
             # The function was deleted and recreated, so the cached identity no
             # longer exists. Resolve again before giving up.
-            forget(self._client._api_base_url(), authorization, name)
+            forget(self._client.api_base_url(), authorization, name)
             _, resolution = auth.run(
                 lambda token: (token, self._resolve(transport, token, name))
             )
@@ -224,10 +151,10 @@ class Functions:
                 payload=payload,
             )
         if (
-            response.status_code == _HTTP_UNAUTHORIZED
-            and _header(response.headers, _FUNCTION_INVOKED_HEADER) is None
+            response.status_code == HTTP_UNAUTHORIZED
+            and header(response.headers, FUNCTION_INVOKED_HEADER) is None
         ):
-            _ = response_payload(response, _HTTP_SUCCESS_MIN)
+            _ = response_payload(response, HTTP_SUCCESS_MIN)
         return response
 
     def _resolve(
@@ -244,7 +171,7 @@ class Functions:
             The function's identifier and optional direct invocation URL.
 
         """
-        api_url = self._client._api_base_url()
+        api_url = self._client.api_base_url()
         cached = self._cached(api_url, authorization, name)
         if cached is not None:
             return cached
@@ -267,7 +194,7 @@ class Functions:
         if cached.resolution is None:
             raise NotFoundError(
                 cached.message,
-                status=_HTTP_NOT_FOUND,
+                status=HTTP_NOT_FOUND,
                 code=cached.code,
                 retry_after=cached.retry_after,
             )
@@ -286,7 +213,7 @@ class Functions:
             name=name,
         )
         try:
-            payload: object = response_payload(resolved, _HTTP_SUCCESS_MIN)
+            payload: object = response_payload(resolved, HTTP_SUCCESS_MIN)
         except NotFoundError as error:
             store_missing(api_url, authorization, name, error)
             raise
@@ -297,11 +224,11 @@ class Functions:
     @staticmethod
     def _resolution(payload: object, api_url: str) -> FunctionResolution:
         if not isinstance(payload, Mapping):
-            raise TypeError(_INVALID_FUNCTION_RESPONSE)
+            raise TypeError(INVALID_FUNCTION_RESPONSE)
         values = cast("Mapping[str, object]", payload)
         function_id = values.get("function_id")
         if not isinstance(function_id, str) or not function_id:
-            raise TypeError(_INVALID_FUNCTION_RESPONSE)
+            raise TypeError(INVALID_FUNCTION_RESPONSE)
         # Absent when the deployment serves no public invocation domain, as in
         # local development; the function is reached through the API instead.
         return FunctionResolution(
@@ -314,185 +241,25 @@ class Functions:
         values = cast("Mapping[str, object]", payload)
         ttl = values.get("cache_ttl_seconds")
         if not isinstance(ttl, int) or isinstance(ttl, bool) or ttl <= 0:
-            raise TypeError(_INVALID_FUNCTION_RESPONSE)
+            raise TypeError(INVALID_FUNCTION_RESPONSE)
         return float(ttl)
 
     @staticmethod
     def _response(response: TransportResponse) -> FunctionResponse:
         status = int(response.status_code)
-        version = _header(response.headers, _FUNCTION_VERSION_HEADER)
+        version = header(response.headers, FUNCTION_VERSION_HEADER)
         # A non-2xx the platform produced never reached the function, so it is
         # an SDK error rather than the function's answer. That turns on the
         # dispatch marker, not on the version stamp, which every response
         # carries — keying on the stamp would classify every platform failure
         # as though the function had returned it.
-        dispatched = _header(response.headers, _FUNCTION_INVOKED_HEADER) is not None
-        if status not in _HTTP_SUCCESS_STATUSES and not dispatched:
-            _ = response_payload(response, _HTTP_SUCCESS_MIN)
+        dispatched = header(response.headers, FUNCTION_INVOKED_HEADER) is not None
+        if status not in HTTP_SUCCESS_STATUSES and not dispatched:
+            _ = response_payload(response, HTTP_SUCCESS_MIN)
         headers = {} if response.headers is None else dict(response.headers)
         return FunctionResponse(
-            data=_function_data(response),
+            data=function_data(response),
             status=status,
             headers=headers,
             version=version,
         )
-
-
-def _stale_mapping(response: TransportResponse) -> bool:
-    """Report a platform 404, which means the cached function identity is gone.
-
-    A function that answers 404 itself must be returned rather than retried:
-    invoking twice would run the caller's side effects twice. The platform sets
-    X-Volcano-Function-Invoked only after dispatch, so its absence is what
-    separates the two. X-Volcano-Version cannot: the server stamps it on every
-    response, including errors raised before the function is reached.
-
-    Returns
-    -------
-    bool
-        True only for a 404 without the function-dispatch header.
-
-    """
-    return (
-        int(response.status_code) == _HTTP_NOT_FOUND
-        and _header(response.headers, _FUNCTION_INVOKED_HEADER) is None
-    )
-
-
-class _JSONLoader(Protocol):
-    def loads(self, s: str, /, *, parse_constant: Callable[[str], None]) -> object: ...
-
-
-_JSON_LOADER: _JSONLoader = json
-
-
-def _function_data(response: TransportResponse) -> JSONValue:
-    if not response.content:
-        return _json_value(response.payload)
-    text = response.content.decode(_FUNCTION_TEXT_ENCODING, errors="replace")
-    if not text:
-        return None
-    content_type = _header(response.headers, _CONTENT_TYPE_HEADER)
-    is_json = content_type is not None and "application/json" in content_type.lower()
-    if is_json or text.startswith(("{", "[")):
-        try:
-            decoded = _JSON_LOADER.loads(text, parse_constant=_reject_json_constant)
-            return _json_value(decoded)
-        except ValueError:
-            pass
-    return text
-
-
-def _reject_json_constant(_value: str) -> None:
-    raise ValueError
-
-
-def _json_mapping(
-    value: Mapping[object, object], active: set[int]
-) -> Mapping[str, JSONValue]:
-    marker = _enter_json_container(value, active)
-    try:
-        frozen: dict[str, JSONValue] = {}
-        for key, item in value.items():
-            if not isinstance(key, str):
-                raise TypeError(_INVALID_FUNCTION_JSON_KEY)
-            _validate_json_string(key, _INVALID_FUNCTION_JSON_KEY)
-            frozen[key] = _json_value_checked(item, active)
-        return MappingProxyType(frozen)
-    finally:
-        active.remove(marker)
-
-
-def _json_sequence(
-    value: list[object] | tuple[object, ...], active: set[int]
-) -> tuple[JSONValue, ...]:
-    marker = _enter_json_container(value, active)
-    try:
-        return tuple(_json_value_checked(item, active) for item in value)
-    finally:
-        active.remove(marker)
-
-
-def _enter_json_container(value: object, active: set[int]) -> int:
-    marker = id(value)
-    if marker in active:
-        raise TypeError(_INVALID_FUNCTION_DATA)
-    active.add(marker)
-    return marker
-
-
-def _validate_json_string(value: str, message: str) -> None:
-    try:
-        _ = str.encode(value)
-    except UnicodeEncodeError as error:
-        raise TypeError(message) from error
-
-
-def _is_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
-    return isinstance(value, Mapping)
-
-
-def _is_sequence(value: object) -> TypeGuard[list[object] | tuple[object, ...]]:
-    return isinstance(value, (list, tuple))
-
-
-def _json_value(value: object) -> JSONValue:
-    try:
-        return _json_value_checked(value, set())
-    except RecursionError as error:
-        raise TypeError(_INVALID_FUNCTION_DATA) from error
-
-
-def _json_value_checked(value: object, active: set[int]) -> JSONValue:
-    if _is_mapping(value):
-        return _json_mapping(value, active)
-    if _is_sequence(value):
-        return _json_sequence(value, active)
-    return _json_scalar(value)
-
-
-def _json_scalar(value: object) -> JSONValue:
-    if isinstance(value, str):
-        _validate_json_string(value, _INVALID_FUNCTION_DATA)
-        return value
-    if isinstance(value, float) and not math.isfinite(value):
-        raise TypeError(_INVALID_FUNCTION_DATA)
-    if isinstance(value, int) and not isinstance(value, bool):
-        return _json_int(value)
-    if value is None or isinstance(value, (float, bool)):
-        return value
-    raise TypeError(_INVALID_FUNCTION_DATA)
-
-
-def _json_int(value: int) -> int:
-    try:
-        _ = int.__str__(value)
-    except ValueError as error:
-        raise TypeError(_INVALID_FUNCTION_DATA) from error
-    return value
-
-
-def _header(headers: Mapping[str, str] | None, name: str) -> str | None:
-    if headers is None:
-        return None
-    for key, value in headers.items():
-        if key.casefold() == name.casefold():
-            return value
-    return None
-
-
-def _function_name(value: object) -> str:
-    if not isinstance(value, str) or _FUNCTION_NAME.fullmatch(value) is None:
-        raise ValueError(_INVALID_FUNCTION_NAME)
-    return value
-
-
-def _function_payload(value: object) -> Mapping[str, JSONValue]:
-    if value is None:
-        return {}
-    if not _is_mapping(value):
-        raise TypeError(_INVALID_FUNCTION_PAYLOAD)
-    try:
-        return _json_mapping(value, set())
-    except RecursionError as error:
-        raise TypeError(_INVALID_FUNCTION_DATA) from error

@@ -20,17 +20,17 @@ if TYPE_CHECKING:
 GENERATED = "src/volcano_sdk/_generated"
 LOCK_SHA256 = "489b1a41632f67d528dbb10267bb8921c38c78726c430d990b4ee99ebdd9236a"
 TYPE_FIXTURES = {
-    "tests/typing/contract_steps.py",
-    "tests/typing/durable_callbacks.py",
-    "tests/typing/durable_configuration.py",
-    "tests/typing/durable_logger.py",
-    "tests/typing/mypy_correctness.py",
-    "tests/typing/realtime_subscriptions.py",
-    "tests/typing/transport.py",
-    "tests/unit/fixtures/invalid_arguments.py",
-    "tests/unit/fixtures/invalid_callbacks.py",
-    "tests/unit/fixtures/invalid_realtime_callback.py",
-    "tests/unit/fixtures/invalid_wait_options.py",
+    "src/volcano_sdk/_tests/typing/contract_steps.py",
+    "src/volcano_sdk/_tests/typing/durable_callbacks.py",
+    "src/volcano_sdk/_tests/typing/durable_configuration.py",
+    "src/volcano_sdk/_tests/typing/durable_logger.py",
+    "src/volcano_sdk/_tests/typing/mypy_correctness.py",
+    "src/volcano_sdk/_tests/typing/realtime_subscriptions.py",
+    "src/volcano_sdk/_tests/typing/transport.py",
+    "src/volcano_sdk/_tests/fixtures/invalid_arguments.py",
+    "src/volcano_sdk/_tests/fixtures/invalid_callbacks.py",
+    "src/volcano_sdk/_tests/fixtures/invalid_realtime_callback.py",
+    "src/volcano_sdk/_tests/fixtures/invalid_wait_options.py",
 }
 CONFIG_NAMES = {
     "pyproject.toml",
@@ -48,11 +48,24 @@ CONFIG_NAMES = {
     ".coveragerc",
 }
 APPROVED_EXCEPTION_SHA256 = (
-    "e97935a8767e870713640b4cf9ec1d65ec65464b68cb156ea4e40e8e9c763cf7"
+    "0a64e5eb684cca9ff200e5ea5f05b4d362917a84543b71104fb4a6b56492b311"
 )
 APPROVED_RULES = {
     ("scripts/generate_openapi.py:generate", "S603"),
-    ("tests/unit/test_durable_authoring.py:pytestmark", "pytest.filterwarnings"),
+    (
+        "src/volcano_sdk/_tests/test_durable_authoring.py:pytestmark",
+        "pytest.filterwarnings",
+    ),
+    ("scripts/generate_openapi.py:import:subprocess", "S404"),
+    ("tests/unit/test_dependency_audit.py:import:subprocess", "S404"),
+    ("tests/unit/test_generation.py:import:subprocess", "S404"),
+    ("tests/unit/test_mutation_results.py:import:subprocess", "S404"),
+    ("tests/unit/test_quality_configuration.py:import:subprocess", "S404"),
+    ("tests/unit/test_test_integrity.py:import:subprocess", "S404"),
+}
+RULE_NAMES = {
+    "suspicious-subprocess-import": "S404",
+    "subprocess-without-shell-equals-true": "S603",
 }
 WARNING_PREFIX = "ignore:'asyncio.iscoroutinefunction' is deprecated"
 REVIEWED_WARNING = f"{WARNING_PREFIX}:{DeprecationWarning.__name__}"
@@ -72,7 +85,7 @@ FORBIDDEN = re.compile(
 )
 TYPE_IGNORE = re.compile(r"\btype:\s*ignore(?:\[[^]]+\])?(?=$|[\s#])", re.IGNORECASE)
 PYRIGHT_IGNORE = re.compile(r"\bpyright:\s*ignore\[[A-Za-z0-9, ]+\]", re.IGNORECASE)
-RUFF_IGNORE = re.compile(r"\bruff:\s*ignore\[([A-Z0-9, ]+)\]", re.IGNORECASE)
+RUFF_IGNORE = re.compile(r"\bruff:\s*ignore\[([A-Z0-9, -]+)\]", re.IGNORECASE)
 
 
 def changed_paths(expected: object, actual: object, path: str) -> list[str]:
@@ -166,6 +179,25 @@ def enclosing_function(source: str, line: int) -> str | None:
     return nearest.name if nearest is not None else None
 
 
+def suppression_scope(source: str, line: int) -> str | None:
+    """Identify the exact function or subprocess import owning a directive.
+
+    Returns:
+        The reviewed syntax scope, if present.
+
+    """
+    for node in ast.parse(source).body:
+        if (
+            isinstance(node, ast.Import)
+            and node.lineno == line
+            and len(node.names) == 1
+            and node.names[0].name == "subprocess"
+            and node.names[0].asname is None
+        ):
+            return "import:subprocess"
+    return enclosing_function(source, line)
+
+
 def check_rule(
     key: tuple[str, str],
     location: str,
@@ -208,8 +240,9 @@ def check_ruff_comment(
     if len(matches) != 1 or comment.lower().count("ruff:") != 1:
         return [f"{location}: unrecognized or multiple Ruff directives"]
     errors: list[str] = []
-    scope = f"{name}:{enclosing_function(source, token.start[0])}"
-    for rule in matches[0].group(1).replace(" ", "").upper().split(","):
+    scope = f"{name}:{suppression_scope(source, token.start[0])}"
+    for label in matches[0].group(1).replace(" ", "").split(","):
+        rule = RULE_NAMES.get(label.lower(), label.upper())
         errors.extend(check_rule((scope, rule), location, approved, used))
     return errors
 
@@ -229,8 +262,11 @@ def check_comment(
     """
     location = f"{name}:{token.start[0]}"
     pyright_ignores = PYRIGHT_IGNORE.findall(token.string)
+    remaining = token.string
+    if name in TYPE_FIXTURES and TYPE_IGNORE.search(remaining):
+        remaining = PYRIGHT_IGNORE.sub("", remaining)
     errors = (
-        [f"{location}: forbidden suppression"] if FORBIDDEN.search(token.string) else []
+        [f"{location}: forbidden suppression"] if FORBIDDEN.search(remaining) else []
     )
     if TYPE_IGNORE.search(token.string) and name not in TYPE_FIXTURES:
         errors.append(f"{location}: type ignore outside diagnostic fixture")
@@ -288,7 +324,7 @@ def check_comments(
         for token in tokenize.generate_tokens(io.StringIO(source).readline):
             errors.extend(check_token(name, source, token, approved, used))
         if (
-            name == "tests/unit/test_durable_authoring.py"
+            name == "src/volcano_sdk/_tests/test_durable_authoring.py"
             and sum(
                 ast.dump(statement, include_attributes=False) == REVIEWED_WARNING_FILTER
                 for statement in ast.parse(source).body
