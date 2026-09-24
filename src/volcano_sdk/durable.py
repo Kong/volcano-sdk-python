@@ -129,8 +129,8 @@ class Durable:
     ) -> DurableExecution:
         """Start a durable execution and return a handle to it.
 
-        A durable function is never invoked synchronously: it can run for up to
-        366 days, so the platform accepts the start and answers with an execution
+        A durable function is never invoked synchronously: it can run for
+        hours, so the platform accepts the start and answers with an execution
         to follow. Starting is the only durable operation an application
         credential may perform -- reading a result or stopping an execution is
         owner-scoped.
@@ -166,10 +166,12 @@ class Durable:
     ) -> DurableExecution:
         """Read an execution, including its result once it has succeeded.
 
-        Owner-scoped: it takes the project id and the project owner's platform
-        user token, because an execution is addressed by its id alone. Poll it
-        from a backend, not a browser. Auth-user sessions, anonymous keys,
-        service keys, and project access tokens are not accepted.
+        Owner-scoped: it takes the project id and the project's own platform
+        token, because an execution is addressed by its id alone and an
+        anonymous key is held by everyone who loads the page. Poll it from a
+        backend, not a browser. Neither an auth-user session from sign-in nor a
+        service key is accepted here -- the route takes a user token, and
+        anything else is answered 401.
 
         Returns
         -------
