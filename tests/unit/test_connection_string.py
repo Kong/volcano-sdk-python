@@ -109,6 +109,12 @@ def test_database_connection_string_keeps_credential_question_mark() -> None:
     )
 
 
+def test_database_connection_string_finds_query_immediately_after_userinfo() -> None:
+    assert database_connection_string("postgres://u@?sslmode=require") == (
+        "postgres://u@?sslmode=require&application_name=volcano_full_access"
+    )
+
+
 def test_database_connection_string_ignores_later_at_sign_in_query() -> None:
     base = "postgres://u@host?options=a@b"
 
