@@ -123,6 +123,21 @@ def test_profile_parser_rejects_non_json_metadata(field: str) -> None:
         _ = _user_from_payload(payload)
 
 
+def test_profile_parser_rejects_non_json_extra_user_data() -> None:
+    payload = AuthGetUserResponse200.from_dict(
+        {
+            "user": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "email": "user@example.com",
+                "status": "active",
+                "invalid": object(),
+            }
+        }
+    )
+    with pytest.raises(AuthenticationError, match="complete user profile"):
+        _ = _user_from_payload(payload)
+
+
 @pytest.mark.parametrize("data", [object(), [object()], {"invalid": object()}])
 def test_oauth_api_parser_rejects_non_json_provider_data(data: object) -> None:
     payload = CallOAuthProviderAPIResponse200.from_dict(
