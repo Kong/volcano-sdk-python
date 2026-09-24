@@ -4,7 +4,14 @@ from typing import TYPE_CHECKING, Never
 
 import httpx
 import pytest
-from test_session_continuity import SESSION_A, USER_A, client_for, refreshed
+from test_session_continuity import (
+    SESSION_A,
+    SESSION_B,
+    USER_A,
+    access_token,
+    client_for,
+    refreshed,
+)
 
 from volcano_sdk import AuthenticationError, Session, SessionChangedError, VolcanoClient
 from volcano_sdk import auth as auth_module
@@ -172,6 +179,45 @@ def test_refresh_adopts_an_already_completed_refresh_without_rotating_again() ->
     assert client.current_session is completed
     assert [request.url.path for request in requests] == ["/auth/refresh"]
     assert notifications == []
+
+
+def test_auth_facade_rejects_a_refresh_from_another_server_session() -> None:
+    current = Session(access_token(SESSION_A), "refresh", USER_A)
+    binding = (0, SessionOperations(current), current)
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return refreshed(SESSION_B)
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    def unused(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail("an invalid refresh must not reach the client state adapter")
+
+    auth = Auth(
+        AuthContext(
+            transport=lambda: transport,
+            current_session=unused,
+            anon_token=lambda: "anon",
+            api_base_url=unused,
+            set_session=unused,
+            capture_session=unused,
+            capture_session_binding=lambda: binding,
+            update_session_user_if_current=unused,
+            set_session_if_current=unused,
+            clear_session_if_current=unused,
+            subscribe_auth_state_change=unused,
+        )
+    )
+
+    with pytest.raises(AuthenticationError, match="session"):
+        _ = auth.refresh_session()
+
+    assert [request.url.path for request in requests] == ["/auth/refresh"]
 
 
 def test_empty_captured_sign_out_has_no_work_or_notifications() -> None:
