@@ -347,7 +347,7 @@
         },
         "coverage": {
           "interpreter": "bash",
-          "shell": "set -euo pipefail\nreport_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$report_dir\"' EXIT\nuv run --locked --isolated --python 3.12 pytest -c pyproject.toml tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:\"$report_dir/coverage.json\" --junitxml=\"$report_dir/unit.xml\"\ntest -s \"$report_dir/coverage.json\"\ntest -s \"$report_dir/unit.xml\"\nmkdir -p reports\nmv \"$report_dir/coverage.json\" reports/coverage.json\nmv \"$report_dir/unit.xml\" reports/coverage-unit.xml\n"
+          "shell": "set -euo pipefail\nreport_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$report_dir\"' EXIT\ntest_status=0\nuv run --locked --isolated --python 3.12 pytest -c pyproject.toml tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:\"$report_dir/coverage.json\" --junitxml=\"$report_dir/unit.xml\" || test_status=$?\nmkdir -p reports\nif test -s \"$report_dir/coverage.json\"; then\n  mv \"$report_dir/coverage.json\" reports/coverage.json\nelse\n  echo 'pytest-cov did not write a coverage report' >&2\n  if [[ $test_status -eq 0 ]]; then test_status=1; fi\nfi\nif test -s \"$report_dir/unit.xml\"; then\n  mv \"$report_dir/unit.xml\" reports/coverage-unit.xml\nelse\n  echo 'pytest did not write a JUnit report' >&2\n  if [[ $test_status -eq 0 ]]; then test_status=1; fi\nfi\nexit \"$test_status\"\n"
         },
         "format-check": "ruff format --check --config pyproject.toml .",
         "generated": "python -m scripts.check_openapi",
@@ -369,7 +369,7 @@
         ],
         "test": {
           "interpreter": "bash",
-          "shell": "set -euo pipefail\nreport_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$report_dir\"' EXIT\npytest -c pyproject.toml tests/unit -q --junitxml=\"$report_dir/unit.xml\"\ntest -s \"$report_dir/unit.xml\"\nmkdir -p reports\nmv \"$report_dir/unit.xml\" reports/unit.xml\n"
+          "shell": "set -euo pipefail\nreport_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$report_dir\"' EXIT\ntest_status=0\npytest -c pyproject.toml tests/unit -q --junitxml=\"$report_dir/unit.xml\" || test_status=$?\nmkdir -p reports\nif test -s \"$report_dir/unit.xml\"; then\n  mv \"$report_dir/unit.xml\" reports/unit.xml\nelse\n  echo 'pytest did not write a JUnit report' >&2\n  if [[ $test_status -eq 0 ]]; then test_status=1; fi\nfi\nexit \"$test_status\"\n"
         },
         "types": [
           "mypy",

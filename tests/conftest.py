@@ -20,6 +20,13 @@ def _reviewed_warning_filter(item: pytest.Item, marker: pytest.Mark) -> bool:
     )
 
 
+def _mutation_checkout(config: pytest.Config) -> bool:
+    # Mutmut runs relevant node IDs from its generated checkout.
+    return (
+        config.rootpath.name == "mutants" and (config.rootpath.parent / ".git").exists()
+    )
+
+
 class _TerminalSummary(Protocol):
     def write_sep(self, sep: str, title: str, *, red: bool) -> None: ...
 
@@ -77,12 +84,34 @@ class _TestIntegrity:
             )
 
 
+def _selection_errors(config: pytest.Config) -> set[str]:
+    errors: set[str] = set()
+    roots = config.getoption("file_or_dir")
+    if roots and roots != ["tests/unit"] and not _mutation_checkout(config):
+        errors.add("focused test paths")
+    if config.getoption("ignore") or config.getoption("ignore_glob"):
+        errors.add("ignored test paths")
+    return errors
+
+
+def _warning_errors(config: pytest.Config) -> set[str]:
+    errors: set[str] = set()
+    if config.getoption("pythonwarnings"):
+        errors.add("per-run warning filters")
+    overrides: list[object] = config.getoption("override_ini") or []
+    if any(
+        isinstance(override, str)
+        and override.partition("=")[0].strip() == "filterwarnings"
+        for override in overrides
+    ):
+        errors.add("overridden warning filters")
+    return errors
+
+
 def pytest_configure(config: pytest.Config) -> None:
     integrity = _TestIntegrity()
-    if config.getoption("ignore") or config.getoption("ignore_glob"):
-        integrity.violations.add("ignored test paths")
-    if config.getoption("pythonwarnings"):
-        integrity.violations.add("per-run warning filters")
+    integrity.violations.update(_selection_errors(config))
+    integrity.violations.update(_warning_errors(config))
     if config.getoption("collectonly") and config.getoption("xmlpath") is not None:
         integrity.violations.add("test report requested without execution")
     _ = config.pluginmanager.register(integrity, "sdk-test-integrity")

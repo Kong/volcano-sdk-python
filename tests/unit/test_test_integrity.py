@@ -146,6 +146,30 @@ def test_per_run_warning_filter_fails(guarded: pytest.Pytester) -> None:
     result.stdout.fnmatch_lines(["*Incomplete test run: per-run warning filters*"])
 
 
+def test_overridden_warning_filter_fails(guarded: pytest.Pytester) -> None:
+    _ = guarded.makepyfile(
+        "import warnings\ndef test_warns(): warnings.warn('unexpected', UserWarning)"
+    )
+    result = guarded.runpytest_subprocess("-o", "filterwarnings=ignore")
+    result.assert_outcomes(passed=1)
+    assert result.ret == pytest.ExitCode.TESTS_FAILED
+    result.stdout.fnmatch_lines(["*Incomplete test run: overridden warning filters*"])
+
+
+@pytest.mark.parametrize(
+    "selection", ["test_selected.py", "test_selected.py::test_one"]
+)
+def test_positional_selection_fails(guarded: pytest.Pytester, selection: str) -> None:
+    _ = guarded.makepyfile(
+        test_selected="def test_one(): assert True",
+        test_other="def test_other(): assert True",
+    )
+    result = guarded.runpytest_subprocess(selection)
+    result.assert_outcomes(passed=1)
+    assert result.ret == pytest.ExitCode.TESTS_FAILED
+    result.stdout.fnmatch_lines(["*Incomplete test run: focused test paths*"])
+
+
 @pytest.mark.parametrize(
     "source",
     [
