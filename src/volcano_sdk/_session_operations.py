@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Future
-from threading import Lock
+from threading import Lock, get_ident
 from typing import TYPE_CHECKING, TypeVar
 
 from .errors import SessionChangedError, VolcanoError
@@ -44,6 +44,8 @@ class SessionOperations:
         self._lock: LockType = Lock()
         self.refreshing: Future[Session] | None = None
         self.signing_out: Future[BaseException | None] | None = None
+        self._refresh_owner: int | None = None
+        self._sign_out_owner: int | None = None
         self._locally_cleared: bool = False
         self._verified_pair: tuple[str, str | None] | None = (
             (verified.access_token, verified.refresh_token)
@@ -91,11 +93,15 @@ class SessionOperations:
             future = self.refreshing
             if future is None or future.done():
                 future = self.refreshing = Future()
-                owner = True
+                claimed = future
+                self._refresh_owner = get_ident()
             else:
-                owner = False
-        if owner:
-            self._complete(future, operation)
+                claimed = None
+        if claimed is None and self._refresh_owner == get_ident() and not future.done():
+            message = "Reentrant refresh"
+            raise RuntimeError(message)
+        if claimed is not None:
+            self._complete(claimed, operation)
         return future.result()
 
     def sign_out(
@@ -105,13 +111,21 @@ class SessionOperations:
             future = self.signing_out
             if future is None:
                 future = self.signing_out = Future()
-                owner = True
+                claimed = future
+                self._sign_out_owner = get_ident()
             else:
-                owner = False
+                claimed = None
             preceding = self.refreshing
             pending = preceding is not None and not preceding.done()
-        if owner:
-            self._complete_revocation(future, operation, preceding, pending=pending)
+        if (
+            claimed is None
+            and self._sign_out_owner == get_ident()
+            and not future.done()
+        ):
+            message = "Reentrant sign-out"
+            raise RuntimeError(message)
+        if claimed is not None:
+            self._complete_revocation(claimed, operation, preceding, pending=pending)
         self._sign_out_result(future)
 
     def wait_for_sign_out(self) -> None:

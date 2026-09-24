@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
-from threading import Event
+from threading import Event, Thread
 
 import pytest
 from typing_extensions import override
@@ -10,6 +10,81 @@ from volcano_sdk import Session, VolcanoError
 from volcano_sdk._session_operations import SessionOperations
 
 SESSION = Session("access", "refresh", "user")
+
+
+def test_first_refresh_completes_without_waiting_for_itself() -> None:
+    operations = SessionOperations(SESSION)
+    outcome: list[Session] = []
+
+    def run() -> None:
+        outcome.append(operations.refresh(lambda: SESSION))
+
+    worker = Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(2)
+
+    assert not worker.is_alive()
+    assert outcome == [SESSION]
+
+
+def test_first_sign_out_completes_without_waiting_for_itself() -> None:
+    operations = SessionOperations(SESSION)
+    completed: list[bool] = []
+    revocations: list[tuple[Future[Session] | None, bool]] = []
+
+    def run() -> None:
+        operations.sign_out(
+            lambda preceding, pending: revocations.append((preceding, pending))
+        )
+        completed.append(True)
+
+    worker = Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(2)
+
+    assert not worker.is_alive()
+    assert completed == [True]
+    assert revocations == [(None, False)]
+
+
+def test_reentrant_refresh_fails_instead_of_waiting_for_its_owner() -> None:
+    operations = SessionOperations(SESSION)
+    failures: list[str] = []
+
+    def run() -> None:
+        try:
+            _ = operations.refresh(lambda: operations.refresh(lambda: SESSION))
+        except RuntimeError as error:
+            failures.append(str(error))
+
+    worker = Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(2)
+
+    assert not worker.is_alive()
+    assert failures == ["Reentrant refresh"]
+
+
+def test_reentrant_sign_out_fails_instead_of_waiting_for_its_owner() -> None:
+    operations = SessionOperations(SESSION)
+    failures: list[str] = []
+
+    def run() -> None:
+        try:
+            operations.sign_out(
+                lambda _preceding, _pending: operations.sign_out(
+                    lambda _other_preceding, _other_pending: None
+                )
+            )
+        except RuntimeError as error:
+            failures.append(str(error))
+
+    worker = Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(2)
+
+    assert not worker.is_alive()
+    assert failures == ["Reentrant sign-out"]
 
 
 class JoinedRefresh(Future[Session]):
@@ -124,3 +199,25 @@ def test_sign_out_replays_non_sdk_failures_without_retaining_request_frames(
     assert copied_cause.__traceback__ is None
     assert copied_cause.__context__ is None
     assert not operations.has_verified_pair(SESSION)
+
+
+def test_sign_out_copy_stops_at_one_sdk_cause() -> None:
+    operations = SessionOperations(SESSION)
+    original = RuntimeError("revocation failed")
+    upstream = VolcanoError("upstream failed", status=503)
+    upstream.__cause__ = VolcanoError("nested request", status=500)
+    original.__cause__ = upstream
+
+    def revoke() -> None:
+        raise original
+
+    with pytest.raises(RuntimeError):
+        operations.sign_out(lambda _preceding, _pending: revoke())
+    with pytest.raises(RuntimeError) as replayed:
+        operations.sign_out(lambda _preceding, _pending: revoke())
+
+    copied_cause = replayed.value.__cause__
+    assert isinstance(copied_cause, VolcanoError)
+    assert copied_cause is not upstream
+    assert copied_cause.status == 503
+    assert copied_cause.__cause__ is None

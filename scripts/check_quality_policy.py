@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 GENERATED = "src/volcano_sdk/_generated"
-LOCK_SHA256 = "86ce9c00589597b83e92f28c059800f3eed1ca20d2f9473c32aac7bf97d6bb77"
+LOCK_SHA256 = "e109f1d95060827f3da0369d675be0313dd18d4b29dd917c0d84369103d182b5"
 TYPE_FIXTURES = {
     "tests/typing/contract_steps.py",
     "tests/typing/durable_callbacks.py",
