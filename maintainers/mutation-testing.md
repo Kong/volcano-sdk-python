@@ -14,7 +14,7 @@ when mutants survive. `scripts/mutation.sh` selects module names from Git and
 report at `reports/mutation.json` distinguishes killed, statically invalid,
 surviving, uncovered, timed-out, crashed, interrupted, and missing results.
 A pytest internal error is a harness crash, not a killed mutant.
-The pinned Pyrefly check rejects type-invalid realtime and auth mutants before pytest;
+The pinned Pyrefly check rejects type-invalid realtime, auth, and client mutants before pytest;
 the report counts these as `type_checked`, separately from test-killed mutants.
 Surviving, uncovered, timed-out, crashed, and incomplete mutants still fail.
 Mutmut passes pytest `-x` so a selected test's first assertion failure kills the

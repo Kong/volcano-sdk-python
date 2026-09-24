@@ -6,7 +6,7 @@ import httpx
 import pytest
 from test_function_refresh import make_client, refreshed_response
 
-from volcano_sdk import Session, VolcanoClient
+from volcano_sdk import AuthenticationError, Session, VolcanoClient
 from volcano_sdk._session import validate_refresh_identity
 from volcano_sdk._transport import GeneratedTransport
 from volcano_sdk.client import _bootstrap_session, _BootstrapCredentials
@@ -74,6 +74,23 @@ def test_profile_update_cannot_populate_an_absent_session() -> None:
 def test_refresh_identity_without_a_previous_session_has_no_constraint() -> None:
     refreshed = Session("access", "refresh", "user")
     validate_refresh_identity(None, refreshed)
+
+
+def test_refresh_commit_rejects_a_changed_user_before_replacing_credentials() -> None:
+    client = VolcanoClient(anon_key="anon")
+    original = client.auth.set_session(Session("access", "refresh", "user-a"))
+    generation, captured = client._capture_session()
+    assert captured is original
+
+    with pytest.raises(AuthenticationError, match="different user"):
+        _ = client._set_session_if_current(
+            Session("new-access", "new-refresh", "user-b"),
+            generation,
+            event="TOKEN_REFRESHED",
+        )
+
+    assert client.current_session is original
+    assert client._capture_session()[0] == generation
 
 
 def test_reentrant_subscription_receives_initial_state_after_current_dispatch() -> None:

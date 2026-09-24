@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from collections import deque
 from dataclasses import replace
+from itertools import count
 from typing import TYPE_CHECKING, TypedDict, Unpack
 from uuid import UUID
 
@@ -109,11 +110,12 @@ class VolcanoClient:
         self._anon_key: str = anon_key
         self._service_key: str | None = service_key
         self._session_lock: LockType = threading.Lock()
-        self._session_generation: int = 0
+        self._generation_ids = count()
+        self._session_generation: int = next(self._generation_ids)
         self._session_lineage: SessionOperations = SessionOperations()
         self._current_session: Session | None = _bootstrap_session(credentials)
         self._auth_callbacks: dict[int, AuthStateCallback] = {}
-        self._next_auth_callback_id: int = 0
+        self._auth_callback_ids = count()
         self._auth_notifications: deque[
             tuple[
                 tuple[int, ...],
@@ -205,11 +207,11 @@ class VolcanoClient:
         self,
         session: Session,
         *,
-        event: AuthChangeEvent | None = "SIGNED_IN",
+        event: AuthChangeEvent | None,
     ) -> None:
         with self._session_lock:
             self._current_session = session
-            self._session_generation += 1
+            self._session_generation = next(self._generation_ids)
             self._session_lineage = SessionOperations()
             if event is None:
                 return
@@ -239,10 +241,11 @@ class VolcanoClient:
                 return False
             user_id = str(user["id"]) if current.user_id is None else current.user_id
             try:
-                same_user = UUID(str(user["id"])) == UUID(user_id)
+                incoming_user_id = UUID(str(user["id"]))
+                expected_user_id = UUID(user_id)
             except ValueError:
-                same_user = False
-            if not same_user:
+                raise AuthenticationError(_PROFILE_USER_MISMATCH) from None
+            if incoming_user_id != expected_user_id:
                 raise AuthenticationError(_PROFILE_USER_MISMATCH)
             # Profile updates do not replace credentials or invalidate other requests.
             self._current_session = replace(
@@ -255,7 +258,7 @@ class VolcanoClient:
         session: Session,
         generation: int,
         *,
-        event: AuthChangeEvent = "SIGNED_IN",
+        event: AuthChangeEvent,
         notifications: list[Callable[[], None]] | None = None,
     ) -> bool:
         with self._session_lock:
@@ -264,7 +267,7 @@ class VolcanoClient:
             if event == "TOKEN_REFRESHED":
                 validate_refresh_identity(self._current_session, session)
             self._current_session = session
-            self._session_generation += 1
+            self._session_generation = next(self._generation_ids)
             if event != "TOKEN_REFRESHED":
                 self._session_lineage = SessionOperations(session)
             callback_ids = tuple(self._auth_callbacks)
@@ -278,7 +281,7 @@ class VolcanoClient:
         generation: int,
         *,
         lineage: SessionOperations | None = None,
-        event: AuthChangeEvent = "SIGNED_OUT",
+        event: AuthChangeEvent,
         notifications: list[Callable[[], None]] | None = None,
     ) -> bool:
         with self._session_lock:
@@ -288,7 +291,7 @@ class VolcanoClient:
                 return True
             self._current_session = None
             self._session_lineage.clear_local_credentials()
-            self._session_generation += 1
+            self._session_generation = next(self._generation_ids)
             callback_ids = tuple(self._auth_callbacks)
             dispatch = self._enqueue_auth_state_change(callback_ids, event, None)
         if dispatch:
@@ -316,8 +319,7 @@ class VolcanoClient:
         callback: AuthStateCallback,
     ) -> AuthSubscription:
         with self._session_lock:
-            callback_id = self._next_auth_callback_id
-            self._next_auth_callback_id += 1
+            callback_id = next(self._auth_callback_ids)
             self._auth_callbacks[callback_id] = callback
             current = self._current_session
             dispatch = self._enqueue_auth_state_change(
@@ -341,13 +343,12 @@ class VolcanoClient:
         event: AuthChangeEvent,
         session: Session | None,
     ) -> bool:
-        if not callback_ids:
-            return False
-        self._auth_notifications.append((callback_ids, event, session))
-        if self._dispatching_auth_notifications:
-            return False
-        self._dispatching_auth_notifications = True
-        return True
+        dispatch = bool(callback_ids) and not self._dispatching_auth_notifications
+        if callback_ids:
+            self._auth_notifications.append((callback_ids, event, session))
+        if dispatch:
+            self._dispatching_auth_notifications = True
+        return dispatch
 
     def _drain_auth_state_changes(self) -> None:
         failure: BaseException | None = None
