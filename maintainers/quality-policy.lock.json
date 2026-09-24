@@ -65,6 +65,7 @@
         "features",
         "maintainers",
         "tests/fixtures",
+        "typings",
         "scripts",
         "openapi",
         "openapi-python-client.yaml",
