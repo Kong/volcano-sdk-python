@@ -6,10 +6,11 @@ from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Protocol, cast
 from uuid import UUID, uuid4
 
-from ._transport import SandboxRequest, TransportResponse, invoke, response_payload
+from ._transport import TransportResponse, invoke, response_payload
 from .errors import ValidationError
 
 if TYPE_CHECKING:
+    from ._transport_sandbox import SandboxRequest
     from .models import JSONValue
 from .sandbox_models import SandboxCommandResult
 
@@ -200,8 +201,8 @@ class SandboxRequests:
         self, transport: SandboxTransport, authorization: Callable[[], str]
     ) -> None:
         """Bind a transport and a credential provider."""
-        self.transport = transport
-        self.authorization = authorization
+        self.transport: SandboxTransport = transport
+        self.authorization: Callable[[], str] = authorization
 
     def send(self, request: SandboxRequest, status: int = 200) -> object:
         """Dispatch through normal typed error handling.

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import subprocess
+import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed argv; no shell.
 import sys
 from pathlib import Path
 
@@ -36,11 +36,14 @@ def test_isolated_auditor_ignores_local_module_shadowing(shadowed_tools: Path) -
 @pytest.fixture
 def configured(pytester: pytest.Pytester) -> pytest.Pytester:
     _ = pytester.makepyprojecttoml(PROJECT.read_text())
+    (pytester.path / "tests/unit").mkdir(parents=True)
     return pytester
 
 
 def test_native_pytest_accepts_complete_run(configured: pytest.Pytester) -> None:
-    _ = configured.makepyfile("def test_valid(): assert 1 + 1 == 2")
+    _ = (configured.path / "tests/unit/test_fixture.py").write_text(
+        "def test_valid(): assert 1 + 1 == 2"
+    )
     result = configured.runpytest_subprocess()
     result.assert_outcomes(passed=1)
     assert result.ret == pytest.ExitCode.OK
@@ -72,7 +75,7 @@ def test_native_pytest_accepts_complete_run(configured: pytest.Pytester) -> None
 def test_native_pytest_rejects_invalid_collection(
     configured: pytest.Pytester, source: str, diagnostic: str
 ) -> None:
-    _ = configured.makepyfile(source)
+    _ = (configured.path / "tests/unit/test_fixture.py").write_text(source)
     result = configured.runpytest_subprocess()
     result.assert_outcomes(errors=1)
     assert result.ret == pytest.ExitCode.INTERRUPTED
@@ -88,7 +91,9 @@ def test_native_pytest_rejects_unknown_configuration(
             "[tool.pytest.ini_options]\nunknown_quality_option = true",
         ),
     )
-    _ = configured.makepyfile("def test_valid(): assert True")
+    _ = (configured.path / "tests/unit/test_fixture.py").write_text(
+        "def test_valid(): assert True"
+    )
     result = configured.runpytest_subprocess()
     assert result.ret == pytest.ExitCode.USAGE_ERROR
     result.stderr.fnmatch_lines(["*Unknown config option: unknown_quality_option*"])
@@ -98,7 +103,7 @@ def test_native_pytest_rejects_unexpected_xfail_pass(
     configured: pytest.Pytester,
 ) -> None:
     marker = "@pytest.mark.xfail(reason='invalid fixture')"
-    _ = configured.makepyfile(
+    _ = (configured.path / "tests/unit/test_fixture.py").write_text(
         f"import pytest\n{marker}\ndef test_unexpected(): assert True"
     )
     result = configured.runpytest_subprocess()

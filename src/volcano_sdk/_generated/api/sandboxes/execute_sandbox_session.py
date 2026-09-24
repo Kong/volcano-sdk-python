@@ -16,15 +16,15 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    session_id: UUID,
+def request_kwargs(
+    session_id: UUID | str,
     *,
     body: SandboxCommandRequest,
-    idempotency_key: UUID,
+    idempotency_key: UUID | str,
 
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
-    headers["Idempotency-Key"] = idempotency_key
+    headers["Idempotency-Key"] = str(idempotency_key)
 
 
 
@@ -62,7 +62,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | SandboxCommandResult]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | SandboxCommandResult]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -72,11 +72,11 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    session_id: UUID,
+    session_id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: SandboxCommandRequest,
-    idempotency_key: UUID,
+    idempotency_key: UUID | str,
 
 ) -> Response[Error | SandboxCommandResult]:
     """ Execute a command within a session
@@ -95,7 +95,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         session_id=session_id,
 body=body,
 idempotency_key=idempotency_key,
@@ -106,14 +106,14 @@ idempotency_key=idempotency_key,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    session_id: UUID,
+    session_id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: SandboxCommandRequest,
-    idempotency_key: UUID,
+    idempotency_key: UUID | str,
 
 ) -> Error | SandboxCommandResult | None:
     """ Execute a command within a session
@@ -141,11 +141,11 @@ idempotency_key=idempotency_key,
     ).parsed
 
 async def asyncio_detailed(
-    session_id: UUID,
+    session_id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: SandboxCommandRequest,
-    idempotency_key: UUID,
+    idempotency_key: UUID | str,
 
 ) -> Response[Error | SandboxCommandResult]:
     """ Execute a command within a session
@@ -164,7 +164,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         session_id=session_id,
 body=body,
 idempotency_key=idempotency_key,
@@ -175,14 +175,14 @@ idempotency_key=idempotency_key,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    session_id: UUID,
+    session_id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: SandboxCommandRequest,
-    idempotency_key: UUID,
+    idempotency_key: UUID | str,
 
 ) -> Error | SandboxCommandResult | None:
     """ Execute a command within a session

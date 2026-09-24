@@ -15,7 +15,7 @@ from typing import cast
 
 
 
-def _get_kwargs(
+def request_kwargs(
     function_id: str,
     *,
     body: Any | Unset = UNSET,
@@ -117,7 +117,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[DurableExecution | Error]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[DurableExecution | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -181,7 +181,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         function_id=function_id,
 body=body,
 x_volcano_execution_name=x_volcano_execution_name,
@@ -192,7 +192,7 @@ x_volcano_execution_name=x_volcano_execution_name,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
     function_id: str,
@@ -312,7 +312,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         function_id=function_id,
 body=body,
 x_volcano_execution_name=x_volcano_execution_name,
@@ -323,7 +323,7 @@ x_volcano_execution_name=x_volcano_execution_name,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
     function_id: str,

@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-PROPERTY_SUPPORT = Path(__file__).with_name("property_support.py").read_text()
+PROPERTY_SUPPORT = (
+    Path(__file__)
+    .parents[2]
+    .joinpath("src/volcano_sdk/_tests/property_support.py")
+    .read_text()
+)
 
 
 def test_failing_property_preserves_seed_and_counterexample(

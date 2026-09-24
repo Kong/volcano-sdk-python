@@ -1,0 +1,224 @@
+from __future__ import annotations
+
+import math
+import sys
+from datetime import UTC, datetime
+
+import httpx
+import pytest
+
+from volcano_sdk import Session, VolcanoClient
+from volcano_sdk._durable_response import (
+    durable_execution,
+    durable_execution_page,
+    optional_datetime,
+)
+from volcano_sdk._transport import GeneratedTransport
+
+PROJECT_ID = "00000000-0000-4000-8000-000000000001"
+EXECUTION_ID = "00000000-0000-4000-8000-000000000002"
+
+
+def execution_payload() -> dict[str, object]:
+    return {
+        "id": EXECUTION_ID,
+        "function_id": "00000000-0000-4000-8000-000000000003",
+        "name": "order-42",
+        "status": "running",
+        "region": "aws-us-east-1",
+        "created_at": "2026-09-02T12:00:00Z",
+    }
+
+
+def client_for(payload: object) -> tuple[VolcanoClient, list[httpx.Request]]:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=payload)
+
+    client = VolcanoClient(
+        anon_key="anon",
+        _transport=GeneratedTransport(
+            api_url="https://api.volcano.test",
+            httpx_transport=httpx.MockTransport(handle),
+        ),
+    )
+    _ = client.auth.set_session(Session("access", "refresh", "user"))
+    return client, requests
+
+
+@pytest.mark.parametrize("payload", [None, [], True, 42, "invalid"])
+def test_execution_rejects_non_object_responses(payload: object) -> None:
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = durable_execution(payload)
+
+
+def test_execution_rejects_non_string_object_keys() -> None:
+    payload: dict[object, object] = {1: "extra"}
+    payload.update(execution_payload())
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = durable_execution(payload)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("error", []),
+        ("error", True),
+        ("error", "failed"),
+        ("created_at", "invalid"),
+        ("created_at", "2026-13-01"),
+        ("created_at", " "),
+        ("completed_at", ""),
+        ("completed_at", []),
+        ("completed_at", 123),
+        ("completed_at", "invalid"),
+    ],
+)
+def test_execution_rejects_malformed_failure_and_timestamps(
+    field: str, value: object
+) -> None:
+    payload = execution_payload()
+    payload[field] = value
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = durable_execution(payload)
+
+
+@pytest.mark.parametrize("status", ["not-a-status", 1, None])
+def test_execution_rejects_unknown_status(status: object) -> None:
+    payload = execution_payload()
+    payload["status"] = status
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = durable_execution(payload)
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        b"bytes",
+        math.inf,
+        -math.inf,
+        math.nan,
+        {1: "value"},
+        {"\ud800": "value"},
+        "\ud800",
+        [object()],
+    ],
+)
+def test_execution_rejects_non_json_results(result: object) -> None:
+    payload = execution_payload()
+    payload["result"] = result
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = durable_execution(payload)
+
+
+@pytest.mark.parametrize("kind", ["list", "dict"])
+def test_execution_rejects_cyclic_results(kind: str) -> None:
+    if kind == "list":
+        sequence: list[object] = []
+        sequence.append(sequence)
+        container: object = sequence
+    else:
+        mapping: dict[str, object] = {}
+        mapping["self"] = mapping
+        container = mapping
+    payload = execution_payload()
+    payload["result"] = container
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = durable_execution(payload)
+
+
+def test_execution_rejects_result_beyond_integer_string_limit() -> None:
+    limit = sys.get_int_max_str_digits()
+    value = 1 << ((limit + 1) * 4)
+    payload = execution_payload()
+    payload["result"] = value
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = durable_execution(payload)
+
+
+def test_execution_rejects_overly_deep_result() -> None:
+    value: object = None
+    for _ in range(sys.getrecursionlimit()):
+        value = [value]
+    payload = execution_payload()
+    payload["result"] = value
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = durable_execution(payload)
+
+
+def test_execution_preserves_nested_json_results() -> None:
+    payload = execution_payload()
+    payload["result"] = {"values": [None, True, 42, 1.5, "text", {"nested": []}]}
+
+    execution = durable_execution(payload)
+
+    assert execution.result == {"values": (None, True, 42, 1.5, "text", {"nested": ()})}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        [],
+        True,
+        {"data": {}},
+        {"data": "invalid"},
+        {"has_more": 1},
+        {"has_more": "true"},
+        {"page": True},
+        {"limit": "10"},
+        {"total": 2.5},
+    ],
+)
+def test_pages_reject_malformed_collections_and_metadata(payload: object) -> None:
+    with pytest.raises(TypeError, match="complete durable execution page"):
+        _ = durable_execution_page(payload)
+
+
+def test_page_rejects_non_string_object_keys() -> None:
+    with pytest.raises(TypeError, match="complete durable execution page"):
+        _ = durable_execution_page({1: "extra"})
+
+
+@pytest.mark.parametrize("payload", [{}, {"data": None}])
+def test_empty_pages_default_missing_metadata(payload: dict[str, object]) -> None:
+    page = durable_execution_page(payload)
+
+    assert page.executions == ()
+    assert page.page == 0
+    assert page.limit == 0
+    assert page.total == 0
+    assert page.has_more is False
+
+
+@pytest.mark.parametrize(
+    "timestamp", ["2026-09-02T12:00:00Z", "2026-09-02T14:00:00+02:00"]
+)
+def test_execution_retains_timestamp_offsets(timestamp: str) -> None:
+    payload = execution_payload()
+    payload["created_at"] = timestamp
+    payload["completed_at"] = timestamp
+    client, requests = client_for(payload)
+
+    execution = client.durable.get(PROJECT_ID, "pipeline", EXECUTION_ID)
+
+    expected = datetime.fromisoformat(timestamp)
+    assert execution.created_at == expected
+    assert execution.created_at.utcoffset() == expected.utcoffset()
+    assert execution.completed_at == expected
+    assert len(requests) == 1
+    assert requests[0].headers["authorization"] == "Bearer access"
+
+
+def test_timestamp_conversion_retains_transport_datetime_objects() -> None:
+    timestamp = datetime(2026, 9, 2, 12, tzinfo=UTC)
+
+    assert optional_datetime(timestamp) is timestamp

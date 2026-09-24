@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 import shutil
-import subprocess
+import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed argv; no shell.
 import sys
 from pathlib import Path
 from typing import cast
@@ -13,6 +13,7 @@ from typing import cast
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = ROOT / "openapi" / "openapi.yaml"
 CONFIG = ROOT / "openapi-python-client.yaml"
+TEMPLATES = ROOT / "openapi" / "templates"
 DEFAULT_OUTPUT = ROOT / "src" / "volcano_sdk" / "_generated"
 REQUIRED_OPERATION_MODULES = {
     "acquire_project_lock.py",
@@ -50,7 +51,7 @@ def generate(output: Path) -> None:
     if output.exists():
         shutil.rmtree(output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    _ = subprocess.run(  # ruff: ignore[S603] - argv and executable are controlled by this script.
+    _ = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - argv and executable are controlled by this script.
         [
             sys.executable,
             "-I",
@@ -61,6 +62,8 @@ def generate(output: Path) -> None:
             str(SPEC),
             "--config",
             str(CONFIG),
+            "--custom-template-path",
+            str(TEMPLATES),
             "--meta",
             "none",
             "--output-path",

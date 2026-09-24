@@ -6,18 +6,20 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
+from ._client_context import ClientContextSource, facade_context
+from ._json_values import freeze_json
 from ._log_response import (
-    _is_json_value,
     activity_total,
+    is_json_value,
     response_data,
     response_values,
     search_metadata,
 )
 from ._transport import Transport, TransportResponse, invoke, response_payload
-from .models import JSONValue, LogActivityResponse, LogSearchResponse, _freeze_json
+from .models import JSONValue, LogActivityResponse, LogSearchResponse
 
 if TYPE_CHECKING:
-    from .auth import Auth
+    from ._auth_requests import AuthRequests
 
 _INVALID_PROJECT_ID = "project_id must be a non-empty string"
 _INVALID_LOG_REQUEST = "Log request must be a mapping"
@@ -31,8 +33,13 @@ def _is_log_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
 class LogsContext(Protocol):
     """Client capabilities required by project log reads."""
 
-    _transport: Transport
-    auth: Auth
+    def transport(self) -> Transport:
+        """Return the active typed transport."""
+        ...
+
+    def auth(self) -> AuthRequests:
+        """Return the shared session request coordinator."""
+        ...
 
 
 @runtime_checkable
@@ -63,12 +70,12 @@ class LogsTransport(Protocol):
 class Logs:
     """Search retained project logs and activity."""
 
-    def __init__(self, client: LogsContext) -> None:
+    def __init__(self, client: LogsContext | ClientContextSource) -> None:
         """Bind log reads to a Volcano client."""
-        self._client: LogsContext = client
+        self._client: LogsContext = facade_context(client)
 
     def _logs_transport(self) -> LogsTransport:
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, LogsTransport):
             raise TypeError(_INVALID_LOG_TRANSPORT)
         return transport
@@ -88,7 +95,7 @@ class Logs:
         """
         project_id, request = _log_request(project_id, request)
         transport = self._logs_transport()
-        response = self._client.auth._session_request(
+        response = self._client.auth().request(
             lambda token: invoke(
                 transport.search_project_logs,
                 authorization=token,
@@ -113,7 +120,7 @@ class Logs:
         """
         project_id, request = _log_request(project_id, request)
         transport = self._logs_transport()
-        response = self._client.auth._session_request(
+        response = self._client.auth().request(
             lambda token: invoke(
                 transport.get_project_log_activity,
                 authorization=token,
@@ -134,9 +141,9 @@ def _log_request(
         raise TypeError(_INVALID_LOG_REQUEST)
     snapshot: dict[str, JSONValue] = {}
     for key, value in request.items():
-        if not isinstance(key, str) or not _is_json_value(value):
+        if not isinstance(key, str) or not is_json_value(value):
             raise TypeError(_INVALID_LOG_REQUEST)
-        snapshot[key] = _freeze_json(value)
+        snapshot[key] = freeze_json(value)
     return project_id, MappingProxyType(snapshot)
 
 

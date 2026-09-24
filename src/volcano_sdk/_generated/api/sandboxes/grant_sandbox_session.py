@@ -15,9 +15,9 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    session_id: UUID,
-    subject_id: UUID,
+def request_kwargs(
+    session_id: UUID | str,
+    subject_id: UUID | str,
     *,
     body: SandboxSubjectGrantRequest,
 
@@ -56,7 +56,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -66,8 +66,8 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    session_id: UUID,
-    subject_id: UUID,
+    session_id: UUID | str,
+    subject_id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: SandboxSubjectGrantRequest,
@@ -89,7 +89,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         session_id=session_id,
 subject_id=subject_id,
 body=body,
@@ -100,11 +100,11 @@ body=body,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    session_id: UUID,
-    subject_id: UUID,
+    session_id: UUID | str,
+    subject_id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: SandboxSubjectGrantRequest,
@@ -135,8 +135,8 @@ body=body,
     ).parsed
 
 async def asyncio_detailed(
-    session_id: UUID,
-    subject_id: UUID,
+    session_id: UUID | str,
+    subject_id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: SandboxSubjectGrantRequest,
@@ -158,7 +158,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         session_id=session_id,
 subject_id=subject_id,
 body=body,
@@ -169,11 +169,11 @@ body=body,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    session_id: UUID,
-    subject_id: UUID,
+    session_id: UUID | str,
+    subject_id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: SandboxSubjectGrantRequest,

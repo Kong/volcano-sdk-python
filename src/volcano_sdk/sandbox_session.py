@@ -18,7 +18,7 @@ from ._sandbox import (
     state,
     text,
 )
-from ._transport import SandboxRequest
+from ._transport_sandbox import SandboxRequest
 from .errors import ValidationError
 from .sandbox_models import SandboxAccess, SandboxCommandOptions, SandboxCommandResult
 
@@ -30,8 +30,8 @@ class SandboxFiles:
 
     def __init__(self, requests: SandboxRequests, session_id: str) -> None:
         """Bind files to a validated session identity."""
-        self.requests = requests
-        self.session_id = session_id
+        self.requests: SandboxRequests = requests
+        self.session_id: str = session_id
 
     def read(self, path: str) -> bytes:
         """Read a guest file without text conversion.
@@ -73,7 +73,7 @@ class SandboxSession:
     def __init__(self, requests: SandboxRequests, value: object) -> None:
         """Construct from a validated API response."""
         data = record(value)
-        self.requests = requests
+        self.requests: SandboxRequests = requests
         self.id: str = identifier(text(data.get("id")))
         self.project_id: str = identifier(text(data.get("project_id")))
         self.region: str = text(data.get("region"))

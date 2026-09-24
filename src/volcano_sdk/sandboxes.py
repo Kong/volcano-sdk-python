@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Unpack, cast
 
 from ._sandbox import (
@@ -16,7 +15,7 @@ from ._sandbox import (
     selector,
     text,
 )
-from ._transport import SandboxRequest
+from ._transport_sandbox import SandboxRequest
 from .sandbox_models import (
     SandboxCreateOptions,
     SandboxExecOptions,
@@ -31,7 +30,7 @@ class Sandboxes:
 
     def __init__(self, requests: SandboxRequests) -> None:
         """Bind the client's Sandbox request scope."""
-        self.requests = requests
+        self.requests: SandboxRequests = requests
 
     def presets(self) -> tuple[SandboxPreset, ...]:
         """List the published preset catalog.
@@ -106,8 +105,14 @@ class Sandboxes:
                 )
             )
         )
+        output = command_result(result)
         return SandboxExecutionResult(
-            **asdict(command_result(result)),
+            stdout=output.stdout,
+            stderr=output.stderr,
+            exit_code=output.exit_code,
+            timed_out=output.timed_out,
+            stdout_truncated=output.stdout_truncated,
+            stderr_truncated=output.stderr_truncated,
             session_id=text(result.get("session_id")),
             region=text(result.get("region")),
             duration_ms=integer(result.get("duration_ms")),

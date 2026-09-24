@@ -25,7 +25,7 @@ import datetime
 
 
 
-def _get_kwargs(
+def request_kwargs(
     *,
     page: int | Unset = UNSET,
     limit: int | Unset = 10,
@@ -33,7 +33,7 @@ def _get_kwargs(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     owner_id: str | Unset = UNSET,
-    project_id: UUID | Unset = UNSET,
+    project_id: UUID | str | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
     resource_type: ListDeploymentsResourceType | Unset = UNSET,
     status: ListDeploymentsStatus | Unset = UNSET,
@@ -150,7 +150,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | PaginatedProjectDeployments]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | PaginatedProjectDeployments]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -168,7 +168,7 @@ def sync_detailed(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     owner_id: str | Unset = UNSET,
-    project_id: UUID | Unset = UNSET,
+    project_id: UUID | str | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
     resource_type: ListDeploymentsResourceType | Unset = UNSET,
     status: ListDeploymentsStatus | Unset = UNSET,
@@ -239,7 +239,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         page=page,
 limit=limit,
 cursor=cursor,
@@ -259,7 +259,7 @@ order=order,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
     *,
@@ -270,7 +270,7 @@ def sync(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     owner_id: str | Unset = UNSET,
-    project_id: UUID | Unset = UNSET,
+    project_id: UUID | str | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
     resource_type: ListDeploymentsResourceType | Unset = UNSET,
     status: ListDeploymentsStatus | Unset = UNSET,
@@ -367,7 +367,7 @@ async def asyncio_detailed(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     owner_id: str | Unset = UNSET,
-    project_id: UUID | Unset = UNSET,
+    project_id: UUID | str | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
     resource_type: ListDeploymentsResourceType | Unset = UNSET,
     status: ListDeploymentsStatus | Unset = UNSET,
@@ -438,7 +438,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         page=page,
 limit=limit,
 cursor=cursor,
@@ -458,7 +458,7 @@ order=order,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
     *,
@@ -469,7 +469,7 @@ async def asyncio(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     owner_id: str | Unset = UNSET,
-    project_id: UUID | Unset = UNSET,
+    project_id: UUID | str | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
     resource_type: ListDeploymentsResourceType | Unset = UNSET,
     status: ListDeploymentsStatus | Unset = UNSET,

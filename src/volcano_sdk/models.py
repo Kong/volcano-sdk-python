@@ -6,17 +6,10 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import Literal, TypeAlias
 
-JSONValue: TypeAlias = (
-    str
-    | int
-    | float
-    | bool
-    | list["JSONValue"]
-    | tuple["JSONValue", ...]
-    | dict[str, "JSONValue"]
-    | Mapping[str, "JSONValue"]
-    | None
-)
+from ._json_values import JSONValue as _JSONValue
+from ._json_values import freeze_json
+
+JSONValue: TypeAlias = _JSONValue
 OAuthProviderName: TypeAlias = Literal["apple", "github", "google", "microsoft"]
 AuthChangeEvent: TypeAlias = Literal[
     "INITIAL_SESSION",
@@ -48,22 +41,12 @@ DURABLE_TERMINAL_STATUSES: frozenset[DurableExecutionStatus] = frozenset(
 )
 
 
-def _freeze_json(value: JSONValue) -> JSONValue:
-    if isinstance(value, Mapping):
-        return MappingProxyType(
-            {key: _freeze_json(item) for key, item in value.items()}
-        )
-    if isinstance(value, (list, tuple)):
-        return tuple(_freeze_json(item) for item in value)
-    return value
-
-
 def _freeze_metadata(
     value: Mapping[str, JSONValue] | None,
 ) -> Mapping[str, JSONValue] | None:
     if value is None:
         return None
-    return MappingProxyType({key: _freeze_json(item) for key, item in value.items()})
+    return MappingProxyType({key: freeze_json(item) for key, item in value.items()})
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,7 +207,7 @@ class FunctionResponse:
 
     def __post_init__(self) -> None:
         """Defensively freeze response data and headers."""
-        object.__setattr__(self, "data", _freeze_json(self.data))
+        object.__setattr__(self, "data", freeze_json(self.data))
         object.__setattr__(
             self,
             "headers",
@@ -246,7 +229,7 @@ class LogSearchResponse:
         object.__setattr__(
             self,
             "data",
-            tuple(_freeze_json(event) for event in self.data),
+            tuple(freeze_json(event) for event in self.data),
         )
 
 
@@ -262,7 +245,7 @@ class LogActivityResponse:
         object.__setattr__(
             self,
             "data",
-            tuple(_freeze_json(bucket) for bucket in self.data),
+            tuple(freeze_json(bucket) for bucket in self.data),
         )
 
 
@@ -380,7 +363,7 @@ class DurableExecution:
 
     def __post_init__(self) -> None:
         """Defensively freeze the function's own result."""
-        object.__setattr__(self, "result", _freeze_json(self.result))
+        object.__setattr__(self, "result", freeze_json(self.result))
 
     @property
     def is_terminal(self) -> bool:

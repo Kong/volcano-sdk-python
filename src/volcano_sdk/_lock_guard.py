@@ -19,15 +19,15 @@ _LEASE_EXPIRED = "lock lease expired before renewal completed"
 _NO_SAFE_RENEWAL_WINDOW = "lock renewal returned no safe lease window"
 
 
-def _suspend_aware_clock_id(value: object) -> int | None:
+def suspend_aware_clock_id(value: object) -> int | None:
     return value if isinstance(value, int) else None
 
 
 _clock_id_value: object = getattr(time, "CLOCK_BOOTTIME", None)
-SUSPEND_AWARE_CLOCK_ID = _suspend_aware_clock_id(_clock_id_value)
+SUSPEND_AWARE_CLOCK_ID = suspend_aware_clock_id(_clock_id_value)
 
 
-class _FallbackClock:
+class FallbackClock:
     """Combine monotonic progress with suspend-aware wall time."""
 
     def __init__(self) -> None:
@@ -44,7 +44,7 @@ class _FallbackClock:
             return self._value
 
 
-_FALLBACK_CLOCK = _FallbackClock()
+_FALLBACK_CLOCK = FallbackClock()
 
 
 def lease_now() -> float:
@@ -178,3 +178,13 @@ class LockGuard:
     def _expire_if_needed_locked(self, now: float) -> None:
         if self._failure is None and self._remaining_seconds_locked(now) == 0:
             self._mark_lost_locked(TimeoutError(_LEASE_EXPIRED))
+
+
+class ManagedLockGuard(LockGuard):
+    """Lifecycle controls reserved for the lock context manager."""
+
+    def renewal_failure(self) -> Exception | None:
+        return self._renewal_failure()
+
+    def close(self) -> None:
+        self._close()

@@ -15,8 +15,8 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    session_id: UUID,
+def request_kwargs(
+    session_id: UUID | str,
 
 ) -> dict[str, Any]:
     
@@ -51,7 +51,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | SandboxSession]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | SandboxSession]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -61,7 +61,7 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    session_id: UUID,
+    session_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
@@ -80,7 +80,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         session_id=session_id,
 
     )
@@ -89,10 +89,10 @@ def sync_detailed(
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    session_id: UUID,
+    session_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
@@ -118,7 +118,7 @@ client=client,
     ).parsed
 
 async def asyncio_detailed(
-    session_id: UUID,
+    session_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
@@ -137,7 +137,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         session_id=session_id,
 
     )
@@ -146,10 +146,10 @@ async def asyncio_detailed(
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    session_id: UUID,
+    session_id: UUID | str,
     *,
     client: AuthenticatedClient,
 

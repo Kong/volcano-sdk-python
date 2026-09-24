@@ -1,17 +1,18 @@
 # Runtime coverage
 
-`uv run --locked poe coverage` measures every Python file under `src/volcano_sdk`,
+`uv run --locked poe coverage` measures every handwritten runtime module under `src/volcano_sdk`,
 including unimported files and namespace directories. Native coverage.py
 configuration requires 100% line and branch coverage. `poe quality` includes
 this task, and CI preserves `reports/coverage.json` for each quality run.
 
-The generated OpenAPI client and declaration-only code are excluded. Coverage
+The generated OpenAPI client, private `_tests` package, and declaration-only
+code are excluded. Coverage
 pragmas cannot suppress missing lines or branches. Tests exercise this policy
 with unimported modules, missing branches, and ineffective pragma comments.
 Examples, generator tooling, package contents, and installed consumers have
 separate smoke and gate tests; they are outside runtime coverage.
 
-Coverage runs in an isolated Python 3.12 environment with the same lockfile.
+Coverage runs in an isolated Python 3.12.14 environment with the same lockfile.
 The ordinary test task and all other quality checks still run on the selected
 Python version, including every supported version from 3.11 through 3.14 in CI.
 uv's isolation keeps coverage from replacing that interpreter or its environment.

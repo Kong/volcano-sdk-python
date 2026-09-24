@@ -16,8 +16,8 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    function_id: UUID,
+def request_kwargs(
+    function_id: UUID | str,
     *,
     body: FunctionInvocationRequest,
 
@@ -101,7 +101,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | FunctionInvocationResponse]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | FunctionInvocationResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -111,7 +111,7 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    function_id: UUID,
+    function_id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: FunctionInvocationRequest,
@@ -176,7 +176,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         function_id=function_id,
 body=body,
 
@@ -186,10 +186,10 @@ body=body,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    function_id: UUID,
+    function_id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: FunctionInvocationRequest,
@@ -262,7 +262,7 @@ body=body,
     ).parsed
 
 async def asyncio_detailed(
-    function_id: UUID,
+    function_id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: FunctionInvocationRequest,
@@ -327,7 +327,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         function_id=function_id,
 body=body,
 
@@ -337,10 +337,10 @@ body=body,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    function_id: UUID,
+    function_id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: FunctionInvocationRequest,
