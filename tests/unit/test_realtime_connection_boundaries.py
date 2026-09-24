@@ -1,18 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
 import pytest
 from test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory
 from typing_extensions import override
 
 from volcano_sdk import Session, VolcanoClient
+from volcano_sdk import realtime as realtime_module
 from volcano_sdk.realtime import (
     _centrifuge_client,
     _ClientEvents,
     _native_presence_clients,
     _VolcanoCentrifugeConnection,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 
 class FailingFirstConnection(FakeCentrifugeClient):
@@ -117,6 +122,63 @@ async def test_default_factory_constructs_the_installed_centrifuge_client() -> N
     assert not connection.is_connected
     await connection.disconnect()
     assert not connection.is_connected
+
+
+def test_default_factory_passes_connection_settings_to_centrifuge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    address = "wss://realtime.example.test/realtime/v1/websocket"
+    events = object()
+    native = FakeCentrifugeClient()
+    received: list[object] = []
+
+    async def refresh_token() -> str:
+        return "refreshed-access"
+
+    def construct(
+        supplied_address: str,
+        *,
+        events: object,
+        token: str,
+        get_token: Callable[[], Awaitable[str]],
+    ) -> FakeCentrifugeClient:
+        received.extend((supplied_address, events, token, get_token))
+        return native
+
+    monkeypatch.setattr(realtime_module, "Client", construct)
+
+    assert (
+        _centrifuge_client(
+            address,
+            events=events,
+            token="initial-access",
+            get_token=refresh_token,
+        )
+        is native
+    )
+    assert received == [address, events, "initial-access", refresh_token]
+
+
+@pytest.mark.parametrize(
+    ("api_url", "expected_address"),
+    [
+        (
+            "https://api.example.test/base?ignored=yes",
+            "wss://api.example.test/realtime/v1/websocket?apikey=X%2Fy",
+        ),
+        (
+            "http://localhost:8000/base?ignored=yes",
+            "ws://localhost:8000/realtime/v1/websocket?apikey=X%2Fy",
+        ),
+    ],
+)
+def test_realtime_address_preserves_scheme_and_escapes_anonymous_key(
+    api_url: str,
+    expected_address: str,
+) -> None:
+    realtime = VolcanoClient(anon_key="X/y", api_url=api_url).realtime
+
+    assert realtime._address() == expected_address
 
 
 async def test_server_subscription_events_do_not_dispatch_project_callbacks() -> None:
