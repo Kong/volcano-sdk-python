@@ -427,6 +427,7 @@ type_check_command = [
   "src/volcano_sdk/storage.py",
   "src/volcano_sdk/functions.py",
   "src/volcano_sdk/database.py",
+  "src/volcano_sdk/_function_resolution.py",
 ]
 cache_invalidation_files = ["tests/**/*.py"]
 pytest_add_cli_args_test_selection = ["tests/unit"]
