@@ -710,7 +710,7 @@ class ControlledCentrifugeFactory:
         await self.client._process_reply({"id": command["id"], **result})
 
 
-@pytest.mark.order("first")
+@pytest.mark.order(0)
 async def test_realtime_callback_errors_are_empty_after_native_presence_reply() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
     channel = client.realtime.channel("lobby", channel_type="presence")
@@ -733,13 +733,12 @@ async def test_realtime_callback_errors_are_empty_after_native_presence_reply() 
         failures.append(context.get("exception"))
 
     loop.set_exception_handler(record_failure)
-    sync = asyncio.create_task(client.realtime._sync_presence(channel))
+    sync = asyncio.create_task(channel._run_presence_sync())
     try:
         _ = await asyncio.wait_for(subscription.presence_entered.wait(), timeout=1)
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-        assert sync.done()
+        await asyncio.wait_for(sync, timeout=0.2)
         assert sync.exception() is None
+        assert subscription.calls.count(("presence", None)) == 1
         assert failures == []
     finally:
         if not sync.done():
@@ -2353,6 +2352,7 @@ def test_realtime_presence_clears_while_resubscribing() -> None:
     asyncio.run(scenario())
 
 
+@pytest.mark.order(1)
 def test_realtime_presence_replays_a_resync_requested_during_a_query() -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(
@@ -2544,6 +2544,7 @@ async def test_realtime_presence_sync_coalesces_latest_backpressured_state() -> 
         await client.realtime.disconnect()
 
 
+@pytest.mark.order(2)
 def test_realtime_newer_queued_snapshot_discards_older_pending_snapshot() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
 
