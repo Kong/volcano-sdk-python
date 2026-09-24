@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
+from ._client_context import ClientContextSource, facade_context
 from ._json_values import freeze_json
 from ._log_response import (
     activity_total,
@@ -69,9 +70,9 @@ class LogsTransport(Protocol):
 class Logs:
     """Search retained project logs and activity."""
 
-    def __init__(self, client: LogsContext) -> None:
+    def __init__(self, client: LogsContext | ClientContextSource) -> None:
         """Bind log reads to a Volcano client."""
-        self._client: LogsContext = client
+        self._client: LogsContext = facade_context(client)
 
     def _logs_transport(self) -> LogsTransport:
         transport = self._client.transport()

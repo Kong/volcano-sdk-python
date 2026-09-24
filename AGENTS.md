@@ -5,7 +5,8 @@
   for requirements established tools cannot express; document that gap.
 - Fix failures rather than weakening policy. Judge pragmatic exceptions against
   compatibility constraints and verified tool limits; do not use them to postpone
-  cleanup. Never approve quality-policy changes on a human reviewer's behalf.
+  cleanup. Never impersonate a human reviewer or submit review approval on their
+  behalf.
 - Keep reviewer and repository-administration credentials outside ordinary
   automation.
 - Preserve shared behavioral scenarios and coordinate contract changes with

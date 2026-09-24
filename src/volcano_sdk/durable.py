@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import UUID
 
+from ._client_context import ClientContextSource, facade_context
 from ._durable_response import durable_execution, durable_execution_page
 from ._transport import (
     DurableExecutionListRequest,
@@ -114,9 +115,9 @@ class DurableTransport(Protocol):
 class Durable:
     """Start and follow executions of deployed durable functions."""
 
-    def __init__(self, client: DurableClientContext) -> None:
+    def __init__(self, client: DurableClientContext | ClientContextSource) -> None:
         """Bind durable operations to a Volcano client."""
-        self._client: DurableClientContext = client
+        self._client: DurableClientContext = facade_context(client)
 
     def _durable_transport(self) -> DurableTransport:
         transport = self._client.transport()

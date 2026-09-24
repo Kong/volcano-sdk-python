@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol, cast, runtime_checkable
 
+from ._client_context import ClientContextSource, facade_context
 from ._function_requests import FunctionAuth, FunctionsContext
 from ._function_resolution import (
     FunctionResolution,
@@ -79,9 +80,9 @@ __all__ = ["Functions", "FunctionsContext", "FunctionsTransport"]
 class Functions:
     """Invoke deployed Volcano functions by name."""
 
-    def __init__(self, client: FunctionsContext) -> None:
+    def __init__(self, client: FunctionsContext | ClientContextSource) -> None:
         """Bind function calls to a Volcano client."""
-        self._client: FunctionsContext = client
+        self._client: FunctionsContext = facade_context(client)
 
     def _function_transport(self) -> FunctionsTransport:
         transport = self._client.transport()

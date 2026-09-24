@@ -32,3 +32,14 @@ The same static grouping keeps `GeneratedTransport` operations in six modules:
 authentication, account management, database, storage, execution, and locks. They
 share one typed HTTP configuration base; response normalization is independent of
 the operation groups. All 57 operation parameter lists remain unchanged.
+
+Public facade constructors also accept a `VolcanoClient` directly. Two typed
+adapters obtain its private authentication or facade context; this preserves the
+existing constructors without publishing internal client methods. Dataclass
+builders retain their parameter names and defaults and resolve the context before
+an operation. Each adapter's exact private factory call has documented Ruff and
+Basedpyright exceptions, checked against its literal call and function scope.
+
+The context protocols describe private client wiring. They are not root-package
+exports or documented consumer extension points; direct construction tests use
+`VolcanoClient` and the documented public facade methods.

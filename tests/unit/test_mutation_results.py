@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed argv; no shell.
 import sys
 from pathlib import Path
@@ -12,7 +13,7 @@ from typing import cast
 import pytest
 from mutmut.utils.format_utils import get_mutant_name
 
-from scripts.mutation_results import has_functions, main
+from scripts.mutation_results import has_mutations, main
 
 PROJECT = Path(__file__).parents[2]
 
@@ -58,7 +59,10 @@ def mutation_harness(
         stub.chmod(0o755)
     python = bin_dir / "python"
     if real_python:
-        python.symlink_to(sys.executable)
+        _ = python.write_text(
+            f'#!/bin/sh\nexec {shlex.quote(sys.executable)} "$@"\n', encoding="utf-8"
+        )
+        python.chmod(0o755)
     else:
         _ = python.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         python.chmod(0o755)
@@ -352,19 +356,67 @@ def test_harness_failure_does_not_pass(
     [
         ("class Reader(Protocol):\n    def read(self) -> bytes: ...\n", False),
         (
-            'async def read():\n    "Read data."\n    ...\n',
+            'async def read():\n    """Read data."""\n    ...\n',
             False,
         ),
         ("def read() -> bytes: return b''\n", True),
-        ("def read() -> None: pass\n", True),
-        ("def read() -> None: ...; write()\n", True),
-        ('def read() -> None:\n    "Read data."\n', True),
+        ("def read(): return client.read()\n", False),
+        ("def read(): return client.read(1)\n", True),
+        ("def read() -> None: pass\n", False),
+        ("def read() -> None: ...; write()\n", False),
+        ('def read() -> None:\n    """Read data."""\n', False),
     ],
 )
-def test_mutation_inventory_distinguishes_signatures_from_runtime_functions(
+def test_mutation_inventory_uses_native_candidates(
     tmp_path: Path, source: str, *, expected: bool
 ) -> None:
     module = tmp_path / "module.py"
     _ = module.write_text(source)
 
-    assert has_functions(module) is expected
+    assert has_mutations(module) is expected
+
+
+@pytest.mark.parametrize("empty_metadata", [False, True])
+def test_mutation_candidate_requires_a_nonempty_native_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, empty_metadata: bool
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    targets, failed = fixture_report(tmp_path, 1)
+    source = Path("src/volcano_sdk/probe.py")
+    _ = source.write_text("def read(): return client.read(1)\n", encoding="utf-8")
+    meta = Path(f"mutants/{source}.meta")
+    if empty_metadata:
+        _ = meta.write_text('{"exit_code_by_key": {}}\n', encoding="utf-8")
+    else:
+        meta.unlink()
+
+    assert main(targets, failed) == 1
+    report = Path("reports/mutation.json").read_text(encoding="utf-8")
+    assert "mutmut report" in report
+    assert "No mutants were tested" in report
+
+
+@pytest.mark.parametrize("empty_metadata", [False, True])
+def test_native_zero_candidate_getter_remains_explicitly_in_the_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, empty_metadata: bool
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    targets, failed = fixture_report(tmp_path, 1)
+    source = Path("src/volcano_sdk/probe.py")
+    _ = source.write_text("def read(): return client.read()\n", encoding="utf-8")
+    meta = Path(f"mutants/{source}.meta")
+    if empty_metadata:
+        _ = meta.write_text('{"exit_code_by_key": {}}\n', encoding="utf-8")
+    else:
+        meta.unlink()
+
+    assert main(targets, failed) == 0
+    report = cast(
+        "object", json.loads(Path("reports/mutation.json").read_text(encoding="utf-8"))
+    )
+    assert report == {
+        "modules": [str(source)],
+        "outcomes": {},
+        "unmutatable_modules": [str(source)],
+        "failures": [],
+    }

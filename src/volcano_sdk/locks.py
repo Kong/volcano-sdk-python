@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager, suppress
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from ._client_context import ClientContextSource, facade_context
 from ._lock_guard import LockGuard, ManagedLockGuard, lease_now
 from ._lock_values import (
     INVALID_LOCK_RESPONSE,
@@ -91,9 +92,9 @@ class LockForceReleaseTransport(Protocol):
 class Locks:
     """Acquire and release project-scoped distributed locks."""
 
-    def __init__(self, client: LocksContext) -> None:
+    def __init__(self, client: LocksContext | ClientContextSource) -> None:
         """Create a lock facade backed by a client."""
-        self._client: LocksContext = client
+        self._client: LocksContext = facade_context(client)
 
     def get(self, key: str, *, request_id: str | None = None) -> LockState:
         """Inspect a project-scoped lock.

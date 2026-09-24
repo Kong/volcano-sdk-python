@@ -10,6 +10,7 @@ from typing import (
     runtime_checkable,
 )
 
+from ._client_context import ClientContextSource, facade_context
 from ._storage_values import (
     BinaryReader,
     SeekableBinaryReader,
@@ -273,7 +274,7 @@ class StorageAbortUploadTransport(Protocol):
 class StorageBucket:
     """Operations scoped to one storage bucket."""
 
-    _client: StorageContext
+    _client: StorageContext | ClientContextSource
     _name: str
 
     def upload(
@@ -292,13 +293,14 @@ class StorageBucket:
             TypeError: The upload response is not an object.
 
         """
+        client = facade_context(self._client)
         mime_type = upload_content_type(content_type)
-        binding = self._client.capture_session_binding()
-        _ = self._client.session_token()
+        binding = client.capture_session_binding()
+        _ = client.session_token()
         content = simple_upload_bytes(data)
-        response = self._client.auth().request(
+        response = client.auth().request(
             lambda token: invoke(
-                self._client.transport().upload_storage_object,
+                client.transport().upload_storage_object,
                 authorization=token,
                 bucket_name=self._name,
                 path=path,
@@ -319,9 +321,10 @@ class StorageBucket:
             Downloaded bytes, without text decoding.
 
         """
-        response = self._client.auth().request(
+        client = facade_context(self._client)
+        response = client.auth().request(
             lambda token: invoke(
-                self._client.transport().download_storage_object,
+                client.transport().download_storage_object,
                 authorization=token,
                 bucket_name=self._name,
                 path=path,
@@ -353,10 +356,11 @@ class StorageBucket:
             TypeError: The transport does not support this storage operation.
 
         """
-        transport = self._client.transport()
+        client = facade_context(self._client)
+        transport = client.transport()
         if not isinstance(transport, StorageUploadSessionTransport):
             raise TypeError(_INVALID_STORAGE_TRANSPORT)
-        response = self._client.auth().request(
+        response = client.auth().request(
             lambda token: invoke(
                 transport.create_upload_session,
                 authorization=token,
@@ -388,10 +392,11 @@ class StorageBucket:
             TypeError: The transport does not support this storage operation.
 
         """
-        transport = self._client.transport()
+        client = facade_context(self._client)
+        transport = client.transport()
         if not isinstance(transport, StorageUploadPartTransport):
             raise TypeError(_INVALID_STORAGE_TRANSPORT)
-        response = self._client.auth().request(
+        response = client.auth().request(
             lambda token: invoke(
                 transport.upload_part,
                 authorization=token,
@@ -421,10 +426,11 @@ class StorageBucket:
             TypeError: The transport does not support this storage operation.
 
         """
-        transport = self._client.transport()
+        client = facade_context(self._client)
+        transport = client.transport()
         if not isinstance(transport, StorageCompleteUploadTransport):
             raise TypeError(_INVALID_STORAGE_TRANSPORT)
-        response = self._client.auth().request(
+        response = client.auth().request(
             lambda token: invoke(
                 transport.complete_upload_session,
                 authorization=token,
@@ -453,10 +459,11 @@ class StorageBucket:
             TypeError: The transport does not support this storage operation.
 
         """
-        transport = self._client.transport()
+        client = facade_context(self._client)
+        transport = client.transport()
         if not isinstance(transport, StorageUploadStatusTransport):
             raise TypeError(_INVALID_STORAGE_TRANSPORT)
-        response = self._client.auth().request(
+        response = client.auth().request(
             lambda token: invoke(
                 transport.get_upload_session,
                 authorization=token,
@@ -481,10 +488,11 @@ class StorageBucket:
             TypeError: The transport does not support this storage operation.
 
         """
-        transport = self._client.transport()
+        client = facade_context(self._client)
+        transport = client.transport()
         if not isinstance(transport, StorageAbortUploadTransport):
             raise TypeError(_INVALID_STORAGE_TRANSPORT)
-        response = self._client.auth().request(
+        response = client.auth().request(
             lambda token: invoke(
                 transport.abort_upload_session,
                 authorization=token,
@@ -512,8 +520,9 @@ class StorageBucket:
             Metadata for the completed object.
 
         """
+        client = facade_context(self._client)
         path = storage_path(path)
-        _ = self._client.session_token()
+        _ = client.session_token()
         with resumable_upload_source(data) as (source, total_size):
             session = self.create_upload_session(
                 path,
@@ -575,10 +584,11 @@ class StorageBucket:
             TypeError: The transport does not support this storage operation.
 
         """
-        transport = self._client.transport()
+        client = facade_context(self._client)
+        transport = client.transport()
         if not isinstance(transport, StorageListTransport):
             raise TypeError(_INVALID_STORAGE_TRANSPORT)
-        response = self._client.auth().request(
+        response = client.auth().request(
             lambda token: invoke(
                 transport.list_storage_objects,
                 authorization=token,
@@ -597,8 +607,9 @@ class StorageBucket:
             The deleted paths as a tuple, in the supplied order.
 
         """
+        client = facade_context(self._client)
         path_list = storage_paths(paths)
-        binding = self._client.capture_session_binding()
+        binding = client.capture_session_binding()
         for path in path_list:
             self._remove_path(path, binding)
         return path_list
@@ -606,10 +617,11 @@ class StorageBucket:
     def _remove_path(
         self, path: str, binding: tuple[int, SessionOperations, Session | None]
     ) -> None:
-        transport = self._client.transport()
+        client = facade_context(self._client)
+        transport = client.transport()
         if not isinstance(transport, StorageDeleteTransport):
             raise TypeError(_INVALID_STORAGE_TRANSPORT)
-        response = self._client.auth().request(
+        response = client.auth().request(
             lambda token: invoke(
                 transport.delete_storage_object,
                 authorization=token,
@@ -630,11 +642,12 @@ class StorageBucket:
             TypeError: The transport does not support this storage operation.
 
         """
+        client = facade_context(self._client)
         source, destination = storage_paths((from_path, to_path))
-        transport = self._client.transport()
+        transport = client.transport()
         if not isinstance(transport, StorageMoveTransport):
             raise TypeError(_INVALID_STORAGE_TRANSPORT)
-        response = self._client.auth().request(
+        response = client.auth().request(
             lambda token: invoke(
                 transport.move_storage_object,
                 authorization=token,
@@ -655,11 +668,12 @@ class StorageBucket:
             TypeError: The transport does not support this storage operation.
 
         """
+        client = facade_context(self._client)
         source, destination = storage_paths((from_path, to_path))
-        transport = self._client.transport()
+        transport = client.transport()
         if not isinstance(transport, StorageCopyTransport):
             raise TypeError(_INVALID_STORAGE_TRANSPORT)
-        response = self._client.auth().request(
+        response = client.auth().request(
             lambda token: invoke(
                 transport.copy_storage_object,
                 authorization=token,
@@ -680,12 +694,13 @@ class StorageBucket:
             TypeError: The transport does not support this storage operation.
 
         """
+        client = facade_context(self._client)
         object_path = storage_paths(path)[0]
         visibility = storage_visibility(is_public)
-        transport = self._client.transport()
+        transport = client.transport()
         if not isinstance(transport, StorageVisibilityTransport):
             raise TypeError(_INVALID_STORAGE_TRANSPORT)
-        response = self._client.auth().request(
+        response = client.auth().request(
             lambda token: invoke(
                 transport.update_storage_object_visibility,
                 authorization=token,
@@ -703,10 +718,11 @@ class StorageBucket:
             The encoded public URL; this does not check existence or visibility.
 
         """
+        client = facade_context(self._client)
         object_path = storage_path(path)
-        project_id = project_id_from_anon_key(self._client.anon_token())
+        project_id = project_id_from_anon_key(client.anon_token())
         return (
-            f"{self._client.api_base_url()}/public/"
+            f"{client.api_base_url()}/public/"
             f"{encoded_storage_component(project_id)}/"
             f"{encoded_storage_component(self._name)}/"
             f"{encoded_storage_path(object_path)}"
@@ -716,9 +732,9 @@ class StorageBucket:
 class Storage:
     """Entry point for project object storage."""
 
-    def __init__(self, client: StorageContext) -> None:
+    def __init__(self, client: StorageContext | ClientContextSource) -> None:
         """Create a storage facade backed by a client."""
-        self._client: StorageContext = client
+        self._client: StorageContext = facade_context(client)
 
     def from_(self, bucket: str) -> StorageBucket:
         """Create a facade scoped to a bucket.

@@ -373,3 +373,61 @@ def test_callback_erasure_cannot_hide_another_error_code(tmp_path: Path) -> None
         "type ignore outside diagnostic fixture" in error
         for error in check_comments(tmp_path, {name}, [])
     )
+
+
+@pytest.mark.parametrize(
+    ("name", "scope", "method"),
+    [
+        ("_auth_context", "auth_context", "_auth_context"),
+        ("_client_context", "facade_context", "_facade_context"),
+    ],
+)
+def test_private_factory_exception_accepts_only_the_compatibility_call(
+    tmp_path: Path, name: str, scope: str, method: str
+) -> None:
+    path = f"src/volcano_sdk/{name}.py"
+    target = tmp_path / path
+    target.parent.mkdir(parents=True)
+    directive = (
+        "# ruff: ignore[private-member-access] # pyright: ignore[reportPrivateUsage]"
+    )
+    _ = target.write_text(
+        f"def {scope}(client):\n    return client.{method}()  {directive}\n",
+        encoding="utf-8",
+    )
+
+    errors = check_comments(tmp_path, {path}, [])
+
+    assert not any("forbidden suppression" in error for error in errors)
+    assert not any("outside diagnostic fixture" in error for error in errors)
+    assert not any(f"unused exception: {path}" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("scope", "statement", "directive"),
+    [
+        ("facade_context", "return client._other()", "reportPrivateUsage"),
+        ("other_context", "return client._facade_context()", "reportPrivateUsage"),
+        ("facade_context", "return client._facade_context(1)", "reportPrivateUsage"),
+        (
+            "facade_context",
+            "return client._facade_context()",
+            "reportPrivateUsage, reportAny",
+        ),
+    ],
+)
+def test_private_factory_exception_cannot_expand(
+    tmp_path: Path, scope: str, statement: str, directive: str
+) -> None:
+    path = "src/volcano_sdk/_client_context.py"
+    target = tmp_path / path
+    target.parent.mkdir(parents=True)
+    comment = f"# ruff: ignore[private-member-access] # pyright: ignore[{directive}]"
+    _ = target.write_text(
+        f"def {scope}(client):\n    {statement}  {comment}\n", encoding="utf-8"
+    )
+
+    errors = check_comments(tmp_path, {path}, [])
+
+    assert any("forbidden suppression" in error for error in errors)
+    assert any("pyright ignore outside diagnostic fixture" in error for error in errors)

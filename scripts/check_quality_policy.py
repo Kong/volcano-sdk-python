@@ -48,7 +48,7 @@ CONFIG_NAMES = {
     ".coveragerc",
 }
 APPROVED_EXCEPTION_SHA256 = (
-    "de57c0a2200e17929c06fea1b237623eb5049c9259c75b1a13434d4d43c80e19"
+    "c99ab5004030aac824f434ab55626e40a8a0899867e77960c5dc7bbc0a0e247c"
 )
 CALLBACK_SCOPE = "src/volcano_sdk/_realtime_callbacks.py:DynamicCallback"
 CALLBACK_RULE = "mypy.explicit-any"
@@ -56,7 +56,17 @@ CALLBACK_DECLARATION = ast.dump(
     ast.parse("DynamicCallback: TypeAlias = Callable[..., object]").body[0],
     include_attributes=False,
 )
+PRIVATE_CONTEXT_FACTORIES = {
+    "src/volcano_sdk/_auth_context.py": ("auth_context", "_auth_context"),
+    "src/volcano_sdk/_client_context.py": ("facade_context", "_facade_context"),
+}
+PRIVATE_CONTEXT_RULE = "basedpyright.reportPrivateUsage"
 APPROVED_RULES = {
+    *{
+        (f"{name}:{scope}", rule)
+        for name, (scope, _) in PRIVATE_CONTEXT_FACTORIES.items()
+        for rule in ("SLF001", PRIVATE_CONTEXT_RULE)
+    },
     (CALLBACK_SCOPE, CALLBACK_RULE),
     ("scripts/generate_openapi.py:generate", "S603"),
     (
@@ -71,6 +81,7 @@ APPROVED_RULES = {
     ("tests/unit/test_test_integrity.py:import:subprocess", "S404"),
 }
 RULE_NAMES = {
+    "private-member-access": "SLF001",
     "suspicious-subprocess-import": "S404",
     "subprocess-without-shell-equals-true": "S603",
 }
@@ -296,6 +307,54 @@ def check_type_comment(
     return check_rule((CALLBACK_SCOPE, CALLBACK_RULE), location, approved, used)
 
 
+def private_factory_exception(
+    name: str, source: str, token: tokenize.TokenInfo
+) -> bool:
+    """Match the two private calls that preserve direct facade construction.
+
+    Returns:
+        Whether this comment annotates the exact approved factory call.
+
+    """
+    expected = PRIVATE_CONTEXT_FACTORIES.get(name)
+    if expected is None:
+        return False
+    scope, method = expected
+    if enclosing_function(source, token.start[0]) != scope:
+        return False
+    statement = source.splitlines()[token.start[0] - 1].split("#", maxsplit=1)[0]
+    return statement.strip() == f"return client.{method}()" and token.string == (
+        "# ruff: ignore[private-member-access] # pyright: ignore[reportPrivateUsage]"
+    )
+
+
+def check_pyright_comment(
+    name: str,
+    source: str,
+    token: tokenize.TokenInfo,
+    approved: set[tuple[str, str]],
+    used: set[tuple[str, str]],
+) -> tuple[list[str], str]:
+    """Limit native private-access exceptions to their two compatibility adapters.
+
+    Returns:
+        Violations and the comment remaining after a recognized native exception.
+
+    """
+    if not PYRIGHT_IGNORE.search(token.string):
+        return [], token.string
+    if name in TYPE_FIXTURES and TYPE_IGNORE.search(token.string):
+        return [], PYRIGHT_IGNORE.sub("", token.string)
+    location = f"{name}:{token.start[0]}"
+    if private_factory_exception(name, source, token):
+        scope = f"{name}:{enclosing_function(source, token.start[0])}"
+        return (
+            check_rule((scope, PRIVATE_CONTEXT_RULE), location, approved, used),
+            PYRIGHT_IGNORE.sub("", token.string),
+        )
+    return [f"{location}: pyright ignore outside diagnostic fixture"], token.string
+
+
 def check_comment(
     name: str,
     source: str,
@@ -310,16 +369,10 @@ def check_comment(
 
     """
     location = f"{name}:{token.start[0]}"
-    pyright_ignores = PYRIGHT_IGNORE.findall(token.string)
-    remaining = token.string
-    if name in TYPE_FIXTURES and TYPE_IGNORE.search(remaining):
-        remaining = PYRIGHT_IGNORE.sub("", remaining)
-    errors = (
-        [f"{location}: forbidden suppression"] if FORBIDDEN.search(remaining) else []
-    )
+    errors, remaining = check_pyright_comment(name, source, token, approved, used)
+    if FORBIDDEN.search(remaining):
+        errors.append(f"{location}: forbidden suppression")
     errors.extend(check_type_comment(name, source, token, approved, used))
-    if pyright_ignores and name not in TYPE_FIXTURES:
-        errors.append(f"{location}: pyright ignore outside diagnostic fixture")
     errors.extend(check_ruff_comment(name, source, token, approved, used))
     return errors
 

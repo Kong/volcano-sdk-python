@@ -5180,3 +5180,11 @@ def test_realtime_binds_bootstrap_refresh_without_profile(
             await client.realtime.disconnect()
 
     asyncio.run(scenario())
+
+
+def test_internal_channel_defaults_enable_postgres_fetching() -> None:
+    state = realtime_state(VolcanoClient(anon_key="anon").realtime)
+
+    channel = state.channel("public:messages", channel_type="postgres")
+
+    assert channel_state(channel).fetch_config.enabled is True

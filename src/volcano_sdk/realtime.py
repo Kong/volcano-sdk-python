@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, TypeAlias, TypeVar
 import volcano_sdk._realtime_messages as _messages
 import volcano_sdk._realtime_transport as _native
 
+from ._client_context import ClientContextSource, facade_context
 from ._realtime_connection import RealtimeState
 
 if TYPE_CHECKING:
@@ -167,14 +168,17 @@ class Realtime:
 
     def __init__(
         self,
-        client: RealtimeContext,
+        client: RealtimeContext | ClientContextSource,
         *,
         api_url: str,
         client_factory: CentrifugeFactory = _native.centrifuge_client,
     ) -> None:
         """Create a lazily connected realtime facade."""
         self._state: RealtimeState[Channel] = RealtimeState(
-            client, Channel, api_url=api_url, client_factory=client_factory
+            facade_context(client),
+            Channel,
+            api_url=api_url,
+            client_factory=client_factory,
         )
 
     @property

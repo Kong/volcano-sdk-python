@@ -80,24 +80,7 @@ class VolcanoClient:
             else GeneratedTransport(api_url=self._api_url, timeout=timeout)
         )
 
-        def capture_auth_session_binding() -> tuple[
-            int, SessionOperations, Session | None
-        ]:
-            return self._capture_session_binding()
-
-        auth_context = AuthContext(
-            transport=lambda: self._transport,
-            current_session=lambda: self.current_session,
-            anon_token=self._anon_token,
-            api_base_url=self._api_base_url,
-            set_session=self._set_session,
-            capture_session=self._capture_session,
-            capture_session_binding=capture_auth_session_binding,
-            update_session_user_if_current=self._update_session_user_if_current,
-            set_session_if_current=self._set_session_if_current,
-            clear_session_if_current=self._clear_session_if_current,
-            subscribe_auth_state_change=self._subscribe_auth_state_change,
-        )
+        auth_context = self._auth_context()
         self._auth_requests: AuthRequests = AuthRequests(auth_context)
         self.auth: Auth = Auth(auth_context, _requests=self._auth_requests)
         self._facades: ClientContext = self._facade_context()
@@ -114,6 +97,26 @@ class VolcanoClient:
                 api_url=self._api_url,
                 client_factory=_realtime_client_factory,
             )
+
+    def _auth_context(self) -> AuthContext:
+        def capture_auth_session_binding() -> tuple[
+            int, SessionOperations, Session | None
+        ]:
+            return self._capture_session_binding()
+
+        return AuthContext(
+            transport=lambda: self._transport,
+            current_session=lambda: self.current_session,
+            anon_token=self._anon_token,
+            api_base_url=self._api_base_url,
+            set_session=self._set_session,
+            capture_session=self._capture_session,
+            capture_session_binding=capture_auth_session_binding,
+            update_session_user_if_current=self._update_session_user_if_current,
+            set_session_if_current=self._set_session_if_current,
+            clear_session_if_current=self._clear_session_if_current,
+            subscribe_auth_state_change=self._subscribe_auth_state_change,
+        )
 
     def _facade_context(self) -> ClientContext:
         return ClientContext(

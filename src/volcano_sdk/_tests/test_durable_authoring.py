@@ -1036,7 +1036,10 @@ def test_wait_until_requires_an_initial_state() -> None:
             WaitUntilOptions[object](until=bool),
         )
 
-    assert "requires an `initial_state`" in failing_handler(handler)
+    assert failing_handler(handler) == (
+        "wait_until() requires an `initial_state`, which is what `until` "
+        "is given until the state changes"
+    )
 
 
 def test_wait_until_rejects_a_non_callable_predicate_at_runtime() -> None:

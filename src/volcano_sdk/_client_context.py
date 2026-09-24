@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, TypeVar, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -100,3 +100,25 @@ class ClientContext:
 
         """
         return self._get_capture_session_binding()
+
+
+@runtime_checkable
+class ClientContextSource(Protocol):
+    """The private context factory retained by VolcanoClient."""
+
+    def _facade_context(self) -> ClientContext: ...
+
+
+ContextT = TypeVar("ContextT")
+
+
+def facade_context(client: ClientContextSource | ContextT) -> ClientContext | ContextT:
+    """Accept legacy direct facade construction without exposing client internals.
+
+    Returns:
+        The client's live capabilities or the supplied narrow context.
+
+    """
+    if isinstance(client, ClientContextSource):
+        return client._facade_context()  # ruff: ignore[private-member-access] # pyright: ignore[reportPrivateUsage]
+    return client

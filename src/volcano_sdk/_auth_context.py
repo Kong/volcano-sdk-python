@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -67,3 +67,22 @@ class AuthContext:
     set_session_if_current: SetSessionIfCurrent
     clear_session_if_current: ClearSessionIfCurrent
     subscribe_auth_state_change: Callable[[AuthStateCallback], AuthSubscription]
+
+
+@runtime_checkable
+class AuthContextSource(Protocol):
+    """The private authentication context factory retained by VolcanoClient."""
+
+    def _auth_context(self) -> AuthContext: ...
+
+
+def auth_context(client: AuthContextSource | AuthContext) -> AuthContext:
+    """Preserve Auth(client) while keeping its internal callbacks private.
+
+    Returns:
+        The client's authentication capabilities or the supplied context.
+
+    """
+    if isinstance(client, AuthContextSource):
+        return client._auth_context()  # ruff: ignore[private-member-access] # pyright: ignore[reportPrivateUsage]
+    return client

@@ -71,13 +71,13 @@ fi
 # A fresh run must not inherit stale test-to-mutant mappings or verdicts.
 rm -rf -- mutants
 
-# Mutmut rejects an exact wildcard for a module with no functions. Record that
-# module explicitly instead of treating a native no-match assertion as a kill.
+# Mutmut rejects an exact wildcard with no candidates. Ask its own generator
+# before selecting the module; report zero candidates separately from kills.
 if [[ -n ${MUTATION_MODULE:-} ]] && ! python -c '
 import sys
 from pathlib import Path
-from scripts.mutation_results import has_functions
-raise SystemExit(0 if has_functions(Path(sys.argv[1])) else 1)
+from scripts.mutation_results import has_mutations
+raise SystemExit(0 if has_mutations(Path(sys.argv[1])) else 1)
 ' "$selected_path"; then
   python -m scripts.mutation_results "$targets" "$failed"
   exit

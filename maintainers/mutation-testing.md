@@ -16,10 +16,13 @@ survive.
 `scripts/mutation_results.py` reads each selected module's native metadata. The
 report at `reports/mutation.json` distinguishes killed, statically invalid,
 surviving, uncovered, timed-out, crashed, interrupted, and missing results.
-Mutmut creates mutants inside functions. Export-only and declaration-only
-modules remain in the inventory; the runner verifies that they define no runtime
-function bodies and records them as unmutatable. Protocol signatures containing
-only a docstring and ellipsis cannot produce mutants. Coverage and installed-package checks still include them.
+Mutmut creates mutants inside functions, but some functions have no candidates:
+zero-argument getter delegation and protocol declarations are examples. Every
+module remains in the inventory. The runner calls the pinned Mutmut generator's
+`mutate_file_contents` API to verify zero candidates, then records the module as
+unmutatable. This uses the same operators as the native run, without source
+heuristics or per-module exemptions. Coverage and installed-package checks still
+include these modules.
 A pytest internal error is a harness crash, not a killed mutant.
 The pinned Pyrefly check covers the handwritten runtime and rejects
 type-invalid mutants before pytest;

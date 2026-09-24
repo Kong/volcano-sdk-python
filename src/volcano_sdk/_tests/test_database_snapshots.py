@@ -52,7 +52,9 @@ def test_filter_snapshots_nested_mappings_lists_and_tuples(operation: str) -> No
 
 
 def test_filter_base_requires_a_concrete_builder() -> None:
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(
+        NotImplementedError, match=r"^FilterBuilder must implement immutable filters$"
+    ):
         _ = FilterBuilder().eq("id", 1)
 
 

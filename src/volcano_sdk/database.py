@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ._auth_requests import AuthRequests
     from .models import JSONValue
 
+from ._client_context import ClientContextSource, facade_context
 from ._database_response import database_rows
 from ._transport import Transport, invoke, response_payload
 
@@ -206,7 +207,7 @@ class FilterBuilder:
 class QueryBuilder(FilterBuilder):
     """Build and execute an immutable database select query."""
 
-    _client: DatabaseContext
+    _client: DatabaseContext | ClientContextSource
     _database_name: str
     _table: str
     _columns: tuple[str, ...] = ()
@@ -339,10 +340,11 @@ class QueryBuilder(FilterBuilder):
             Rows returned by the select request.
 
         """
+        client = facade_context(self._client)
         body = self._request_body()
-        response = self._client.auth().request(
+        response = client.auth().request(
             lambda token: invoke(
-                self._client.transport().query_database_select,
+                client.transport().query_database_select,
                 authorization=token,
                 database_name=self._database_name,
                 body=body,
@@ -356,7 +358,7 @@ class QueryBuilder(FilterBuilder):
 class InsertBuilder:
     """Build and execute an immutable database insert."""
 
-    _client: DatabaseContext
+    _client: DatabaseContext | ClientContextSource
     _database_name: str
     _table: str
     _values: dict[str, JSONValue]
@@ -370,9 +372,10 @@ class InsertBuilder:
             Inserted rows returned by the server.
 
         """
-        response = self._client.auth().request(
+        client = facade_context(self._client)
+        response = client.auth().request(
             lambda token: invoke(
-                self._client.transport().query_database_insert,
+                client.transport().query_database_insert,
                 authorization=token,
                 database_name=self._database_name,
                 body={"table": self._table, "values": _snapshot_row(self._values)},
@@ -386,7 +389,7 @@ class InsertBuilder:
 class UpdateBuilder(FilterBuilder):
     """Build and execute an immutable filtered database update."""
 
-    _client: DatabaseContext
+    _client: DatabaseContext | ClientContextSource
     _database_name: str
     _table: str
     _values: dict[str, JSONValue]
@@ -405,9 +408,10 @@ class UpdateBuilder(FilterBuilder):
             Updated rows returned by the server.
 
         """
-        response = self._client.auth().request(
+        client = facade_context(self._client)
+        response = client.auth().request(
             lambda token: invoke(
-                self._client.transport().query_database_update,
+                client.transport().query_database_update,
                 authorization=token,
                 database_name=self._database_name,
                 body={
@@ -425,7 +429,7 @@ class UpdateBuilder(FilterBuilder):
 class DeleteBuilder(FilterBuilder):
     """Build and execute an immutable filtered database delete."""
 
-    _client: DatabaseContext
+    _client: DatabaseContext | ClientContextSource
     _database_name: str
     _table: str
     _filters: tuple[_FilterCondition, ...] = ()
@@ -443,9 +447,10 @@ class DeleteBuilder(FilterBuilder):
             Deleted rows returned by the server.
 
         """
-        response = self._client.auth().request(
+        client = facade_context(self._client)
+        response = client.auth().request(
             lambda token: invoke(
-                self._client.transport().query_database_delete,
+                client.transport().query_database_delete,
                 authorization=token,
                 database_name=self._database_name,
                 body={"table": self._table, "filters": list(self._filters)},
@@ -459,7 +464,7 @@ class DeleteBuilder(FilterBuilder):
 class Database:
     """Entry point for queries against one database."""
 
-    _client: DatabaseContext
+    _client: DatabaseContext | ClientContextSource
     _name: str
 
     def from_(self, table: str) -> QueryBuilder:

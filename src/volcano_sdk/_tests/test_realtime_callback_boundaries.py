@@ -6,7 +6,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from volcano_sdk import PostgresChange, RealtimeConnectContext, Session, VolcanoClient
+from volcano_sdk import (
+    PostgresChange,
+    RealtimeConnectContext,
+    RealtimeDisconnectContext,
+    RealtimeErrorContext,
+    Session,
+    VolcanoClient,
+)
 from volcano_sdk._realtime_messages import (
     CallbackDelivery,
 )
@@ -289,8 +296,19 @@ async def test_removed_connection_callback_does_not_run_from_a_queued_event() ->
 @pytest.mark.parametrize(
     "failure", [RuntimeError("callback failed"), asyncio.CancelledError()]
 )
+@pytest.mark.parametrize(
+    ("context", "event"),
+    [
+        (RealtimeConnectContext(client="connected"), "connect"),
+        (RealtimeDisconnectContext(), "disconnect"),
+        (RealtimeErrorContext(), "error"),
+    ],
+)
 async def test_connection_callback_failure_does_not_interrupt_later_callbacks(
-    loop_errors: list[dict[str, object]], failure: BaseException
+    loop_errors: list[dict[str, object]],
+    failure: BaseException,
+    context: RealtimeConnectContext | RealtimeDisconnectContext | RealtimeErrorContext,
+    event: str,
 ) -> None:
     realtime = VolcanoClient(anon_key="anon").realtime
     received: list[object] = []
@@ -298,9 +316,9 @@ async def test_connection_callback_failure_does_not_interrupt_later_callbacks(
     def fail(_context: object) -> None:
         raise failure
 
-    _ = realtime.on_connect(fail)
-    _ = realtime.on_connect(received.append)
-    context = RealtimeConnectContext(client="connected")
+    for register in (realtime.on_connect, realtime.on_disconnect, realtime.on_error):
+        _ = register(fail)
+        _ = register(received.append)
     realtime_state(realtime).enqueue_connection_callbacks(context)
     await asyncio.wait_for(
         realtime_state(realtime).connection_callback_queue.join(), timeout=2
@@ -309,7 +327,7 @@ async def test_connection_callback_failure_does_not_interrupt_later_callbacks(
     assert received == [context]
     assert len(loop_errors) == 1
     assert loop_errors[0]["message"] == "Volcano realtime connection callback failed"
-    assert loop_errors[0]["event"] == "connect"
+    assert loop_errors[0]["event"] == event
     assert isinstance(loop_errors[0]["exception"], type(failure))
 
 
