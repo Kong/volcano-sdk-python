@@ -76,6 +76,15 @@ def test_forget_only_drops_the_requested_credential_scope() -> None:
     )
 
 
+def test_forget_is_idempotent_when_concurrent_stale_calls_invalidate_one_key() -> None:
+    cache.store(API_URL, AUTHORIZATION, "same-name", RESOLUTION, 60.0)
+
+    cache.forget(API_URL, AUTHORIZATION, "same-name")
+    cache.forget(API_URL, AUTHORIZATION, "same-name")
+
+    assert cache.lookup(API_URL, AUTHORIZATION, "same-name") is None
+
+
 def test_miss_locks_are_shared_for_one_key_but_striped_across_keys() -> None:
     first = cache.resolve_lock(API_URL, AUTHORIZATION, "first")
     assert cache.resolve_lock(API_URL, AUTHORIZATION, "first") is first
@@ -88,7 +97,7 @@ def test_miss_locks_are_shared_for_one_key_but_striped_across_keys() -> None:
 
 @seed(PROPERTY_SEED)
 @given(...)
-def test_resolved_url_rejects_every_ascii_control(control: URLControl) -> None:
+def test_resolved_url_rejects_ascii_controls(control: URLControl) -> None:
     assert (
         cache.valid_invoke_url(f"https://functions.volcano.test/{control}path", API_URL)
         is None
@@ -172,6 +181,7 @@ def test_capacity_reclaims_expired_entries_before_live_entries(
 
     cache.store(API_URL, AUTHORIZATION, "new", RESOLUTION, 30.0)
 
+    assert len(cache._entries) == 2
     assert cache.lookup(API_URL, AUTHORIZATION, "0") == cache.CachedOutcome(RESOLUTION)
     assert cache.lookup(API_URL, AUTHORIZATION, "new") == cache.CachedOutcome(
         RESOLUTION
@@ -225,3 +235,20 @@ def test_replacing_an_entry_at_capacity_preserves_other_entries(
         == cache.CachedOutcome(RESOLUTION)
         for index in range(1, cache.MAX_ENTRIES)
     )
+    assert len(cache._entries) == cache.MAX_ENTRIES
+
+
+def test_replacing_at_capacity_defers_the_expired_entry_sweep(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr(cache, "_now", lambda: clock[0])
+    populate_cache(ttl=10.0)
+    clock[0] = 110.0
+
+    cache.store(API_URL, AUTHORIZATION, "0", RESOLUTION, 30.0)
+
+    # A replacement cannot exceed capacity; scanning every entry here would
+    # turn a common write into an O(capacity) operation.
+    assert len(cache._entries) == cache.MAX_ENTRIES
+    assert cache.lookup(API_URL, AUTHORIZATION, "0") == cache.CachedOutcome(RESOLUTION)
