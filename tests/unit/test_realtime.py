@@ -4,8 +4,8 @@ import asyncio
 import base64
 import json
 from dataclasses import dataclass
-from types import SimpleNamespace
-from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, cast
+from types import MappingProxyType, SimpleNamespace
+from typing import TYPE_CHECKING, Annotated, Literal, TypedDict, TypeGuard, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -17,6 +17,9 @@ from fixtures.invalid_arguments import (
     unsupported_postgres_change_event,
     unsupported_realtime_channel_type,
 )
+from hypothesis import given, seed
+from hypothesis import strategies as st
+from property_support import PROPERTY_SEED
 from state_assertions import assert_same
 from transport_fixtures import RejectingTransport
 from typing_extensions import override
@@ -36,6 +39,8 @@ from volcano_sdk import realtime as realtime_module
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
+    from volcano_sdk.models import JSONValue
+
 UNEXPECTED_TRANSPORT_CALL = "unexpected transport operation"
 
 
@@ -54,6 +59,10 @@ class RecordedFactoryArguments(TypedDict):
 @dataclass(frozen=True)
 class FakeConnectionState:
     value: str
+
+
+class CodedPresenceError(CentrifugeError):
+    code: int = 409
 
 
 @dataclass
@@ -380,7 +389,7 @@ class BlockingRealtimeDatabaseTransport(RealtimeDatabaseTransport):
     ) -> Response:
         self.started.set()
         try:
-            _ = await self.release.wait()
+            _ = await asyncio.wait_for(self.release.wait(), timeout=2)
         except asyncio.CancelledError:
             self.cancelled.set()
             raise
@@ -431,7 +440,7 @@ class FakeSubscription:
         await self.emit_subscribed()
 
     async def ready(self) -> None:
-        _ = await self.subscribed.wait()
+        _ = await asyncio.wait_for(self.subscribed.wait(), timeout=2)
 
     async def publish(self, data: object) -> None:
         self.calls.append(("publish", data))
@@ -441,7 +450,7 @@ class FakeSubscription:
         if self.unsubscribe_entered is not None:
             self.unsubscribe_entered.set()
         if self.unsubscribe_release is not None:
-            _ = await self.unsubscribe_release.wait()
+            _ = await asyncio.wait_for(self.unsubscribe_release.wait(), timeout=2)
         if self.unsubscribe_error is not None:
             raise self.unsubscribe_error
         await self._events().on_unsubscribed(
@@ -459,7 +468,7 @@ class FakeSubscription:
         if self.presence_entered is not None:
             self.presence_entered.set()
         if self.presence_release is not None:
-            _ = await self.presence_release.wait()
+            _ = await asyncio.wait_for(self.presence_release.wait(), timeout=2)
         return SimpleNamespace(clients=clients)
 
     async def emit_subscribed(self) -> None:
@@ -599,7 +608,7 @@ class BlockingConnectCentrifugeClient(FakeCentrifugeClient):
     async def connect(self) -> None:
         self.calls.append("connect")
         self.connect_started.set()
-        _ = await self.connect_release.wait()
+        _ = await asyncio.wait_for(self.connect_release.wait(), timeout=2)
         self.state: FakeConnectionState = FakeConnectionState(value="connected")
         if self.events is not None:
             await self.events.on_connected(SimpleNamespace(client="client-123"))
@@ -701,6 +710,44 @@ class ControlledCentrifugeFactory:
         await self.client._process_reply({"id": command["id"], **result})
 
 
+@pytest.mark.order("first")
+async def test_realtime_callback_errors_are_empty_after_native_presence_reply() -> None:
+    client = VolcanoClient(anon_key="anon-key", _transport=AuthTransport())
+    channel = client.realtime.channel("lobby", channel_type="presence")
+    subscription = FakeSubscription(
+        channel.name,
+        realtime_module._ChannelEvents(channel),
+        join_leave=True,
+        recoverable=True,
+    )
+    subscription.presence_entered = asyncio.Event()
+    channel._subscription = subscription
+    channel._subscribed = True
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+    failures: list[object] = []
+
+    def record_failure(
+        _loop: asyncio.AbstractEventLoop, context: dict[str, object]
+    ) -> None:
+        failures.append(context.get("exception"))
+
+    loop.set_exception_handler(record_failure)
+    sync = asyncio.create_task(client.realtime._sync_presence(channel))
+    try:
+        _ = await asyncio.wait_for(subscription.presence_entered.wait(), timeout=1)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert sync.done()
+        assert sync.exception() is None
+        assert failures == []
+    finally:
+        if not sync.done():
+            _ = sync.cancel()
+        _ = await asyncio.gather(sync, return_exceptions=True)
+        loop.set_exception_handler(previous_handler)
+
+
 @pytest.mark.parametrize("channel_type", ["broadcast", "presence"])
 def test_realtime_native_dispatch_routes_project_prefixed_publications(
     monkeypatch: pytest.MonkeyPatch, channel_type: realtime_module.ChannelType
@@ -732,7 +779,7 @@ def test_realtime_native_dispatch_routes_project_prefixed_publications(
                     }
                 }
             )
-            await channel._callback_queue.join()
+            await asyncio.wait_for(channel._callback_queue.join(), timeout=1)
             assert received == [payload]
         finally:
             await client.realtime.disconnect()
@@ -943,7 +990,7 @@ def test_realtime_repeated_pause_retains_presence_clear_notification(
             snapshots.append(state)
             if state:
                 entered.set()
-                _ = await release.wait()
+                _ = await asyncio.wait_for(release.wait(), timeout=2)
 
         _ = channel.on_presence_sync(receive)
         await factory.reply(
@@ -1083,6 +1130,25 @@ def test_realtime_rejects_fractional_fetch_window() -> None:
         fractional_fetch_window(client.realtime)
 
 
+@pytest.mark.parametrize(
+    ("window", "batch_size"),
+    [(1, 1), (20, realtime_module.POSTGRES_QUEUE_LIMIT)],
+)
+def test_realtime_accepts_fetch_configuration_boundaries(
+    window: int, batch_size: int
+) -> None:
+    config = realtime_module._postgres_fetch_config(
+        auto_fetch=True,
+        fetch_batch_window_ms=window,
+        fetch_max_batch_size=batch_size,
+    )
+
+    assert config.enabled
+    assert config.batch_window_ms == window
+    assert config.batch_window_seconds == pytest.approx(window / 1_000)
+    assert config.max_batch_size == batch_size
+
+
 def test_realtime_postgres_delivery_identity_changes_on_reauthentication() -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(
@@ -1206,7 +1272,7 @@ async def test_realtime_drops_queued_postgres_callbacks_from_an_old_epoch() -> N
         assert isinstance(record_id, int)
         if record_id == 1:
             first_started.set()
-            _ = await release_first.wait()
+            _ = await asyncio.wait_for(release_first.wait(), timeout=2)
         received.append(record_id)
         if record_id == 3:
             third_received.set()
@@ -1222,7 +1288,7 @@ async def test_realtime_drops_queued_postgres_callbacks_from_an_old_epoch() -> N
     assert subscription is not None
 
     await subscription.emit(insert(1))
-    _ = await first_started.wait()
+    _ = await asyncio.wait_for(first_started.wait(), timeout=2)
     first_worker = channel._postgres_worker
     assert first_worker is not None
     await subscription.emit(insert(2))
@@ -1753,6 +1819,8 @@ def test_realtime_disconnect_invalidates_channels_before_clearing_auth() -> None
         _realtime_client_factory=FakeCentrifugeFactory(official),
     )
     _ = client.auth.sign_in(email="user@example.com", password="secret")
+    with pytest.raises(RuntimeError, match="no session binding"):
+        _ = client.realtime._connection_token()
 
     async def scenario() -> None:
         channel = client.realtime.channel(
@@ -1855,7 +1923,7 @@ def test_realtime_routes_immutable_rls_scoped_postgres_changes() -> None:
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("field", ["record", "old_record"])
+@pytest.mark.parametrize("field", ["record", "old_record", "type"])
 @pytest.mark.parametrize("invalid", ["invalid", 0, False, []])
 async def test_realtime_drops_malformed_records_before_delivering_valid_changes(
     field: str,
@@ -2029,6 +2097,94 @@ def test_realtime_validates_postgres_change_operations() -> None:
     asyncio.run(send())
 
 
+@seed(PROPERTY_SEED)
+@given(...)
+def test_realtime_rejects_each_invalid_postgres_envelope_field(
+    field: Annotated[
+        Literal["type", "schema", "table", "timestamp"],
+        st.sampled_from(["type", "schema", "table", "timestamp"]),
+    ],
+    invalid: Annotated[
+        object,
+        st.one_of(st.none(), st.booleans(), st.integers(), st.lists(st.text())),
+    ],
+) -> None:
+    payload: dict[str, object] = {
+        "type": "INSERT",
+        "schema": "public",
+        "table": "messages",
+        "timestamp": "2026-09-02T12:00:00Z",
+    }
+    payload[field] = invalid
+
+    assert realtime_module._postgres_change(payload) is None
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("type", "UPSERT"),
+        ("mode", "full"),
+        ("record", []),
+        ("old_record", 42),
+        ("columns", "id"),
+        ("columns", ["id", 42]),
+    ],
+)
+def test_realtime_rejects_malformed_postgres_payloads(
+    field: str, invalid: object
+) -> None:
+    payload: dict[str, object] = {
+        "type": "INSERT",
+        "schema": "public",
+        "table": "messages",
+        "timestamp": "2026-09-02T12:00:00Z",
+    }
+    payload[field] = invalid
+
+    assert realtime_module._postgres_change(payload) is None
+
+
+@pytest.mark.parametrize(
+    ("candidate", "publication", "matches"),
+    [
+        ("postgres:public:messages", "project:postgres:public:messages:user", True),
+        ("broadcast:public:messages", "project:broadcast:public:messages:user", False),
+        ("postgres:public", "project:postgres:public:messages:user", False),
+        ("postgres:public:messages", "project:postgres:public:messages", False),
+        (
+            "postgres:public:messages",
+            "project:postgres:public:messages:user:extra",
+            False,
+        ),
+        ("postgres:public:messages", "project:postgres:public:other:user", False),
+    ],
+)
+def test_realtime_postgres_route_requires_exact_publication_shape(
+    candidate: str, publication: str, *, matches: bool
+) -> None:
+    assert realtime_module._postgres_route_matches(candidate, publication) is matches
+
+
+@seed(PROPERTY_SEED)
+@given(...)
+def test_realtime_preserves_valid_postgres_column_order(
+    columns: Annotated[list[str], st.lists(st.text(), max_size=20)],
+) -> None:
+    change = realtime_module._postgres_change(
+        {
+            "type": "UPDATE",
+            "schema": "public",
+            "table": "messages",
+            "timestamp": "2026-09-02T12:00:00Z",
+            "columns": columns,
+        }
+    )
+
+    assert change is not None
+    assert change.columns == tuple(columns)
+
+
 def test_realtime_presence_sync_tracks_initial_join_and_leave_state() -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(
@@ -2123,7 +2279,7 @@ def test_realtime_presence_subscribe_waits_for_initial_roster() -> None:
     async def scenario() -> None:
         channel = client.realtime.channel("lobby", channel_type="presence")
         subscribing = asyncio.create_task(channel.subscribe())
-        _ = await presence_entered.wait()
+        _ = await asyncio.wait_for(presence_entered.wait(), timeout=2)
         assert not subscribing.done()
 
         presence_release.set()
@@ -2156,7 +2312,9 @@ def test_realtime_presence_resyncs_after_resubscription() -> None:
         official.subscription.presence_entered = asyncio.Event()
 
         await official.subscription.emit_subscribed()
-        _ = await official.subscription.presence_entered.wait()
+        _ = await asyncio.wait_for(
+            official.subscription.presence_entered.wait(), timeout=2
+        )
         await asyncio.wait_for(channel._wait_presence_sync(), timeout=0.2)
 
         assert set(channel.get_presence_state()) == {"carol-client"}
@@ -2212,7 +2370,9 @@ def test_realtime_presence_replays_a_resync_requested_during_a_query() -> None:
         official.subscription.presence_release = asyncio.Event()
 
         await official.subscription.emit_subscribed()
-        _ = await official.subscription.presence_entered.wait()
+        _ = await asyncio.wait_for(
+            official.subscription.presence_entered.wait(), timeout=2
+        )
         await official.subscription.emit_subscribed()
         official.subscription.presence_clients = {
             "carol-client": SimpleNamespace(
@@ -2248,7 +2408,9 @@ def test_realtime_presence_resync_replays_concurrent_join_and_leave() -> None:
         official.subscription.presence_release = asyncio.Event()
 
         resync = asyncio.create_task(official.subscription.emit_subscribed())
-        _ = await official.subscription.presence_entered.wait()
+        _ = await asyncio.wait_for(
+            official.subscription.presence_entered.wait(), timeout=2
+        )
         bob = SimpleNamespace(client="bob-client", user="bob", conn_info={})
         join = asyncio.create_task(official.subscription.emit_join(bob))
         leave = asyncio.create_task(official.subscription.emit_leave(carol))
@@ -2355,28 +2517,31 @@ async def test_realtime_presence_sync_coalesces_latest_backpressured_state() -> 
             completed.set()
         if len(state) == 1:
             blocked.set()
-            _ = await release.wait()
+            _ = await asyncio.wait_for(release.wait(), timeout=2)
 
     _ = channel.on_presence_sync(on_sync)
-    await channel.subscribe()
-    assert official.subscription is not None
-    await official.subscription.emit_join(
-        SimpleNamespace(client="client-0", user="user-0", conn_info={})
-    )
-    _ = await blocked.wait()
-    for index in range(1, 140):
+    try:
+        await asyncio.wait_for(channel.subscribe(), timeout=2)
+        assert official.subscription is not None
         await official.subscription.emit_join(
-            SimpleNamespace(
-                client=f"client-{index}",
-                user=f"user-{index}",
-                conn_info={},
-            )
+            SimpleNamespace(client="client-0", user="user-0", conn_info={})
         )
-    release.set()
-    _ = await asyncio.wait_for(completed.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(blocked.wait(), timeout=2)
+        for index in range(1, 140):
+            await official.subscription.emit_join(
+                SimpleNamespace(
+                    client=f"client-{index}",
+                    user=f"user-{index}",
+                    conn_info={},
+                )
+            )
+        release.set()
+        _ = await asyncio.wait_for(completed.wait(), timeout=0.2)
 
-    assert observed_sizes[-1] == 140
-    await client.realtime.disconnect()
+        assert observed_sizes[-1] == 140
+    finally:
+        release.set()
+        await client.realtime.disconnect()
 
 
 def test_realtime_newer_queued_snapshot_discards_older_pending_snapshot() -> None:
@@ -2459,6 +2624,32 @@ def test_realtime_presence_values_are_hashable_without_metadata() -> None:
     assert hash(first) == hash(second)
 
 
+def test_realtime_presence_metadata_is_defensively_frozen() -> None:
+    roles: list[JSONValue] = ["reader"]
+    metadata: dict[str, JSONValue] = {"nested": {"roles": roles}}
+    info = RealtimePresenceInfo(client="client-1", data=metadata)
+    roles[0] = "writer"
+
+    assert info.data == {"nested": {"roles": ("reader",)}}
+    assert isinstance(info.data, MappingProxyType)
+    assert isinstance(info.data["nested"], MappingProxyType)
+
+
+def test_realtime_postgres_rows_are_defensively_frozen() -> None:
+    row: dict[str, JSONValue] = {"nested": {"roles": ["reader"]}}
+    change = PostgresChange(
+        type="UPDATE",
+        schema="public",
+        table="messages",
+        record=row,
+    )
+    row["nested"] = {"roles": ["writer"]}
+
+    assert change.record == {"nested": {"roles": ("reader",)}}
+    assert isinstance(change.record, MappingProxyType)
+    assert isinstance(change.record["nested"], MappingProxyType)
+
+
 def test_realtime_reports_presence_query_failures() -> None:
     official = FakeCentrifugeClient()
     official.presence_clients = {
@@ -2473,7 +2664,7 @@ def test_realtime_reports_presence_query_failures() -> None:
     )
     _ = client.auth.sign_in(email="user@example.com", password="secret")
     errors: list[RealtimeErrorContext] = []
-    presence_error = centrifuge_error("presence unavailable")
+    presence_error = CodedPresenceError("presence unavailable")
 
     async def scenario() -> None:
         reported = asyncio.Event()
@@ -2499,6 +2690,7 @@ def test_realtime_reports_presence_query_failures() -> None:
     asyncio.run(scenario())
 
     assert len(errors) == 1
+    assert errors[0].code == 409
     assert errors[0].message == "presence unavailable"
     assert errors[0].error is presence_error
 
@@ -2676,7 +2868,7 @@ def test_realtime_discards_queued_messages_when_delivery_is_paused(
         async def receive(message: object) -> None:
             received.append(message)
             entered.set()
-            _ = await release.wait()
+            _ = await asyncio.wait_for(release.wait(), timeout=2)
 
         channel = client.realtime.channel("room")
         _ = channel.on("message", receive)
@@ -2715,7 +2907,7 @@ def test_realtime_discards_queued_presence_events_on_pause(*, resume: bool) -> N
 
         async def block(_message: object) -> None:
             entered.set()
-            _ = await release.wait()
+            _ = await asyncio.wait_for(release.wait(), timeout=2)
 
         channel = client.realtime.channel("lobby", channel_type="presence")
         _ = channel.on("message", block)
@@ -2762,7 +2954,7 @@ def test_realtime_explicit_pause_frees_queue_capacity_for_recovered_messages() -
         async def receive(message: object) -> None:
             received.append(message)
             entered.set()
-            _ = await release.wait()
+            _ = await asyncio.wait_for(release.wait(), timeout=2)
 
         channel = client.realtime.channel("room").on("message", receive)
         await channel.subscribe()
@@ -2805,7 +2997,7 @@ def test_realtime_reconnect_preserves_messages_already_accepted_by_centrifuge(
         async def receive(message: object) -> None:
             received.append(message)
             entered.set()
-            _ = await release.wait()
+            _ = await asyncio.wait_for(release.wait(), timeout=2)
 
         channel = client.realtime.channel("room", channel_type=channel_type).on(
             "message", receive
@@ -2895,7 +3087,7 @@ def test_realtime_rejects_a_session_change_during_connect() -> None:
 
     async def scenario() -> None:
         subscribing = asyncio.create_task(client.realtime.channel("room").subscribe())
-        _ = await official.connect_started.wait()
+        _ = await asyncio.wait_for(official.connect_started.wait(), timeout=2)
         transport.access_token = "access-2"
         _ = client.auth.sign_in(email="user@example.com", password="secret")
         official.connect_release.set()
@@ -2921,7 +3113,7 @@ def test_realtime_retains_a_provisional_connection_when_cleanup_fails() -> None:
 
     async def scenario() -> None:
         subscribing = asyncio.create_task(client.realtime.channel("room").subscribe())
-        _ = await official.connect_started.wait()
+        _ = await asyncio.wait_for(official.connect_started.wait(), timeout=2)
         transport.access_token = "access-2"
         _ = client.auth.sign_in(email="user@example.com", password="secret")
         cleanup_error = centrifuge_error("disconnect failed")
@@ -3018,7 +3210,7 @@ def test_realtime_connection_callbacks_do_not_block_transport_events() -> None:
 
         async def on_connect(_context: RealtimeConnectContext) -> None:
             callback_started.set()
-            _ = await callback_release.wait()
+            _ = await asyncio.wait_for(callback_release.wait(), timeout=2)
 
         _ = client.realtime.on_connect(on_connect)
         await asyncio.wait_for(
@@ -3155,7 +3347,9 @@ def test_realtime_rejects_channel_lookup_during_removal() -> None:
         official.subscription.unsubscribe_entered = asyncio.Event()
         official.subscription.unsubscribe_release = asyncio.Event()
         removing = asyncio.create_task(client.realtime.remove_channel("contract"))
-        _ = await official.subscription.unsubscribe_entered.wait()
+        _ = await asyncio.wait_for(
+            official.subscription.unsubscribe_entered.wait(), timeout=2
+        )
 
         with pytest.raises(RuntimeError, match="removal is in progress"):
             _ = client.realtime.channel("contract")
@@ -3250,7 +3444,7 @@ def test_realtime_callbacks_run_outside_the_message_processor() -> None:
         async def callback(data: object) -> None:
             del data
             started.set()
-            _ = await release.wait()
+            _ = await asyncio.wait_for(release.wait(), timeout=2)
 
         _ = channel.on("message", callback)
         await channel.subscribe()
@@ -3313,7 +3507,7 @@ def test_realtime_opens_one_connection_when_first_used_concurrently(
 
     async def connect() -> None:
         entered.set()
-        _ = await release.wait()
+        _ = await asyncio.wait_for(release.wait(), timeout=2)
         official.calls.append("connect")
 
     monkeypatch.setattr(official, "connect", connect)
@@ -3333,7 +3527,7 @@ def test_realtime_opens_one_connection_when_first_used_concurrently(
 
     async def scenario() -> None:
         first = asyncio.create_task(client.realtime._connect())
-        _ = await entered.wait()
+        _ = await asyncio.wait_for(entered.wait(), timeout=2)
         second = asyncio.create_task(client.realtime._connect())
         await asyncio.sleep(0)
         release.set()
@@ -3443,7 +3637,7 @@ def test_realtime_disconnect_excludes_a_concurrent_first_connect(
 
     async def connect() -> None:
         entered.set()
-        _ = await release.wait()
+        _ = await asyncio.wait_for(release.wait(), timeout=2)
         official.calls.append("connect")
 
     monkeypatch.setattr(official, "connect", connect)
@@ -3457,7 +3651,7 @@ def test_realtime_disconnect_excludes_a_concurrent_first_connect(
     async def scenario() -> None:
         channel = client.realtime.channel("contract")
         subscribing = asyncio.create_task(channel.subscribe())
-        _ = await entered.wait()
+        _ = await asyncio.wait_for(entered.wait(), timeout=2)
         disconnecting = asyncio.create_task(client.realtime.disconnect())
         await asyncio.sleep(0)
         release.set()
@@ -3545,7 +3739,7 @@ def test_realtime_disconnect_closes_transport_when_channel_reset_is_cancelled(
         monkeypatch.setattr(first, "_reset", blocking_reset)
         monkeypatch.setattr(second, "_reset", observe_second_reset)
         disconnecting = asyncio.create_task(client.realtime.disconnect())
-        _ = await reset_started.wait()
+        _ = await asyncio.wait_for(reset_started.wait(), timeout=2)
         _ = disconnecting.cancel()
 
         with pytest.raises(asyncio.CancelledError):
@@ -3577,7 +3771,7 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
         @override
         async def subscribe(self) -> None:
             entered.set()
-            _ = await release.wait()
+            _ = await asyncio.wait_for(release.wait(), timeout=2)
             await super().subscribe()
 
     def new_subscription(
@@ -3609,7 +3803,7 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
         _ = await client.realtime._connect()
         channel = client.realtime.channel("contract")
         subscribing = asyncio.create_task(channel.subscribe())
-        _ = await entered.wait()
+        _ = await asyncio.wait_for(entered.wait(), timeout=2)
         disconnecting = asyncio.create_task(client.realtime.disconnect())
         await asyncio.sleep(0)
         assert "disconnect" not in official.calls
@@ -3644,12 +3838,12 @@ def test_realtime_disconnect_snapshots_channels_before_resetting(
 
         async def blocking_reset() -> None:
             entered.set()
-            _ = await release.wait()
+            _ = await asyncio.wait_for(release.wait(), timeout=2)
             await original_reset()
 
         monkeypatch.setattr(first, "_reset", blocking_reset)
         disconnecting = asyncio.create_task(client.realtime.disconnect())
-        _ = await entered.wait()
+        _ = await asyncio.wait_for(entered.wait(), timeout=2)
         second = client.realtime.channel("second")
         release.set()
         await disconnecting
@@ -3677,14 +3871,14 @@ def test_realtime_shutdown_does_not_cancel_or_wait_for_application_work(
         async def receive(message: str) -> None:
             received.append(message)
             started.set()
-            _ = await release.wait()
+            _ = await asyncio.wait_for(release.wait(), timeout=2)
             _ = await asyncio.gather(client.realtime.disconnect())
             completed.set()
 
         channel = client.realtime.channel("room").on("message", receive)
         await channel.subscribe()
         await official.emit_wire_publication(channel.name, "running")
-        _ = await started.wait()
+        _ = await asyncio.wait_for(started.wait(), timeout=2)
         await official.emit_wire_publication(channel.name, "queued")
         operations = {
             "remove": lambda: client.realtime.remove_channel("room"),
@@ -3697,7 +3891,7 @@ def test_realtime_shutdown_does_not_cancel_or_wait_for_application_work(
             assert not completed.is_set()
             release.set()
             _ = await asyncio.wait_for(completed.wait(), timeout=0.2)
-            await channel._callback_queue.join()
+            await asyncio.wait_for(channel._callback_queue.join(), timeout=1)
             assert received == ["running"]
             await asyncio.sleep(0)
             assert not client.realtime._callback_tasks
@@ -3725,13 +3919,13 @@ def test_realtime_reconnect_serializes_delivery_after_running_callback() -> None
             received.append(message)
             if message == "first":
                 started.set()
-                _ = await release.wait()
+                _ = await asyncio.wait_for(release.wait(), timeout=2)
                 received.append("finished")
 
         channel = client.realtime.channel("room").on("message", receive)
         await channel.subscribe()
         await official.emit_wire_publication(channel.name, "first")
-        _ = await started.wait()
+        _ = await asyncio.wait_for(started.wait(), timeout=2)
         try:
             for _ in range(2):
                 await client.realtime.disconnect()
@@ -3799,7 +3993,7 @@ def test_realtime_event_loop_shutdown_does_not_start_queued_callbacks() -> None:
         _ = channel.on("message", receive)
         await channel.subscribe()
         await official.emit_wire_publication(channel.name, "running")
-        _ = await started.wait()
+        _ = await asyncio.wait_for(started.wait(), timeout=2)
         await official.emit_wire_publication(channel.name, "queued")
 
     asyncio.run(scenario())
@@ -3823,7 +4017,7 @@ def test_realtime_callback_workers_finish_when_idle() -> None:
         try:
             for message in ("first", "second"):
                 await official.emit_wire_publication(channel.name, message)
-                await channel._callback_queue.join()
+                await asyncio.wait_for(channel._callback_queue.join(), timeout=1)
                 await asyncio.sleep(0)
                 assert channel._callback_task is None or channel._callback_task.done()
             assert received == ["first", "second"]
@@ -3891,7 +4085,7 @@ def test_realtime_worker_registration_precedes_callback_execution(
         async def receive(_message: object) -> None:
             received.append("message started")
             await channel.unsubscribe()
-            _ = await release.wait()
+            _ = await asyncio.wait_for(release.wait(), timeout=2)
             received.append("message finished")
 
         _ = channel.on("message", receive)
@@ -3905,7 +4099,7 @@ def test_realtime_worker_registration_precedes_callback_execution(
         await factory.reply(await factory.command(), presence={"presence": {}})
         await subscribing
         await channel._wait_presence_sync()
-        await channel._callback_queue.join()
+        await asyncio.wait_for(channel._callback_queue.join(), timeout=1)
         await asyncio.sleep(0)
         received.clear()
         loop = asyncio.get_running_loop()
@@ -4034,7 +4228,7 @@ async def test_realtime_failed_readiness_cannot_activate_later(
         requested.set()
 
     async def ready(_subscription: FakeSubscription) -> None:
-        _ = await fail.wait()
+        _ = await asyncio.wait_for(fail.wait(), timeout=2)
         message = "ready timed out"
         raise centrifuge_error(message)
 
@@ -4096,7 +4290,7 @@ async def test_realtime_removal_can_overlap_readiness_rollback(
         requested.set()
 
     async def ready(_subscription: FakeSubscription) -> None:
-        _ = await unsubscribed.wait()
+        _ = await asyncio.wait_for(unsubscribed.wait(), timeout=2)
         message = "subscription unsubscribed"
         raise centrifuge_error(message)
 
@@ -4105,7 +4299,7 @@ async def test_realtime_removal_can_overlap_readiness_rollback(
             return
         # Centrifuge marks the subscription unsubscribed before awaiting its reply.
         unsubscribed.set()
-        _ = await release.wait()
+        _ = await asyncio.wait_for(release.wait(), timeout=2)
 
     monkeypatch.setattr(FakeSubscription, "subscribe", subscribe)
     monkeypatch.setattr(FakeSubscription, "ready", ready)
@@ -4531,7 +4725,9 @@ def test_realtime_cancelled_local_removal_clears_presence(*, remove_all: bool) -
             else client.realtime.remove_channel("room", channel_type="presence")
         )
         try:
-            _ = await subscription.unsubscribe_entered.wait()
+            _ = await asyncio.wait_for(
+                subscription.unsubscribe_entered.wait(), timeout=2
+            )
             _ = removing.cancel()
             subscription.unsubscribe_release.set()
             with pytest.raises(asyncio.CancelledError):

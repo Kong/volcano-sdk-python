@@ -201,9 +201,11 @@
         "src/volcano_sdk/_generated/*"
       ],
       "on_dependency_change": "rerun",
+      "process_isolation": "forkserver",
       "pytest_add_cli_args": [
         "-c",
-        "pyproject.toml"
+        "pyproject.toml",
+        "-x"
       ],
       "pytest_add_cli_args_test_selection": [
         "tests/unit"

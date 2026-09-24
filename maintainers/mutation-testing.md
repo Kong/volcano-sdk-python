@@ -14,6 +14,17 @@ when mutants survive. `scripts/mutation.sh` selects module names from Git and
 report at `reports/mutation.json` distinguishes survivors, uncovered mutants,
 timeouts, crashes, interrupted runs, and missing results. A pytest internal
 error is a harness crash, not a killed mutant. All non-killed outcomes fail.
+Mutmut passes pytest `-x` so a selected test's first assertion failure kills the
+mutant before a later selected test can hang on the same defect. Mutants that
+hang before any failure remain timeouts and fail separately.
+The runner uses one mutmut child at a time because competing async mutant
+processes can time out tests that kill the same mutant when run alone.
+Mutmut uses its native forkserver isolation because forking from a process that
+has already run asyncio tests can crash a worker before its tests report a result.
+The mutation runner sets `NO_PROXY=*` for its hermetic transport tests because
+macOS system-proxy discovery can abort after a fork with active threads.
+The pinned pytest-order plugin runs the native callback-error assertion first
+when mutmut's unordered test selection could otherwise reach a blocked test.
 
 The full audit runs mutmut once across the entire source tree. It reports any
 surviving mutants without treating them as an approved baseline. Equivalent
