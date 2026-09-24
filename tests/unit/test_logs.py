@@ -4,7 +4,7 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, get_origin, get_type_hints
+from typing import TYPE_CHECKING, cast, get_origin, get_type_hints
 
 import pytest
 from fixtures.invalid_arguments import non_json_log_request, non_mapping_log_request
@@ -88,16 +88,15 @@ def logs_client(transport: FakeLogsTransport) -> VolcanoClient:
 
 
 def test_log_public_request_annotations_resolve_at_runtime() -> None:
-    assert get_origin(get_type_hints(Logs.search)["request"]) is Mapping
-    assert get_origin(get_type_hints(Logs.activity)["request"]) is Mapping
-    assert (
-        get_origin(get_type_hints(LogsTransport.search_project_logs)["request"])
-        is Mapping
+    methods = (
+        Logs.search,
+        Logs.activity,
+        LogsTransport.search_project_logs,
+        LogsTransport.get_project_log_activity,
     )
-    assert (
-        get_origin(get_type_hints(LogsTransport.get_project_log_activity)["request"])
-        is Mapping
-    )
+    for method in methods:
+        annotation = cast("object", get_type_hints(method)["request"])
+        assert get_origin(annotation) is Mapping
 
 
 def test_logs_requires_a_transport_with_log_methods() -> None:

@@ -180,6 +180,17 @@ root = "src/volcano_sdk/realtime.py"
 reportUnannotatedClassAttribute = "error"
 reportUnusedCallResult = "error"
 reportAny = "error"
+reportExplicitAny = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "src/volcano_sdk/auth.py"
+reportAny = "error"
+reportExplicitAny = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "src/volcano_sdk/functions.py"
+reportAny = "error"
+reportExplicitAny = "error"
 
 [[tool.basedpyright.executionEnvironments]]
 root = "src/volcano_sdk/_transport.py"
@@ -203,6 +214,16 @@ reportInvalidCast = "error"
 reportImplicitStringConcatenation = "error"
 reportUnannotatedClassAttribute = "error"
 reportUnusedCallResult = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/test_functions.py"
+reportAny = "error"
+reportExplicitAny = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/test_logs.py"
+reportAny = "error"
+reportExplicitAny = "error"
 
 [[tool.basedpyright.executionEnvironments]]
 root = "tests/unit/test_auth_facade_recovery.py"

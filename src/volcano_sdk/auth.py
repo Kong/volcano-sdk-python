@@ -459,12 +459,22 @@ def _oauth_provider_token_status_from_payload(
     )
 
 
+class _OAuthAPIData(Protocol):
+    @property
+    def data(self) -> object: ...
+
+
+def _oauth_api_data(payload: _OAuthAPIData) -> object:
+    return payload.data
+
+
 def _oauth_api_data_from_payload(payload: object) -> JSONValue:
     if not isinstance(payload, CallOAuthProviderAPIResponse200):
         raise VolcanoError(_INVALID_OAUTH_API_RESPONSE)
-    if not _is_json_value(payload.data):
+    data = _oauth_api_data(payload)
+    if not _is_json_value(data):
         raise VolcanoError(_INVALID_OAUTH_API_RESPONSE)
-    return _freeze_json(payload.data)
+    return _freeze_json(data)
 
 
 class _SetSession(Protocol):

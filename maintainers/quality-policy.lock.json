@@ -16,9 +16,20 @@
         },
         {
           "reportAny": "error",
+          "reportExplicitAny": "error",
           "reportUnannotatedClassAttribute": "error",
           "reportUnusedCallResult": "error",
           "root": "src/volcano_sdk/realtime.py"
+        },
+        {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "root": "src/volcano_sdk/auth.py"
+        },
+        {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "root": "src/volcano_sdk/functions.py"
         },
         {
           "reportAny": "error",
@@ -42,6 +53,16 @@
           "reportUnannotatedClassAttribute": "error",
           "reportUnusedCallResult": "error",
           "root": "tests/unit/test_realtime.py"
+        },
+        {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "root": "tests/unit/test_functions.py"
+        },
+        {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "root": "tests/unit/test_logs.py"
         },
         {
           "reportAny": "error",

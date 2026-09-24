@@ -10,7 +10,6 @@ from itertools import count
 from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
-    Any,
     Literal,
     Protocol,
     TypeAlias,
@@ -47,9 +46,11 @@ if TYPE_CHECKING:
 _PostgresFetchRequest: TypeAlias = PostgresFetchRequest
 _SubscriptionT = TypeVar("_SubscriptionT")
 _DefaultT = TypeVar("_DefaultT")
+_MessageT = TypeVar("_MessageT")
 
-MessageCallback = Callable[[Any], object]
-RealtimeCallback = Callable[[Any], object]
+MessageCallback: TypeAlias = Callable[[_MessageT], object]
+RealtimeCallback: TypeAlias = Callable[[_MessageT], object]
+_StoredCallback = Callable[..., object]
 UnsubscribeCallback = Callable[[], None]
 ChannelType: TypeAlias = Literal["broadcast", "presence", "postgres"]
 PostgresEvent: TypeAlias = Literal["INSERT", "UPDATE", "DELETE"]
@@ -703,7 +704,7 @@ def _presence_info(info: object) -> RealtimePresenceInfo:
 
 
 async def _run_connection_callback(
-    callback: RealtimeCallback,
+    callback: _StoredCallback,
     context: object,
 ) -> None:
     result = callback(context)
@@ -738,7 +739,7 @@ class Channel:
         self._name: str = name
         self._type: ChannelType = channel_type
         self._fetch_config: _PostgresFetchConfig = fetch_config
-        self._callbacks: dict[str, list[MessageCallback]] = {}
+        self._callbacks: dict[str, list[_StoredCallback]] = {}
         self._presence_state: dict[str, RealtimePresenceInfo] = {}
         self._presence_events: list[tuple[str, RealtimePresenceInfo]] = []
         self._presence_syncing: bool = False
@@ -787,7 +788,7 @@ class Channel:
         """Canonical channel name sent to realtime."""
         return self._name
 
-    def on(self, event: str, callback: MessageCallback) -> Channel:
+    def on(self, event: str, callback: Callable[[_MessageT], object]) -> Channel:
         """Register a callback for messages or presence events.
 
         Returns
@@ -852,7 +853,9 @@ class Channel:
 
         return unsubscribe
 
-    def on_presence_sync(self, callback: MessageCallback) -> UnsubscribeCallback:
+    def on_presence_sync(
+        self, callback: Callable[[Mapping[str, RealtimePresenceInfo]], object]
+    ) -> UnsubscribeCallback:
         """Observe immutable snapshots of a presence channel's current state.
 
         Requires a presence channel.
@@ -1204,7 +1207,7 @@ class Channel:
 
     async def _run_callback(
         self,
-        callback: MessageCallback,
+        callback: _StoredCallback,
         delivery: _CallbackDelivery,
     ) -> None:
         if not self._callback_delivery_is_current(delivery):
@@ -1406,7 +1409,7 @@ class Realtime:
         self._channels: dict[str, Channel] = {}
         self._callback_tasks: set[asyncio.Task[None]] = set()
         self._removing_channels: set[str] = set()
-        self._connection_callbacks: dict[str, dict[int, RealtimeCallback]] = {
+        self._connection_callbacks: dict[str, dict[int, _StoredCallback]] = {
             "connect": {},
             "disconnect": {},
             "error": {},
@@ -1458,7 +1461,9 @@ class Realtime:
             for request in requests
         )
 
-    def on_connect(self, callback: RealtimeCallback) -> UnsubscribeCallback:
+    def on_connect(
+        self, callback: Callable[[RealtimeConnectContext], object]
+    ) -> UnsubscribeCallback:
         """Register a connection callback.
 
         Returns
@@ -1469,7 +1474,9 @@ class Realtime:
         """
         return self._register_connection_callback("connect", callback)
 
-    def on_disconnect(self, callback: RealtimeCallback) -> UnsubscribeCallback:
+    def on_disconnect(
+        self, callback: Callable[[RealtimeDisconnectContext], object]
+    ) -> UnsubscribeCallback:
         """Register a disconnection callback.
 
         Returns
@@ -1480,7 +1487,9 @@ class Realtime:
         """
         return self._register_connection_callback("disconnect", callback)
 
-    def on_error(self, callback: RealtimeCallback) -> UnsubscribeCallback:
+    def on_error(
+        self, callback: Callable[[RealtimeErrorContext], object]
+    ) -> UnsubscribeCallback:
         """Register a transport-error callback.
 
         Returns
@@ -1494,7 +1503,7 @@ class Realtime:
     def _register_connection_callback(
         self,
         event: str,
-        callback: RealtimeCallback,
+        callback: _StoredCallback,
     ) -> UnsubscribeCallback:
         require_callable(callback, CALLBACK_NOT_CALLABLE)
         callback_id = next(self._callback_ids)

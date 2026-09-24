@@ -359,6 +359,13 @@ def _stale_mapping(response: TransportResponse) -> bool:
     )
 
 
+class _JSONLoader(Protocol):
+    def loads(self, s: str, /, *, parse_constant: Callable[[str], None]) -> object: ...
+
+
+_JSON_LOADER: _JSONLoader = json
+
+
 def _function_data(response: TransportResponse) -> JSONValue:
     if not response.content:
         return _json_value(response.payload)
@@ -369,7 +376,7 @@ def _function_data(response: TransportResponse) -> JSONValue:
     is_json = content_type is not None and "application/json" in content_type.lower()
     if is_json or text.startswith(("{", "[")):
         try:
-            decoded: object = json.loads(text, parse_constant=_reject_json_constant)
+            decoded = _JSON_LOADER.loads(text, parse_constant=_reject_json_constant)
             return _json_value(decoded)
         except ValueError:
             pass
