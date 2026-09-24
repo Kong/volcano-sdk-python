@@ -131,6 +131,22 @@ def test_retry_false_produces_an_immediate_no_retry_decision() -> None:
     assert decision.delay.to_seconds() == 0
 
 
+@pytest.mark.order(0)
+def test_step_forwards_a_disabled_retry_before_scheduling() -> None:
+    runtime = RecordingContext()
+    context = DurableContext(runtime, durable_authoring._Engine())
+
+    with pytest.raises(AssertionError, match="unexpected runtime operation"):
+        _ = context.step("once", lambda _scope: "done", retry=False)
+
+    assert isinstance(runtime.config, StepConfig)
+    retry = runtime.config.retry_strategy
+    assert retry is not None
+    decision = retry(RuntimeError("failed"), 1)
+    assert decision.should_retry is False
+    assert decision.delay.to_seconds() == 0
+
+
 def test_custom_retry_receives_the_original_error() -> None:
     engine = durable_authoring._Engine()
     failure = RuntimeError("failed")
