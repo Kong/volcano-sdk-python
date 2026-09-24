@@ -54,9 +54,12 @@ class StalledLocks:
 class ExpiringWait:
     def __init__(self, clock: list[float]) -> None:
         self.clock: list[float] = clock
+        self.calls: int = 0
 
     def wait(self, timeout: float | None = None) -> bool:
         del timeout
+        self.calls += 1
+        assert self.calls == 1, "renewal continued waiting after lease expiry"
         self.clock[0] = 106.0
         return False
 
@@ -209,10 +212,12 @@ def test_lock_renewer_does_not_renew_after_the_lease_expires_while_waiting(
     guard = InspectedLockGuard(lease(), ttl=5, started_at=clock[0])
     locks = RecordingLocks(lease(fencing_token=8))
     renewer = InspectedLockRenewer(locks, "build", guard, ttl=5)
-    monkeypatch.setattr(renewer, "_stop", ExpiringWait(clock))
+    wait = ExpiringWait(clock)
+    monkeypatch.setattr(renewer, "_stop", wait)
 
     renewer.run_worker()
 
+    assert wait.calls == 1
     assert locks.calls == []
     assert guard.lost
 
