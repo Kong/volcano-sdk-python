@@ -51,6 +51,22 @@ class CancellationAwareQueue(asyncio.Queue[PostgresFetchJob[str] | _StopWorker])
             raise
 
 
+@pytest.mark.order(0)
+async def test_successful_batch_delivers_each_result() -> None:
+    fetch = RecordingBatchFetch()
+    deliver = OutcomeRecorder()
+    worker = PostgresFetchWorker(fetch, deliver, queue_limit=2)
+    jobs = [fetch_job(1), fetch_job(2)]
+
+    await asyncio.wait_for(worker._fetch_and_deliver(jobs), timeout=1)
+
+    assert fetch.calls == [(1, 2)]
+    assert deliver.items == [
+        PostgresFetchOutcome(job=jobs[0], record={"id": 1}),
+        PostgresFetchOutcome(job=jobs[1], record={"id": 2}),
+    ]
+
+
 async def test_failed_close_waits_for_stop_task_cleanup() -> None:
     failure = RuntimeError("worker failed")
     cancellation_seen = asyncio.Event()
