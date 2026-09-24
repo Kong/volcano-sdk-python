@@ -9,7 +9,7 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import datetime
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard, TypeVar, cast
 from urllib.parse import quote, urlencode
 
 from ._callbacks import require_callable
@@ -125,6 +125,7 @@ _T = TypeVar("_T")
 _OAUTH_PROVIDERS: frozenset[str] = frozenset({"apple", "github", "google", "microsoft"})
 _OAUTH_API_METHODS: frozenset[str] = frozenset({"GET", "POST"})
 _HOSTED_AUTH_ACTIONS: frozenset[str] = frozenset({"login", "signup", "forgot-password"})
+_PATH_SEGMENT_SAFE = ""
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -140,6 +141,32 @@ if TYPE_CHECKING:
 
 def _is_non_empty_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def _is_object_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, Mapping)
+
+
+def _is_object_sequence(
+    value: object,
+) -> TypeGuard[list[object] | tuple[object, ...]]:
+    return isinstance(value, (list, tuple))
+
+
+def _is_json_value(value: object) -> TypeGuard[JSONValue]:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return True
+    if _is_object_mapping(value):
+        return _is_json_mapping(value)
+    if _is_object_sequence(value):
+        return all(_is_json_value(item) for item in value)
+    return False
+
+
+def _is_json_mapping(value: object) -> TypeGuard[Mapping[str, JSONValue]]:
+    return _is_object_mapping(value) and all(
+        isinstance(key, str) and _is_json_value(item) for key, item in value.items()
+    )
 
 
 def _oauth_parameter(value: str) -> str:
@@ -209,14 +236,20 @@ def _session_from_payload(payload: object) -> Session:
         if isinstance(raw_user, Mapping)
         else {}
     )
-    return _copy_complete_session(
-        Session(
-            access_token=cast("str", values.get("access_token")),
-            refresh_token=cast("str", values.get("refresh_token")),
-            user_id=cast("str", user.get("id")),
-            user=cast("Mapping[str, JSONValue]", user),
-        )
-    )
+    if not _is_json_mapping(user):
+        raise TypeError(_INCOMPLETE_SESSION)
+    match (values.get("access_token"), values.get("refresh_token"), user.get("id")):
+        case (str() as access, str() as refresh, str() as user_id):
+            return _copy_complete_session(
+                Session(
+                    access_token=access,
+                    refresh_token=refresh,
+                    user_id=user_id,
+                    user=user,
+                )
+            )
+        case _:
+            raise ValueError(_INCOMPLETE_SESSION)
 
 
 def _sign_up_result_from_payload(payload: object) -> SignUpResult:
@@ -239,13 +272,13 @@ def _email_change_result_from_payload(payload: object) -> EmailChangeResult:
     values = cast("Mapping[object, object]", payload)
     message = values.get("message")
     new_email = values.get("new_email")
-    if not all(
-        value is None or isinstance(value, str) for value in (message, new_email)
-    ):
+    if message is not None and not isinstance(message, str):
+        raise TypeError(_INVALID_EMAIL_CHANGE_RESULT)
+    if new_email is not None and not isinstance(new_email, str):
         raise TypeError(_INVALID_EMAIL_CHANGE_RESULT)
     return EmailChangeResult(
-        message=cast("str | None", message),
-        new_email=cast("str | None", new_email),
+        message=message,
+        new_email=new_email,
     )
 
 
@@ -264,29 +297,30 @@ def _user_from_payload(payload: object) -> tuple[User, Mapping[str, JSONValue]]:
     project_id = _none_if_unset(user.project_id)
     user_metadata = _none_if_unset(user.user_metadata)
     app_metadata = _none_if_unset(user.app_metadata)
+    user_metadata_value = None if user_metadata is None else user_metadata.to_dict()
+    app_metadata_value = None if app_metadata is None else app_metadata.to_dict()
+    if user_metadata_value is not None and not _is_json_mapping(user_metadata_value):
+        raise AuthenticationError(_INVALID_USER)
+    if app_metadata_value is not None and not _is_json_mapping(app_metadata_value):
+        raise AuthenticationError(_INVALID_USER)
     profile = User(
         id=str(user.id),
         email=user.email,
         status=user.status,
         project_id=None if project_id is None else str(project_id),
         email_confirmed=_none_if_unset(user.email_confirmed),
-        user_metadata=(
-            None
-            if user_metadata is None
-            else cast("Mapping[str, JSONValue]", user_metadata.to_dict())
-        ),
-        app_metadata=(
-            None
-            if app_metadata is None
-            else cast("Mapping[str, JSONValue]", app_metadata.to_dict())
-        ),
+        user_metadata=user_metadata_value,
+        app_metadata=app_metadata_value,
         avatar_url=_none_if_unset(user.avatar_url),
         banned_until=_none_if_unset(user.banned_until),
         last_sign_in_at=_none_if_unset(user.last_sign_in_at),
         created_at=_none_if_unset(user.created_at),
         updated_at=_none_if_unset(user.updated_at),
     )
-    return profile, cast("Mapping[str, JSONValue]", user.to_dict())
+    snapshot = user.to_dict()
+    if not _is_json_mapping(snapshot):
+        raise AuthenticationError(_INVALID_USER)
+    return profile, snapshot
 
 
 def _none_if_unset(value: _T | Unset) -> _T | None:
@@ -428,7 +462,9 @@ def _oauth_provider_token_status_from_payload(
 def _oauth_api_data_from_payload(payload: object) -> JSONValue:
     if not isinstance(payload, CallOAuthProviderAPIResponse200):
         raise VolcanoError(_INVALID_OAUTH_API_RESPONSE)
-    return _freeze_json(cast("JSONValue", payload.data))
+    if not _is_json_value(payload.data):
+        raise VolcanoError(_INVALID_OAUTH_API_RESPONSE)
+    return _freeze_json(payload.data)
 
 
 class _SetSession(Protocol):
@@ -436,7 +472,7 @@ class _SetSession(Protocol):
         self,
         session: Session,
         *,
-        event: AuthChangeEvent | None = "SIGNED_IN",
+        event: AuthChangeEvent | None,
     ) -> None: ...
 
 
@@ -446,7 +482,7 @@ class _SetSessionIfCurrent(Protocol):
         session: Session,
         generation: int,
         *,
-        event: AuthChangeEvent = "SIGNED_IN",
+        event: AuthChangeEvent,
         notifications: list[Callable[[], None]] | None = None,
     ) -> bool: ...
 
@@ -457,7 +493,7 @@ class _ClearSessionIfCurrent(Protocol):
         generation: int,
         *,
         lineage: SessionOperations | None = None,
-        event: AuthChangeEvent = "SIGNED_OUT",
+        event: AuthChangeEvent,
         notifications: list[Callable[[], None]] | None = None,
     ) -> bool: ...
 
@@ -582,7 +618,9 @@ class Auth:
             metadata=dict(metadata or {}),
         )
         session = _session_from_payload(response_payload(response, 201))
-        if not self._client.set_session_if_current(session, generation):
+        if not self._client.set_session_if_current(
+            session, generation, event="SIGNED_IN"
+        ):
             raise SessionChangedError
         return session
 
@@ -828,9 +866,9 @@ class Auth:
                 "state": auth_state,
             }
         )
+        project_path = quote(project, safe=_PATH_SEGMENT_SAFE)
         return (
-            f"{self._client.api_base_url()}/projects/{quote(project, safe='')}"
-            f"/auth/hosted?{query}"
+            f"{self._client.api_base_url()}/projects/{project_path}/auth/hosted?{query}"
         )
 
     def adopt_hosted_auth_session(
@@ -848,7 +886,7 @@ class Auth:
         """
         _validate_hosted_auth_callback_state(state, expected_state)
         owned = _copy_complete_session(session)
-        self._client.set_session(owned)
+        self._client.set_session(owned, event="SIGNED_IN")
         return owned
 
     def sign_in_with_oauth(
@@ -908,7 +946,9 @@ class Auth:
             redirect_url=_oauth_parameter(redirect_to),
         )
         session = _session_from_payload(response_payload(response, 200))
-        if not self._client.set_session_if_current(session, generation):
+        if not self._client.set_session_if_current(
+            session, generation, event="SIGNED_IN"
+        ):
             raise SessionChangedError
         return session
 
@@ -1116,7 +1156,7 @@ class Auth:
             _ = response_payload(response, 204)
         except TransportError as error:
             if deletes_current and not self._client.clear_session_if_current(
-                generation, lineage=lineage
+                generation, lineage=lineage, event="SIGNED_OUT"
             ):
                 raise SessionChangedError from error
             raise
@@ -1130,7 +1170,9 @@ class Auth:
     ) -> None:
         generation, lineage, _ = binding
         if deletes_current:
-            if not self._client.clear_session_if_current(generation, lineage=lineage):
+            if not self._client.clear_session_if_current(
+                generation, lineage=lineage, event="SIGNED_OUT"
+            ):
                 raise SessionChangedError
             return
         _, active_lineage, active_session = self._client.capture_session_binding()
@@ -1280,7 +1322,9 @@ class Auth:
         )
         payload = response_payload(response, 200)
         session = _session_from_payload(payload)
-        if not self._client.set_session_if_current(session, generation):
+        if not self._client.set_session_if_current(
+            session, generation, event="SIGNED_IN"
+        ):
             raise SessionChangedError
         return session
 
@@ -1419,7 +1463,7 @@ class Auth:
             raise
         except AuthenticationError:
             if owner.signing_out is None and self._client.clear_session_if_current(
-                generation, notifications=notifications
+                generation, event="SIGNED_OUT", notifications=notifications
             ):
                 self._rejected_refresh = (generation, owner)
             raise
@@ -1474,7 +1518,7 @@ class Auth:
         except VolcanoError as caught:
             error = caught
         if not self._client.clear_session_if_current(
-            generation, lineage=owner, notifications=notifications
+            generation, lineage=owner, event="SIGNED_OUT", notifications=notifications
         ):
             raise SessionChangedError from error
         if error is not None:

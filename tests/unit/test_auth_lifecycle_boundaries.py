@@ -181,6 +181,31 @@ def test_refresh_adopts_an_already_completed_refresh_without_rotating_again() ->
     assert notifications == []
 
 
+def test_rejected_refresh_defers_sign_out_notification_until_owner_unwinds() -> None:
+    client = client_for(
+        lambda _request: httpx.Response(401, json={"error": "refresh rejected"})
+    )
+    events: list[str] = []
+    _ = client.auth.on_auth_state_change(lambda event, _session: events.append(event))
+    events.clear()
+    binding = client._capture_session_binding()
+    current = binding[2]
+    assert current is not None
+    assert current.refresh_token is not None
+    notifications: list[Callable[[], None]] = []
+
+    with pytest.raises(AuthenticationError):
+        _ = client.auth._refresh_with_recovery(
+            (current, current.refresh_token), binding, notifications, verified=False
+        )
+
+    assert client.current_session is None
+    assert events == []
+    assert len(notifications) == 1
+    notifications[0]()
+    assert events == ["SIGNED_OUT"]
+
+
 def test_auth_facade_rejects_a_refresh_from_another_server_session() -> None:
     current = Session(access_token(SESSION_A), "refresh", USER_A)
     binding = (0, SessionOperations(current), current)
