@@ -52,7 +52,6 @@ _FUNCTION_INVOKED_HEADER = "X-Volcano-Function-Invoked"
 _FUNCTION_VERSION_HEADER = "X-Volcano-Version"
 _CONTENT_TYPE_HEADER = "Content-Type"
 _FUNCTION_TEXT_ENCODING = "utf-8-sig"
-_FUNCTION_JSON_ENCODING = "utf-8"
 
 
 _Result = TypeVar("_Result")
@@ -417,7 +416,7 @@ def _enter_json_container(value: object, active: set[int]) -> int:
 
 def _validate_json_string(value: str, message: str) -> None:
     try:
-        _ = str.encode(value, _FUNCTION_JSON_ENCODING)
+        _ = str.encode(value)
     except UnicodeEncodeError as error:
         raise TypeError(message) from error
 
