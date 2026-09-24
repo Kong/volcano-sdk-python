@@ -351,6 +351,7 @@ class StateTransport(OAuthTransport):
             },
         )
         self.signup_calls: list[dict[str, object]] = []
+        self.signin_calls: list[dict[str, object]] = []
         self.anonymous_signin_response = Response(
             201,
             {
@@ -435,6 +436,7 @@ class StateTransport(OAuthTransport):
 
     def auth_signin(self, **kwargs: object) -> Response:
         self.authorizations.append(("auth", _authorization(kwargs)))
+        self.signin_calls.append(kwargs)
         if self.on_signin is not None:
             self.on_signin()
         return Response(
@@ -1429,6 +1431,11 @@ def test_sign_up_only_signs_in_when_opted_in_and_allowed(
     assert result.message == "Accepted"
     assert transport.authorizations == [("signup", "anon")] + (
         [("auth", "anon")] if signed_in else []
+    )
+    assert transport.signin_calls == (
+        [{"authorization": "anon", "email": "new@example.com", "password": "secret"}]
+        if signed_in
+        else []
     )
 
 
