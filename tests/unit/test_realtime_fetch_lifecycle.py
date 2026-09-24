@@ -19,8 +19,8 @@ if TYPE_CHECKING:
 
 async def cancel_operation(task: asyncio.Task[None] | None) -> None:
     if task is not None:
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
+        _ = task.cancel()
+        _ = await asyncio.gather(task, return_exceptions=True)
 
 
 @pytest.mark.parametrize(
@@ -35,7 +35,7 @@ def test_worker_rejects_invalid_batch_configuration(
     window: float, size: int, message: str
 ) -> None:
     with pytest.raises(ValueError, match=message):
-        PostgresFetchWorker(
+        _ = PostgresFetchWorker(
             RecordingBatchFetch(),
             OutcomeRecorder(),
             queue_limit=2,
@@ -71,7 +71,7 @@ async def test_close_failure_cancels_a_blocked_stop_request() -> None:
     closing = None
     try:
         await worker.enqueue(fetch_job(1))
-        await asyncio.wait_for(fetch.started.wait(), timeout=1)
+        _ = await asyncio.wait_for(fetch.started.wait(), timeout=1)
         await worker.enqueue(fetch_job(2))
         closing = asyncio.create_task(worker.close())
         await asyncio.sleep(0)
@@ -98,7 +98,7 @@ async def test_abort_unblocks_close_with_a_full_queue() -> None:
     closing = None
     try:
         await worker.enqueue(fetch_job(1))
-        await asyncio.wait_for(fetch.started.wait(), timeout=1)
+        _ = await asyncio.wait_for(fetch.started.wait(), timeout=1)
         await worker.enqueue(fetch_job(2))
         closing = asyncio.create_task(worker.close())
         await asyncio.sleep(0)
@@ -126,7 +126,7 @@ async def test_abort_rejects_an_enqueue_waiting_for_capacity() -> None:
     enqueueing = None
     try:
         await worker.enqueue(fetch_job(1))
-        await asyncio.wait_for(fetch.started.wait(), timeout=1)
+        _ = await asyncio.wait_for(fetch.started.wait(), timeout=1)
         await worker.enqueue(fetch_job(2))
         enqueueing = asyncio.create_task(worker.enqueue(fetch_job(3)))
         await asyncio.sleep(0)
@@ -149,7 +149,7 @@ async def test_wrong_batch_result_count_fails_before_delivery() -> None:
     async def no_results(
         _requests: tuple[_PostgresFetchRequest, ...],
     ) -> tuple[dict[str, int], ...]:
-        await release.wait()
+        _ = await release.wait()
         return ()
 
     deliver = OutcomeRecorder()
@@ -172,14 +172,14 @@ async def test_fetch_cancellation_propagates_without_delivering_a_fallback() -> 
         _requests: tuple[_PostgresFetchRequest, ...],
     ) -> tuple[dict[str, int], ...]:
         started.set()
-        await release.wait()
+        _ = await release.wait()
         raise asyncio.CancelledError
 
     deliver = OutcomeRecorder()
     worker = PostgresFetchWorker(cancelled_fetch, deliver, queue_limit=1)
     try:
         await worker.enqueue(fetch_job(1))
-        await asyncio.wait_for(started.wait(), timeout=1)
+        _ = await asyncio.wait_for(started.wait(), timeout=1)
         release.set()
 
         with pytest.raises(asyncio.CancelledError):
@@ -203,7 +203,7 @@ async def test_batch_window_flushes_without_waiting_for_another_row_or_close() -
     )
     try:
         await worker.enqueue(fetch_job(1))
-        await asyncio.wait_for(delivered.wait(), timeout=1)
+        _ = await asyncio.wait_for(delivered.wait(), timeout=1)
         await asyncio.wait_for(worker.close(), timeout=1)
 
         assert fetch.calls == [(1,)]

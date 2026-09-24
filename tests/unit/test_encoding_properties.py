@@ -82,4 +82,4 @@ def test_storage_path_rejects_dot_segments(
 ) -> None:
     path = f"folder-{value.replace('/', '_')}/{segment}/file"
     with pytest.raises(ValueError, match="dot segments"):
-        public_url_client().storage.from_("assets").get_public_url(path)
+        _ = public_url_client().storage.from_("assets").get_public_url(path)

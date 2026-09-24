@@ -51,7 +51,7 @@ def test_untrusted_claims_cannot_send_refresh_credentials(payload: bytes) -> Non
     )
 
     with pytest.raises(AuthenticationError, match="without a session identifier"):
-        client.auth.refresh_session()
+        _ = client.auth.refresh_session()
 
     assert not requests
     assert client.auth.get_session() is adopted
@@ -80,7 +80,7 @@ def test_refresh_accepts_equivalent_uuid_spellings(
         return refreshed(SESSION_A, canonical_user)
 
     client = client_for(handle)
-    client.auth.set_session(
+    _ = client.auth.set_session(
         Session(access_token(session_id), "supplied-refresh", user_id)
     )
 
@@ -110,7 +110,7 @@ def test_same_server_session_cannot_replace_a_known_user(user_id: str) -> None:
     )
 
     with pytest.raises(AuthenticationError, match="different user"):
-        client.auth.refresh_session()
+        _ = client.auth.refresh_session()
 
     assert len(requests) == 1
     assert client.auth.get_session() is adopted

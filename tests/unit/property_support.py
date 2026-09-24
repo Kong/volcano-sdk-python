@@ -15,7 +15,7 @@ def configure_properties() -> None:
     """Record the run seed and keep Hypothesis's normal health checks enabled."""
     directory = Path("reports/hypothesis")
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "seed.txt").write_text(f"{PROPERTY_SEED}\n", encoding="utf-8")
+    _ = (directory / "seed.txt").write_text(f"{PROPERTY_SEED}\n", encoding="utf-8")
     settings.register_profile("sdk", max_examples=200, print_blob=True)
     settings.load_profile("sdk")
 

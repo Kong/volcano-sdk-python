@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -19,7 +20,7 @@ def fixture_report(tmp_path: Path, code: int | None) -> tuple[Path, Path]:
     """
     source = Path("src/volcano_sdk/probe.py")
     source.parent.mkdir(parents=True)
-    source.write_text("def probe() -> bool:\n    return True\n", encoding="utf-8")
+    _ = source.write_text("def probe() -> bool:\n    return True\n", encoding="utf-8")
     meta = Path("mutants/src/volcano_sdk/probe.py.meta")
     meta.parent.mkdir(parents=True)
     _ = meta.write_text(
@@ -27,9 +28,9 @@ def fixture_report(tmp_path: Path, code: int | None) -> tuple[Path, Path]:
         encoding="utf-8",
     )
     targets = tmp_path / "targets.bin"
-    targets.write_bytes(f"{source}\0".encode())
+    _ = targets.write_bytes(f"{source}\0".encode())
     failed = tmp_path / "failed.bin"
-    failed.write_bytes(b"")
+    _ = failed.write_bytes(b"")
     return targets, failed
 
 
@@ -52,7 +53,10 @@ def test_non_kills_fail_separately(
     monkeypatch.chdir(tmp_path)
     targets, failed = fixture_report(tmp_path, code)
     assert main(targets, failed) == 1
-    report = json.loads(Path("reports/mutation.json").read_text(encoding="utf-8"))
+    report = cast(
+        "object", json.loads(Path("reports/mutation.json").read_text(encoding="utf-8"))
+    )
+    assert isinstance(report, dict)
     assert report["outcomes"] == {outcome: 1}
 
 
@@ -78,5 +82,5 @@ def test_harness_failure_does_not_pass(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     targets, failed = fixture_report(tmp_path, 1)
-    failed.write_bytes(b"src/volcano_sdk/probe.py\0")
+    _ = failed.write_bytes(b"src/volcano_sdk/probe.py\0")
     assert main(targets, failed) == 1

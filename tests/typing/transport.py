@@ -9,11 +9,11 @@ if TYPE_CHECKING:
 
 # These deliberate errors are checked by native mypy and its unused-ignore rule.
 # They are never executed by pytest or shipped in the SDK.
-response_payload(object(), 200)  # type: ignore[arg-type]
+_ = response_payload(object(), 200)  # type: ignore[arg-type]
 
 
 def unknown_response_payload(response: TransportResponse) -> None:
-    assert_type(response.payload, object)
+    _ = assert_type(response.payload, object)
 
 
 def operation(*, value: int) -> str:
@@ -25,10 +25,10 @@ async def async_operation(*, value: int) -> str:
 
 
 def invalid_sync() -> None:
-    invoke(operation, value="invalid")  # type: ignore[arg-type]
-    invoke(operation, misspelled=1)  # type: ignore[call-arg]
+    _ = invoke(operation, value="invalid")  # type: ignore[arg-type]
+    _ = invoke(operation, misspelled=1)  # type: ignore[call-arg]
 
 
 async def invalid_async() -> None:
-    await invoke_async(async_operation, value="invalid")  # type: ignore[arg-type]
-    await invoke_async(async_operation, misspelled=1)  # type: ignore[call-arg]
+    _ = await invoke_async(async_operation, value="invalid")  # type: ignore[arg-type]
+    _ = await invoke_async(async_operation, misspelled=1)  # type: ignore[call-arg]

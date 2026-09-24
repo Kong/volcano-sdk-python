@@ -27,11 +27,11 @@ def test_absolute():
 
 @pytest.fixture
 def coverage_project(pytester: pytest.Pytester) -> pytest.Pytester:
-    pytester.makepyprojecttoml(PROJECT.read_text())
+    _ = pytester.makepyprojecttoml(PROJECT.read_text())
     package = pytester.path / "src" / "volcano_sdk"
     package.mkdir(parents=True)
-    (package / "__init__.py").write_text(SOURCE)
-    pytester.makepyfile(COMPLETE_TEST)
+    _ = (package / "__init__.py").write_text(SOURCE)
+    _ = pytester.makepyfile(COMPLETE_TEST)
     return pytester
 
 
@@ -63,10 +63,10 @@ def test_native_coverage_requires_both_branch_outcomes(
     coverage_project: pytest.Pytester, pragma: str
 ) -> None:
     package = coverage_project.path / "src" / "volcano_sdk"
-    (package / "__init__.py").write_text(
+    _ = (package / "__init__.py").write_text(
         SOURCE.replace("if value < 0:", f"if value < 0:{pragma}")
     )
-    coverage_project.makepyfile(
+    _ = coverage_project.makepyfile(
         COMPLETE_TEST.replace("    assert absolute(1) == 1\n", "")
     )
 
@@ -84,7 +84,7 @@ def test_native_coverage_discovers_unimported_runtime_files(
 ) -> None:
     unimported = coverage_project.path.joinpath("src", "volcano_sdk", *parts)
     unimported.parent.mkdir(parents=True, exist_ok=True)
-    unimported.write_text(f"def uncovered():{pragma}\n    return 1\n")
+    _ = unimported.write_text(f"def uncovered():{pragma}\n    return 1\n")
 
     result = run_coverage(coverage_project)
 
@@ -100,7 +100,7 @@ def test_generated_code_does_not_count_as_handwritten_runtime(
 ) -> None:
     generated = coverage_project.path / "src" / "volcano_sdk" / "_generated"
     generated.mkdir()
-    (generated / "client.py").write_text("def generated():\n    return 1\n")
+    _ = (generated / "client.py").write_text("def generated():\n    return 1\n")
 
     result = run_coverage(coverage_project)
 

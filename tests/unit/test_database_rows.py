@@ -21,7 +21,7 @@ from volcano_sdk.database import _database_rows
 )
 def test_database_rows_rejects_malformed_responses(payload: object) -> None:
     with pytest.raises(TypeError, match="Expected a list of database rows"):
-        _database_rows(payload)
+        _ = _database_rows(payload)
 
 
 def test_database_rows_preserves_valid_row_objects() -> None:
@@ -47,4 +47,4 @@ def test_database_operations_reject_missing_rows(operation: str) -> None:
     }
 
     with pytest.raises(TypeError, match="Expected a list of database rows"):
-        operations[operation]()
+        _ = operations[operation]()

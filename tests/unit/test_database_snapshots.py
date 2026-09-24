@@ -52,4 +52,4 @@ def test_filter_snapshots_nested_mappings_lists_and_tuples(operation: str) -> No
 
 def test_filter_base_requires_a_concrete_builder() -> None:
     with pytest.raises(NotImplementedError):
-        FilterBuilder()._with_filters(())
+        _ = FilterBuilder()._with_filters(())

@@ -34,13 +34,13 @@ def test_profile_commit_rechecks_ownership_after_parsing(
 
     def parse_and_replace(payload: object) -> tuple[User, Mapping[str, JSONValue]]:
         profile = parse(payload)
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
         return profile
 
     monkeypatch.setattr(auth_module, "_user_from_payload", parse_and_replace)
 
     with pytest.raises(SessionChangedError):
-        client.auth.get_user()
+        _ = client.auth.get_user()
 
     current = client.current_session
     assert current is not None
@@ -55,7 +55,7 @@ def test_session_request_requires_credentials_before_running_the_operation() -> 
         pytest.fail("an unauthenticated operation must not run")
 
     with pytest.raises(RuntimeError, match="No active session"):
-        client.auth._session_request(operation)
+        _ = client.auth._session_request(operation)
 
 
 def test_refresh_adopts_an_already_completed_refresh_without_rotating_again() -> None:

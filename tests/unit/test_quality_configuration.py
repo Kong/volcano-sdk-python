@@ -13,7 +13,7 @@ PROJECT = Path(__file__).parents[2] / "pyproject.toml"
 
 @pytest.fixture
 def shadowed_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    (tmp_path / "pip_audit.py").write_text(
+    _ = (tmp_path / "pip_audit.py").write_text(
         "raise RuntimeError('local tool executed')\n", encoding="utf-8"
     )
     monkeypatch.setenv("PYTHONPATH", str(tmp_path))
@@ -35,12 +35,12 @@ def test_isolated_auditor_ignores_local_module_shadowing(shadowed_tools: Path) -
 
 @pytest.fixture
 def configured(pytester: pytest.Pytester) -> pytest.Pytester:
-    pytester.makepyprojecttoml(PROJECT.read_text())
+    _ = pytester.makepyprojecttoml(PROJECT.read_text())
     return pytester
 
 
 def test_native_pytest_accepts_complete_run(configured: pytest.Pytester) -> None:
-    configured.makepyfile("def test_valid(): assert 1 + 1 == 2")
+    _ = configured.makepyfile("def test_valid(): assert 1 + 1 == 2")
     result = configured.runpytest_subprocess()
     result.assert_outcomes(passed=1)
     assert result.ret == pytest.ExitCode.OK
@@ -72,7 +72,7 @@ def test_native_pytest_accepts_complete_run(configured: pytest.Pytester) -> None
 def test_native_pytest_rejects_invalid_collection(
     configured: pytest.Pytester, source: str, diagnostic: str
 ) -> None:
-    configured.makepyfile(source)
+    _ = configured.makepyfile(source)
     result = configured.runpytest_subprocess()
     result.assert_outcomes(errors=1)
     assert result.ret == pytest.ExitCode.INTERRUPTED
@@ -82,13 +82,13 @@ def test_native_pytest_rejects_invalid_collection(
 def test_native_pytest_rejects_unknown_configuration(
     configured: pytest.Pytester,
 ) -> None:
-    configured.makepyprojecttoml(
+    _ = configured.makepyprojecttoml(
         PROJECT.read_text().replace(
             "[tool.pytest.ini_options]",
             "[tool.pytest.ini_options]\nunknown_quality_option = true",
         ),
     )
-    configured.makepyfile("def test_valid(): assert True")
+    _ = configured.makepyfile("def test_valid(): assert True")
     result = configured.runpytest_subprocess()
     assert result.ret == pytest.ExitCode.USAGE_ERROR
     result.stderr.fnmatch_lines(["*Unknown config option: unknown_quality_option*"])
@@ -97,9 +97,9 @@ def test_native_pytest_rejects_unknown_configuration(
 def test_native_pytest_rejects_unexpected_xfail_pass(
     configured: pytest.Pytester,
 ) -> None:
-    configured.makepyfile(
-        "import pytest\n@pytest.mark.xfail(reason='invalid fixture')\n"
-        "def test_unexpected(): assert True",
+    marker = "@pytest.mark.xfail(reason='invalid fixture')"
+    _ = configured.makepyfile(
+        f"import pytest\n{marker}\ndef test_unexpected(): assert True"
     )
     result = configured.runpytest_subprocess()
     result.assert_outcomes(failed=1)

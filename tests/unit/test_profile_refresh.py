@@ -31,7 +31,7 @@ def make_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCl
             httpx_transport=httpx.MockTransport(handler),
         ),
     )
-    client.auth.set_session(Session(access_token("old"), "old-refresh", USER_ID))
+    _ = client.auth.set_session(Session(access_token("old"), "old-refresh", USER_ID))
     return client
 
 
@@ -86,8 +86,8 @@ def test_profile_refreshes_once_preserving_request_and_cached_user(
 
     client = make_client(handle)
     events: list[str] = []
-    client.auth.on_auth_state_change(lambda event, _session: events.append(event))
-    profile_operation(client, operation, metadata)
+    _ = client.auth.on_auth_state_change(lambda event, _session: events.append(event))
+    _ = profile_operation(client, operation, metadata)
     assert [r.headers["authorization"] for r in requests] == [
         f"Bearer {access_token('old')}",
         "Bearer anon",
@@ -122,7 +122,7 @@ def test_profile_bounds_retries_and_retains_original_failure(
 
     client = make_client(handle)
     with pytest.raises(AuthenticationError, match="profile denied"):
-        profile_operation(client, operation, {})
+        _ = profile_operation(client, operation, {})
     assert len(requests) == (3 if refresh_status == 200 else 2)
     assert (client.current_session is None) == (refresh_status == 401)
 
@@ -137,7 +137,7 @@ def test_profile_does_not_refresh_other_failures(operation: str, status: int) ->
         return httpx.Response(status, json={"error": "denied"})
 
     with pytest.raises(VolcanoError):
-        profile_operation(make_client(handle), operation, {})
+        _ = profile_operation(make_client(handle), operation, {})
     assert len(requests) == 1
 
 
@@ -157,7 +157,7 @@ def test_profile_refresh_never_adopts_a_replacement_session(
             else ("first" if len(requests) == 1 else "retry")
         )
         if stage == replace_at:
-            client.auth.set_session(replacement)
+            _ = client.auth.set_session(replacement)
         if stage == "refresh":
             return refresh_response()
         return (
@@ -168,7 +168,7 @@ def test_profile_refresh_never_adopts_a_replacement_session(
 
     client = make_client(handle)
     with pytest.raises(SessionChangedError):
-        profile_operation(client, operation, {})
+        _ = profile_operation(client, operation, {})
     assert client.current_session == replacement
     assert len(requests) == {"first": 1, "refresh": 2, "retry": 3}[replace_at]
 
@@ -183,7 +183,7 @@ def test_profile_does_not_replay_an_ambiguous_transport_failure(operation: str) 
         raise httpx.ReadError(message, request=request)
 
     with pytest.raises(VolcanoError, match="response lost"):
-        profile_operation(make_client(handle), operation, {})
+        _ = profile_operation(make_client(handle), operation, {})
     assert len(requests) == 1
 
 
@@ -206,7 +206,7 @@ def test_malformed_profile_response_preserves_the_current_session(
     with pytest.raises(
         AuthenticationError, match="Expected a complete user profile"
     ) as error:
-        profile_operation(client, operation, {})
+        _ = profile_operation(client, operation, {})
 
     assert error.value.__cause__ is not None
     assert client.current_session is original

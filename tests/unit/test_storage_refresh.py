@@ -47,7 +47,7 @@ def make_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCl
             httpx_transport=httpx.MockTransport(handler),
         ),
     )
-    client.auth.set_session(Session(access_token("old"), "old-refresh", USER_ID))
+    _ = client.auth.set_session(Session(access_token("old"), "old-refresh", USER_ID))
     return client
 
 
@@ -98,7 +98,7 @@ def test_storage_public_operations_reject_malformed_success_responses(
 
     client = make_client(handler)
     with pytest.raises(TypeError, match="Expected a complete storage page"):
-        storage_operation(client, operation)
+        _ = storage_operation(client, operation)
 
 
 def storage_operation(client: VolcanoClient, operation: str) -> object:
@@ -125,17 +125,18 @@ def storage_operation(client: VolcanoClient, operation: str) -> object:
     return operations[operation]()
 
 
+def refresh_payload() -> dict[str, object]:
+    return {
+        "access_token": access_token("new"),
+        "refresh_token": "new-refresh",
+        "token_type": "bearer",
+        "expires_in": 3600,
+        "user": {"id": USER_ID, "email": "user@example.com", "status": "active"},
+    }
+
+
 def refresh_response() -> httpx.Response:
-    return httpx.Response(
-        200,
-        json={
-            "access_token": access_token("new"),
-            "refresh_token": "new-refresh",
-            "token_type": "bearer",
-            "expires_in": 3600,
-            "user": {"id": USER_ID, "email": "user@example.com", "status": "active"},
-        },
-    )
+    return httpx.Response(200, json=refresh_payload())
 
 
 def success_response(operation: str) -> httpx.Response:
@@ -196,7 +197,7 @@ def test_storage_refreshes_once_and_replays_the_request(
         return success_response(operation)
 
     client = make_client(handle)
-    storage_operation(client, operation)
+    _ = storage_operation(client, operation)
 
     assert [request.headers["authorization"] for request in requests] == [
         f"Bearer {access_token('old')}",
@@ -234,7 +235,7 @@ def test_storage_bounds_retries_and_preserves_original_failure(
 
     client = make_client(handle)
     with pytest.raises(AuthenticationError, match="storage denied"):
-        storage_operation(client, operation)
+        _ = storage_operation(client, operation)
     assert len(requests) == (3 if refresh_status == 200 else 2)
     assert (client.current_session is None) == (refresh_status == 401)
 
@@ -247,13 +248,13 @@ def test_storage_never_retries_under_a_replacement_session(operation: str) -> No
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         if request.url.path == "/auth/refresh":
-            client.auth.set_session(replacement)
+            _ = client.auth.set_session(replacement)
             return refresh_response()
         return httpx.Response(401, json={"error": "expired"})
 
     client = make_client(handle)
     with pytest.raises(SessionChangedError):
-        storage_operation(client, operation)
+        _ = storage_operation(client, operation)
     assert client.current_session == replacement
     assert len(requests) == 2
 
@@ -270,7 +271,7 @@ def test_storage_does_not_refresh_other_http_failures(
         return httpx.Response(status, json={"error": "storage unavailable"})
 
     with pytest.raises(VolcanoError, match="storage unavailable") as caught:
-        storage_operation(make_client(handle), operation)
+        _ = storage_operation(make_client(handle), operation)
     assert caught.value.status == status
     assert len(requests) == 1
 
@@ -285,7 +286,7 @@ def test_storage_does_not_retry_transport_failures(operation: str) -> None:
         raise httpx.ReadTimeout(message, request=request)
 
     with pytest.raises(TransportError):
-        storage_operation(make_client(handle), operation)
+        _ = storage_operation(make_client(handle), operation)
     assert len(requests) == 1
 
 
@@ -328,12 +329,12 @@ def test_remove_stops_when_a_different_session_is_adopted_between_paths() -> Non
 
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
         return success_response("remove")
 
     client = make_client(handle)
     with pytest.raises(SessionChangedError):
-        client.storage.from_("assets").remove(["first", "second"])
+        _ = client.storage.from_("assets").remove(["first", "second"])
     assert client.current_session == replacement
     assert len(requests) == 1
 
@@ -351,11 +352,13 @@ def test_upload_retains_the_session_that_owned_the_source_before_reading() -> No
     class ReplacingStream(BytesIO):
         @override
         def read(self, size: int | None = -1) -> bytes:
-            client.auth.set_session(replacement)
+            _ = client.auth.set_session(replacement)
             return super().read(size)
 
     with pytest.raises(SessionChangedError):
-        client.storage.from_("assets").upload("file.bin", ReplacingStream(b"private"))
+        _ = client.storage.from_("assets").upload(
+            "file.bin", ReplacingStream(b"private")
+        )
     assert client.current_session == replacement
     assert requests == []
 
@@ -370,7 +373,7 @@ def test_remove_refreshes_each_rejected_path_from_its_current_generation() -> No
         requests.append(request)
         if request.url.path == "/auth/refresh":
             refresh_count += 1
-            payload = refresh_response().json()
+            payload = refresh_payload()
             payload["access_token"] = access_token(str(refresh_count))
             payload["refresh_token"] = f"refresh-{refresh_count}"
             return httpx.Response(200, json=payload)

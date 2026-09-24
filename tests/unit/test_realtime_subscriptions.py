@@ -31,7 +31,7 @@ def test_native_adapter_preserves_existing_subscription_identity() -> None:
     native = FakeCentrifugeClient()
     subscription = native.new_subscription("broadcast:room", events=None)
 
-    _VolcanoCentrifugeConnection(native)
+    _ = _VolcanoCentrifugeConnection(native)
 
     assert native._subs.get("project:broadcast:room") is subscription
 
@@ -44,6 +44,6 @@ def test_native_adapter_rejects_incompatible_registry_without_replacing_it(
     monkeypatch.setattr(native, "_subs", registry)
 
     with pytest.raises(TypeError, match="subscription registry"):
-        _VolcanoCentrifugeConnection(native)
+        _ = _VolcanoCentrifugeConnection(native)
 
     assert native._subs is registry

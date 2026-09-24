@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 def register_non_callable_auth(auth: Auth) -> None:
-    auth.on_auth_state_change(None)  # type: ignore[arg-type]
+    _ = auth.on_auth_state_change(None)  # type: ignore[arg-type]
 
 
 def decorate_non_callable() -> None:
@@ -20,7 +20,7 @@ def decorate_non_callable() -> None:
 
 
 def register_non_callable_branch(context: DurableContext) -> None:
-    context.parallel(["not a branch"])  # type: ignore[arg-type]
+    _ = context.parallel(["not a branch"])  # type: ignore[list-item]
 
 
 def use_non_callable_retry(context: DurableContext) -> None:

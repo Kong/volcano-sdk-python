@@ -40,7 +40,7 @@ def test_function_rejects_incomplete_resolution_before_dispatch(
 
     client = key_client(handle)
     with pytest.raises(TypeError, match="Expected a complete function response"):
-        client.functions.invoke("echo")
+        _ = client.functions.invoke("echo")
     assert [request.url.path for request in requests] == ["/functions/resolve"]
 
 
@@ -55,7 +55,7 @@ def test_key_invocation_rejects_a_session_installed_during_the_request(
         requests.append(request)
         current = "resolve" if request.url.path == "/functions/resolve" else "invoke"
         if current == stage:
-            client.auth.set_session(session)
+            _ = client.auth.set_session(session)
         return (
             resolved_response()
             if current == "resolve"
@@ -64,7 +64,7 @@ def test_key_invocation_rejects_a_session_installed_during_the_request(
 
     client = key_client(handle)
     with pytest.raises(SessionChangedError):
-        client.functions.invoke("echo")
+        _ = client.functions.invoke("echo")
     expected_paths = ["/functions/resolve"]
     if stage == "invoke":
         expected_paths.append(f"/functions/{FUNCTION_ID}/invoke")
@@ -79,7 +79,7 @@ def test_key_binding_rejects_a_session_installed_before_dispatch() -> None:
     client = VolcanoClient(anon_key="anon-key")
     auth = _FunctionAuth(client)
     session = Session(access_token("new"), "new-refresh", USER_ID)
-    client.auth.set_session(session)
+    _ = client.auth.set_session(session)
     tokens: list[str] = []
 
     with pytest.raises(SessionChangedError):
@@ -92,7 +92,7 @@ def test_key_binding_rejects_a_session_installed_before_dispatch() -> None:
 @pytest.mark.parametrize("payload", [False, 1, [], "invalid"])
 def test_function_payload_rejects_non_mappings(payload: object) -> None:
     with pytest.raises(TypeError, match="Function payload must be a mapping"):
-        _function_payload(payload)
+        _ = _function_payload(payload)
 
 
 def test_function_header_without_a_header_mapping_is_absent() -> None:

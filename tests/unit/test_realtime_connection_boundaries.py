@@ -18,8 +18,8 @@ from volcano_sdk.realtime import (
 class FailingFirstConnection(FakeCentrifugeClient):
     def __init__(self, failure: BaseException) -> None:
         super().__init__()
-        self.failure = failure
-        self.attempts = 0
+        self.failure: BaseException = failure
+        self.attempts: int = 0
 
     @override
     async def connect(self) -> None:
@@ -51,7 +51,7 @@ async def test_failed_connect_clears_credentials_before_retry(
     assert client.realtime._connection_session_lineage is None
     assert client.realtime._connection_access_token is None
 
-    client.auth.set_session(Session("new-access", "new-refresh", "new-user"))
+    _ = client.auth.set_session(Session("new-access", "new-refresh", "new-user"))
     try:
         await channel.subscribe()
         assert native.attempts == 2
@@ -68,7 +68,7 @@ async def test_connection_requires_a_session_before_constructing_transport() -> 
     )
 
     with pytest.raises(RuntimeError, match="No active session"):
-        await client.realtime._connect()
+        _ = await client.realtime._connect()
 
     assert native.calls == []
     assert client.realtime._connection is None
@@ -79,7 +79,7 @@ async def test_token_callback_requires_a_connection_identity() -> None:
     with pytest.raises(
         RuntimeError, match="Realtime connection has no session binding"
     ):
-        await realtime._token()
+        _ = await realtime._token()
 
 
 def test_connection_identity_cannot_supply_a_cleared_session() -> None:
@@ -87,7 +87,7 @@ def test_connection_identity_cannot_supply_a_cleared_session() -> None:
     lineage = client._capture_session_binding()[1]
 
     with pytest.raises(RuntimeError, match="No active session"):
-        client.realtime._session_for_lineage(lineage)
+        _ = client.realtime._session_for_lineage(lineage)
 
 
 def test_native_adapter_rejects_an_incompatible_subscription_registry(
@@ -97,7 +97,7 @@ def test_native_adapter_rejects_an_incompatible_subscription_registry(
     monkeypatch.delattr(native, "_subs")
 
     with pytest.raises(TypeError, match="subscription registry"):
-        _VolcanoCentrifugeConnection(native)
+        _ = _VolcanoCentrifugeConnection(native)
 
 
 def test_native_presence_rejects_non_string_client_keys() -> None:
@@ -122,9 +122,9 @@ async def test_default_factory_constructs_the_installed_centrifuge_client() -> N
 async def test_server_subscription_events_do_not_dispatch_project_callbacks() -> None:
     realtime = VolcanoClient(anon_key="anon").realtime
     received: list[object] = []
-    realtime.on_connect(received.append)
-    realtime.on_disconnect(received.append)
-    realtime.on_error(received.append)
+    _ = realtime.on_connect(received.append)
+    _ = realtime.on_disconnect(received.append)
+    _ = realtime.on_error(received.append)
     events = _ClientEvents(realtime)
     context = object()
 

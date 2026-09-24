@@ -43,7 +43,7 @@ def test_authentication_retains_the_local_user_snapshot(operation: str) -> None:
             httpx_transport=httpx.MockTransport(handle),
         ),
     )
-    client.auth.set_session(
+    _ = client.auth.set_session(
         Session(access_token("old"), "old-refresh", str(user["id"]))
     )
     operations = {
@@ -81,7 +81,7 @@ def test_session_adoption_rejects_a_mismatched_user_snapshot() -> None:
     session = Session("access", "refresh", "user", user={"id": "other"})
 
     with pytest.raises(ValueError, match="complete Session"):
-        client.auth.set_session(session)
+        _ = client.auth.set_session(session)
     assert client.auth.get_session() is None
 
 

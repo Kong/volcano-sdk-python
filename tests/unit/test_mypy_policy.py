@@ -10,7 +10,7 @@ CONFIG = Path(__file__).parents[2] / "pyproject.toml"
 
 def check_types(tmp_path: Path, source: str) -> tuple[str, str, int]:
     fixture = tmp_path / "fixture.py"
-    fixture.write_text(source)
+    _ = fixture.write_text(source)
     return api.run(["--config-file", str(CONFIG), "--no-incremental", str(fixture)])
 
 

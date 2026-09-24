@@ -29,7 +29,7 @@ def make_client() -> VolcanoClient:
 
 async def test_cancelled_native_work_preserves_the_callers_cancellation() -> None:
     task = asyncio.create_task(asyncio.sleep(0))
-    task.cancel()
+    _ = task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
     cancellation = asyncio.CancelledError("caller cancelled")
@@ -53,16 +53,16 @@ async def test_stale_presence_callbacks_cannot_change_a_resubscribed_channel() -
     )
     channel = client.realtime.channel("lobby", channel_type="presence")
     synced = asyncio.Event()
-    channel.on("presence_sync", lambda _state: synced.set())
+    _ = channel.on("presence_sync", lambda _state: synced.set())
     try:
         await channel.subscribe()
-        await asyncio.wait_for(synced.wait(), timeout=2)
+        _ = await asyncio.wait_for(synced.wait(), timeout=2)
         events = channel._subscription_events
         assert events is not None
         await client.realtime.disconnect()
         synced.clear()
         await channel.subscribe()
-        await asyncio.wait_for(synced.wait(), timeout=2)
+        _ = await asyncio.wait_for(synced.wait(), timeout=2)
         roster = channel.get_presence_state()
         assert tuple(roster) == ("current",)
         assert channel._subscription_events is not events
@@ -97,7 +97,7 @@ async def test_postgres_failure_cannot_deliver_into_a_replacement_session() -> N
     client = make_client()
     channel = client.realtime.channel("public:messages", channel_type="postgres")
     received: list[object] = []
-    channel.on("*", received.append)
+    _ = channel.on("*", received.append)
     replacement = Session("other-access", "other-refresh", "other-user")
     errors: list[dict[str, object]] = []
     loop = asyncio.get_running_loop()
@@ -107,7 +107,7 @@ async def test_postgres_failure_cannot_deliver_into_a_replacement_session() -> N
         _loop: asyncio.AbstractEventLoop, context: dict[str, object]
     ) -> None:
         errors.append(context)
-        client.auth.set_session(replacement)
+        _ = client.auth.set_session(replacement)
 
     loop.set_exception_handler(replace_session)
     try:
@@ -191,7 +191,7 @@ async def test_failed_subscription_cleanup_rechecks_ownership_after_lock_wait(
                     channel, subscription, RuntimeError("ready failed")
                 )
             )
-            await asyncio.wait_for(paused.wait(), timeout=2)
+            _ = await asyncio.wait_for(paused.wait(), timeout=2)
             await client.realtime._discard_subscription(channel)
             replacement = await client.realtime._prepare_subscription(
                 channel, channel._subscribe_generation

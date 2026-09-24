@@ -36,7 +36,7 @@ def test_logs_reject_non_object_responses(
     read = logs.search if operation == "search" else logs.activity
 
     with pytest.raises(TypeError, match="Expected a complete log response"):
-        read(PROJECT_ID, REQUEST)
+        _ = read(PROJECT_ID, REQUEST)
 
 
 @pytest.mark.parametrize("native_transport", [False, True])
@@ -50,7 +50,7 @@ def test_logs_reject_invalid_response_rows(
     read = logs.search if operation == "search" else logs.activity
 
     with pytest.raises(TypeError, match="Expected a complete log response"):
-        read(PROJECT_ID, REQUEST)
+        _ = read(PROJECT_ID, REQUEST)
 
 
 @pytest.mark.parametrize(
@@ -75,7 +75,7 @@ def test_logs_search_rejects_invalid_page_metadata(
     payload[field] = value
     client = response_client(payload, native_transport=native_transport)
     with pytest.raises(TypeError, match="Expected a complete log response"):
-        client.logs.search(PROJECT_ID, REQUEST)
+        _ = client.logs.search(PROJECT_ID, REQUEST)
 
 
 @pytest.mark.parametrize("native_transport", [False, True])
@@ -87,7 +87,7 @@ def test_logs_activity_rejects_invalid_totals(
         {"data": [], "total": total}, native_transport=native_transport
     )
     with pytest.raises(TypeError, match="Expected a complete log response"):
-        client.logs.activity(PROJECT_ID, REQUEST)
+        _ = client.logs.activity(PROJECT_ID, REQUEST)
 
 
 @pytest.mark.parametrize("native_transport", [False, True])
@@ -99,7 +99,7 @@ def test_logs_search_rejects_missing_required_fields(
     del payload[field]
     client = response_client(payload, native_transport=native_transport)
     with pytest.raises(TypeError, match="Expected a complete log response"):
-        client.logs.search(PROJECT_ID, REQUEST)
+        _ = client.logs.search(PROJECT_ID, REQUEST)
 
 
 @pytest.mark.parametrize("native_transport", [False, True])
@@ -111,4 +111,4 @@ def test_logs_activity_rejects_missing_required_fields(
     del payload[field]
     client = response_client(payload, native_transport=native_transport)
     with pytest.raises(TypeError, match="Expected a complete log response"):
-        client.logs.activity(PROJECT_ID, REQUEST)
+        _ = client.logs.activity(PROJECT_ID, REQUEST)

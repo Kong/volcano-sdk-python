@@ -41,7 +41,7 @@ def test_oauth_rejects_blank_parameters_without_sending_credentials(
     client = client_for(handle)
     original = client.current_session
     with pytest.raises(ValueError, match="OAuth parameters must be non-empty strings"):
-        client.auth.sign_in_with_oauth(
+        _ = client.auth.sign_in_with_oauth(
             provider="github",
             redirect_to=value if parameter == "redirect" else "https://app.test/auth",
             state=value if parameter == "state" else "state",
@@ -60,7 +60,7 @@ def test_oauth_rejects_oversized_state_before_exchanging_a_code() -> None:
     client = client_for(handle)
     original = client.current_session
     with pytest.raises(ValueError, match="OAuth state must not exceed 255 characters"):
-        client.auth.exchange_oauth_code(
+        _ = client.auth.exchange_oauth_code(
             code="code",
             redirect_to="https://app.test/auth",
             state="s" * 256,
@@ -84,7 +84,7 @@ def test_oauth_rejects_oversized_state_before_exchanging_a_code() -> None:
 )
 def test_sign_up_acknowledgement_requires_boolean_and_message(payload: object) -> None:
     with pytest.raises(TypeError, match="Expected a complete sign-up acknowledgement"):
-        _sign_up_result_from_payload(payload)
+        _ = _sign_up_result_from_payload(payload)
 
 
 @pytest.mark.parametrize("field", ["message", "new_email"])
@@ -95,7 +95,7 @@ def test_email_change_acknowledgement_rejects_invalid_fields(
     with pytest.raises(
         TypeError, match="Expected a valid email-change acknowledgement"
     ):
-        _email_change_result_from_payload({field: value})
+        _ = _email_change_result_from_payload({field: value})
 
 
 @pytest.mark.parametrize("value", [UNSET, None])
@@ -124,12 +124,12 @@ def test_auth_parsers_reject_values_without_the_expected_model(
     parse: Callable[[object], object], message: str, payload: object
 ) -> None:
     with pytest.raises(VolcanoError, match=message):
-        parse(payload)
+        _ = parse(payload)
 
 
 def test_linked_providers_require_the_collection_to_be_present() -> None:
     with pytest.raises(VolcanoError, match="Expected complete linked OAuth providers"):
-        _linked_oauth_providers_from_payload(AuthListOAuthProvidersResponse200())
+        _ = _linked_oauth_providers_from_payload(AuthListOAuthProvidersResponse200())
 
 
 @pytest.mark.parametrize("provider", [UNSET, "", " \t"])
@@ -138,4 +138,4 @@ def test_linked_providers_require_a_nonempty_provider(provider: str | Unset) -> 
         providers=[AuthListOAuthProvidersResponse200ProvidersItem(provider=provider)]
     )
     with pytest.raises(VolcanoError, match="Expected complete linked OAuth providers"):
-        _linked_oauth_providers_from_payload(payload)
+        _ = _linked_oauth_providers_from_payload(payload)

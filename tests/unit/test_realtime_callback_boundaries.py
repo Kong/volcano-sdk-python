@@ -35,7 +35,7 @@ async def test_connection_queue_overflow_reports_the_dropped_callback(
 ) -> None:
     realtime = VolcanoClient(anon_key="anon").realtime
     received: list[object] = []
-    realtime.on_connect(received.append)
+    _ = realtime.on_connect(received.append)
     limit = realtime._connection_callback_queue.maxsize
     for index in range(limit + 1):
         realtime._enqueue_connection_callbacks(
@@ -87,7 +87,7 @@ async def test_removed_connection_callback_does_not_run_from_a_queued_event() ->
     def remove_later_callback(_context: object) -> None:
         unsubscribe()
 
-    realtime.on_connect(remove_later_callback)
+    _ = realtime.on_connect(remove_later_callback)
     unsubscribe = realtime.on_connect(received.append)
     realtime._enqueue_connection_callbacks("connect", RealtimeConnectContext())
 
@@ -108,8 +108,8 @@ async def test_connection_callback_failure_does_not_interrupt_later_callbacks(
     def fail(_context: object) -> None:
         raise failure
 
-    realtime.on_connect(fail)
-    realtime.on_connect(received.append)
+    _ = realtime.on_connect(fail)
+    _ = realtime.on_connect(received.append)
     context = RealtimeConnectContext(client="connected")
     realtime._enqueue_connection_callbacks("connect", context)
     await asyncio.wait_for(realtime._connection_callback_queue.join(), timeout=2)
@@ -163,7 +163,7 @@ async def test_stale_delivery_is_rejected_before_dispatch_and_callback_execution
     )
     channel = client.realtime.channel("messages")
     received: list[object] = []
-    channel.on("message", received.append)
+    _ = channel.on("message", received.append)
     try:
         await channel.subscribe()
         epoch = channel._delivery_epoch

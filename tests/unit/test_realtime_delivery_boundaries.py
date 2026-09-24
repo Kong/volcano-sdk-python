@@ -117,7 +117,7 @@ async def test_invalid_presence_snapshot_preserves_the_previous_roster(
 async def test_inactive_postgres_delivery_cannot_start_a_worker_or_dispatch() -> None:
     channel = make_client().realtime.channel("public:messages", channel_type="postgres")
     received: list[PostgresChange] = []
-    channel.on("*", received.append)
+    _ = channel.on("*", received.append)
     identity = channel._capture_postgres_delivery_identity()
     delivery = _PostgresDelivery(
         change=PostgresChange(type="INSERT", schema="public", table="messages"),
@@ -141,7 +141,7 @@ async def test_unsubscribe_between_capture_and_worker_selection_drops_delivery(
     client = make_client()
     channel = client.realtime.channel("public:messages", channel_type="postgres")
     received: list[PostgresChange] = []
-    channel.on("*", received.append)
+    _ = channel.on("*", received.append)
     select_worker = channel._postgres_delivery_worker
 
     async def stop_before_selection(identity: _PostgresDeliveryIdentity) -> None:
@@ -167,7 +167,7 @@ async def test_closed_postgres_worker_reports_only_current_delivery_failures(
     client = make_client()
     channel = client.realtime.channel("public:messages", channel_type="postgres")
     received: list[PostgresChange] = []
-    channel.on("*", received.append)
+    _ = channel.on("*", received.append)
     try:
         await channel.subscribe()
         identity = channel._capture_postgres_delivery_identity()

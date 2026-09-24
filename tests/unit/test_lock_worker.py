@@ -3,12 +3,11 @@ from __future__ import annotations
 import threading
 
 import pytest
+from lock_inspection import InspectedLockGuard, InspectedLockRenewer
 
 from volcano_sdk import LockLease, VolcanoError
 from volcano_sdk import _lock_guard as guard_module
 from volcano_sdk import _lock_worker as worker_module
-from volcano_sdk._lock_guard import LockGuard
-from volcano_sdk._lock_worker import LockRenewer
 
 
 def lease(*, fencing_token: int = 7) -> LockLease:
@@ -22,7 +21,7 @@ def lease(*, fencing_token: int = 7) -> LockLease:
 
 class RecordingLocks:
     def __init__(self, replacement: LockLease) -> None:
-        self.replacement = replacement
+        self.replacement: LockLease = replacement
         self.calls: list[tuple[str, LockLease, int]] = []
 
     def renew(self, key: str, lease: LockLease, *, ttl: int) -> LockLease:
@@ -32,7 +31,7 @@ class RecordingLocks:
 
 class FailingLocks:
     def __init__(self, failure: Exception) -> None:
-        self.failure = failure
+        self.failure: Exception = failure
 
     def renew(self, key: str, lease: LockLease, *, ttl: int) -> LockLease:
         del key, lease, ttl
@@ -41,20 +40,20 @@ class FailingLocks:
 
 class StalledLocks:
     def __init__(self) -> None:
-        self.entered = threading.Event()
-        self.release = threading.Event()
+        self.entered: threading.Event = threading.Event()
+        self.release: threading.Event = threading.Event()
         self.calls: list[tuple[str, LockLease, int]] = []
 
     def renew(self, key: str, lease: LockLease, *, ttl: int) -> LockLease:
         self.calls.append((key, lease, ttl))
         self.entered.set()
-        self.release.wait()
+        _ = self.release.wait()
         return lease
 
 
 class ExpiringWait:
     def __init__(self, clock: list[float]) -> None:
-        self.clock = clock
+        self.clock: list[float] = clock
 
     def wait(self, timeout: float | None = None) -> bool:
         del timeout
@@ -67,7 +66,7 @@ class ExpiringWait:
 
 class SuspendWait:
     def __init__(self, clock: list[float]) -> None:
-        self.clock = clock
+        self.clock: list[float] = clock
         self.calls: list[float | None] = []
 
     def wait(self, timeout: float | None = None) -> bool:
@@ -87,28 +86,28 @@ def test_lock_renewer_replaces_a_successfully_renewed_lease(
     monkeypatch.setattr(worker_module, "lease_now", lambda: 101.0)
     original = lease()
     replacement = lease(fencing_token=8)
-    guard = LockGuard(original, ttl=30, started_at=100.0)
+    guard = InspectedLockGuard(original, ttl=30, started_at=100.0)
     locks = RecordingLocks(replacement)
-    renewer = LockRenewer(locks, "build", guard, ttl=30)
+    renewer = InspectedLockRenewer(locks, "build", guard, ttl=30)
 
-    assert renewer._renew_once()
+    assert renewer.renew_once()
 
     assert guard.lease is replacement
     assert locks.calls == [("build", original, 30)]
 
 
 def test_lock_renewer_runs_as_a_daemon() -> None:
-    guard = LockGuard(lease(), ttl=30, started_at=guard_module.lease_now())
-    renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
+    guard = InspectedLockGuard(lease(), ttl=30, started_at=guard_module.lease_now())
+    renewer = InspectedLockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
 
-    assert renewer._thread.daemon
+    assert renewer.worker_thread().daemon
 
 
 def test_lock_renewer_continues_after_a_successful_renewal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    guard = LockGuard(lease(), ttl=30, started_at=guard_module.lease_now())
-    renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
+    guard = InspectedLockGuard(lease(), ttl=30, started_at=guard_module.lease_now())
+    renewer = InspectedLockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
     waits = iter((True, True, False))
     renewed: list[bool] = []
 
@@ -119,7 +118,7 @@ def test_lock_renewer_continues_after_a_successful_renewal(
     monkeypatch.setattr(renewer, "_wait_until_renewal", lambda: next(waits))
     monkeypatch.setattr(renewer, "_renew_once", renew_once)
 
-    renewer._run()
+    renewer.run_worker()
 
     assert renewed == [True, True]
 
@@ -127,8 +126,8 @@ def test_lock_renewer_continues_after_a_successful_renewal(
 def test_lock_renewer_does_not_swallow_process_interrupts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    guard = LockGuard(lease(), ttl=30, started_at=guard_module.lease_now())
-    renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
+    guard = InspectedLockGuard(lease(), ttl=30, started_at=guard_module.lease_now())
+    renewer = InspectedLockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
 
     def interrupt() -> bool:
         raise KeyboardInterrupt
@@ -136,7 +135,7 @@ def test_lock_renewer_does_not_swallow_process_interrupts(
     monkeypatch.setattr(renewer, "_wait_until_renewal", interrupt)
 
     with pytest.raises(KeyboardInterrupt):
-        renewer._run()
+        renewer.run_worker()
     assert not guard.lost
 
 
@@ -145,13 +144,13 @@ def test_lock_renewer_records_an_sdk_failure(
 ) -> None:
     monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
     failure = VolcanoError("renewal failed")
-    guard = LockGuard(lease(), ttl=30, started_at=100.0)
-    renewer = LockRenewer(FailingLocks(failure), "build", guard, ttl=30)
+    guard = InspectedLockGuard(lease(), ttl=30, started_at=100.0)
+    renewer = InspectedLockRenewer(FailingLocks(failure), "build", guard, ttl=30)
 
-    assert not renewer._renew_once()
+    assert not renewer.renew_once()
 
     assert guard.lost
-    assert guard._renewal_failure() is failure
+    assert guard.renewal_failure() is failure
 
 
 def test_lock_renewer_records_an_unexpected_ordinary_failure(
@@ -159,13 +158,13 @@ def test_lock_renewer_records_an_unexpected_ordinary_failure(
 ) -> None:
     monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
     failure = RuntimeError("service credential changed")
-    guard = LockGuard(lease(), ttl=30, started_at=100.0)
-    renewer = LockRenewer(FailingLocks(failure), "build", guard, ttl=30)
+    guard = InspectedLockGuard(lease(), ttl=30, started_at=100.0)
+    renewer = InspectedLockRenewer(FailingLocks(failure), "build", guard, ttl=30)
 
-    assert not renewer._renew_once()
+    assert not renewer.renew_once()
 
     assert guard.lost
-    assert guard._renewal_failure() is failure
+    assert guard.renewal_failure() is failure
 
 
 def test_lock_renewer_records_a_failure_outside_the_renewal_request(
@@ -173,27 +172,27 @@ def test_lock_renewer_records_a_failure_outside_the_renewal_request(
 ) -> None:
     monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
     failure = RuntimeError("scheduling failed")
-    guard = LockGuard(lease(), ttl=30, started_at=100.0)
+    guard = InspectedLockGuard(lease(), ttl=30, started_at=100.0)
 
     def fail_schedule() -> float:
         raise failure
 
     monkeypatch.setattr(guard, "renewal_delay", fail_schedule)
-    renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
+    renewer = InspectedLockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
 
-    renewer._run()
+    renewer.run_worker()
 
     assert guard.lost
-    assert guard._renewal_failure() is failure
+    assert guard.renewal_failure() is failure
 
 
 def test_lock_renewer_stop_interrupts_a_scheduled_wait(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
-    guard = LockGuard(lease(), ttl=30, started_at=100.0)
+    guard = InspectedLockGuard(lease(), ttl=30, started_at=100.0)
     locks = RecordingLocks(lease(fencing_token=8))
-    renewer = LockRenewer(locks, "build", guard, ttl=30)
+    renewer = InspectedLockRenewer(locks, "build", guard, ttl=30)
 
     renewer.start()
     renewer.stop()
@@ -207,12 +206,12 @@ def test_lock_renewer_does_not_renew_after_the_lease_expires_while_waiting(
 ) -> None:
     clock = [100.0]
     monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
-    guard = LockGuard(lease(), ttl=5, started_at=clock[0])
+    guard = InspectedLockGuard(lease(), ttl=5, started_at=clock[0])
     locks = RecordingLocks(lease(fencing_token=8))
-    renewer = LockRenewer(locks, "build", guard, ttl=5)
+    renewer = InspectedLockRenewer(locks, "build", guard, ttl=5)
     monkeypatch.setattr(renewer, "_stop", ExpiringWait(clock))
 
-    renewer._run()
+    renewer.run_worker()
 
     assert locks.calls == []
     assert guard.lost
@@ -224,13 +223,13 @@ def test_lock_renewer_rechecks_the_suspend_aware_clock_in_bounded_waits(
     clock = [100.0]
     monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
     monkeypatch.setattr(worker_module, "lease_now", lambda: clock[0])
-    guard = LockGuard(lease(), ttl=30, started_at=clock[0])
+    guard = InspectedLockGuard(lease(), ttl=30, started_at=clock[0])
     monkeypatch.setattr(guard, "renewal_delay", lambda: 10.0)
-    renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
+    renewer = InspectedLockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
     wait = SuspendWait(clock)
     monkeypatch.setattr(renewer, "_stop", wait)
 
-    assert renewer._wait_until_renewal()
+    assert renewer.wait_until_renewal()
 
     assert wait.calls == [1.0, 1.0]
 
@@ -241,9 +240,9 @@ def test_lock_renewer_waits_through_the_final_fractional_second(
     clock = [100.0]
     monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
     monkeypatch.setattr(worker_module, "lease_now", lambda: clock[0])
-    guard = LockGuard(lease(), ttl=30, started_at=clock[0])
+    guard = InspectedLockGuard(lease(), ttl=30, started_at=clock[0])
     monkeypatch.setattr(guard, "renewal_delay", lambda: 10.0)
-    renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
+    renewer = InspectedLockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
     waits: list[float | None] = []
 
     class NearDeadlineWait:
@@ -258,15 +257,15 @@ def test_lock_renewer_waits_through_the_final_fractional_second(
 
     monkeypatch.setattr(renewer, "_stop", NearDeadlineWait())
 
-    assert renewer._wait_until_renewal()
+    assert renewer.wait_until_renewal()
     assert waits == [1.0, 0.5]
 
 
 def test_lock_renewer_passes_a_bounded_join_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    guard = LockGuard(lease(), ttl=30, started_at=guard_module.lease_now())
-    renewer = LockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
+    guard = InspectedLockGuard(lease(), ttl=30, started_at=guard_module.lease_now())
+    renewer = InspectedLockRenewer(RecordingLocks(lease()), "build", guard, ttl=30)
     waits: list[float | None] = []
 
     class RecordingThread:
@@ -288,10 +287,10 @@ def test_lock_renewer_bounds_stalled_shutdown(
 ) -> None:
     monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
     monkeypatch.setattr(worker_module, "RENEWER_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
-    guard = LockGuard(lease(), ttl=30, started_at=100.0)
+    guard = InspectedLockGuard(lease(), ttl=30, started_at=100.0)
     monkeypatch.setattr(guard, "renewal_delay", lambda: 0.0)
     locks = StalledLocks()
-    renewer = LockRenewer(locks, "build", guard, ttl=30)
+    renewer = InspectedLockRenewer(locks, "build", guard, ttl=30)
 
     renewer.start()
     assert locks.entered.wait(timeout=1)
@@ -299,7 +298,7 @@ def test_lock_renewer_bounds_stalled_shutdown(
         renewer.stop()
 
         assert guard.lost
-        failure = guard._renewal_failure()
+        failure = guard.renewal_failure()
         assert isinstance(failure, TimeoutError)
         assert str(failure) == "lock renewal did not stop before cleanup"
     finally:
@@ -313,22 +312,22 @@ def test_lock_renewer_stops_after_an_in_flight_request_completes(
     monkeypatch.setattr(guard_module, "lease_now", lambda: 100.0)
     monkeypatch.setattr(worker_module, "lease_now", lambda: 100.0)
     original = lease()
-    guard = LockGuard(original, ttl=30, started_at=100.0)
+    guard = InspectedLockGuard(original, ttl=30, started_at=100.0)
     monkeypatch.setattr(guard, "renewal_delay", lambda: 0.0)
     locks = StalledLocks()
-    renewer = LockRenewer(locks, "build", guard, ttl=30)
+    renewer = InspectedLockRenewer(locks, "build", guard, ttl=30)
 
     renewer.start()
     try:
         assert locks.entered.wait(timeout=1)
-        renewer._stop.set()
+        renewer.stop_event().set()
         locks.release.set()
         renewer.stop()
 
         assert locks.calls == [("build", original, 30)]
         assert guard.lease is original
         assert not guard.lost
-        assert not renewer._thread.is_alive()
+        assert not renewer.worker_thread().is_alive()
     finally:
         locks.release.set()
         renewer.stop()

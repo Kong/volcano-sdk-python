@@ -28,11 +28,11 @@ class FakeResponse:
 class FakeFunctionsTransport(RejectingTransport):
     def __init__(self, *, invoke_url: str | None = None) -> None:
         self.calls: list[tuple[str, dict[str, object]]] = []
-        self.invoke_url = invoke_url
+        self.invoke_url: str | None = invoke_url
         self.cache_ttl_seconds: object = 60
         self.resolve_response: FakeResponse | None = None
         self.invoke_responses: list[FakeResponse] = []
-        self.invoke_response = FakeResponse(
+        self.invoke_response: FakeResponse = FakeResponse(
             200,
             {"message": "hello", "items": [1, 2]},
             {"X-Volcano-Version": "staging-v1", "X-Trace": "trace-1"},
@@ -94,7 +94,7 @@ def test_functions_requires_a_transport_with_invocation_methods() -> None:
     with pytest.raises(
         TypeError, match="Transport does not support function invocation"
     ):
-        client.functions.invoke("send-welcome")
+        _ = client.functions.invoke("send-welcome")
 
 
 def test_functions_resolves_and_invokes_by_name() -> None:
@@ -156,7 +156,7 @@ def test_functions_raise_when_the_platform_refuses_the_invocation() -> None:
     )
 
     with pytest.raises(VolcanoError) as caught:
-        functions_client(transport).functions.invoke("validate-order")
+        _ = functions_client(transport).functions.invoke("validate-order")
 
     assert "function cannot be invoked" in str(caught.value)
 
@@ -266,7 +266,7 @@ def test_functions_raises_for_a_platform_failure() -> None:
     )
 
     with pytest.raises(ServerError, match="function is provisioning") as raised:
-        functions_client(transport).functions.invoke("daily-rollup")
+        _ = functions_client(transport).functions.invoke("daily-rollup")
 
     assert raised.value.status == 503
     assert raised.value.code == "function_not_ready"
@@ -277,7 +277,7 @@ def test_functions_rejects_invalid_names_before_transport(name: str) -> None:
     transport = FakeFunctionsTransport()
 
     with pytest.raises(ValueError, match="DNS-safe"):
-        functions_client(transport).functions.invoke(name)
+        _ = functions_client(transport).functions.invoke(name)
 
     assert transport.calls == []
 
@@ -286,7 +286,7 @@ def test_functions_uses_the_local_anon_key_without_a_session_or_service_key() ->
     transport = FakeFunctionsTransport()
     anon_key = "ak-0000000000000000000000000000000000000000"
 
-    functions_client(
+    _ = functions_client(
         transport,
         anon_key=anon_key,
         service_key=None,
@@ -300,7 +300,7 @@ def test_functions_invokes_the_resolved_url_rather_than_the_api_path() -> None:
     invoke_url = "https://00000000-0000-4000-8000-000000000040.functions.test.run/"
     transport = FakeFunctionsTransport(invoke_url=invoke_url)
 
-    functions_client(transport).functions.invoke("send-welcome", {"user_id": "u-1"})
+    _ = functions_client(transport).functions.invoke("send-welcome", {"user_id": "u-1"})
 
     assert [operation for operation, _ in transport.calls] == [
         "resolveFunctionForInvocation",
@@ -316,7 +316,7 @@ def test_functions_invokes_the_resolved_url_rather_than_the_api_path() -> None:
 def test_functions_falls_back_to_the_api_path_without_an_invoke_url() -> None:
     transport = FakeFunctionsTransport(invoke_url=None)
 
-    functions_client(transport).functions.invoke("send-welcome")
+    _ = functions_client(transport).functions.invoke("send-welcome")
 
     assert [operation for operation, _ in transport.calls] == [
         "resolveFunctionForInvocation",
@@ -343,7 +343,7 @@ def test_functions_falls_back_to_the_api_path_without_an_invoke_url() -> None:
 def test_functions_ignores_an_unusable_invoke_url(invoke_url: str) -> None:
     transport = FakeFunctionsTransport(invoke_url=invoke_url)
 
-    functions_client(transport).functions.invoke("send-welcome")
+    _ = functions_client(transport).functions.invoke("send-welcome")
 
     assert transport.calls[1][0] == "invokeFunction"
 
@@ -352,7 +352,7 @@ def test_functions_refuses_to_send_the_token_to_a_plaintext_endpoint() -> None:
     """An https API must not be downgraded to http by a resolve response."""
     transport = FakeFunctionsTransport(invoke_url="http://functions.test.run/")
 
-    functions_client(transport).functions.invoke("send-welcome")
+    _ = functions_client(transport).functions.invoke("send-welcome")
 
     assert transport.calls[1][0] == "invokeFunction"
 
@@ -366,7 +366,7 @@ def test_functions_allows_a_plaintext_endpoint_for_a_plaintext_api() -> None:
         _transport=transport,
     )
 
-    client.functions.invoke("send-welcome")
+    _ = client.functions.invoke("send-welcome")
 
     assert transport.calls[1][0] == "invokeFunctionUrl"
 
@@ -378,7 +378,7 @@ def test_functions_resolves_a_name_once_for_repeated_invocations() -> None:
     client = functions_client(transport)
 
     for _ in range(3):
-        client.functions.invoke("send-welcome")
+        _ = client.functions.invoke("send-welcome")
 
     assert transport.resolve_calls == 1
     operations = [operation for operation, _ in transport.calls]
@@ -394,13 +394,13 @@ def test_functions_resolves_again_once_the_advertised_lifetime_expires(
     transport.cache_ttl_seconds = 60
     client = functions_client(transport)
 
-    client.functions.invoke("send-welcome")
+    _ = client.functions.invoke("send-welcome")
     clock.advance(59)
-    client.functions.invoke("send-welcome")
+    _ = client.functions.invoke("send-welcome")
     assert transport.resolve_calls == 1
 
     clock.advance(2)
-    client.functions.invoke("send-welcome")
+    _ = client.functions.invoke("send-welcome")
     assert transport.resolve_calls == 2
 
 
@@ -409,8 +409,8 @@ def test_functions_does_not_share_a_resolution_across_credentials() -> None:
 
     first = functions_client(transport, service_key="service-key")
     second = functions_client(transport, service_key="other-key")
-    first.functions.invoke("send-welcome")
-    second.functions.invoke("send-welcome")
+    _ = first.functions.invoke("send-welcome")
+    _ = second.functions.invoke("send-welcome")
 
     assert transport.resolve_calls == 2
 
@@ -418,8 +418,8 @@ def test_functions_does_not_share_a_resolution_across_credentials() -> None:
 def test_functions_shares_a_resolution_across_clients_with_one_credential() -> None:
     transport = FakeFunctionsTransport()
 
-    functions_client(transport).functions.invoke("send-welcome")
-    functions_client(transport).functions.invoke("send-welcome")
+    _ = functions_client(transport).functions.invoke("send-welcome")
+    _ = functions_client(transport).functions.invoke("send-welcome")
 
     assert transport.resolve_calls == 1
 
@@ -432,7 +432,7 @@ def test_functions_rejects_a_resolve_without_a_usable_lifetime(
     transport.cache_ttl_seconds = cache_ttl_seconds
 
     with pytest.raises(TypeError, match="complete function response"):
-        functions_client(transport).functions.invoke("send-welcome")
+        _ = functions_client(transport).functions.invoke("send-welcome")
 
 
 def test_functions_remembers_an_unknown_name_briefly() -> None:
@@ -442,7 +442,7 @@ def test_functions_remembers_an_unknown_name_briefly() -> None:
 
     for _ in range(3):
         with pytest.raises(NotFoundError):
-            client.functions.invoke("missing-function")
+            _ = client.functions.invoke("missing-function")
 
     assert transport.resolve_calls == 1
 
@@ -492,7 +492,7 @@ def test_functions_returns_a_function_owned_404_without_invoking_twice() -> None
 
 class _FakeClock:
     def __init__(self) -> None:
-        self._now = 1000.0
+        self._now: float = 1000.0
 
     def __call__(self) -> float:
         return self._now
@@ -508,7 +508,7 @@ def test_functions_preserves_owned_error_metadata_in_negative_cache() -> None:
     )
     client = functions_client(transport)
     with pytest.raises(NotFoundError) as first:
-        client.functions.invoke("missing-function")
+        _ = client.functions.invoke("missing-function")
     assert (
         str(first.value),
         first.value.status,
@@ -519,7 +519,7 @@ def test_functions_preserves_owned_error_metadata_in_negative_cache() -> None:
     first.value.code = "changed"
     first.value.retry_after = 99
     with pytest.raises(NotFoundError) as second:
-        client.functions.invoke("missing-function")
+        _ = client.functions.invoke("missing-function")
     assert (
         str(second.value),
         second.value.status,

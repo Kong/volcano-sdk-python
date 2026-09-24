@@ -15,7 +15,7 @@ SESSION = Session("access", "refresh", "user")
 class JoinedRefresh(Future[Session]):
     def __init__(self, joined: Event) -> None:
         super().__init__()
-        self.joined = joined
+        self.joined: Event = joined
 
     @override
     def result(self, timeout: float | None = None) -> Session:
@@ -52,7 +52,7 @@ def test_refresh_joins_pending_work_without_starting_another_operation(
                 pending.set_result(SESSION)
         if fails:
             with pytest.raises(RuntimeError, match="refresh failed") as error:
-                waiter.result(2)
+                _ = waiter.result(2)
             assert error.value is failure
         else:
             assert waiter.result(2) is SESSION

@@ -45,7 +45,7 @@ def test_optional_auth_operation_requires_transport_capability(
     client = VolcanoClient(anon_key="anon", _transport=RejectingTransport())
 
     with pytest.raises(TypeError, match="requested auth operation"):
-        operation(client.auth)
+        _ = operation(client.auth)
 
 
 _EMAIL_CHANGE_OPERATIONS: tuple[Callable[[Auth], object], ...] = (
@@ -64,10 +64,10 @@ def test_email_change_requires_transport_capability_after_session_check(
     operation: Callable[[Auth], object],
 ) -> None:
     client = VolcanoClient(anon_key="anon", _transport=RejectingTransport())
-    client.auth.set_session(Session("access", "refresh", "user"))
+    _ = client.auth.set_session(Session("access", "refresh", "user"))
 
     with pytest.raises(TypeError, match="requested auth operation"):
-        operation(client.auth)
+        _ = operation(client.auth)
 
 
 _SESSION_OPERATIONS: tuple[Callable[[Auth], object], ...] = (
@@ -86,10 +86,10 @@ def test_session_operation_requires_transport_capability(
     operation: Callable[[Auth], object],
 ) -> None:
     client = VolcanoClient(anon_key="anon", _transport=RejectingTransport())
-    client.auth.set_session(Session("access", "refresh", "user"))
+    _ = client.auth.set_session(Session("access", "refresh", "user"))
 
     with pytest.raises(TypeError, match="requested auth operation"):
-        operation(client.auth)
+        _ = operation(client.auth)
 
 
 def test_access_session_revocation_requires_transport_capability() -> None:
@@ -120,7 +120,7 @@ def test_profile_operation_requires_transport_capability(
     operation: Callable[[Auth], object],
 ) -> None:
     client = VolcanoClient(anon_key="anon", _transport=RejectingTransport())
-    client.auth.set_session(Session("access", "refresh", "user"))
+    _ = client.auth.set_session(Session("access", "refresh", "user"))
 
     with pytest.raises(TypeError, match="requested auth operation"):
-        operation(client.auth)
+        _ = operation(client.auth)
