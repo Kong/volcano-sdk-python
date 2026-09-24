@@ -295,6 +295,31 @@ def handler(event, ctx):
     return {"charged": charge["id"], "packed": packed.results}
 ```
 
+Use the function name for its source directory and manifest entry:
+
+```text
+volcano/functions/order-pipeline/
+├── main.py
+└── requirements.txt
+```
+
+```text
+# volcano/functions/order-pipeline/requirements.txt
+volcano-sdk-python
+```
+
+```yaml
+# volcano-config.yaml
+version: 1
+project:
+  name: my-app
+functions:
+  - name: order-pipeline
+    kind: durable
+```
+
+The decorator defines handler behavior. The manifest declaration makes the function discoverable by `volcano durable deploy`.
+
 Every context operation is checkpointed: what finished is recorded, and a
 resumed execution replays that recorded outcome instead of doing the work again.
 That is the one rule the handler has to respect — the code between operations
