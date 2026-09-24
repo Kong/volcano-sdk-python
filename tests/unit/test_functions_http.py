@@ -26,6 +26,8 @@ import pytest
 
 from volcano_sdk import NotFoundError, VolcanoClient
 
+pytestmark = pytest.mark.allow_hosts(["127.0.0.1"])
+
 FUNCTION_ID = "00000000-0000-4000-8000-000000000040"
 
 # (status, payload) or (status, payload, extra response headers).

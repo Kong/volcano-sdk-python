@@ -386,6 +386,7 @@
     },
     "pytest": {
       "ini_options": {
+        "addopts": "--disable-socket --allow-unix-socket",
         "asyncio_debug": true,
         "asyncio_default_fixture_loop_scope": "function",
         "asyncio_default_test_loop_scope": "function",
