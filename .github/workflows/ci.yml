@@ -65,17 +65,19 @@ jobs:
     permissions:
       contents: read
     outputs:
-      shards: ${{ steps.plan.outputs.shards }}
+      modules: ${{ steps.plan.outputs.modules }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Inventory every handwritten runtime module
         id: plan
-        run: echo "shards=$(bash scripts/mutation.sh --matrix)" >> "$GITHUB_OUTPUT"
+        run: |
+          modules=$(bash scripts/mutation.sh --matrix)
+          echo "modules=$modules" >> "$GITHUB_OUTPUT"
 
-  mutation-shard:
-    name: Mutation shard (${{ matrix.shard }})
+  mutation-module:
+    name: Mutation module (${{ matrix.module }})
     needs: mutation-plan
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -84,7 +86,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: ${{ fromJSON(needs.mutation-plan.outputs.shards) }}
+        module: ${{ fromJSON(needs.mutation-plan.outputs.modules) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -98,24 +100,24 @@ jobs:
       - run: uv sync --locked
       - name: Mutate assigned runtime modules
         env:
-          MUTATION_SHARD: ${{ matrix.shard }}
+          MUTATION_MODULE: ${{ matrix.module }}
         run: uv run --locked poe mutation
       - name: Preserve mutation outcomes
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mutation-outcomes-${{ matrix.shard }}
+          name: mutation-outcomes-${{ matrix.module }}
           path: reports/mutation.json
           if-no-files-found: error
 
   mutation:
     name: Mutation Gate
     if: ${{ always() }}
-    needs: [mutation-plan, mutation-shard]
+    needs: [mutation-plan, mutation-module]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require every mutation shard to succeed
+      - name: Require every mutation module to succeed
         env:
           RESULTS: ${{ toJSON(needs.*.result) }}
         run: jq -e 'length == 2 and all(. == "success")' <<< "$RESULTS"

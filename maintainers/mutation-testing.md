@@ -2,10 +2,9 @@
 
 `uv run --locked poe quality` runs all native checks and mutates every
 handwritten runtime module. CI runs the same `checks` and `mutation` tasks,
-distributing the mutation task across eight independent jobs. Git's current
-handwritten module inventory determines their assignments: each module appears
-in exactly one shard, including a newly added module. `Mutation Gate` requires
-every shard, and `Quality Gate` requires it and the Python test matrix. The
+assigning one handwritten module to each independent matrix job. Git's current
+handwritten module inventory determines the jobs, including newly added modules.
+`Mutation Gate` requires every module job, and `Quality Gate` requires it and the Python test matrix. The
 weekly audit runs the same full mutation task without a debt baseline.
 
 Mutmut's [native configuration](https://mutmut.readthedocs.io/en/latest/) lives
@@ -16,7 +15,8 @@ select modules by name but returns success when mutants survive.
 report at `reports/mutation.json` distinguishes killed, statically invalid,
 surviving, uncovered, timed-out, crashed, interrupted, and missing results.
 A pytest internal error is a harness crash, not a killed mutant.
-The pinned Pyrefly check rejects type-invalid realtime and auth mutants before pytest;
+The pinned Pyrefly check covers the handwritten runtime and rejects
+type-invalid mutants before pytest;
 the report counts these as `type_checked`, separately from test-killed mutants.
 Surviving, uncovered, timed-out, crashed, and incomplete mutants still fail.
 Mutmut passes pytest `-x` so a selected test's first assertion failure kills the

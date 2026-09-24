@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from mutmut.utils.format_utils import get_mutant_name
 
 from scripts.mutation_results import main
 
@@ -34,7 +35,12 @@ def mutation_harness(
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     stubs = {
-        "git": "#!/bin/sh\ncat git-paths.bin\n",
+        "git": (
+            "#!/bin/sh\n"
+            '[ "$*" = \'ls-files --cached --others --exclude-standard '
+            "-z -- src/volcano_sdk' ] || exit 1\n"
+            "cat git-paths.bin\n"
+        ),
         "mutmut": "#!/bin/sh\nprintf '%s\\n' \"$@\" > mutation-args.txt\n",
         "python": "#!/bin/sh\nexit 0\n",
     }
@@ -62,7 +68,7 @@ def run_mutation_script(tmp_path: Path) -> subprocess.CompletedProcess[str]:
 
 
 def run_mutation_matrix(tmp_path: Path) -> subprocess.CompletedProcess[str]:
-    """Read the complete CI shard plan.
+    """Read the complete CI module plan.
 
     Returns:
         Completed script process.
@@ -88,7 +94,31 @@ def mutant_pattern(module: str) -> str:
     return f"{name.removesuffix('/__init__').replace('/', '.')}.x*"
 
 
-def test_mutation_shards_cover_all_handwritten_modules(
+def module_name(path: str) -> str:
+    """Return the Python module selected by the native Mutmut wildcard.
+
+    Returns:
+        Import name for a handwritten Python source file.
+
+    """
+    return mutant_pattern(path).removesuffix(".x*")
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("src/volcano_sdk/__init__.py", "volcano_sdk.x_probe__mutmut_1"),
+        ("src/volcano_sdk/nested/__init__.py", "volcano_sdk.nested.x_probe__mutmut_1"),
+    ],
+)
+def test_package_init_selector_matches_native_mutmut_name(
+    path: str, expected: str
+) -> None:
+    assert get_mutant_name(Path(path), "x_probe__mutmut_1") == expected
+    assert expected.startswith(mutant_pattern(path).removesuffix("*"))
+
+
+def test_mutation_matrix_covers_all_handwritten_modules(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     modules = [f"src/volcano_sdk/module_{index}.py" for index in range(8)]
@@ -106,18 +136,19 @@ def test_mutation_shards_cover_all_handwritten_modules(
 
     plan = run_mutation_matrix(tmp_path)
     assert plan.returncode == 0, plan.stderr
-    assert json.loads(plan.stdout) == list(range(8))
+    assert json.loads(plan.stdout) == [module_name(path) for path in modules]
 
     selected: list[str] = []
     selected_patterns: list[str] = []
-    for shard in range(8):
-        monkeypatch.setenv("MUTATION_SHARD", str(shard))
+    for module in json.loads(plan.stdout):
+        monkeypatch.setenv("MUTATION_MODULE", module)
         result = run_mutation_script(tmp_path)
         assert result.returncode == 0, result.stderr
         paths = (tmp_path / "reports/mutation-targets.bin").read_bytes().split(b"\0")
-        shard_modules = [os.fsdecode(path) for path in paths if path]
-        selected.extend(shard_modules)
-        patterns = [mutant_pattern(module) for module in shard_modules]
+        selected_modules = [os.fsdecode(path) for path in paths if path]
+        assert len(selected_modules) == 1
+        selected.extend(selected_modules)
+        patterns = [mutant_pattern(path) for path in selected_modules]
         selected_patterns.extend(patterns)
         arguments = (tmp_path / "mutation-args.txt").read_text(encoding="utf-8")
         assert arguments.splitlines() == ["run", "--max-children", "1", *patterns]
@@ -139,15 +170,28 @@ def test_empty_mutation_inventory_fails(
     assert "No handwritten SDK runtime modules found" in result.stderr
 
 
-@pytest.mark.parametrize("shard", ["8", "-1", "not-a-number"])
-def test_invalid_mutation_shard_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shard: str
+def test_duplicate_import_name_fails_inventory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mutation_harness(
+        tmp_path,
+        monkeypatch,
+        ["src/volcano_sdk/nested.py", "src/volcano_sdk/nested/__init__.py"],
+    )
+    result = run_mutation_matrix(tmp_path)
+    assert result.returncode == 1
+    assert "Duplicate Python runtime module" in result.stderr
+
+
+@pytest.mark.parametrize("module", ["volcano_sdk.missing", "-1", "not-a-module"])
+def test_invalid_mutation_module_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, module: str
 ) -> None:
     mutation_harness(tmp_path, monkeypatch, ["src/volcano_sdk/probe.py"])
-    monkeypatch.setenv("MUTATION_SHARD", shard)
+    monkeypatch.setenv("MUTATION_MODULE", module)
     result = run_mutation_script(tmp_path)
     assert result.returncode == 2
-    assert "Invalid mutation shard" in result.stderr
+    assert "Unknown mutation module" in result.stderr
 
 
 def fixture_report(tmp_path: Path, code: int | None) -> tuple[Path, Path]:
@@ -203,6 +247,25 @@ def test_killed_mutant_passes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.chdir(tmp_path)
     targets, failed = fixture_report(tmp_path, 1)
     assert main(targets, failed) == 0
+
+
+def test_functionless_package_init_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    source = Path("src/volcano_sdk/__init__.py")
+    source.parent.mkdir(parents=True)
+    _ = source.write_text('"""Public package exports."""\n', encoding="utf-8")
+    targets = tmp_path / "targets.bin"
+    _ = targets.write_bytes(f"{source}\0".encode())
+    failed = tmp_path / "failed.bin"
+    _ = failed.write_bytes(b"")
+    assert main(targets, failed) == 0
+    report = cast(
+        "object", json.loads(Path("reports/mutation.json").read_text(encoding="utf-8"))
+    )
+    assert isinstance(report, dict)
+    assert report["unmutatable_modules"] == [str(source)]
 
 
 def test_statically_invalid_mutant_is_reported_separately(
