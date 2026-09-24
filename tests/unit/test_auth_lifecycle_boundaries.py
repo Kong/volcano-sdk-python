@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Never
 
 import httpx
 import pytest
@@ -9,12 +9,14 @@ from test_session_continuity import SESSION_A, USER_A, client_for, refreshed
 from volcano_sdk import AuthenticationError, Session, SessionChangedError, VolcanoClient
 from volcano_sdk import auth as auth_module
 from volcano_sdk._session_operations import SessionOperations
+from volcano_sdk._transport import GeneratedTransport
+from volcano_sdk.auth import Auth, AuthContext
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from volcano_sdk import User
-    from volcano_sdk._transport import TransportResponse
+    from volcano_sdk._transport import Transport, TransportResponse
     from volcano_sdk.models import JSONValue
 
 
@@ -56,6 +58,99 @@ def test_session_request_requires_credentials_before_running_the_operation() -> 
 
     with pytest.raises(RuntimeError, match="No active session"):
         _ = client.auth._session_request(operation)
+
+
+_CAPTURED_SESSION_OPERATIONS: tuple[Callable[[Auth], object], ...] = (
+    lambda auth: auth.convert_anonymous(email="new@example.com", password="password"),
+    lambda auth: auth.request_email_change(new_email="new@example.com"),
+    lambda auth: auth.cancel_email_change(),
+    lambda auth: auth.confirm_email_change(token="token"),
+    lambda auth: auth.delete_all_other_sessions(),
+    lambda auth: auth.list_sessions(),
+    lambda auth: auth.list_linked_oauth_providers(),
+    lambda auth: auth.link_oauth_provider(provider="github"),
+    lambda auth: auth.unlink_oauth_provider(provider="github"),
+    lambda auth: auth.get_oauth_provider_token(provider="github"),
+    lambda auth: auth.refresh_oauth_provider_token(provider="github"),
+    lambda auth: auth.delete_session(session_id="other-session"),
+    lambda auth: auth.get_user(),
+    lambda auth: auth.update_user(metadata={"name": "new"}),
+)
+
+
+@pytest.mark.parametrize(
+    "operation",
+    _CAPTURED_SESSION_OPERATIONS,
+    ids=(
+        "convert-anonymous",
+        "request-email-change",
+        "cancel-email-change",
+        "confirm-email-change",
+        "delete-other-sessions",
+        "list-sessions",
+        "list-oauth-providers",
+        "link-oauth",
+        "unlink-oauth",
+        "get-oauth-token",
+        "refresh-oauth-token",
+        "delete-session",
+        "get-user",
+        "update-user",
+    ),
+)
+def test_auth_request_keeps_its_captured_session_when_transport_becomes_available(
+    operation: Callable[[Auth], object],
+) -> None:
+    old_session = Session("old-access", "old-refresh", USER_A)
+    new_session = Session("new-access", "new-refresh", "other-user")
+    binding = (0, SessionOperations(old_session), old_session)
+    replacement = (1, SessionOperations(new_session), new_session)
+    current = binding
+    requests: list[httpx.Request] = []
+
+    def capture() -> tuple[int, SessionOperations, Session | None]:
+        return current
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200, json={"user": {"id": new_session.user_id, "email": "new@example.com"}}
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    def replace_before_request() -> Transport:
+        nonlocal current
+        current = replacement
+        return transport
+
+    def unused(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail("the stale request must not reach another client operation")
+
+    auth = Auth(
+        AuthContext(
+            transport=replace_before_request,
+            current_session=unused,
+            anon_token=unused,
+            api_base_url=unused,
+            set_session=unused,
+            capture_session=unused,
+            capture_session_binding=capture,
+            update_session_user_if_current=unused,
+            set_session_if_current=unused,
+            clear_session_if_current=unused,
+            subscribe_auth_state_change=unused,
+        )
+    )
+
+    with pytest.raises(SessionChangedError):
+        _ = operation(auth)
+
+    assert requests == []
+    assert current is replacement
 
 
 def test_refresh_adopts_an_already_completed_refresh_without_rotating_again() -> None:

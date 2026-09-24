@@ -14,6 +14,7 @@ from volcano_sdk import (
     VolcanoClient,
     VolcanoError,
 )
+from volcano_sdk import client as client_module
 from volcano_sdk._transport import GeneratedTransport
 
 if TYPE_CHECKING:
@@ -48,6 +49,30 @@ def token_client(
             httpx_transport=httpx.MockTransport(handler),
         ),
     )
+
+
+def test_default_api_url_is_used_for_hosted_auth_urls() -> None:
+    client = VolcanoClient(anon_key="anon")
+    assert client.auth.get_hosted_auth_url(project_id="project", state="state") == (
+        "https://api.volcano.dev/projects/project/auth/hosted"
+        "?action=login&anon_key=anon&state=state"
+    )
+
+
+def test_default_transport_uses_the_documented_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[tuple[str, float]] = []
+    transport_type = GeneratedTransport
+
+    def make_transport(*, api_url: str, timeout: float) -> GeneratedTransport:
+        observed.append((api_url, timeout))
+        return transport_type(api_url=api_url, timeout=timeout)
+
+    monkeypatch.setattr(client_module, "GeneratedTransport", make_transport)
+    _ = VolcanoClient(anon_key="anon")
+
+    assert observed == [("https://api.volcano.dev", 60.0)]
 
 
 def test_token_bootstrap_is_local_until_profile_validation() -> None:

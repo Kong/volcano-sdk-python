@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import httpx
@@ -8,6 +9,7 @@ from test_auth_facade_recovery import client_for
 
 from volcano_sdk import VolcanoError
 from volcano_sdk._generated.models import (
+    AuthGetUserResponse200,
     AuthListOAuthProvidersResponse200,
     AuthListOAuthProvidersResponse200ProvidersItem,
 )
@@ -18,9 +20,12 @@ from volcano_sdk.auth import (
     _oauth_api_data_from_payload,
     _oauth_link_from_payload,
     _oauth_provider_token_status_from_payload,
+    _oauth_state,
     _optional_session_string,
+    _session_from_payload,
     _session_page_from_payload,
     _sign_up_result_from_payload,
+    _user_from_payload,
 )
 
 if TYPE_CHECKING:
@@ -68,6 +73,46 @@ def test_oauth_rejects_oversized_state_before_exchanging_a_code() -> None:
         )
     assert client.current_session is original
     assert requests == []
+
+
+def test_oauth_accepts_the_maximum_state_length() -> None:
+    state = "s" * 255
+    assert _oauth_state(state) == state
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        42,
+        {
+            "access_token": "access",
+            "refresh_token": "refresh",
+            "user": [],
+        },
+    ],
+)
+def test_session_parser_rejects_nonmapping_payloads(payload: object) -> None:
+    with pytest.raises(ValueError, match="Expected a complete Session"):
+        _ = _session_from_payload(payload)
+
+
+def test_profile_parser_preserves_a_ban_without_a_project_id() -> None:
+    banned_until = datetime.fromisoformat("2026-10-01T12:00:00+00:00")
+    payload = AuthGetUserResponse200.from_dict(
+        {
+            "user": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "email": "user@example.com",
+                "status": "active",
+                "banned_until": banned_until.isoformat(),
+            }
+        }
+    )
+
+    profile, _ = _user_from_payload(payload)
+
+    assert profile.project_id is None
+    assert profile.banned_until == banned_until
 
 
 @pytest.mark.parametrize(

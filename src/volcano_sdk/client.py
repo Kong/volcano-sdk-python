@@ -11,7 +11,7 @@ from uuid import UUID
 from ._session import validate_refresh_identity
 from ._session_operations import SessionOperations
 from ._transport import GeneratedTransport, Transport
-from .auth import Auth
+from .auth import Auth, AuthContext
 from .database import Database
 from .durable import Durable
 from .errors import AuthenticationError
@@ -127,7 +127,27 @@ class VolcanoClient:
             if _transport is not None
             else GeneratedTransport(api_url=self._api_url, timeout=timeout)
         )
-        self.auth: Auth = Auth(self)
+
+        def capture_auth_session_binding() -> tuple[
+            int, SessionOperations, Session | None
+        ]:
+            return self._capture_session_binding()
+
+        self.auth: Auth = Auth(
+            AuthContext(
+                transport=lambda: self._transport,
+                current_session=lambda: self.current_session,
+                anon_token=self._anon_token,
+                api_base_url=self._api_base_url,
+                set_session=self._set_session,
+                capture_session=self._capture_session,
+                capture_session_binding=capture_auth_session_binding,
+                update_session_user_if_current=self._update_session_user_if_current,
+                set_session_if_current=self._set_session_if_current,
+                clear_session_if_current=self._clear_session_if_current,
+                subscribe_auth_state_change=self._subscribe_auth_state_change,
+            )
+        )
         self.functions: Functions = Functions(self)
         self.durable: Durable = Durable(self)
         self.logs: Logs = Logs(self)

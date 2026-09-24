@@ -6,7 +6,7 @@ import secrets
 from collections.abc import Mapping
 from contextlib import suppress
 from copy import deepcopy
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
@@ -431,38 +431,17 @@ def _oauth_api_data_from_payload(payload: object) -> JSONValue:
     return _freeze_json(cast("JSONValue", payload.data))
 
 
-class AuthContext(Protocol):
-    """Client capabilities required by the authentication facade."""
-
-    _transport: Transport
-
-    @property
-    def current_session(self) -> Session | None:
-        """The locally held session, if one exists."""
-        ...
-
-    def _anon_token(self) -> str: ...
-
-    def _api_base_url(self) -> str: ...
-
-    def _set_session(
+class _SetSession(Protocol):
+    def __call__(
         self,
         session: Session,
         *,
         event: AuthChangeEvent | None = "SIGNED_IN",
     ) -> None: ...
 
-    def _capture_session(self) -> tuple[int, Session | None]: ...
 
-    def _capture_session_binding(
-        self,
-    ) -> tuple[int, SessionOperations, Session | None]: ...
-
-    def _update_session_user_if_current(
-        self, user: Mapping[str, JSONValue], generation: int
-    ) -> bool: ...
-
-    def _set_session_if_current(
+class _SetSessionIfCurrent(Protocol):
+    def __call__(
         self,
         session: Session,
         generation: int,
@@ -471,7 +450,9 @@ class AuthContext(Protocol):
         notifications: list[Callable[[], None]] | None = None,
     ) -> bool: ...
 
-    def _clear_session_if_current(
+
+class _ClearSessionIfCurrent(Protocol):
+    def __call__(
         self,
         generation: int,
         *,
@@ -480,10 +461,22 @@ class AuthContext(Protocol):
         notifications: list[Callable[[], None]] | None = None,
     ) -> bool: ...
 
-    def _subscribe_auth_state_change(
-        self,
-        callback: AuthStateCallback,
-    ) -> AuthSubscription: ...
+
+@dataclass(frozen=True, slots=True)
+class AuthContext:
+    """Typed client operations required by the authentication facade."""
+
+    transport: Callable[[], Transport]
+    current_session: Callable[[], Session | None]
+    anon_token: Callable[[], str]
+    api_base_url: Callable[[], str]
+    set_session: _SetSession
+    capture_session: Callable[[], tuple[int, Session | None]]
+    capture_session_binding: Callable[[], tuple[int, SessionOperations, Session | None]]
+    update_session_user_if_current: Callable[[Mapping[str, JSONValue], int], bool]
+    set_session_if_current: _SetSessionIfCurrent
+    clear_session_if_current: _ClearSessionIfCurrent
+    subscribe_auth_state_change: Callable[[AuthStateCallback], AuthSubscription]
 
 
 class Auth:
@@ -501,7 +494,7 @@ class Auth:
             The immutable local session, or None when signed out.
 
         """
-        return self._client.current_session
+        return self._client.current_session()
 
     def on_auth_state_change(
         self,
@@ -517,7 +510,7 @@ class Auth:
 
         """
         require_callable(callback, _INVALID_AUTH_CALLBACK)
-        return self._client._subscribe_auth_state_change(callback)
+        return self._client.subscribe_auth_state_change(callback)
 
     def set_session(self, session: Session) -> Session:
         """Copy a complete session locally without notifying auth subscribers.
@@ -527,7 +520,7 @@ class Auth:
 
         """
         owned = _copy_complete_session(session)
-        self._client._set_session(owned, event=None)
+        self._client.set_session(owned, event=None)
         return owned
 
     def sign_up(
@@ -547,13 +540,13 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        generation, _ = self._client._capture_session()
-        transport = self._client._transport
+        generation, _ = self._client.capture_session()
+        transport = self._client.transport()
         if not isinstance(transport, AuthSignUpTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_signup,
-            authorization=self._client._anon_token(),
+            authorization=self._client.anon_token(),
             email=email,
             password=password,
             metadata=dict(metadata or {}),
@@ -579,17 +572,17 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        generation, _ = self._client._capture_session()
-        transport = self._client._transport
+        generation, _ = self._client.capture_session()
+        transport = self._client.transport()
         if not isinstance(transport, AuthSignUpAnonymousTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_signup_anonymous,
-            authorization=self._client._anon_token(),
+            authorization=self._client.anon_token(),
             metadata=dict(metadata or {}),
         )
         session = _session_from_payload(response_payload(response, 201))
-        if not self._client._set_session_if_current(session, generation):
+        if not self._client.set_session_if_current(session, generation):
             raise SessionChangedError
         return session
 
@@ -610,10 +603,10 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthConvertAnonymousTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         request_metadata = deepcopy(dict(metadata or {}))
@@ -636,12 +629,12 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthForgotPasswordTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_forgot_password,
-            authorization=self._client._anon_token(),
+            authorization=self._client.anon_token(),
             email=email,
         )
         _ = response_payload(response, 200)
@@ -657,10 +650,10 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthRequestEmailChangeTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
@@ -683,10 +676,10 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthCancelEmailChangeTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
@@ -710,10 +703,10 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthConfirmEmailChangeTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
@@ -734,10 +727,10 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthDeleteAllMySessionsTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
@@ -761,10 +754,10 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthGetMySessionsTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
@@ -791,10 +784,10 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthListOAuthProvidersTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
@@ -831,12 +824,12 @@ class Auth:
         query = urlencode(
             {
                 "action": action,
-                "anon_key": self._client._anon_token(),
+                "anon_key": self._client.anon_token(),
                 "state": auth_state,
             }
         )
         return (
-            f"{self._client._api_base_url()}/projects/{quote(project, safe='')}"
+            f"{self._client.api_base_url()}/projects/{quote(project, safe='')}"
             f"/auth/hosted?{query}"
         )
 
@@ -855,7 +848,7 @@ class Auth:
         """
         _validate_hosted_auth_callback_state(state, expected_state)
         owned = _copy_complete_session(session)
-        self._client._set_session(owned)
+        self._client.set_session(owned)
         return owned
 
     def sign_in_with_oauth(
@@ -875,11 +868,11 @@ class Auth:
 
         """
         provider_name = _oauth_provider_name(provider)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthOAuthAuthorizationURLTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         return transport.auth_oauth_authorization_url(
-            anon_key=self._client._anon_token(),
+            anon_key=self._client.anon_token(),
             provider=provider_name,
             redirect_url=_oauth_parameter(redirect_to),
             client_state=_oauth_state(state),
@@ -904,18 +897,18 @@ class Auth:
 
         """
         _validate_oauth_callback_state(state, expected_state)
-        generation, _ = self._client._capture_session()
-        transport = self._client._transport
+        generation, _ = self._client.capture_session()
+        transport = self._client.transport()
         if not isinstance(transport, AuthOAuthExchangeTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_oauth_exchange,
-            authorization=self._client._anon_token(),
+            authorization=self._client.anon_token(),
             code=_oauth_parameter(code),
             redirect_url=_oauth_parameter(redirect_to),
         )
         session = _session_from_payload(response_payload(response, 200))
-        if not self._client._set_session_if_current(session, generation):
+        if not self._client.set_session_if_current(session, generation):
             raise SessionChangedError
         return session
 
@@ -931,10 +924,10 @@ class Auth:
 
         """
         provider_name = _oauth_provider_name(provider)
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthLinkOAuthProviderTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
@@ -958,10 +951,10 @@ class Auth:
 
         """
         provider_name = _oauth_provider_name(provider)
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthUnlinkOAuthProviderTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
@@ -991,10 +984,10 @@ class Auth:
 
         """
         provider_name = _oauth_provider_name(provider)
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthGetOAuthProviderTokenTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
@@ -1027,10 +1020,10 @@ class Auth:
 
         """
         provider_name = _oauth_provider_name(provider)
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthRefreshOAuthProviderTokenTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
@@ -1067,10 +1060,10 @@ class Auth:
         """
         provider_name = _oauth_provider_name(provider)
         request_method = _oauth_api_method(method)
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthCallOAuthAPITransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         request_body = deepcopy(dict(body)) if body is not None else None
@@ -1099,7 +1092,7 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         generation, lineage, current = binding
         if current is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
@@ -1108,7 +1101,7 @@ class Auth:
             current_session_id is not None
             and current_session_id.casefold() == session_id.casefold()
         )
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthDeleteMySessionTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         try:
@@ -1122,7 +1115,7 @@ class Auth:
             )
             _ = response_payload(response, 204)
         except TransportError as error:
-            if deletes_current and not self._client._clear_session_if_current(
+            if deletes_current and not self._client.clear_session_if_current(
                 generation, lineage=lineage
             ):
                 raise SessionChangedError from error
@@ -1137,10 +1130,10 @@ class Auth:
     ) -> None:
         generation, lineage, _ = binding
         if deletes_current:
-            if not self._client._clear_session_if_current(generation, lineage=lineage):
+            if not self._client.clear_session_if_current(generation, lineage=lineage):
                 raise SessionChangedError
             return
-        _, active_lineage, active_session = self._client._capture_session_binding()
+        _, active_lineage, active_session = self._client.capture_session_binding()
         if active_lineage is not lineage or active_session is None:
             raise SessionChangedError
 
@@ -1151,12 +1144,12 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthConfirmEmailTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_confirm_email,
-            authorization=self._client._anon_token(),
+            authorization=self._client.anon_token(),
             token=token,
         )
         _ = response_payload(response, 200)
@@ -1168,12 +1161,12 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthResendConfirmationTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_resend_confirmation,
-            authorization=self._client._anon_token(),
+            authorization=self._client.anon_token(),
             email=email,
         )
         _ = response_payload(response, 200)
@@ -1185,12 +1178,12 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthResetPasswordTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
             transport.auth_reset_password,
-            authorization=self._client._anon_token(),
+            authorization=self._client.anon_token(),
             token=token,
             new_password=new_password,
         )
@@ -1201,7 +1194,7 @@ class Auth:
     ) -> User:
         generation = self._owned_refresh_session(binding)[0]
         user, snapshot = _user_from_payload(payload)
-        if not self._client._update_session_user_if_current(snapshot, generation):
+        if not self._client.update_session_user_if_current(snapshot, generation):
             raise SessionChangedError
         return user
 
@@ -1216,10 +1209,10 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthGetUserTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = self._session_request(
@@ -1246,10 +1239,10 @@ class Auth:
             TypeError: The transport does not support this authentication operation.
 
         """
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise AuthenticationError(_NO_ACTIVE_SESSION)
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthUpdateUserTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         request_metadata = None if metadata is None else deepcopy(dict(metadata))
@@ -1271,23 +1264,23 @@ class Auth:
             The authenticated session stored by the client.
 
         """
-        generation, _ = self._client._capture_session()
+        generation, _ = self._client.capture_session()
         return self._sign_in_for_generation(email, password, generation)
 
     def _sign_in_for_generation(
         self, email: str, password: str, generation: int
     ) -> Session:
-        if self._client._capture_session()[0] != generation:
+        if self._client.capture_session()[0] != generation:
             raise SessionChangedError
         response = invoke(
-            self._client._transport.auth_signin,
-            authorization=self._client._anon_token(),
+            self._client.transport().auth_signin,
+            authorization=self._client.anon_token(),
             email=email,
             password=password,
         )
         payload = response_payload(response, 200)
         session = _session_from_payload(payload)
-        if not self._client._set_session_if_current(session, generation):
+        if not self._client.set_session_if_current(session, generation):
             raise SessionChangedError
         return session
 
@@ -1298,9 +1291,7 @@ class Auth:
             The current session after completing or joining its refresh.
 
         """
-        return self._refresh_session_for_binding(
-            self._client._capture_session_binding()
-        )
+        return self._refresh_session_for_binding(self._client.capture_session_binding())
 
     def _session_request(
         self,
@@ -1309,7 +1300,7 @@ class Auth:
         binding: tuple[int, SessionOperations, Session | None] | None = None,
     ) -> TransportResponse:
         if binding is None:
-            binding = self._client._capture_session_binding()
+            binding = self._client.capture_session_binding()
         if binding[2] is None:
             raise RuntimeError(_NO_ACTIVE_SESSION)
         owned = self._owned_refresh_session(binding)
@@ -1369,7 +1360,7 @@ class Auth:
         self, binding: tuple[int, SessionOperations, Session | None]
     ) -> tuple[int, SessionOperations, Session]:
         generation, lineage, _ = binding
-        active = self._client._capture_session_binding()
+        active = self._client.capture_session_binding()
         if (
             self._rejected_refresh == (generation, lineage)
             and active[0] == generation + 1
@@ -1402,7 +1393,7 @@ class Auth:
         validate_refresh_identity(current, refreshed)
         owner.verify_pair(refreshed)
         if owner.signing_out is None:
-            _ = self._client._set_session_if_current(
+            _ = self._client.set_session_if_current(
                 refreshed,
                 generation,
                 event="TOKEN_REFRESHED",
@@ -1427,20 +1418,20 @@ class Auth:
                 owner.verify_pair(current)
             raise
         except AuthenticationError:
-            if owner.signing_out is None and self._client._clear_session_if_current(
+            if owner.signing_out is None and self._client.clear_session_if_current(
                 generation, notifications=notifications
             ):
                 self._rejected_refresh = (generation, owner)
             raise
 
     def _request_refreshed_session(self, refresh_token: str) -> Session:
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthRefreshTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         try:
             response = invoke(
                 transport.auth_refresh,
-                authorization=self._client._anon_token(),
+                authorization=self._client.anon_token(),
                 refresh_token=refresh_token,
             )
             return _session_from_payload(response_payload(response, 200))
@@ -1449,7 +1440,7 @@ class Auth:
 
     def sign_out(self) -> None:
         """Revoke and clear the current session."""
-        binding = self._client._capture_session_binding()
+        binding = self._client.capture_session_binding()
         if binding[2] is None:
             binding[1].wait_for_sign_out()
             return
@@ -1482,7 +1473,7 @@ class Auth:
             )
         except VolcanoError as caught:
             error = caught
-        if not self._client._clear_session_if_current(
+        if not self._client.clear_session_if_current(
             generation, lineage=owner, notifications=notifications
         ):
             raise SessionChangedError from error
@@ -1507,12 +1498,12 @@ class Auth:
         if refresh_error is not None and not verified:
             raise refresh_error
         if session.refresh_token is not None:
-            transport = self._client._transport
+            transport = self._client.transport()
             if not isinstance(transport, AuthLogoutTransport):
                 raise TypeError(_INVALID_AUTH_TRANSPORT)
             response = invoke(
                 transport.auth_logout,
-                authorization=self._client._anon_token(),
+                authorization=self._client.anon_token(),
                 refresh_token=session.refresh_token,
             )
         else:
@@ -1527,7 +1518,7 @@ class Auth:
         *,
         joined: bool,
     ) -> None:
-        transport = self._client._transport
+        transport = self._client.transport()
         if not isinstance(transport, AuthDeleteMySessionTransport):
             raise TypeError(_INVALID_AUTH_TRANSPORT)
         response = invoke(
