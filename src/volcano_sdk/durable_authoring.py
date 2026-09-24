@@ -1155,10 +1155,11 @@ def _parse_duration(text: str, field_name: str) -> int:
     """
     parts: list[int] = []
     at = 0
-    while at < len(text):
-        if text[at] == " ":
-            at += 1
-            continue
+    # Each valid iteration consumes input, so its length bounds the scan.
+    for _ in text:
+        at = _scan(text, at, lambda char: char == " ")
+        if at == len(text):
+            break
         number_end = _scan(text, at, str.isdigit)
         unit_end = _scan(text, number_end, str.islower)
         unit = text[number_end:unit_end]

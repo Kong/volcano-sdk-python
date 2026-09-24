@@ -20,6 +20,7 @@ from aws_durable_execution_sdk_python.config import (
     Duration,
     MapConfig,
     ParallelConfig,
+    StepConfig,
     StepSemantics,
 )
 from aws_durable_execution_sdk_python.config import (
@@ -794,6 +795,17 @@ def test_at_most_once_runs_the_step_once() -> None:
         return ctx.step("charge", lambda _scope: "charged", at_most_once=True)
 
     assert run_handler(handler) == "charged"
+
+
+def test_step_uses_at_least_once_semantics_by_default() -> None:
+    runtime = RecordingContext()
+    context = DurableContext(runtime, durable_authoring._Engine())
+
+    with pytest.raises(AssertionError, match="unexpected runtime operation"):
+        _ = context.step("default", lambda _scope: None)
+
+    assert isinstance(runtime.config, StepConfig)
+    assert runtime.config.step_semantics is StepSemantics.AT_LEAST_ONCE_PER_RETRY
 
 
 def test_wait_until_polls_until_the_condition_holds() -> None:

@@ -111,7 +111,8 @@ class RecordingContext:
         name: str | None,
         config: object,
     ) -> T:
-        _ = (func, name, config)
+        _ = (func, name)
+        self.config = config
         raise AssertionError(_UNEXPECTED_OPERATION)
 
     def wait(self, duration: object, name: str | None = None) -> None:
