@@ -14,13 +14,15 @@ from volcano_sdk import (
     Session,
     VolcanoClient,
 )
-from volcano_sdk import realtime as realtime_module
+from volcano_sdk import _realtime_transport as realtime_transport
+from volcano_sdk._realtime_transport import (
+    VolcanoCentrifugeConnection,
+    centrifuge_client,
+    native_presence_clients,
+)
 from volcano_sdk.realtime import (
-    _centrifuge_client,
     _ClientEvents,
-    _native_presence_clients,
     _presence_info,
-    _VolcanoCentrifugeConnection,
     _wait_subscription,
 )
 
@@ -145,7 +147,7 @@ def test_native_adapter_rejects_an_incompatible_subscription_registry(
     monkeypatch.delattr(native, "_subs")
 
     with pytest.raises(TypeError, match="subscription registry"):
-        _ = _VolcanoCentrifugeConnection(native)
+        _ = VolcanoCentrifugeConnection(native)
 
 
 def test_native_adapter_rejects_non_string_subscription_keys(
@@ -155,11 +157,11 @@ def test_native_adapter_rejects_non_string_subscription_keys(
     monkeypatch.setattr(native, "_subs", {1: object()})
 
     with pytest.raises(TypeError, match="subscription registry"):
-        _ = _VolcanoCentrifugeConnection(native)
+        _ = VolcanoCentrifugeConnection(native)
 
 
 def test_native_presence_rejects_non_string_client_keys() -> None:
-    assert _native_presence_clients({"known": object(), 1: object()}) is None
+    assert native_presence_clients({"known": object(), 1: object()}) is None
 
 
 def test_native_presence_sanitizes_missing_client_and_invalid_user() -> None:
@@ -171,13 +173,13 @@ def test_native_presence_sanitizes_missing_client_and_invalid_user() -> None:
 
 async def test_default_factory_constructs_the_installed_centrifuge_client() -> None:
     realtime = VolcanoClient(anon_key="anon").realtime
-    native = _centrifuge_client(
+    native = centrifuge_client(
         "wss://realtime.example.test/realtime/v1/websocket",
         events=_ClientEvents(realtime),
         token="access",
         get_token=realtime._token,
     )
-    connection = _VolcanoCentrifugeConnection(native)
+    connection = VolcanoCentrifugeConnection(native)
 
     assert not connection.is_connected
     await connection.disconnect()
@@ -205,10 +207,10 @@ def test_default_factory_passes_connection_settings_to_centrifuge(
         received.extend((supplied_address, events, token, get_token))
         return native
 
-    monkeypatch.setattr(realtime_module, "Client", construct)
+    monkeypatch.setattr(realtime_transport, "Client", construct)
 
     assert (
-        _centrifuge_client(
+        centrifuge_client(
             address,
             events=events,
             token="initial-access",

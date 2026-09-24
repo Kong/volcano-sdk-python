@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import pytest
 
-from volcano_sdk.realtime import (
-    _ProjectAwareSubscriptions,
-    _VolcanoCentrifugeConnection,
+from volcano_sdk._realtime_transport import (
+    ProjectAwareSubscriptions,
+    VolcanoCentrifugeConnection,
 )
 
 from .test_realtime import FakeCentrifugeClient
 
 
 def test_subscription_lookup_preserves_exact_and_most_specific_matches() -> None:
-    subscriptions = _ProjectAwareSubscriptions[str](
+    subscriptions = ProjectAwareSubscriptions[str](
         {"room": "short", "broadcast:room": "specific", "project:room": "exact"}
     )
 
@@ -21,7 +21,7 @@ def test_subscription_lookup_preserves_exact_and_most_specific_matches() -> None
 
 
 def test_subscription_lookup_preserves_missing_defaults() -> None:
-    subscriptions = _ProjectAwareSubscriptions[str]({"room": "subscription"})
+    subscriptions = ProjectAwareSubscriptions[str]({"room": "subscription"})
 
     assert subscriptions.get("missing") is None
     assert subscriptions.get("missing", 0) == 0
@@ -32,7 +32,7 @@ def test_native_adapter_preserves_existing_subscription_identity() -> None:
     native = FakeCentrifugeClient()
     subscription = native.new_subscription("broadcast:room", events=None)
 
-    _ = _VolcanoCentrifugeConnection(native)
+    _ = VolcanoCentrifugeConnection(native)
 
     assert native._subs.get("project:broadcast:room") is subscription
 
@@ -45,6 +45,6 @@ def test_native_adapter_rejects_incompatible_registry_without_replacing_it(
     monkeypatch.setattr(native, "_subs", registry)
 
     with pytest.raises(TypeError, match="subscription registry"):
-        _ = _VolcanoCentrifugeConnection(native)
+        _ = VolcanoCentrifugeConnection(native)
 
     assert native._subs is registry

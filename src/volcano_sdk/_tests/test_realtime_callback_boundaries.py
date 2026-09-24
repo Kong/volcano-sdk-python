@@ -7,10 +7,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from volcano_sdk import PostgresChange, RealtimeConnectContext, Session, VolcanoClient
+from volcano_sdk._realtime_transport import (
+    consume_presence_result,
+    finish_unsubscribe,
+)
 from volcano_sdk.realtime import (
     _CallbackDelivery,
-    _consume_presence_result,
-    _finish_unsubscribe,
 )
 
 from .fixtures.invalid_realtime_callback import register_non_callable
@@ -47,7 +49,7 @@ async def test_connection_queue_overflow_reports_the_dropped_callback(
     limit = realtime._connection_callback_queue.maxsize
     for index in range(limit + 1):
         realtime._enqueue_connection_callbacks(
-            "connect", RealtimeConnectContext(client=str(index))
+            RealtimeConnectContext(client=str(index))
         )
 
     await asyncio.wait_for(realtime._connection_callback_queue.join(), timeout=2)
@@ -65,7 +67,7 @@ async def test_removed_connection_listener_does_not_block_later_listeners() -> N
     _ = realtime.on_connect(received.append)
     context = RealtimeConnectContext(client="connected")
 
-    realtime._enqueue_connection_callbacks("connect", context)
+    realtime._enqueue_connection_callbacks(context)
     stop_first()
     await asyncio.wait_for(realtime._connection_callback_queue.join(), timeout=0.2)
 
@@ -86,14 +88,10 @@ async def test_connection_callbacks_keep_order_while_a_listener_is_running() -> 
         received.append(context.client)
 
     _ = realtime.on_connect(observe)
-    realtime._enqueue_connection_callbacks(
-        "connect", RealtimeConnectContext(client="first")
-    )
+    realtime._enqueue_connection_callbacks(RealtimeConnectContext(client="first"))
     try:
         _ = await asyncio.wait_for(entered.wait(), timeout=0.2)
-        realtime._enqueue_connection_callbacks(
-            "connect", RealtimeConnectContext(client="second")
-        )
+        realtime._enqueue_connection_callbacks(RealtimeConnectContext(client="second"))
         await asyncio.sleep(0)
         assert received == []
     finally:
@@ -112,7 +110,7 @@ async def test_detached_presence_query_exception_is_consumed(
     task = asyncio.create_task(fail())
     await asyncio.sleep(0)
     assert task.done()
-    _consume_presence_result(task)
+    consume_presence_result(task)
     del task
     _ = gc.collect()
     await asyncio.sleep(0)
@@ -130,7 +128,7 @@ async def test_cancelled_unsubscribe_consumes_a_native_failure(
     await asyncio.sleep(0)
     assert task.done()
     with pytest.raises(asyncio.CancelledError):
-        _finish_unsubscribe(task, asyncio.CancelledError("caller cancelled"))
+        finish_unsubscribe(task, asyncio.CancelledError("caller cancelled"))
     del task
     _ = gc.collect()
     await asyncio.sleep(0)
@@ -260,7 +258,7 @@ async def test_removed_connection_callback_does_not_run_from_a_queued_event() ->
 
     _ = realtime.on_connect(remove_later_callback)
     unsubscribe = realtime.on_connect(received.append)
-    realtime._enqueue_connection_callbacks("connect", RealtimeConnectContext())
+    realtime._enqueue_connection_callbacks(RealtimeConnectContext())
 
     await asyncio.wait_for(realtime._connection_callback_queue.join(), timeout=2)
 
@@ -282,7 +280,7 @@ async def test_connection_callback_failure_does_not_interrupt_later_callbacks(
     _ = realtime.on_connect(fail)
     _ = realtime.on_connect(received.append)
     context = RealtimeConnectContext(client="connected")
-    realtime._enqueue_connection_callbacks("connect", context)
+    realtime._enqueue_connection_callbacks(context)
     await asyncio.wait_for(realtime._connection_callback_queue.join(), timeout=2)
 
     assert received == [context]

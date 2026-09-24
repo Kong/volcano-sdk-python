@@ -4,26 +4,32 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from itertools import count
 from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
     Literal,
-    Protocol,
     TypeAlias,
     TypeVar,
-    overload,
 )
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 
-from centrifuge import CentrifugeError, Client
+from centrifuge import CentrifugeError, ClientEventHandler
 from typing_extensions import override
 
-from ._callbacks import require_callable
 from ._database_response import database_rows
 from ._json_values import freeze_json
+import volcano_sdk._realtime_transport as _native
+
+from ._realtime_callbacks import (
+    CallbackBatch,
+    ConnectionDelivery,
+    DynamicCallback,
+    Invocation,
+    register_callback,
+)
 from ._realtime_fetch_worker import (
     PostgresFetchJob,
     PostgresFetchOutcome,
@@ -32,7 +38,6 @@ from ._realtime_fetch_worker import (
 )
 from ._transport import (
     AsyncDatabaseSelectTransport,
-    Transport,
     invoke_async,
     response_payload,
 )
@@ -44,14 +49,18 @@ if TYPE_CHECKING:
     from ._session_operations import SessionOperations
     from .models import Session
 
+CentrifugeConnection: TypeAlias = _native.CentrifugeConnection
+CentrifugeFactory: TypeAlias = _native.CentrifugeFactory
+CentrifugeSubscription: TypeAlias = _native.CentrifugeSubscription
+Publication: TypeAlias = _native.Publication
+PublicationContext: TypeAlias = _native.PublicationContext
+RealtimeContext: TypeAlias = _native.RealtimeContext
+
 _PostgresFetchRequest: TypeAlias = PostgresFetchRequest
-_SubscriptionT = TypeVar("_SubscriptionT")
-_DefaultT = TypeVar("_DefaultT")
 _MessageT = TypeVar("_MessageT")
 
 MessageCallback: TypeAlias = Callable[[_MessageT], object]
 RealtimeCallback: TypeAlias = Callable[[_MessageT], object]
-_StoredCallback = Callable[..., object]
 UnsubscribeCallback = Callable[[], None]
 ChannelType: TypeAlias = Literal["broadcast", "presence", "postgres"]
 PostgresEvent: TypeAlias = Literal["INSERT", "UPDATE", "DELETE"]
@@ -95,11 +104,6 @@ def _freeze_mapping(value: Mapping[str, JSONValue]) -> Mapping[str, JSONValue]:
     return MappingProxyType({key: freeze_json(item) for key, item in value.items()})
 
 
-def _consume_presence_result(task: asyncio.Task[object]) -> None:
-    if not task.cancelled():
-        _ = task.exception()
-
-
 def _validate_channel_type(channel_type: str) -> ChannelType:
     if channel_type == "broadcast":
         return "broadcast"
@@ -109,17 +113,6 @@ def _validate_channel_type(channel_type: str) -> ChannelType:
         return "postgres"
     message = f"unsupported realtime channel type: {channel_type}"
     raise ValueError(message)
-
-
-def _postgres_route_matches(candidate: str, publication: str) -> bool:
-    candidate_parts = candidate.split(":")
-    publication_parts = publication.split(":")
-    return (
-        len(candidate_parts) == POSTGRES_CHANNEL_SEGMENTS
-        and candidate_parts[0] == "postgres"
-        and len(publication_parts) == POSTGRES_PUBLICATION_SEGMENTS
-        and publication_parts[1:4] == candidate_parts
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,20 +263,12 @@ def _is_postgres_event(value: object) -> TypeGuard[PostgresEvent]:
     return isinstance(value, str) and value in POSTGRES_EVENTS
 
 
-def _is_object_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
-    return isinstance(value, Mapping)
-
-
-def _is_object_dict(value: object) -> TypeGuard[dict[object, object]]:
-    return isinstance(value, dict)
-
-
 def _is_object_sequence(value: object) -> TypeGuard[list[object] | tuple[object, ...]]:
     return isinstance(value, (list, tuple))
 
 
 def _postgres_change(data: object) -> PostgresChange | None:
-    if not _is_object_mapping(data):
+    if not _native.is_object_mapping(data):
         return None
     event = data.get("type")
     schema = data.get("schema")
@@ -342,151 +327,12 @@ def _postgres_columns(value: object) -> tuple[bool, tuple[str, ...] | None]:
     return True, tuple(columns)
 
 
-class RealtimeContext(Protocol):
-    """Client capabilities required by realtime connections."""
-
-    _transport: Transport
-
-    def _anon_token(self) -> str: ...
-
-    def _session_token(self) -> str: ...
-
-    def _capture_session_binding(
-        self,
-    ) -> tuple[int, SessionOperations, Session | None]: ...
-
-
-class CentrifugeSubscription(Protocol):
-    """Centrifuge subscription operations used by the SDK."""
-
-    async def subscribe(self) -> None:
-        """Subscribe to the remote channel."""
-        ...
-
-    async def ready(self) -> None:
-        """Wait for acknowledgement using the client request timeout."""
-        ...
-
-    async def publish(self, data: object) -> object:
-        """Publish a payload to the remote channel."""
-        ...
-
-    async def unsubscribe(self) -> None:
-        """Unsubscribe from the remote channel."""
-        ...
-
-    async def presence(self) -> object:
-        """Return the clients currently present on the channel."""
-        ...
-
-
-async def _unsubscribe_native(subscription: CentrifugeSubscription) -> None:
-    # Finish the native stop before releasing the connection lock on cancellation.
-    task = asyncio.create_task(subscription.unsubscribe())
-    cancelled: asyncio.CancelledError | None = None
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as error:
-            cancelled = error
-        except CENTRIFUGE_ERROR:
-            if cancelled is None:
-                raise
-    _finish_unsubscribe(task, cancelled)
-
-
-def _finish_unsubscribe(
-    task: asyncio.Task[None],
-    cancelled: asyncio.CancelledError | None,
-) -> None:
-    if cancelled is not None:
-        if not task.cancelled():
-            _ = task.exception()
-        raise cancelled
-    task.result()
-
-
-class CentrifugeConnection(Protocol):
-    """Centrifuge connection operations used by the SDK."""
-
-    @property
-    def state(self) -> object:
-        """Return the native connection state."""
-        ...
-
-    async def connect(self) -> None:
-        """Open the remote connection."""
-        ...
-
-    async def disconnect(self) -> None:
-        """Close the remote connection."""
-        ...
-
-    def new_subscription(
-        self,
-        name: str,
-        /,
-        *,
-        events: object,
-        join_leave: bool,
-        recoverable: bool,
-    ) -> CentrifugeSubscription:
-        """Create a subscription for a remote channel."""
-        ...
-
-    def remove_subscription(self, subscription: CentrifugeSubscription, /) -> None:
-        """Remove an unsubscribed channel from the connection registry."""
-        ...
-
-
-class CentrifugeFactory(Protocol):
-    """Construct a typed Centrifuge connection."""
-
-    def __call__(
-        self,
-        address: str,
-        *,
-        events: object,
-        token: str,
-        get_token: Callable[[], Awaitable[str]],
-    ) -> CentrifugeConnection:
-        """Construct a Centrifuge connection."""
-        ...
-
-
-class Publication(Protocol):
-    """Publication payload received from Centrifuge."""
-
-    data: object
-
-
-class PublicationContext(Protocol):
-    """Centrifuge callback context containing a publication."""
-
-    pub: Publication
-
-
-def _native_attribute(value: object, name: str, default: object = None) -> object:
-    return getattr(value, name, default)
-
-
-def _native_presence_clients(value: object) -> Mapping[str, object] | None:
-    if not _is_object_mapping(value):
-        return None
-    clients: dict[str, object] = {}
-    for client_id, info in value.items():
-        if not isinstance(client_id, str):
-            return None
-        clients[client_id] = info
-    return clients
-
-
 def _is_json_value(value: object) -> TypeGuard[JSONValue]:
     if value is None or isinstance(value, (str, int, float, bool)):
         return True
     if _is_object_sequence(value):
         return all(_is_json_value(item) for item in value)
-    if _is_object_mapping(value):
+    if _native.is_object_mapping(value):
         return all(
             isinstance(key, str) and _is_json_value(item) for key, item in value.items()
         )
@@ -494,7 +340,7 @@ def _is_json_value(value: object) -> TypeGuard[JSONValue]:
 
 
 def _is_json_record(value: object) -> TypeGuard[Mapping[str, JSONValue]]:
-    return _is_object_mapping(value) and all(
+    return _native.is_object_mapping(value) and all(
         isinstance(key, str) and _is_json_value(item) for key, item in value.items()
     )
 
@@ -503,88 +349,6 @@ def _checked_postgres_row(row: dict[str, object]) -> Mapping[str, JSONValue]:
     if not _is_json_record(row):
         raise TypeError(_INVALID_POSTGRES_ROW_VALUE)
     return row
-
-
-def _centrifuge_client(
-    address: str,
-    *,
-    events: object,
-    token: str,
-    get_token: Callable[[], Awaitable[str]],
-) -> CentrifugeConnection:
-    return Client(address, events=events, token=token, get_token=get_token)
-
-
-class _ProjectAwareSubscriptions(dict[str, _SubscriptionT]):
-    @overload
-    def get(self, key: str, default: None = None) -> _SubscriptionT | None: ...
-
-    @overload
-    def get(self, key: str, default: _SubscriptionT) -> _SubscriptionT: ...
-
-    @overload
-    def get(self, key: str, default: _DefaultT) -> _SubscriptionT | _DefaultT: ...
-
-    @override
-    def get(
-        self, key: str, default: _DefaultT | None = None
-    ) -> _SubscriptionT | _DefaultT | None:
-        subscription = super().get(key)
-        if subscription is not None:
-            return subscription
-        matches = [
-            (channel, candidate)
-            for channel, candidate in self.items()
-            if key.endswith(f":{channel}") or _postgres_route_matches(channel, key)
-        ]
-        return max(matches, key=lambda match: len(match[0]))[1] if matches else default
-
-
-def _project_subscriptions(value: object) -> _ProjectAwareSubscriptions[object]:
-    if not _is_object_dict(value):
-        raise TypeError(SUBSCRIPTION_REGISTRY_UNAVAILABLE)
-    subscriptions = _ProjectAwareSubscriptions[object]()
-    for channel, subscription in value.items():
-        if not isinstance(channel, str):
-            raise TypeError(SUBSCRIPTION_REGISTRY_UNAVAILABLE)
-        subscriptions[channel] = subscription
-    return subscriptions
-
-
-class _VolcanoCentrifugeConnection:
-    def __init__(self, connection: CentrifugeConnection) -> None:
-        self._connection: CentrifugeConnection = connection
-        state = vars(connection)
-        state["_subs"] = _project_subscriptions(state.get("_subs"))
-
-    async def connect(self) -> None:
-        await self._connection.connect()
-
-    async def disconnect(self) -> None:
-        await self._connection.disconnect()
-
-    @property
-    def is_connected(self) -> bool:
-        state = self._connection.state
-        return _native_attribute(state, "value") == "connected"
-
-    def new_subscription(
-        self,
-        name: str,
-        *,
-        events: object,
-        join_leave: bool,
-        recoverable: bool,
-    ) -> CentrifugeSubscription:
-        return self._connection.new_subscription(
-            name,
-            events=events,
-            join_leave=join_leave,
-            recoverable=recoverable,
-        )
-
-    def remove_subscription(self, subscription: CentrifugeSubscription) -> None:
-        self._connection.remove_subscription(subscription)
 
 
 class _ChannelEvents:
@@ -627,46 +391,47 @@ class _ChannelEvents:
 
     async def on_join(self, ctx: object) -> None:
         if self._is_current():
-            await self._channel._presence_join(_native_attribute(ctx, "info"))
+            await self._channel._presence_join(
+                _native.native_attribute(ctx, "info")
+            )
 
     async def on_leave(self, ctx: object) -> None:
         if self._is_current():
-            await self._channel._presence_leave(_native_attribute(ctx, "info"))
+            await self._channel._presence_leave(
+                _native.native_attribute(ctx, "info")
+            )
 
     async def on_error(self, ctx: object) -> None:
         del ctx
 
 
-class _ClientEvents:
+class _ClientEvents(ClientEventHandler):
     def __init__(self, realtime: Realtime) -> None:
         self._realtime: Realtime = realtime
 
-    async def on_connecting(self, ctx: object) -> None:
-        del ctx
-
+    @override
     async def on_connected(self, ctx: object) -> None:
-        client = _native_attribute(ctx, "client")
+        client = _native.native_attribute(ctx, "client")
         self._realtime._enqueue_connection_callbacks(
-            "connect",
             RealtimeConnectContext(client=client if isinstance(client, str) else None),
         )
 
+    @override
     async def on_disconnected(self, ctx: object) -> None:
-        code = _native_attribute(ctx, "code")
-        reason = _native_attribute(ctx, "reason")
+        code = _native.native_attribute(ctx, "code")
+        reason = _native.native_attribute(ctx, "reason")
         self._realtime._enqueue_connection_callbacks(
-            "disconnect",
             RealtimeDisconnectContext(
                 code=code if isinstance(code, int) else None,
                 reason=reason if isinstance(reason, str) else None,
             ),
         )
 
+    @override
     async def on_error(self, ctx: object) -> None:
-        code = _native_attribute(ctx, "code")
-        error = _native_attribute(ctx, "error")
+        code = _native.native_attribute(ctx, "code")
+        error = _native.native_attribute(ctx, "error")
         self._realtime._enqueue_connection_callbacks(
-            "error",
             RealtimeErrorContext(
                 code=code if isinstance(code, int) else None,
                 message=str(error) if error is not None else None,
@@ -674,41 +439,22 @@ class _ClientEvents:
             ),
         )
 
-    async def on_subscribed(self, ctx: object) -> None:
-        del ctx
-
-    async def on_subscribing(self, ctx: object) -> None:
-        del ctx
-
-    async def on_unsubscribed(self, ctx: object) -> None:
-        del ctx
-
-    async def on_publication(self, ctx: object) -> None:
-        del ctx
-
-    async def on_join(self, ctx: object) -> None:
-        del ctx
-
-    async def on_leave(self, ctx: object) -> None:
-        del ctx
-
 
 def _presence_info(info: object) -> RealtimePresenceInfo:
-    data = _native_attribute(info, "conn_info")
-    user = _native_attribute(info, "user")
+    data = _native.native_attribute(info, "conn_info")
+    user = _native.native_attribute(info, "user")
     typed_data = data if _is_json_record(data) else _empty_presence_data()
     return RealtimePresenceInfo(
-        client=str(_native_attribute(info, "client", "")),
+        client=str(_native.native_attribute(info, "client", "")),
         user=user if isinstance(user, str) else None,
         data=typed_data,
     )
 
 
 async def _run_connection_callback(
-    callback: _StoredCallback,
-    context: object,
+    callback: Invocation,
 ) -> None:
-    result = callback(context)
+    result = callback()
     if inspect.isawaitable(result):
         await result
 
@@ -740,7 +486,7 @@ class Channel:
         self._name: str = name
         self._type: ChannelType = channel_type
         self._fetch_config: _PostgresFetchConfig = fetch_config
-        self._callbacks: dict[str, list[_StoredCallback]] = {}
+        self._callbacks: dict[str, list[DynamicCallback]] = {}
         self._presence_state: dict[str, RealtimePresenceInfo] = {}
         self._presence_events: list[tuple[str, RealtimePresenceInfo]] = []
         self._presence_syncing: bool = False
@@ -948,7 +694,7 @@ class Channel:
         identity: _PostgresDeliveryIdentity,
     ) -> bool:
         _generation, lineage, session = (
-            self._realtime._client_context._capture_session_binding()
+            self._realtime._client_context.capture_session_binding()
         )
         return (
             self._subscribed
@@ -1208,7 +954,7 @@ class Channel:
 
     async def _run_callback(
         self,
-        callback: _StoredCallback,
+        callback: DynamicCallback,
         delivery: _CallbackDelivery,
     ) -> None:
         if not self._callback_delivery_is_current(delivery):
@@ -1397,28 +1143,30 @@ class Realtime:
         client: RealtimeContext,
         *,
         api_url: str,
-        client_factory: CentrifugeFactory = _centrifuge_client,
+        client_factory: CentrifugeFactory = _native.centrifuge_client,
     ) -> None:
         """Create a lazily connected realtime facade."""
         self._client_context: RealtimeContext = client
         self._api_url: str = api_url
         self._client_factory: CentrifugeFactory = client_factory
-        self._connection: _VolcanoCentrifugeConnection | None = None
+        self._connection: _native.VolcanoCentrifugeConnection | None = None
         self._connection_session_lineage: SessionOperations | None = None
         self._connection_access_token: str | None = None
         self._connection_lock: asyncio.Lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
         self._callback_tasks: set[asyncio.Task[None]] = set()
         self._removing_channels: set[str] = set()
-        self._connection_callbacks: dict[str, dict[int, _StoredCallback]] = {
-            "connect": {},
-            "disconnect": {},
-            "error": {},
-        }
+        self._connect_callbacks: dict[
+            int, Callable[[RealtimeConnectContext], object]
+        ] = {}
+        self._disconnect_callbacks: dict[
+            int, Callable[[RealtimeDisconnectContext], object]
+        ] = {}
+        self._error_callbacks: dict[int, Callable[[RealtimeErrorContext], object]] = {}
         self._callback_ids: Iterator[int] = count()
-        self._connection_callback_queue: asyncio.Queue[
-            tuple[str, object, tuple[int, ...]]
-        ] = asyncio.Queue(maxsize=CALLBACK_QUEUE_LIMIT)
+        self._connection_callback_queue: asyncio.Queue[ConnectionDelivery] = (
+            asyncio.Queue(maxsize=CALLBACK_QUEUE_LIMIT)
+        )
         self._connection_callback_task: asyncio.Task[None] | None = None
         self._database_name: str | None = None
 
@@ -1437,7 +1185,7 @@ class Realtime:
     ) -> tuple[Mapping[str, JSONValue] | None, ...]:
         first = requests[0]
         row_ids = [request.row_id for request in requests]
-        transport = self._client_context._transport
+        transport = self._client_context.transport()
         if not isinstance(transport, AsyncDatabaseSelectTransport):
             raise TypeError(_POSTGRES_QUERY_UNAVAILABLE)
         response = await invoke_async(
@@ -1473,7 +1221,9 @@ class Realtime:
             An idempotent function that removes this callback.
 
         """
-        return self._register_connection_callback("connect", callback)
+        return register_callback(
+            self._connect_callbacks, self._callback_ids, callback, CALLBACK_NOT_CALLABLE
+        )
 
     def on_disconnect(
         self, callback: Callable[[RealtimeDisconnectContext], object]
@@ -1486,7 +1236,12 @@ class Realtime:
             An idempotent function that removes this callback.
 
         """
-        return self._register_connection_callback("disconnect", callback)
+        return register_callback(
+            self._disconnect_callbacks,
+            self._callback_ids,
+            callback,
+            CALLBACK_NOT_CALLABLE,
+        )
 
     def on_error(
         self, callback: Callable[[RealtimeErrorContext], object]
@@ -1499,28 +1254,45 @@ class Realtime:
             An idempotent function that removes this callback.
 
         """
-        return self._register_connection_callback("error", callback)
+        return register_callback(
+            self._error_callbacks, self._callback_ids, callback, CALLBACK_NOT_CALLABLE
+        )
 
-    def _register_connection_callback(
+    def _connection_delivery(
         self,
-        event: str,
-        callback: _StoredCallback,
-    ) -> UnsubscribeCallback:
-        require_callable(callback, CALLBACK_NOT_CALLABLE)
-        callback_id = next(self._callback_ids)
-        self._connection_callbacks[event][callback_id] = callback
+        context: RealtimeConnectContext
+        | RealtimeDisconnectContext
+        | RealtimeErrorContext,
+    ) -> ConnectionDelivery:
+        if isinstance(context, RealtimeConnectContext):
+            return CallbackBatch(
+                "connect",
+                self._connect_callbacks,
+                tuple(self._connect_callbacks),
+                context,
+            )
+        if isinstance(context, RealtimeDisconnectContext):
+            return CallbackBatch(
+                "disconnect",
+                self._disconnect_callbacks,
+                tuple(self._disconnect_callbacks),
+                context,
+            )
+        return CallbackBatch(
+            "error", self._error_callbacks, tuple(self._error_callbacks), context
+        )
 
-        def unsubscribe() -> None:
-            _ = self._connection_callbacks[event].pop(callback_id, None)
-
-        return unsubscribe
-
-    def _enqueue_connection_callbacks(self, event: str, context: object) -> None:
-        callback_ids = tuple(self._connection_callbacks[event])
-        if not callback_ids:
+    def _enqueue_connection_callbacks(
+        self,
+        context: RealtimeConnectContext
+        | RealtimeDisconnectContext
+        | RealtimeErrorContext,
+    ) -> None:
+        batch = self._connection_delivery(context)
+        if batch.empty:
             return
         try:
-            self._connection_callback_queue.put_nowait((event, context, callback_ids))
+            self._connection_callback_queue.put_nowait(batch)
         except asyncio.QueueFull:
             asyncio.get_running_loop().call_exception_handler(
                 {"message": "Volcano realtime connection callback queue is full"}
@@ -1534,15 +1306,11 @@ class Realtime:
 
     async def _drain_connection_callbacks(self) -> None:
         while not self._connection_callback_queue.empty():
-            event, context, callback_ids = self._connection_callback_queue.get_nowait()
+            batch = self._connection_callback_queue.get_nowait()
             try:
-                callbacks = self._connection_callbacks[event]
-                for callback_id in callback_ids:
-                    callback = callbacks.get(callback_id)
-                    if callback is None:
-                        continue
+                for callback in batch.invocations():
                     (error,) = await asyncio.gather(
-                        _run_connection_callback(callback, context),
+                        _run_connection_callback(callback),
                         return_exceptions=True,
                     )
                     if isinstance(error, BaseException):
@@ -1552,7 +1320,7 @@ class Realtime:
                                     "Volcano realtime connection callback failed"
                                 ),
                                 "exception": error,
-                                "event": event,
+                                "event": batch.event,
                             }
                         )
             finally:
@@ -1672,7 +1440,7 @@ class Realtime:
         try:
             if subscription is not None:
                 # Native state must change before any cancellable local cleanup.
-                await _unsubscribe_native(subscription)
+                await _native.unsubscribe_native(subscription)
         finally:
             await channel._transport_lost()
         if subscription is not None and self._connection is not None:
@@ -1686,7 +1454,7 @@ class Realtime:
         return session.access_token
 
     def _session_for_lineage(self, expected_lineage: SessionOperations) -> Session:
-        _generation, lineage, session = self._client_context._capture_session_binding()
+        _generation, lineage, session = self._client_context.capture_session_binding()
         if session is None:
             raise RuntimeError(NO_ACTIVE_SESSION)
         if lineage != expected_lineage:
@@ -1709,22 +1477,22 @@ class Realtime:
         parsed = urlsplit(self._api_url)
         scheme = "wss" if parsed.scheme == "https" else "ws"
         query = urlencode(
-            {"apikey": self._client_context._anon_token()}, quote_via=quote
+            {"apikey": self._client_context.anon_token()}, quote_via=quote
         )
         return urlunsplit((scheme, parsed.netloc, "/realtime/v1/websocket", query, ""))
 
-    async def _connect(self) -> _VolcanoCentrifugeConnection:
+    async def _connect(self) -> _native.VolcanoCentrifugeConnection:
         async with self._connection_lock:
             return await self._connect_locked()
 
-    async def _connect_locked(self) -> _VolcanoCentrifugeConnection:
+    async def _connect_locked(self) -> _native.VolcanoCentrifugeConnection:
         if self._connection is not None:
             _ = self._session_for_lineage(self._connection_lineage())
             return self._connection
-        _generation, lineage, session = self._client_context._capture_session_binding()
+        _generation, lineage, session = self._client_context.capture_session_binding()
         if session is None:
             raise RuntimeError(NO_ACTIVE_SESSION)
-        connection = _VolcanoCentrifugeConnection(
+        connection = _native.VolcanoCentrifugeConnection(
             self._client_factory(
                 self._address(),
                 events=_ClientEvents(self),
@@ -1838,7 +1606,7 @@ class Realtime:
         try:
             # Native replies must settle even after the roster refresh is cancelled.
             query = asyncio.create_task(channel._subscription.presence())
-            query.add_done_callback(_consume_presence_result)
+            query.add_done_callback(_native.consume_presence_result)
             result = await asyncio.shield(query)
         except CENTRIFUGE_ERROR as error:
             await self._report_presence_sync_failure(channel, error)
@@ -1846,7 +1614,9 @@ class Realtime:
         except BaseException:
             await channel._abort_presence_sync()
             raise
-        clients = _native_presence_clients(_native_attribute(result, "clients"))
+        clients = _native.native_presence_clients(
+            _native.native_attribute(result, "clients")
+        )
         if clients is not None:
             await channel._complete_presence_sync(clients)
         else:
@@ -1860,9 +1630,8 @@ class Realtime:
         except BaseException:
             await channel._abort_presence_sync()
             raise
-        code = _native_attribute(error, "code")
+        code = _native.native_attribute(error, "code")
         self._enqueue_connection_callbacks(
-            "error",
             RealtimeErrorContext(
                 code=code if isinstance(code, int) else None,
                 message=str(error),
@@ -1885,7 +1654,7 @@ class Realtime:
             if not channel._paused:
                 channel._pause_delivery()
             if channel._subscription is not None:
-                await _unsubscribe_native(channel._subscription)
+                await _native.unsubscribe_native(channel._subscription)
 
     async def disconnect(self) -> None:
         """Disconnect and reset every channel managed by this facade."""

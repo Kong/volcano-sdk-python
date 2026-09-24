@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 import pytest
 from centrifuge import CentrifugeError, ClientState, Subscription, SubscriptionState
 from centrifuge import Client as NativeClient
+from centrifuge import client as native_client_module
 from hypothesis import given, seed
 from hypothesis import strategies as st
 from typing_extensions import override
@@ -26,6 +27,10 @@ from volcano_sdk import (
     VolcanoClient,
 )
 from volcano_sdk import realtime as realtime_module
+from volcano_sdk._realtime_transport import (
+    native_attribute,
+    postgres_route_matches,
+)
 
 from .fixtures.invalid_arguments import (
     fractional_fetch_window,
@@ -502,7 +507,7 @@ class FakeSubscription:
         )
 
     async def emit_join(self, info: object) -> None:
-        client = realtime_module._native_attribute(info, "client")
+        client = native_attribute(info, "client")
         if not isinstance(client, str):
             message = "expected presence client ID"
             raise TypeError(message)
@@ -510,7 +515,7 @@ class FakeSubscription:
         await self._events().on_join(SimpleNamespace(info=info))
 
     async def emit_leave(self, info: object) -> None:
-        client = realtime_module._native_attribute(info, "client")
+        client = native_attribute(info, "client")
         if not isinstance(client, str):
             message = "expected presence client ID"
             raise TypeError(message)
@@ -632,6 +637,21 @@ class FakeCentrifugeFactory:
         return self.client
 
 
+class SDKNativeSubscription(Subscription):
+    """Expose native lifecycle transitions to tests through protected-self access."""
+
+    async def process_publication(self, publication: object) -> None:
+        await self._process_publication(publication)
+
+    async def move_subscribing(self, code: int, reason: str) -> None:
+        await self._move_subscribing(code, reason)
+
+    def set_recovery_position(self, epoch: str, offset: int) -> None:
+        self._recover: bool = True
+        self._epoch: str = epoch
+        self._offset: int = offset
+
+
 class SDKNativeClient(NativeClient):
     """Adapt the native keyword names to the SDK's private connection protocol."""
 
@@ -643,10 +663,14 @@ class SDKNativeClient(NativeClient):
         *,
         join_leave: bool = False,
         recoverable: bool = False,
-    ) -> Subscription:
-        return super().new_subscription(
+    ) -> SDKNativeSubscription:
+        subscription = super().new_subscription(
             name, events=events, join_leave=join_leave, recoverable=recoverable
         )
+        if not isinstance(subscription, SDKNativeSubscription):
+            message = "expected instrumented native subscription"
+            raise TypeError(message)
+        return subscription
 
     @override
     def remove_subscription(self, subscription: object) -> None:
@@ -655,11 +679,47 @@ class SDKNativeClient(NativeClient):
             raise TypeError(message)
         super().remove_subscription(subscription)
 
+    @override
+    def get_subscription(self, channel: str) -> SDKNativeSubscription | None:
+        subscription = super().get_subscription(channel)
+        if subscription is not None and not isinstance(
+            subscription, SDKNativeSubscription
+        ):
+            message = "expected instrumented native subscription"
+            raise TypeError(message)
+        return subscription
+
+    def acknowledge_connection(self) -> None:
+        self.state: ClientState = ClientState.CONNECTED
+        self._connected_future.set_result(True)
+
+    @property
+    def has_inflight_commands(self) -> bool:
+        return bool(self._inflight_commands)
+
+    def set_command_timeout(self, timeout: float) -> None:
+        self._timeout: float = timeout
+
+    async def process_reply(self, reply: dict[str, object]) -> None:
+        await self._process_reply(reply)
+
+    async def send_commands(self, commands: list[dict[str, object]]) -> None:
+        await self._send_commands(commands)
+
+    async def unsubscribe_command(self, channel: str) -> None:
+        await self._unsubscribe(channel)
+
+    def subscribe_command(
+        self, subscription: Subscription, command_id: int
+    ) -> dict[str, object]:
+        return self._construct_subscribe_command(subscription, command_id)
+
 
 class ControlledCentrifugeFactory:
     """Run native subscription logic with commands acknowledged by the test."""
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(native_client_module, "Subscription", SDKNativeSubscription)
         self.client: SDKNativeClient = SDKNativeClient(
             "ws://localhost/realtime/v1/websocket",
             loop=asyncio.get_running_loop(),
@@ -667,8 +727,7 @@ class ControlledCentrifugeFactory:
         self.commands: asyncio.Queue[dict[str, object]] = asyncio.Queue()
 
         def connect() -> None:
-            self.client.state = ClientState.CONNECTED
-            self.client._connected_future.set_result(True)
+            self.client.acknowledge_connection()
 
         def send_commands(commands: list[dict[str, object]]) -> None:
             for command in commands:
@@ -682,7 +741,7 @@ class ControlledCentrifugeFactory:
         monkeypatch.setattr(
             self.client,
             "_send_commands",
-            AsyncMock(spec_set=self.client._send_commands, side_effect=send_commands),
+            AsyncMock(spec_set=self.client.send_commands, side_effect=send_commands),
         )
 
     def __call__(
@@ -700,7 +759,7 @@ class ControlledCentrifugeFactory:
     async def command(self) -> dict[str, object]:
         return await asyncio.wait_for(self.commands.get(), timeout=0.2)
 
-    def subscription(self, channel: str) -> Subscription:
+    def subscription(self, channel: str) -> SDKNativeSubscription:
         subscription = self.client.get_subscription(channel)
         if subscription is None:
             message = f"missing native subscription: {channel}"
@@ -708,7 +767,7 @@ class ControlledCentrifugeFactory:
         return subscription
 
     async def reply(self, command: dict[str, object], **result: object) -> None:
-        await self.client._process_reply({"id": command["id"], **result})
+        await self.client.process_reply({"id": command["id"], **result})
 
 
 @pytest.mark.order(0)
@@ -771,7 +830,7 @@ def test_realtime_native_dispatch_routes_project_prefixed_publications(
         payload = {"event": "message", "value": "contract"}
         try:
             # Enter native push dispatch, including its subscription lookup.
-            await factory.client._process_reply(
+            await factory.client.process_reply(
                 {
                     "push": {
                         "channel": f"project-id:{channel.name}",
@@ -820,7 +879,7 @@ def test_realtime_native_dispatch_routes_user_scoped_postgres_publications(
             "timestamp": "2026-09-19T22:00:00Z",
         }
         try:
-            await factory.client._process_reply(
+            await factory.client.process_reply(
                 {
                     "push": {
                         "channel": "project-id:postgres:public:messages:user-id",
@@ -862,7 +921,7 @@ async def start_native_presence_refresh(
     await subscribing
     await channel._wait_presence_sync()
     subscription = factory.subscription(channel.name)
-    await subscription._move_subscribing(1, "transport closed")
+    await subscription.move_subscribing(1, "transport closed")
     command = await factory.command()
     await factory.reply(command, subscribe={})
     command = await factory.command()
@@ -912,7 +971,7 @@ def test_realtime_stopped_presence_query_accepts_late_native_reply(
             await factory.reply(command, unsubscribe={})
             await stopping
             assert channel.get_presence_state() == {}
-            await factory.client._process_reply(
+            await factory.client.process_reply(
                 {"push": {"channel": healthy.name, "pub": {"data": "healthy"}}}
             )
             _ = await asyncio.wait_for(received.wait(), timeout=0.2)
@@ -935,7 +994,7 @@ def test_realtime_disconnect_settles_pending_native_presence_query(
         )
         await client.realtime.disconnect()
         assert channel.get_presence_state() == {}
-        assert not factory.client._inflight_commands
+        assert not factory.client.has_inflight_commands
 
     asyncio.run(scenario())
 
@@ -2169,7 +2228,7 @@ def test_realtime_rejects_malformed_postgres_payloads(
 def test_realtime_postgres_route_requires_exact_publication_shape(
     candidate: str, publication: str, *, matches: bool
 ) -> None:
-    assert realtime_module._postgres_route_matches(candidate, publication) is matches
+    assert postgres_route_matches(candidate, publication) is matches
 
 
 @seed(PROPERTY_SEED)
@@ -3033,10 +3092,10 @@ def test_realtime_reconnect_preserves_messages_already_accepted_by_centrifuge(
         subscription = official.get_subscription(channel.name)
         assert subscription is not None
         try:
-            await subscription._process_publication({"offset": 1, "data": 1})
+            await subscription.process_publication({"offset": 1, "data": 1})
             _ = await asyncio.wait_for(entered.wait(), timeout=0.2)
-            await subscription._process_publication({"offset": 2, "data": 2})
-            await subscription._move_subscribing(1, "transport closed")
+            await subscription.process_publication({"offset": 2, "data": 2})
+            await subscription.move_subscribing(1, "transport closed")
             command = await factory.command()
             assert _command_section(command, "subscribe")["offset"] == 2
             await factory.reply(
@@ -3067,22 +3126,21 @@ def test_centrifuge_preserves_recovery_position_across_unsubscribe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def scenario() -> None:
-        client = NativeClient(
+        monkeypatch.setattr(native_client_module, "Subscription", SDKNativeSubscription)
+        client = SDKNativeClient(
             "ws://localhost/realtime/v1/websocket",
             loop=asyncio.get_running_loop(),
         )
         subscription = client.new_subscription("broadcast:room", recoverable=True)
-        subscription._recover = True
-        subscription._epoch = "stream-epoch"
-        subscription._offset = 41
+        subscription.set_recovery_position("stream-epoch", 41)
         subscription.state = SubscriptionState.SUBSCRIBED
 
-        unsubscribe = AsyncMock(spec_set=client._unsubscribe, return_value=None)
+        unsubscribe = AsyncMock(spec_set=client.unsubscribe_command, return_value=None)
         monkeypatch.setattr(client, "_unsubscribe", unsubscribe)
 
         await subscription.unsubscribe()
         unsubscribe.assert_awaited_once_with("broadcast:room")
-        command = client._construct_subscribe_command(subscription, 1)
+        command = client.subscribe_command(subscription, 1)
 
         subscribe = _command_section(command, "subscribe")
         assert subscribe["channel"] == "broadcast:room"
@@ -4132,7 +4190,7 @@ def test_realtime_worker_registration_precedes_callback_execution(
         loop.set_task_factory(getattr(asyncio, "eager_task_factory", None))
         try:
             subscription = factory.subscription(channel.name)
-            await subscription._process_publication({"data": "message"})
+            await subscription.process_publication({"data": "message"})
             command = await factory.command()
             assert "unsubscribe" in command
             await factory.reply(command, unsubscribe={})
@@ -4454,7 +4512,7 @@ def test_realtime_native_failed_readiness_stops_late_acknowledgement_and_allows_
     async def scenario() -> None:
         factory = ControlledCentrifugeFactory(monkeypatch)
         if not cancelled:
-            factory.client._timeout = 0.01
+            factory.client.set_command_timeout(0.01)
         client = VolcanoClient(
             anon_key="anon-key",
             _transport=AuthTransport(),
@@ -4472,7 +4530,7 @@ def test_realtime_native_failed_readiness_stops_late_acknowledgement_and_allows_
             stopping = await factory.command()
             assert "unsubscribe" in stopping
             await factory.reply(original_command, subscribe={})
-            await original_subscription._process_publication({"data": "obsolete"})
+            await original_subscription.process_publication({"data": "obsolete"})
             await factory.reply(stopping, unsubscribe={})
             error = (
                 asyncio.CancelledError
@@ -4491,7 +4549,7 @@ def test_realtime_native_failed_readiness_stops_late_acknowledgement_and_allows_
             await asyncio.wait_for(subscribing, timeout=0.2)
             subscription = factory.subscription(channel.name)
             assert subscription is not original_subscription
-            await subscription._process_publication({"data": "retry"})
+            await subscription.process_publication({"data": "retry"})
             await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
             assert received == ["retry"]
         finally:
@@ -4573,7 +4631,7 @@ def test_realtime_removed_channel_does_not_cancel_callback_subscription(
         await factory.reply(await factory.command(), subscribe={})
         await subscribing
         subscription = factory.subscription(active.name)
-        await subscription._process_publication({"data": "subscribe"})
+        await subscription.process_publication({"data": "subscribe"})
         pending_command = await factory.command()
         removing = asyncio.create_task(client.realtime.remove_channel("active"))
         try:
@@ -4973,7 +5031,7 @@ def test_realtime_cancelled_unsubscribe_settles_on_native_timeout(
         subscribing = asyncio.create_task(channel.subscribe())
         await factory.reply(await factory.command(), subscribe={})
         await subscribing
-        factory.client._timeout = 0.01
+        factory.client.set_command_timeout(0.01)
         stopping = asyncio.create_task(channel.unsubscribe())
         _ = await factory.command()
         _ = stopping.cancel()
@@ -4981,7 +5039,7 @@ def test_realtime_cancelled_unsubscribe_settles_on_native_timeout(
             with pytest.raises(asyncio.CancelledError):
                 await asyncio.wait_for(stopping, timeout=0.2)
             assert_same(channel._subscribed, expected=False)
-            assert not factory.client._inflight_commands
+            assert not factory.client.has_inflight_commands
         finally:
             await client.realtime.disconnect()
 

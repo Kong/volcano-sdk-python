@@ -11,10 +11,12 @@ from volcano_sdk._realtime_fetch_worker import (
     PostgresFetchOutcome,
     PostgresFetchRequest,
 )
+from volcano_sdk._realtime_transport import (
+    consume_presence_result,
+    finish_unsubscribe,
+)
 from volcano_sdk.realtime import (
     _CallbackDelivery,
-    _consume_presence_result,
-    _finish_unsubscribe,
     _PostgresDelivery,
 )
 
@@ -37,9 +39,9 @@ async def test_cancelled_native_work_preserves_the_callers_cancellation() -> Non
         await task
     cancellation = asyncio.CancelledError("caller cancelled")
 
-    _consume_presence_result(task)
+    consume_presence_result(task)
     with pytest.raises(asyncio.CancelledError) as caught:
-        _finish_unsubscribe(task, cancellation)
+        finish_unsubscribe(task, cancellation)
 
     assert caught.value is cancellation
     assert task.cancelled()
