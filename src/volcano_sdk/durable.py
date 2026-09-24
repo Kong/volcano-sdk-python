@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import math
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Protocol, cast, runtime_checkable
+from typing import Protocol, TypeGuard, runtime_checkable
 from uuid import UUID
 
 from ._transport import (
@@ -46,6 +47,15 @@ _UUID_IDENTIFIERS = {
 }
 _HTTP_ACCEPTED = 202
 _HTTP_OK = 200
+_EXECUTION_STATUSES: tuple[DurableExecutionStatus, ...] = (
+    "pending",
+    "running",
+    "succeeded",
+    "failed",
+    "timed_out",
+    "stopped",
+    "unknown",
+)
 
 
 class DurableClientContext(Protocol):
@@ -318,13 +328,105 @@ def _identifier(value: object, field: str) -> str:
 
 
 def _execution_fields(payload: object) -> Mapping[str, object]:
-    if not isinstance(payload, Mapping):
+    if not _is_object_mapping(payload):
         raise TypeError(_INVALID_EXECUTION_PAYLOAD)
-    values = cast("Mapping[str, object]", payload)
     for required in ("id", "function_id", "name", "status", "region", "created_at"):
-        if not isinstance(values.get(required), str) or not values[required]:
+        if not isinstance(payload.get(required), str) or not payload[required]:
             raise TypeError(_INVALID_EXECUTION_PAYLOAD)
-    return values
+    return payload
+
+
+def _is_object_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
+    return _is_mapping(value) and all(isinstance(key, str) for key in value)
+
+
+def _is_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, Mapping)
+
+
+def _is_sequence(value: object) -> TypeGuard[list[object] | tuple[object, ...]]:
+    return isinstance(value, (list, tuple))
+
+
+def _execution_status(value: object) -> DurableExecutionStatus:
+    for status in _EXECUTION_STATUSES:
+        if value == status:
+            return status
+    raise TypeError(_INVALID_EXECUTION_PAYLOAD)
+
+
+def _json_result(value: object) -> JSONValue:
+    try:
+        if _is_json_value(value, set()):
+            return value
+    except RecursionError as error:
+        raise TypeError(_INVALID_EXECUTION_PAYLOAD) from error
+    raise TypeError(_INVALID_EXECUTION_PAYLOAD)
+
+
+def _is_json_value(value: object, active: set[int]) -> TypeGuard[JSONValue]:
+    if _is_json_scalar(value):
+        return True
+    if _is_mapping(value):
+        return _is_json_mapping(value, active)
+    if _is_sequence(value):
+        return _is_json_sequence(value, active)
+    return False
+
+
+def _is_json_scalar(value: object) -> TypeGuard[str | int | float | bool | None]:
+    if value is None or isinstance(value, bool):
+        return True
+    if isinstance(value, str):
+        return _is_utf8(value)
+    if isinstance(value, int):
+        return _is_json_int(value)
+    if isinstance(value, float):
+        return math.isfinite(value)
+    return False
+
+
+def _is_utf8(value: str) -> bool:
+    try:
+        _ = value.encode()
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _is_json_int(value: int) -> bool:
+    try:
+        _ = int.__str__(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_json_mapping(value: Mapping[object, object], active: set[int]) -> bool:
+    marker = id(value)
+    if marker in active:
+        return False
+    active.add(marker)
+    try:
+        return all(
+            isinstance(key, str) and _is_utf8(key) and _is_json_value(item, active)
+            for key, item in value.items()
+        )
+    finally:
+        active.remove(marker)
+
+
+def _is_json_sequence(
+    value: list[object] | tuple[object, ...], active: set[int]
+) -> bool:
+    marker = id(value)
+    if marker in active:
+        return False
+    active.add(marker)
+    try:
+        return all(_is_json_value(item, active) for item in value)
+    finally:
+        active.remove(marker)
 
 
 def _durable_execution(payload: object) -> DurableExecution:
@@ -337,10 +439,10 @@ def _durable_execution(payload: object) -> DurableExecution:
         id=str(values["id"]),
         function_id=str(values["function_id"]),
         name=str(values["name"]),
-        status=cast("DurableExecutionStatus", str(values["status"])),
+        status=_execution_status(values["status"]),
         region=str(values["region"]),
         created_at=created_at,
-        result=cast("JSONValue", values.get("result")),
+        result=_json_result(values.get("result")),
         result_expired=result_expired,
         error=_durable_error(values.get("error")),
         completed_at=_datetime(values.get("completed_at")),
@@ -350,11 +452,10 @@ def _durable_execution(payload: object) -> DurableExecution:
 def _durable_error(payload: object) -> DurableExecutionFailure | None:
     if payload is None:
         return None
-    if not isinstance(payload, Mapping):
+    if not _is_object_mapping(payload):
         raise TypeError(_INVALID_EXECUTION_PAYLOAD)
-    values = cast("Mapping[str, object]", payload)
-    error_type = values.get("type")
-    message = values.get("message")
+    error_type = payload.get("type")
+    message = payload.get("message")
     return DurableExecutionFailure(
         type=None if error_type is None else str(error_type),
         message=None if message is None else str(message),
@@ -362,23 +463,22 @@ def _durable_error(payload: object) -> DurableExecutionFailure | None:
 
 
 def _durable_execution_page(payload: object) -> DurableExecutionPage:
-    if not isinstance(payload, Mapping):
+    if not _is_object_mapping(payload):
         raise TypeError(_INVALID_EXECUTION_PAGE)
-    values = cast("Mapping[str, object]", payload)
-    raw_data = values.get("data")
+    raw_data: object = payload.get("data")
     if raw_data is None:
-        raw_data = []
-    if not isinstance(raw_data, (list, tuple)):
+        raw_data = list[object]()
+    if not _is_sequence(raw_data):
         raise TypeError(_INVALID_EXECUTION_PAGE)
-    data = tuple(cast("Sequence[object]", raw_data))
-    has_more = values.get("has_more", False)
+    data = tuple(raw_data)
+    has_more = payload.get("has_more", False)
     if not isinstance(has_more, bool):
         raise TypeError(_INVALID_EXECUTION_PAGE)
     return DurableExecutionPage(
         executions=tuple(_durable_execution(entry) for entry in data),
-        page=_count(values.get("page")),
-        limit=_count(values.get("limit")),
-        total=_count(values.get("total")),
+        page=_count(payload.get("page")),
+        limit=_count(payload.get("limit")),
+        total=_count(payload.get("total")),
         has_more=has_more,
     )
 
@@ -402,8 +502,7 @@ def _datetime(value: object) -> datetime | None:
 def _parse_datetime(value: object) -> datetime:
     if not isinstance(value, str) or not value:
         raise TypeError(_INVALID_EXECUTION_PAYLOAD)
-    text = value.replace("Z", "+00:00") if value.endswith("Z") else value
     try:
-        return datetime.fromisoformat(text)
+        return datetime.fromisoformat(value)
     except ValueError as error:
         raise TypeError(_INVALID_EXECUTION_PAYLOAD) from error

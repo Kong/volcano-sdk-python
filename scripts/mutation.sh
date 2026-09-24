@@ -64,7 +64,7 @@ else
   for path in "${modules[@]}"; do
     module=${path#src/}
     module=${module%.py}
-    patterns+=("${module//\//.}*")
+    patterns+=("${module//\//.}.x*")
   done
   if ! mutmut run --max-children 1 "${patterns[@]}"; then
     printf '%s\0' "scoped mutation run" >> "$failed"

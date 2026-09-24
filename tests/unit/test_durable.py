@@ -129,6 +129,8 @@ def test_start_returns_the_accepted_execution_handle() -> None:
     )
 
     assert execution.id == EXECUTION_ID
+    assert execution.function_id == "00000000-0000-4000-8000-000000000040"
+    assert execution.name == "order-42"
     assert execution.status == "running"
     assert execution.region == "aws-us-east-1"
     assert execution.created_at == datetime(2026, 9, 2, 12, 0, tzinfo=UTC)
@@ -227,6 +229,32 @@ def test_get_reports_a_failed_execution_error() -> None:
     assert execution.error is not None
     assert execution.error.type == "CardDeclined"
     assert execution.error.message == "card was declined"
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_type", "expected_message"),
+    [
+        ({}, None, None),
+        ({"type": None, "message": None}, None, None),
+        ({"type": "CardDeclined"}, "CardDeclined", None),
+        ({"message": "card was declined"}, None, "card was declined"),
+    ],
+)
+def test_get_preserves_optional_failure_fields(
+    error: dict[str, object], expected_type: str | None, expected_message: str | None
+) -> None:
+    transport = FakeDurableTransport()
+    transport.get_response = FakeResponse(
+        200, running_execution(status="failed", error=error), {}
+    )
+
+    execution = durable_client(transport).durable.get(
+        PROJECT_ID, "order-pipeline", EXECUTION_ID
+    )
+
+    assert execution.error is not None
+    assert execution.error.type == expected_type
+    assert execution.error.message == expected_message
 
 
 def test_get_distinguishes_an_expired_result_from_an_empty_one() -> None:
@@ -409,6 +437,16 @@ def test_start_refuses_an_execution_name_over_the_platform_limit() -> None:
     assert transport.calls == []
 
 
+def test_start_accepts_an_execution_name_at_the_platform_limit() -> None:
+    transport = FakeDurableTransport()
+
+    _ = durable_client(transport).durable.start(
+        "order-pipeline", {}, execution_name="x" * 255
+    )
+
+    assert transport.calls[0][1]["execution_name"] == "x" * 255
+
+
 def test_owner_scoped_reads_send_the_session_token() -> None:
     """The routes take a user token, so that is the only credential to send.
 
@@ -503,6 +541,24 @@ def test_owner_scoped_reads_reject_identifiers_that_are_not_uuids() -> None:
         _ = client.durable.get("not-a-uuid", "order-pipeline", EXECUTION_ID)
     with pytest.raises(ValueError, match="execution_id must be a UUID"):
         _ = client.durable.get(PROJECT_ID, "order-pipeline", "exec-abc")
+
+    assert transport.calls == []
+
+
+@pytest.mark.parametrize(
+    ("project_id", "function_name", "expected"),
+    [
+        ("not-a-uuid", "order-pipeline", "project_id must be a UUID"),
+        (PROJECT_ID, "", "function_name must be a non-empty string"),
+    ],
+)
+def test_list_rejects_invalid_identifiers_before_transport(
+    project_id: str, function_name: str, expected: str
+) -> None:
+    transport = FakeDurableTransport()
+
+    with pytest.raises(ValueError, match=expected):
+        _ = durable_client(transport).durable.list(project_id, function_name)
 
     assert transport.calls == []
 
