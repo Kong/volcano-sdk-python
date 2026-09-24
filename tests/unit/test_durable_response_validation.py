@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+import sys
 from datetime import UTC, datetime
 
 import httpx
@@ -48,6 +50,14 @@ def test_execution_rejects_non_object_responses(payload: object) -> None:
         _ = _durable_execution(payload)
 
 
+def test_execution_rejects_non_string_object_keys() -> None:
+    payload: dict[object, object] = {1: "extra"}
+    payload.update(execution_payload())
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = _durable_execution(payload)
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -72,6 +82,83 @@ def test_execution_rejects_malformed_failure_and_timestamps(
         _ = _durable_execution(payload)
 
 
+@pytest.mark.parametrize("status", ["not-a-status", 1, None])
+def test_execution_rejects_unknown_status(status: object) -> None:
+    payload = execution_payload()
+    payload["status"] = status
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = _durable_execution(payload)
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        b"bytes",
+        math.inf,
+        -math.inf,
+        math.nan,
+        {1: "value"},
+        {"\ud800": "value"},
+        "\ud800",
+        [object()],
+    ],
+)
+def test_execution_rejects_non_json_results(result: object) -> None:
+    payload = execution_payload()
+    payload["result"] = result
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = _durable_execution(payload)
+
+
+@pytest.mark.parametrize("kind", ["list", "dict"])
+def test_execution_rejects_cyclic_results(kind: str) -> None:
+    if kind == "list":
+        sequence: list[object] = []
+        sequence.append(sequence)
+        container: object = sequence
+    else:
+        mapping: dict[str, object] = {}
+        mapping["self"] = mapping
+        container = mapping
+    payload = execution_payload()
+    payload["result"] = container
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = _durable_execution(payload)
+
+
+def test_execution_rejects_result_beyond_integer_string_limit() -> None:
+    limit = sys.get_int_max_str_digits()
+    value = 10 ** (limit + 1)
+    payload = execution_payload()
+    payload["result"] = value
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = _durable_execution(payload)
+
+
+def test_execution_rejects_overly_deep_result() -> None:
+    value: object = None
+    for _ in range(sys.getrecursionlimit()):
+        value = [value]
+    payload = execution_payload()
+    payload["result"] = value
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = _durable_execution(payload)
+
+
+def test_execution_preserves_nested_json_results() -> None:
+    payload = execution_payload()
+    payload["result"] = {"values": [None, True, 42, 1.5, "text", {"nested": []}]}
+
+    execution = _durable_execution(payload)
+
+    assert execution.result == {"values": (None, True, 42, 1.5, "text", {"nested": ()})}
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -90,6 +177,11 @@ def test_execution_rejects_malformed_failure_and_timestamps(
 def test_pages_reject_malformed_collections_and_metadata(payload: object) -> None:
     with pytest.raises(TypeError, match="complete durable execution page"):
         _ = _durable_execution_page(payload)
+
+
+def test_page_rejects_non_string_object_keys() -> None:
+    with pytest.raises(TypeError, match="complete durable execution page"):
+        _ = _durable_execution_page({1: "extra"})
 
 
 @pytest.mark.parametrize("payload", [{}, {"data": None}])
