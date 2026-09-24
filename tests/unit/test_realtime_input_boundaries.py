@@ -97,5 +97,9 @@ def test_channel_rejects_unsupported_events(channel_type: ChannelType) -> None:
     channel = VolcanoClient(anon_key="anon").realtime.channel(
         "events", channel_type=channel_type
     )
+
+    def ignore_event(_value: object) -> None:
+        pass
+
     with pytest.raises(ValueError, match="unsupported realtime event: invalid"):
-        _ = channel.on("invalid", lambda _value: None)
+        _ = channel.on("invalid", ignore_event)

@@ -73,8 +73,15 @@ def test_statically_invalid_mutant_is_reported_separately(
     targets, failed = fixture_report(tmp_path, 37)
 
     assert main(targets, failed) == 0
-    report = json.loads(Path("reports/mutation.json").read_text(encoding="utf-8"))
-    assert report["outcomes"] == {"type_checked": 1}
+    report = cast(
+        "object", json.loads(Path("reports/mutation.json").read_text(encoding="utf-8"))
+    )
+    assert report == {
+        "modules": ["src/volcano_sdk/probe.py"],
+        "outcomes": {"type_checked": 1},
+        "unmutatable_modules": [],
+        "failures": [],
+    }
 
 
 def test_missing_mutation_report_fails(

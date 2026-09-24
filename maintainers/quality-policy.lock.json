@@ -100,6 +100,54 @@
           "root": "tests/package"
         },
         {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "reportInvalidCast": "error",
+          "reportUnannotatedClassAttribute": "error",
+          "root": "tests/unit/test_realtime_callback_boundaries.py"
+        },
+        {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "reportInvalidCast": "error",
+          "reportUnannotatedClassAttribute": "error",
+          "root": "tests/unit/test_realtime_cleanup_boundaries.py"
+        },
+        {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "reportInvalidCast": "error",
+          "reportUnannotatedClassAttribute": "error",
+          "root": "tests/unit/test_realtime_connection_boundaries.py"
+        },
+        {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "reportInvalidCast": "error",
+          "reportUnannotatedClassAttribute": "error",
+          "root": "tests/unit/test_realtime_delivery_boundaries.py"
+        },
+        {
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "reportInvalidCast": "error",
+          "reportUnannotatedClassAttribute": "error",
+          "root": "tests/unit/test_realtime_input_boundaries.py"
+        },
+        {
+          "extraPaths": [
+            ".",
+            "src",
+            "tests/unit",
+            "features"
+          ],
+          "reportAny": "error",
+          "reportExplicitAny": "error",
+          "reportInvalidCast": "error",
+          "reportUnannotatedClassAttribute": "error",
+          "root": "tests/unit/test_mutation_results.py"
+        },
+        {
           "extraPaths": [
             ".",
             "src",
@@ -149,6 +197,7 @@
       "reportUnnecessaryTypeIgnoreComment": "error",
       "reportUnreachable": "error",
       "reportUnsafeMultipleInheritance": "error",
+      "reportUnusedCallResult": "error",
       "reportUnusedParameter": "error",
       "stubPath": "typings",
       "typeCheckingMode": "strict",

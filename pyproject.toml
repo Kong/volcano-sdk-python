@@ -159,6 +159,7 @@ reportCallInDefaultInitializer = "error"
 reportImplicitRelativeImport = "error"
 reportUnnecessaryCast = "error"
 reportUnnecessaryComparison = "error"
+reportUnusedCallResult = "error"
 reportIncompatibleVariableOverride = "error"
 # Package-level collaborators intentionally share private implementation details;
 # Ruff still enforces private access everywhere else.
@@ -257,6 +258,49 @@ reportImplicitStringConcatenation = "error"
 reportPrivateUsage = "error"
 reportUnannotatedClassAttribute = "error"
 reportUnusedCallResult = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/test_realtime_callback_boundaries.py"
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportUnannotatedClassAttribute = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/test_realtime_cleanup_boundaries.py"
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportUnannotatedClassAttribute = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/test_realtime_connection_boundaries.py"
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportUnannotatedClassAttribute = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/test_realtime_delivery_boundaries.py"
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportUnannotatedClassAttribute = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/test_realtime_input_boundaries.py"
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportUnannotatedClassAttribute = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/test_mutation_results.py"
+extraPaths = [".", "src", "tests/unit", "features"]
+reportAny = "error"
+reportExplicitAny = "error"
+reportInvalidCast = "error"
+reportUnannotatedClassAttribute = "error"
 
 [[tool.basedpyright.executionEnvironments]]
 root = "scripts"

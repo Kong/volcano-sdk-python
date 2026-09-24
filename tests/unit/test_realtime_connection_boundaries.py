@@ -154,7 +154,7 @@ def test_native_adapter_rejects_non_string_subscription_keys(
     monkeypatch.setattr(native, "_subs", {1: object()})
 
     with pytest.raises(TypeError, match="subscription registry"):
-        _VolcanoCentrifugeConnection(native)
+        _ = _VolcanoCentrifugeConnection(native)
 
 
 def test_native_presence_rejects_non_string_client_keys() -> None:
@@ -317,9 +317,9 @@ async def test_malformed_native_connection_contexts_are_sanitized() -> None:
     connected: list[RealtimeConnectContext] = []
     disconnected: list[RealtimeDisconnectContext] = []
     errors: list[RealtimeErrorContext] = []
-    realtime.on_connect(connected.append)
-    realtime.on_disconnect(disconnected.append)
-    realtime.on_error(errors.append)
+    _ = realtime.on_connect(connected.append)
+    _ = realtime.on_disconnect(disconnected.append)
+    _ = realtime.on_error(errors.append)
     events = _ClientEvents(realtime)
 
     await events.on_connected(SimpleNamespace(client=42))
@@ -338,12 +338,12 @@ async def test_malformed_native_connection_contexts_are_sanitized() -> None:
 
 async def test_presence_failure_reports_a_non_numeric_native_code_as_absent() -> None:
     class InvalidCodeError(RuntimeError):
-        code = "invalid"
+        code: str = "invalid"
 
     realtime = VolcanoClient(anon_key="anon").realtime
     channel = realtime.channel("lobby", channel_type="presence")
     errors: list[RealtimeErrorContext] = []
-    realtime.on_error(errors.append)
+    _ = realtime.on_error(errors.append)
     failure = InvalidCodeError("presence failed")
 
     await realtime._report_presence_sync_failure(channel, failure)
