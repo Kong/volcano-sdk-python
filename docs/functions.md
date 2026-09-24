@@ -75,14 +75,19 @@ handle = client.durable.start(
     execution_name="order-9",
 )
 
-execution = client.durable.get(project_id, "charge-order", handle.id)
-page = client.durable.list(project_id, "charge-order", status="running")
-client.durable.stop(project_id, "charge-order", handle.id)
+owner_client = VolcanoClient(
+    anon_key=os.environ["VOLCANO_ANON_KEY"],
+    api_url=os.environ.get("VOLCANO_API_URL", "https://api.volcano.dev"),
+    access_token=os.environ["VOLCANO_PLATFORM_TOKEN"],
+)
+execution = owner_client.durable.get(project_id, "charge-order", handle.id)
+page = owner_client.durable.list(project_id, "charge-order", status="running")
+owner_client.durable.stop(project_id, "charge-order", handle.id)
 ```
 
 `start()` accepts the same active session, service key, or anonymous key as `functions.invoke()`. It is the only durable operation available to application credentials. An execution name makes a start idempotent.
 
-`get()`, `list()`, and `stop()` are owner-scoped and require the project's platform token. `stop()` returns after the stop request is accepted, so poll `get()` until `is_terminal` is true.
+`get()`, `list()`, and `stop()` are owner-scoped. Call them from a trusted backend with the project owner's platform user token. Auth-user sessions, anonymous keys, service keys, and project access tokens are not accepted. `stop()` returns after the stop request is accepted, so poll `get()` until `is_terminal` is true.
 
 ## Write a durable function
 
@@ -111,6 +116,6 @@ volcano durable deploy --all
 volcano durable start charge-order --input '{"order_id":"order-9"}'
 ```
 
-Local waits resolve immediately by default while preserving checkpoint and replay behavior. Set `LOCAL_DURABLE_REAL_TIME=true` before `volcano start` when wait timing must match the deployed function.
+Local waits resolve immediately by default while preserving checkpoint and replay behavior. Set `LOCAL_DURABLE_REAL_TIME=true` before `volcano start` when wait timing must match the deployed function. Local executions persist across `volcano stop` and `volcano start`.
 
 Running a decorated handler directly in a Python process still needs the optional test runtime: `python -m pip install 'volcano-sdk-python[durable]'`.
