@@ -6,7 +6,6 @@ from dataclasses import FrozenInstanceError, dataclass
 from datetime import datetime
 from threading import Event, Thread
 from types import MappingProxyType
-from typing import TYPE_CHECKING, cast, final
 from uuid import UUID
 
 import httpx
@@ -79,6 +78,7 @@ from .fixtures.invalid_arguments import (
     unsupported_oauth_api_method,
 )
 from .fixtures.invalid_callbacks import register_non_callable_auth
+from .typing import TYPE_CHECKING, cast, final
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping

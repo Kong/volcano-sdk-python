@@ -107,7 +107,7 @@ class VolcanoClient:
         self.storage: Storage = Storage(self._facades)
         self.locks: Locks = Locks(self._facades)
         if _realtime_client_factory is None:
-            self.realtime: Realtime = Realtime(self, api_url=self._api_url)
+            self.realtime: Realtime = Realtime(self._facades, api_url=self._api_url)
         else:
             self.realtime = Realtime(
                 self,

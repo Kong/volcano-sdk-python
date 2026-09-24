@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, assert_type
 
+from volcano_sdk._tests.typing import TYPE_CHECKING, assert_type
 from volcano_sdk._transport import invoke, invoke_async, response_payload
 
 if TYPE_CHECKING:

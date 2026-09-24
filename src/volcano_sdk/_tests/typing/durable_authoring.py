@@ -1,7 +1,6 @@
 """Check typed callbacks and the separate durable invocation boundary."""
 
-from typing import TypedDict, assert_type
-
+from volcano_sdk._tests.typing import TypedDict, assert_type
 from volcano_sdk.durable_authoring import (
     DurableContext,
     DurableHandler,

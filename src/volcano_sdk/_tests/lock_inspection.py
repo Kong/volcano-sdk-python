@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from volcano_sdk._lock_guard import ManagedLockGuard
 from volcano_sdk._lock_worker import LockRenewer
 from volcano_sdk.locks import Locks
+
+from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from threading import Event, Thread

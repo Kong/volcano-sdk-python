@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
 
 import pytest
 
 from volcano_sdk.database import FilterBuilder
 
 from .test_database_refresh import make_client, rows_response
+from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import httpx

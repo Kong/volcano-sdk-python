@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import TYPE_CHECKING
 
 import httpx
 import pytest
@@ -16,6 +15,8 @@ from volcano_sdk import (
 )
 from volcano_sdk import client as client_module
 from volcano_sdk._transport import GeneratedTransport
+
+from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable

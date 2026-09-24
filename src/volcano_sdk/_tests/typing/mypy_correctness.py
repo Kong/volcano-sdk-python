@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from volcano_sdk._tests.typing import Any, Literal
 
 # Intentionally invalid examples: unused-ignore makes missing diagnostics fail.
 # The normal mypy task checks this file; pytest never executes it.

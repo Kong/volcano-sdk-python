@@ -5,7 +5,6 @@ import sys
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 import httpx
 import pytest
@@ -22,6 +21,7 @@ from volcano_sdk import functions as functions_module
 from volcano_sdk._transport import GeneratedTransport
 
 from .transport_fixtures import RejectingTransport
+from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from volcano_sdk.models import JSONValue

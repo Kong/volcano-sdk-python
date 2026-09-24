@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Annotated, TypeAlias
 
 import httpx
 from hypothesis import given, seed
@@ -12,6 +11,7 @@ from volcano_sdk._transport import GeneratedTransport
 
 from .property_support import PROPERTY_SEED
 from .storage_fixtures import upload_response
+from .typing import Annotated, TypeAlias
 
 BinaryPayload: TypeAlias = Annotated[bytes, st.binary(max_size=1024)]
 

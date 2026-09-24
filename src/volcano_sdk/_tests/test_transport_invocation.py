@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, assert_type
-
 import httpx
 import pytest
 
 from volcano_sdk import TransportError
 from volcano_sdk._transport import invoke, invoke_async
+
+from .typing import TYPE_CHECKING, assert_type
 
 if TYPE_CHECKING:
     from collections.abc import Callable

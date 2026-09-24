@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING
 
 import httpx
 import pytest
@@ -14,6 +13,7 @@ from volcano_sdk._transport import GeneratedTransport
 from .client_inspection import InspectedClient
 from .session_fixtures import access_token
 from .test_function_refresh import FUNCTION_ID, USER_ID, resolved_response
+from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable

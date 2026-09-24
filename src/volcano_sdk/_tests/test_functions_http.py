@@ -16,7 +16,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import TYPE_CHECKING
+
+from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from socket import socket

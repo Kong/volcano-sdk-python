@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import UserDict
 from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING, Protocol, TypeVar, overload
 
@@ -44,10 +45,6 @@ def postgres_route_matches(candidate: str, publication: str) -> bool:
 
 def is_object_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
     return isinstance(value, Mapping)
-
-
-def is_object_dict(value: object) -> TypeGuard[dict[object, object]]:
-    return isinstance(value, dict)
 
 
 class RealtimeContext(Protocol):
@@ -207,7 +204,7 @@ def centrifuge_client(
     return Client(address, events=events, token=token, get_token=get_token)
 
 
-class ProjectAwareSubscriptions(dict[str, _SubscriptionT]):
+class ProjectAwareSubscriptions(UserDict[str, _SubscriptionT]):
     @overload
     def get(self, key: str, default: None = None) -> _SubscriptionT | None: ...
 
@@ -232,8 +229,12 @@ class ProjectAwareSubscriptions(dict[str, _SubscriptionT]):
         return max(matches, key=lambda match: len(match[0]))[1] if matches else default
 
 
+def is_subscription_registry(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, (dict, ProjectAwareSubscriptions))
+
+
 def project_subscriptions(value: object) -> ProjectAwareSubscriptions[object]:
-    if not is_object_dict(value):
+    if not is_subscription_registry(value):
         raise TypeError(SUBSCRIPTION_REGISTRY_UNAVAILABLE)
     subscriptions = ProjectAwareSubscriptions[object]()
     for channel, subscription in value.items():

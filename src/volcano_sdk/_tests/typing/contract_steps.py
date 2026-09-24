@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, assert_type
-
 from behave import given, then, when
+
+from volcano_sdk._tests.typing import TYPE_CHECKING, assert_type
 
 if TYPE_CHECKING:
     from behave.runner import Context

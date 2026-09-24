@@ -11,15 +11,16 @@ from volcano_sdk._realtime_fetch_worker import (
     PostgresFetchOutcome,
     PostgresFetchRequest,
 )
+from volcano_sdk._realtime_messages import (
+    CallbackDelivery,
+    PostgresDelivery,
+)
 from volcano_sdk._realtime_transport import (
     consume_presence_result,
     finish_unsubscribe,
 )
-from volcano_sdk.realtime import (
-    _CallbackDelivery,
-    _PostgresDelivery,
-)
 
+from .realtime_probes import channel_state, failed_operation, realtime_state
 from .state_assertions import assert_same
 from .test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory
 
@@ -66,7 +67,7 @@ async def test_stale_presence_callbacks_cannot_change_a_resubscribed_channel() -
     try:
         await channel.subscribe()
         _ = await asyncio.wait_for(synced.wait(), timeout=2)
-        events = channel._subscription_events
+        events = channel_state(channel).subscription_events
         assert events is not None
         await client.realtime.disconnect()
         synced.clear()
@@ -74,7 +75,7 @@ async def test_stale_presence_callbacks_cannot_change_a_resubscribed_channel() -
         _ = await asyncio.wait_for(synced.wait(), timeout=2)
         roster = channel.get_presence_state()
         assert tuple(roster) == ("current",)
-        assert channel._subscription_events is not events
+        assert channel_state(channel).subscription_events is not events
 
         await events.on_join(
             SimpleNamespace(info=SimpleNamespace(client="stale", user="other"))
@@ -96,8 +97,8 @@ def test_postgres_listener_removal_is_idempotent() -> None:
     unsubscribe()
     unsubscribe()
 
-    assert channel._postgres_filters == {}
-    assert not channel._has_postgres_listener(
+    assert channel_state(channel).postgres_filters == {}
+    assert not channel_state(channel).has_postgres_listener(
         PostgresChange(type="INSERT", schema="public", table="messages")
     )
 
@@ -105,7 +106,7 @@ def test_postgres_listener_removal_is_idempotent() -> None:
 def test_postgres_channel_without_listeners_ignores_changes() -> None:
     channel = make_client().realtime.channel("public:messages", channel_type="postgres")
 
-    assert not channel._has_postgres_listener(
+    assert not channel_state(channel).has_postgres_listener(
         PostgresChange(type="INSERT", schema="public", table="messages")
     )
 
@@ -132,18 +133,18 @@ async def test_postgres_failure_cannot_deliver_into_a_replacement_session() -> N
         change = PostgresChange(
             type="UPDATE", schema="public", table="messages", id=42, mode="lightweight"
         )
-        delivery = _PostgresDelivery(
-            change, channel._capture_postgres_delivery_identity()
+        delivery = PostgresDelivery(
+            change, channel_state(channel).capture_postgres_delivery_identity()
         )
         request = PostgresFetchRequest("main", "access", "messages", 42)
         failure = RuntimeError("fetch rejected")
-        await channel._deliver_postgres(
+        await channel_state(channel).deliver_postgres(
             PostgresFetchOutcome(job=PostgresFetchJob(request, delivery), error=failure)
         )
 
         assert client.current_session == replacement
         assert received == []
-        assert channel._callback_queue.empty()
+        assert channel_state(channel).callback_queue.empty()
         assert errors == [
             {
                 "message": "Volcano realtime Postgres row fetch failed",
@@ -159,16 +160,16 @@ async def test_postgres_failure_cannot_deliver_into_a_replacement_session() -> N
 async def test_presence_sync_stopped_before_start_releases_its_task() -> None:
     client = make_client()
     channel = client.realtime.channel("lobby", channel_type="presence")
-    channel._schedule_presence_sync()
-    task = channel._presence_sync_task
+    channel_state(channel).presence.schedule_presence_sync()
+    task = channel_state(channel).presence_sync_task
     assert task is not None
 
     await channel.unsubscribe()
     await task
 
-    assert channel._presence_sync_task is None
+    assert channel_state(channel).presence_sync_task is None
     assert channel.get_presence_state() == {}
-    assert client.realtime._connection is None
+    assert realtime_state(client.realtime).connection is None
 
 
 async def test_cancelling_presence_sync_drains_the_running_task() -> None:
@@ -185,14 +186,16 @@ async def test_cancelling_presence_sync_drains_the_running_task() -> None:
             stopped.set()
 
     task = asyncio.create_task(blocked_sync())
-    channel._presence_sync_task = task
+    channel_state(channel).presence_sync_task = task
     try:
         _ = await asyncio.wait_for(entered.wait(), timeout=0.2)
-        await asyncio.wait_for(channel._cancel_presence_sync(), timeout=0.2)
+        await asyncio.wait_for(
+            channel_state(channel).presence.cancel_presence_sync(), timeout=0.2
+        )
 
         assert task.done()
         assert stopped.is_set()
-        assert_same(channel._presence_sync_task, expected=None)
+        assert_same(channel_state(channel).presence_sync_task, expected=None)
     finally:
         release.set()
         _ = task.cancel()
@@ -206,17 +209,21 @@ async def test_presence_failure_cleanup_aborts_if_error_reporting_fails(
 ) -> None:
     realtime = make_client().realtime
     channel = realtime.channel("lobby", channel_type="presence")
-    await channel._begin_presence_sync()
+    await channel_state(channel).presence.begin_presence_sync()
 
     async def fail_reporting() -> None:
-        raise RuntimeError
+        await failed_operation(RuntimeError())
 
-    monkeypatch.setattr(channel, "_fail_presence_sync", fail_reporting)
+    monkeypatch.setattr(
+        channel_state(channel).presence, "fail_presence_sync", fail_reporting
+    )
     with pytest.raises(RuntimeError):
-        await realtime._report_presence_sync_failure(channel, RuntimeError())
+        await realtime_state(realtime).report_presence_sync_failure(
+            channel_state(channel), RuntimeError()
+        )
 
-    assert not channel._presence_syncing
-    assert channel._presence_events == []
+    assert not channel_state(channel).presence_syncing
+    assert channel_state(channel).presence_events == []
 
 
 async def test_running_presence_sync_coalesces_a_second_request() -> None:
@@ -233,16 +240,18 @@ async def test_running_presence_sync_coalesces_a_second_request() -> None:
         assert subscription is not None
         subscription.presence_entered = asyncio.Event()
         subscription.presence_release = asyncio.Event()
-        channel._schedule_presence_sync()
-        first = channel._presence_sync_task
+        channel_state(channel).presence.schedule_presence_sync()
+        first = channel_state(channel).presence_sync_task
         assert first is not None
         _ = await asyncio.wait_for(subscription.presence_entered.wait(), timeout=0.2)
 
-        channel._schedule_presence_sync()
-        assert channel._presence_sync_task is first
-        assert channel._presence_sync_pending
+        channel_state(channel).presence.schedule_presence_sync()
+        assert channel_state(channel).presence_sync_task is first
+        assert channel_state(channel).presence_sync_pending
         subscription.presence_release.set()
-        await asyncio.wait_for(channel._wait_presence_sync(), timeout=0.2)
+        await asyncio.wait_for(
+            channel_state(channel).presence.wait_presence_sync(), timeout=0.2
+        )
     finally:
         await client.realtime.disconnect()
 
@@ -253,12 +262,17 @@ async def test_removing_an_unsubscribed_channel_preserves_a_new_registration() -
     await realtime.remove_channel("messages")
     replacement = realtime.channel("messages")
 
-    assert await realtime._remove_registered_channel(original.name, original) is None
+    assert (
+        await realtime_state(realtime).remove_registered_channel(
+            original.name, channel_state(original)
+        )
+        is None
+    )
 
     assert realtime.channel("messages") is replacement
     assert replacement is not original
-    assert realtime._removing_channels == set()
-    assert realtime._connection is None
+    assert realtime_state(realtime).removing_channels == set()
+    assert realtime_state(realtime).connection is None
 
 
 async def test_removing_a_never_subscribed_channel_leaves_other_native_channels() -> (
@@ -271,7 +285,7 @@ async def test_removing_a_never_subscribed_channel_leaves_other_native_channels(
         await active.subscribe()
         await client.realtime.remove_channel("inactive")
 
-        assert active._subscribed
+        assert channel_state(active).subscribed
         assert client.realtime.channel("active") is active
     finally:
         await client.realtime.disconnect()
@@ -291,13 +305,13 @@ async def test_recovering_presence_channel_drops_queued_join_callback() -> None:
         await channel.subscribe()
         subscription = native.subscription
         assert subscription is not None
-        queued = _CallbackDelivery(
+        queued = CallbackDelivery(
             "join",
             SimpleNamespace(client="stale"),
-            delivery_epoch=channel._presence_epoch,
+            delivery_epoch=channel_state(channel).presence_epoch,
         )
         await subscription.emit_subscribing()
-        await channel._dispatch_delivery(queued)
+        await channel_state(channel).dispatch_delivery(queued)
 
         assert received == []
     finally:
@@ -310,36 +324,38 @@ async def test_failed_subscription_cleanup_rechecks_ownership_after_lock_wait(
     client = make_client()
     channel = client.realtime.channel("messages")
     paused = asyncio.Event()
-    pause = channel._pause_delivery
+    pause = channel_state(channel).pause_delivery
 
     def pause_and_notify() -> None:
         pause()
         paused.set()
 
-    monkeypatch.setattr(channel, "_pause_delivery", pause_and_notify)
+    monkeypatch.setattr(channel_state(channel), "pause_delivery", pause_and_notify)
     try:
         await channel.subscribe()
-        subscription = channel._subscription
+        subscription = channel_state(channel).subscription
         assert subscription is not None
-        async with client.realtime._connection_lock:
+        async with realtime_state(client.realtime).connection_lock:
             cleanup = asyncio.create_task(
-                client.realtime._cleanup_failed_subscription(
-                    channel, subscription, RuntimeError("ready failed")
+                realtime_state(client.realtime).cleanup_failed_subscription(
+                    channel_state(channel), subscription, RuntimeError("ready failed")
                 )
             )
             _ = await asyncio.wait_for(paused.wait(), timeout=2)
-            await client.realtime._discard_subscription(channel)
-            replacement = await client.realtime._prepare_subscription(
-                channel, channel._subscribe_generation
+            await realtime_state(client.realtime).discard_subscription(
+                channel_state(channel)
+            )
+            replacement = await realtime_state(client.realtime).prepare_subscription(
+                channel_state(channel), channel_state(channel).subscribe_generation
             )
         await asyncio.wait_for(cleanup, timeout=2)
 
         assert replacement is not subscription
-        assert channel._subscription is replacement
-        assert channel._subscription_events is not None
+        assert channel_state(channel).subscription is replacement
+        assert channel_state(channel).subscription_events is not None
         await channel.subscribe()
-        assert channel._subscription is replacement
-        assert channel._subscribed
+        assert channel_state(channel).subscription is replacement
+        assert channel_state(channel).subscribed
     finally:
         await client.realtime.disconnect()
 
@@ -349,18 +365,18 @@ async def test_failed_subscription_cleanup_preserves_an_existing_replacement() -
     channel = client.realtime.channel("messages")
     try:
         await channel.subscribe()
-        stale = channel._subscription
+        stale = channel_state(channel).subscription
         await client.realtime.disconnect()
         await channel.subscribe()
-        replacement = channel._subscription
+        replacement = channel_state(channel).subscription
         assert stale is not None
         assert replacement is not stale
 
-        await client.realtime._cleanup_failed_subscription(
-            channel, stale, RuntimeError("stale readiness failed")
+        await realtime_state(client.realtime).cleanup_failed_subscription(
+            channel_state(channel), stale, RuntimeError("stale readiness failed")
         )
 
-        assert channel._subscription is replacement
-        assert channel._subscribed
+        assert channel_state(channel).subscription is replacement
+        assert channel_state(channel).subscribed
     finally:
         await client.realtime.disconnect()

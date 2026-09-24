@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeVar
 
 from typing_extensions import override
 
 from volcano_sdk._durable_protocols import RuntimeBatch, RuntimeContext
+from volcano_sdk._tests.typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
     from collections.abc import Callable

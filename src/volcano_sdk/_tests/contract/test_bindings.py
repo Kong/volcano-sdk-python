@@ -9,7 +9,6 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from unittest.mock import AsyncMock, Mock, call
 
 import behave.step_registry as behave_step_registry
@@ -33,6 +32,7 @@ from volcano_sdk._tests.contract.fakes import (
     PauseSubscriber,
 )
 from volcano_sdk._tests.session_fixtures import access_token
+from volcano_sdk._tests.typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from volcano_sdk._transport import GeneratedTransport
 from volcano_sdk.auth import Auth
 from volcano_sdk.realtime import PostgresChange

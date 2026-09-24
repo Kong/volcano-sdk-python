@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Never
-
 import httpx
 import pytest
 
@@ -21,6 +19,7 @@ from .test_session_continuity import (
     client_for,
     refreshed,
 )
+from .typing import TYPE_CHECKING, Never
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping

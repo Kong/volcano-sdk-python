@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from typing_extensions import override
 
 from volcano_sdk import VolcanoClient
 from volcano_sdk._auth_requests import AuthRequests
 from volcano_sdk._session_operations import SessionOperations
+
+from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+
+from volcano_sdk._tests.typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -69,12 +70,14 @@ class FailingPresenceChannel:
     def __init__(self, error: RuntimeError) -> None:
         self.error: RuntimeError = error
 
+    @staticmethod
     def on_presence_sync(
-        self, _callback: Callable[[Mapping[str, RealtimePresenceInfo]], None]
+        _callback: Callable[[Mapping[str, RealtimePresenceInfo]], None],
     ) -> Callable[[], None]:
         return lambda: None
 
-    def get_presence_state(self) -> dict[str, RealtimePresenceInfo]:
+    @staticmethod
+    def get_presence_state() -> dict[str, RealtimePresenceInfo]:
         return {}
 
     async def subscribe(self) -> None:

@@ -5,7 +5,6 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import SEEK_END, BytesIO, RawIOBase, StringIO
-from typing import TYPE_CHECKING, Protocol, TypeVar, cast, runtime_checkable
 
 import pytest
 from typing_extensions import override
@@ -37,6 +36,7 @@ from .fixtures.invalid_arguments import (
     string_visibility,
 )
 from .state_assertions import assert_same
+from .typing import TYPE_CHECKING, Protocol, TypeVar, cast, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Callable

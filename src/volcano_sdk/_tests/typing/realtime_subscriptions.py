@@ -1,12 +1,15 @@
 """Subscription lookup preserves the value and fallback types."""
 
-from typing import assert_type
+from collections.abc import Mapping
 
 from volcano_sdk._realtime_transport import (
     ProjectAwareSubscriptions,
 )
+from volcano_sdk._tests.typing import assert_type
 from volcano_sdk.realtime import (
     Channel,
+    Realtime,
+    RealtimePresenceInfo,
 )
 
 
@@ -34,3 +37,18 @@ def legacy_callback_types(channel: Channel) -> None:
 
     _text_channel = assert_type(channel.on("message", text_message), Channel)
     _record_channel = assert_type(channel.on("message", record_message), Channel)
+
+
+async def channel_facade_types(realtime: Realtime) -> None:
+    """The public factory preserves channel methods across the internal split."""
+    channel = assert_type(realtime.channel("members", channel_type="presence"), Channel)
+    _name = assert_type(channel.name, str)
+    _presence = assert_type(
+        channel.get_presence_state(), Mapping[str, RealtimePresenceInfo]
+    )
+    await channel.subscribe()
+    await channel.track({"status": "online"})
+    await channel.unsubscribe()
+    await realtime.remove_channel("members", channel_type="presence")
+    await realtime.remove_all_channels()
+    await realtime.disconnect()

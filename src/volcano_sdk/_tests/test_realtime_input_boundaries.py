@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import pytest
 
 from volcano_sdk import PostgresChange, VolcanoClient
-from volcano_sdk.realtime import _filter_postgres_changes, _postgres_change
+from volcano_sdk._realtime_messages import (
+    filter_postgres_changes,
+    postgres_change,
+)
+
+from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from volcano_sdk.realtime import ChannelType, PostgresEvent, PostgresListenerEvent
@@ -13,7 +16,7 @@ if TYPE_CHECKING:
 
 @pytest.mark.parametrize("payload", [None, [], False, "change", 42])
 def test_postgres_parser_rejects_non_object_publications(payload: object) -> None:
-    assert _postgres_change(payload) is None
+    assert postgres_change(payload) is None
 
 
 @pytest.mark.parametrize(
@@ -40,14 +43,14 @@ def test_postgres_parser_rejects_invalid_delivery_metadata(
         field: value,
     }
 
-    assert _postgres_change(payload) is None
+    assert postgres_change(payload) is None
 
 
 @pytest.mark.parametrize("columns", [None, [], (), ["id", "body"], ("id", "body")])
 def test_postgres_parser_preserves_valid_column_metadata(
     columns: list[str] | tuple[str, ...] | None,
 ) -> None:
-    change = _postgres_change(
+    change = postgres_change(
         {
             "type": "UPDATE",
             "schema": "public",
@@ -85,7 +88,7 @@ def test_postgres_filter_delivers_only_matching_changes(
         changes.append(change)
         return "delivered"
 
-    listener = _filter_postgres_changes(listener_event, "public", "messages", callback)
+    listener = filter_postgres_changes(listener_event, "public", "messages", callback)
     change = PostgresChange(type=event, schema=schema, table=table)
 
     assert listener(change) == ("delivered" if matches else None)

@@ -9,8 +9,9 @@ from volcano_sdk._realtime_fetch_worker import (
     PostgresFetchJob,
     PostgresFetchOutcome,
     PostgresFetchRequest,
-    PostgresFetchWorker,
 )
+
+from .realtime_probes import InspectableFetchWorker as PostgresFetchWorker
 
 
 class BlockingRowFetch:
@@ -341,7 +342,7 @@ def test_postgres_fetch_worker_recovers_from_cancelled_close() -> None:
         try:
             await asyncio.wait_for(worker.close(), timeout=0.2)
         finally:
-            task = worker._task
+            task = worker.background_task
             if task is not None and not task.done():
                 _ = task.cancel()
                 _ = await asyncio.gather(task, return_exceptions=True)
@@ -379,7 +380,7 @@ def test_postgres_fetch_worker_unblocks_a_full_enqueue_after_failure() -> None:
             with pytest.raises(RuntimeError) as raised:
                 await asyncio.wait_for(blocked_enqueue, timeout=0.2)
         finally:
-            task = worker._task
+            task = worker.background_task
             if task is not None:
                 _ = await asyncio.gather(task, return_exceptions=True)
 

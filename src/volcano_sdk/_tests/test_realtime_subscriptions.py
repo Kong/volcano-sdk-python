@@ -34,7 +34,7 @@ def test_native_adapter_preserves_existing_subscription_identity() -> None:
 
     _ = VolcanoCentrifugeConnection(native)
 
-    assert native._subs.get("project:broadcast:room") is subscription
+    assert native.subscriptions.get("project:broadcast:room") is subscription
 
 
 @pytest.mark.parametrize("registry", [None, [], {1: object()}])
@@ -47,4 +47,4 @@ def test_native_adapter_rejects_incompatible_registry_without_replacing_it(
     with pytest.raises(TypeError, match="subscription registry"):
         _ = VolcanoCentrifugeConnection(native)
 
-    assert native._subs is registry
+    assert native.subscriptions is registry

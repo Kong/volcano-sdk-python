@@ -1,21 +1,26 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
 
 import pytest
 
-from volcano_sdk._realtime_fetch_worker import PostgresFetchOutcome, PostgresFetchWorker
+from volcano_sdk._realtime_fetch_worker import PostgresFetchOutcome
 
+from .realtime_probes import InspectableFetchWorker as PostgresFetchWorker
+from .realtime_probes import completed_operation, failed_operation
 from .test_realtime_fetch_worker import (
     BlockingRowFetch,
     OutcomeRecorder,
     RecordingBatchFetch,
     fetch_job,
 )
+from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from volcano_sdk.realtime import _PostgresFetchRequest
+    from volcano_sdk._realtime_fetch_worker import (
+        PostgresFetchOutcome,
+        PostgresFetchRequest,
+    )
 
 
 async def cancel_operation(task: asyncio.Task[None] | None) -> None:
@@ -66,7 +71,7 @@ async def test_close_failure_cancels_a_blocked_stop_request() -> None:
     failure = RuntimeError("delivery failed")
 
     async def fail_delivery(_outcome: PostgresFetchOutcome[str]) -> None:
-        raise failure
+        await failed_operation(failure)
 
     worker = PostgresFetchWorker(fetch, fail_delivery, queue_limit=1)
     closing = None
@@ -76,7 +81,7 @@ async def test_close_failure_cancels_a_blocked_stop_request() -> None:
         await asyncio.wait_for(worker.enqueue(fetch_job(2)), timeout=1)
         closing = asyncio.create_task(worker.close())
         await asyncio.sleep(0)
-        stop_task = worker._stop_task
+        stop_task = worker.stop_task
         assert stop_task is not None
         assert not stop_task.done()
         fetch.release.set()
@@ -103,7 +108,7 @@ async def test_abort_unblocks_close_with_a_full_queue() -> None:
         await asyncio.wait_for(worker.enqueue(fetch_job(2)), timeout=1)
         closing = asyncio.create_task(worker.close())
         await asyncio.sleep(0)
-        stop_task = worker._stop_task
+        stop_task = worker.stop_task
         assert stop_task is not None
         assert not stop_task.done()
 
@@ -151,7 +156,7 @@ async def test_wrong_batch_result_count_fails_before_delivery(
     release = asyncio.Event()
 
     async def malformed_results(
-        _requests: tuple[_PostgresFetchRequest, ...],
+        _requests: tuple[PostgresFetchRequest, ...],
     ) -> tuple[dict[str, int], ...]:
         _ = await release.wait()
         return records
@@ -173,7 +178,7 @@ async def test_fetch_cancellation_propagates_without_delivering_a_fallback() -> 
     release = asyncio.Event()
 
     async def cancelled_fetch(
-        _requests: tuple[_PostgresFetchRequest, ...],
+        _requests: tuple[PostgresFetchRequest, ...],
     ) -> tuple[dict[str, int], ...]:
         started.set()
         _ = await release.wait()
@@ -201,6 +206,7 @@ async def test_batch_window_flushes_without_waiting_for_another_row_or_close() -
     async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
         assert outcome.record == {"id": 1}
         delivered.set()
+        await completed_operation(None)
 
     worker = PostgresFetchWorker(
         fetch, deliver, queue_limit=2, max_batch_size=2, batch_window_seconds=0.1

@@ -1,5 +1,4 @@
 from collections.abc import Callable
-from typing import assert_type
 
 from volcano_sdk._tests.test_binary_properties import (
     test_download_preserves_arbitrary_bytes,
@@ -11,6 +10,7 @@ from volcano_sdk._tests.test_encoding_properties import (
     test_storage_path_encoding_preserves_every_character,
     test_storage_path_rejects_dot_segments,
 )
+from volcano_sdk._tests.typing import assert_type
 
 # Fully generated properties expose a typed, zero-argument pytest callable.
 _ = assert_type(test_download_preserves_arbitrary_bytes, Callable[[], None])

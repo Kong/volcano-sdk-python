@@ -5,7 +5,6 @@ import base64
 import json
 from dataclasses import dataclass
 from types import MappingProxyType, SimpleNamespace
-from typing import TYPE_CHECKING, Annotated, Literal, TypedDict, TypeGuard, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -27,11 +26,27 @@ from volcano_sdk import (
     VolcanoClient,
 )
 from volcano_sdk import realtime as realtime_module
+from volcano_sdk._realtime_channel import (
+    ChannelEvents,
+)
+from volcano_sdk._realtime_connection import (
+    ClientEvents,
+)
+from volcano_sdk._realtime_fetch_worker import (
+    PostgresFetchRequest,
+)
+from volcano_sdk._realtime_messages import (
+    CallbackDelivery,
+    postgres_change,
+    postgres_fetch_config,
+)
 from volcano_sdk._realtime_transport import (
     native_attribute,
     postgres_route_matches,
 )
+from volcano_sdk._transport import Transport
 
+from .client_inspection import InspectedClient
 from .fixtures.invalid_arguments import (
     fractional_fetch_window,
     remove_unsupported_realtime_channel_type,
@@ -39,8 +54,10 @@ from .fixtures.invalid_arguments import (
     unsupported_realtime_channel_type,
 )
 from .property_support import PROPERTY_SEED
+from .realtime_probes import channel_state, failed_operation, realtime_state
 from .state_assertions import assert_same
 from .transport_fixtures import RejectingTransport
+from .typing import TYPE_CHECKING, Annotated, Literal, TypedDict, TypeGuard, cast
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
@@ -125,16 +142,16 @@ def test_realtime_database_binding_can_be_replaced_and_cleared() -> None:
 def test_realtime_fetches_session_bound_postgres_rows() -> None:
     transport = RealtimeDatabaseTransport([{"id": 42, "body": "fetched"}])
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    request = realtime_module._PostgresFetchRequest(
+    request = PostgresFetchRequest(
         database_name="app",
         access_token="captured-token",
         table="messages",
         row_id=42,
     )
 
-    assert asyncio.run(client.realtime._fetch_postgres_rows((request,))) == (
-        {"id": 42, "body": "fetched"},
-    )
+    assert asyncio.run(
+        realtime_state(client.realtime).fetch_postgres_rows((request,))
+    ) == ({"id": 42, "body": "fetched"},)
     assert transport.queries == [
         {
             "authorization": "captured-token",
@@ -172,7 +189,7 @@ def test_realtime_fetch_validates_postgres_row_values(
         anon_key="anon-key",
         _transport=RealtimeDatabaseTransport([row]),
     )
-    request = realtime_module._PostgresFetchRequest(
+    request = PostgresFetchRequest(
         database_name="app",
         access_token="captured-token",
         table="messages",
@@ -180,15 +197,19 @@ def test_realtime_fetch_validates_postgres_row_values(
     )
 
     if valid:
-        assert asyncio.run(client.realtime._fetch_postgres_rows((request,))) == (row,)
+        assert asyncio.run(
+            realtime_state(client.realtime).fetch_postgres_rows((request,))
+        ) == (row,)
     else:
         with pytest.raises(TypeError, match="non-JSON value"):
-            _ = asyncio.run(client.realtime._fetch_postgres_rows((request,)))
+            _ = asyncio.run(
+                realtime_state(client.realtime).fetch_postgres_rows((request,))
+            )
 
 
 def test_realtime_fetch_requires_async_select_transport() -> None:
     client = VolcanoClient(anon_key="anon-key", _transport=RejectingTransport())
-    request = realtime_module._PostgresFetchRequest(
+    request = PostgresFetchRequest(
         database_name="app",
         access_token="captured-token",
         table="messages",
@@ -196,20 +217,22 @@ def test_realtime_fetch_requires_async_select_transport() -> None:
     )
 
     with pytest.raises(TypeError, match="does not support realtime Postgres row fetch"):
-        _ = asyncio.run(client.realtime._fetch_postgres_rows((request,)))
+        _ = asyncio.run(realtime_state(client.realtime).fetch_postgres_rows((request,)))
 
 
 def test_realtime_row_fetch_returns_none_when_the_row_is_absent() -> None:
     transport = RealtimeDatabaseTransport([])
     client = VolcanoClient(anon_key="anon-key", _transport=transport)
-    request = realtime_module._PostgresFetchRequest(
+    request = PostgresFetchRequest(
         database_name="app",
         access_token="captured-token",
         table="messages",
         row_id=42,
     )
 
-    assert asyncio.run(client.realtime._fetch_postgres_rows((request,))) == (None,)
+    assert asyncio.run(
+        realtime_state(client.realtime).fetch_postgres_rows((request,))
+    ) == (None,)
     body = transport.queries[0]["body"]
     assert isinstance(body, dict)
     assert cast("dict[object, object]", body)["table"] == "messages"
@@ -223,10 +246,11 @@ class Response:
     headers: dict[str, str] | None = None
 
 
-class AuthTransport:
+class AuthTransport(Transport):
     def __init__(self) -> None:
         self.access_token: str = "access-1"
 
+    @override
     def auth_signin(
         self,
         *,
@@ -244,6 +268,7 @@ class AuthTransport:
             },
         )
 
+    @override
     def query_database_select(
         self,
         *,
@@ -254,6 +279,7 @@ class AuthTransport:
         del authorization, database_name, body
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
+    @override
     def query_database_insert(
         self,
         *,
@@ -264,6 +290,7 @@ class AuthTransport:
         del authorization, database_name, body
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
+    @override
     def query_database_update(
         self,
         *,
@@ -274,6 +301,7 @@ class AuthTransport:
         del authorization, database_name, body
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
+    @override
     def query_database_delete(
         self,
         *,
@@ -284,6 +312,7 @@ class AuthTransport:
         del authorization, database_name, body
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
+    @override
     def upload_storage_object(
         self,
         *,
@@ -296,6 +325,7 @@ class AuthTransport:
         del authorization, bucket_name, path, data, content_type
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
+    @override
     def download_storage_object(
         self,
         *,
@@ -307,6 +337,7 @@ class AuthTransport:
         del authorization, bucket_name, path, byte_range
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
+    @override
     def acquire_project_lock(
         self,
         *,
@@ -319,6 +350,7 @@ class AuthTransport:
         del authorization, key, ttl, token, request_id
         raise AssertionError(UNEXPECTED_TRANSPORT_CALL)
 
+    @override
     def release_project_lock(
         self,
         *,
@@ -415,13 +447,11 @@ class FakeSubscription:
         join_leave: bool,
         recoverable: bool,
     ) -> None:
-        if events is not None and not isinstance(
-            events, realtime_module._ChannelEvents
-        ):
+        if events is not None and not isinstance(events, ChannelEvents):
             message = "expected SDK channel events"
             raise TypeError(message)
         self.name: str = name
-        self.events: realtime_module._ChannelEvents | None = events
+        self.events: ChannelEvents | None = events
         self.join_leave: bool = join_leave
         self.recoverable: bool = recoverable
         self.calls: list[tuple[str, object]] = []
@@ -435,7 +465,7 @@ class FakeSubscription:
         self.unsubscribe_entered: asyncio.Event | None = None
         self.unsubscribe_release: asyncio.Event | None = None
 
-    def _events(self) -> realtime_module._ChannelEvents:
+    def _events(self) -> ChannelEvents:
         if self.events is None:
             message = "detached test subscription has no events"
             raise AssertionError(message)
@@ -526,7 +556,7 @@ class FakeSubscription:
 class FakeCentrifugeClient:
     def __init__(self, events: object = None) -> None:
         self.calls: list[str] = []
-        self.events: realtime_module._ClientEvents | None = None
+        self.events: ClientEvents | None = None
         self.set_events(events)
         self.state: FakeConnectionState = FakeConnectionState(value="disconnected")
         self.presence_clients: dict[str, object] = {}
@@ -538,8 +568,12 @@ class FakeCentrifugeClient:
         self.subscription: FakeSubscription | None = None
         self._subs: dict[str, FakeSubscription] = {}
 
+    @property
+    def subscriptions(self) -> dict[str, FakeSubscription]:
+        return self._subs
+
     def set_events(self, events: object) -> None:
-        if events is not None and not isinstance(events, realtime_module._ClientEvents):
+        if events is not None and not isinstance(events, ClientEvents):
             message = "expected SDK connection events"
             raise TypeError(message)
         self.events = events
@@ -776,13 +810,13 @@ async def test_realtime_callback_errors_are_empty_after_native_presence_reply() 
     channel = client.realtime.channel("lobby", channel_type="presence")
     subscription = FakeSubscription(
         channel.name,
-        realtime_module._ChannelEvents(channel),
+        ChannelEvents(channel_state(channel)),
         join_leave=True,
         recoverable=True,
     )
     subscription.presence_entered = asyncio.Event()
-    channel._subscription = subscription
-    channel._subscribed = True
+    channel_state(channel).subscription = subscription
+    channel_state(channel).subscribed = True
     loop = asyncio.get_running_loop()
     previous_handler = loop.get_exception_handler()
     failures: list[object] = []
@@ -793,7 +827,7 @@ async def test_realtime_callback_errors_are_empty_after_native_presence_reply() 
         failures.append(context.get("exception"))
 
     loop.set_exception_handler(record_failure)
-    sync = asyncio.create_task(channel._run_presence_sync())
+    sync = asyncio.create_task(channel_state(channel).presence.run_presence_sync())
     try:
         _ = await asyncio.wait_for(subscription.presence_entered.wait(), timeout=1)
         await asyncio.wait_for(sync, timeout=0.2)
@@ -838,7 +872,9 @@ def test_realtime_native_dispatch_routes_project_prefixed_publications(
                     }
                 }
             )
-            await asyncio.wait_for(channel._callback_queue.join(), timeout=1)
+            await asyncio.wait_for(
+                channel_state(channel).callback_queue.join(), timeout=1
+            )
             assert received == [payload]
         finally:
             await client.realtime.disconnect()
@@ -919,7 +955,7 @@ async def start_native_presence_refresh(
     command = await factory.command()
     await factory.reply(command, presence={"presence": {}})
     await subscribing
-    await channel._wait_presence_sync()
+    await channel_state(channel).presence.wait_presence_sync()
     subscription = factory.subscription(channel.name)
     await subscription.move_subscribing(1, "transport closed")
     command = await factory.command()
@@ -1015,7 +1051,7 @@ def test_realtime_cancelled_pause_keeps_native_subscription_resumable(
             await pausing
         await factory.reply(presence, presence={"presence": {}})
         assert subscription.state.value == "unsubscribed"
-        assert_same(channel._subscribed, expected=False)
+        assert_same(channel_state(channel).subscribed, expected=False)
 
         resuming = asyncio.create_task(channel.subscribe())
         try:
@@ -1025,8 +1061,8 @@ def test_realtime_cancelled_pause_keeps_native_subscription_resumable(
             command = await factory.command()
             await factory.reply(command, presence={"presence": {}})
             await resuming
-            await channel._wait_presence_sync()
-            assert_same(channel._subscribed, expected=True)
+            await channel_state(channel).presence.wait_presence_sync()
+            assert_same(channel_state(channel).subscribed, expected=True)
             assert factory.subscription(channel.name) is subscription
         finally:
             await client.realtime.disconnect()
@@ -1064,7 +1100,9 @@ def test_realtime_repeated_pause_retains_presence_clear_notification(
             await pausing
             await channel.unsubscribe()
             release.set()
-            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            await asyncio.wait_for(
+                channel_state(channel).callback_queue.join(), timeout=0.2
+            )
             assert snapshots[-1] == {}
             assert channel.get_presence_state() == {}
         finally:
@@ -1202,7 +1240,7 @@ def test_realtime_rejects_fractional_fetch_window() -> None:
 def test_realtime_accepts_fetch_configuration_boundaries(
     window: int, batch_size: int
 ) -> None:
-    config = realtime_module._postgres_fetch_config(
+    config = postgres_fetch_config(
         auto_fetch=True,
         fetch_batch_window_ms=window,
         fetch_max_batch_size=batch_size,
@@ -1229,15 +1267,17 @@ def test_realtime_postgres_delivery_identity_changes_on_reauthentication() -> No
             channel_type="postgres",
         )
         await channel.subscribe()
-        identity = channel._capture_postgres_delivery_identity()
+        identity = channel_state(channel).capture_postgres_delivery_identity()
 
-        assert channel._postgres_delivery_is_current(identity)
+        assert channel_state(channel).postgres_delivery_is_current(identity)
 
         _ = client.auth.sign_in(email="user@example.com", password="secret")
 
-        identity_after_reauthentication = channel._capture_postgres_delivery_identity()
-        assert not channel._postgres_delivery_is_current(identity)
-        assert not channel._postgres_delivery_is_current(
+        identity_after_reauthentication = channel_state(
+            channel
+        ).capture_postgres_delivery_identity()
+        assert not channel_state(channel).postgres_delivery_is_current(identity)
+        assert not channel_state(channel).postgres_delivery_is_current(
             identity_after_reauthentication
         )
         await client.realtime.disconnect()
@@ -1260,18 +1300,18 @@ def test_realtime_postgres_delivery_identity_changes_on_resubscription() -> None
             channel_type="postgres",
         )
         await channel.subscribe()
-        identity = channel._capture_postgres_delivery_identity()
+        identity = channel_state(channel).capture_postgres_delivery_identity()
         subscription = official.subscription
         assert subscription is not None
 
         await subscription.emit_subscribing()
-        assert not channel._postgres_delivery_is_current(identity)
+        assert not channel_state(channel).postgres_delivery_is_current(identity)
 
         await subscription.emit_subscribed()
-        next_identity = channel._capture_postgres_delivery_identity()
+        next_identity = channel_state(channel).capture_postgres_delivery_identity()
 
-        assert not channel._postgres_delivery_is_current(identity)
-        assert channel._postgres_delivery_is_current(next_identity)
+        assert not channel_state(channel).postgres_delivery_is_current(identity)
+        assert channel_state(channel).postgres_delivery_is_current(next_identity)
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -1298,7 +1338,7 @@ def test_realtime_rejects_new_subscriptions_after_session_changes() -> None:
 
         with pytest.raises(RuntimeError, match="session changed"):
             await postgres.subscribe()
-        assert postgres._subscription is None
+        assert channel_state(postgres).subscription is None
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -1354,19 +1394,19 @@ async def test_realtime_drops_queued_postgres_callbacks_from_an_old_epoch() -> N
 
     await subscription.emit(insert(1))
     _ = await asyncio.wait_for(first_started.wait(), timeout=2)
-    first_worker = channel._postgres_worker
+    first_worker = channel_state(channel).postgres_worker
     assert first_worker is not None
     await subscription.emit(insert(2))
 
     await subscription.emit_subscribing()
-    assert_same(channel._postgres_worker, expected=None)
+    assert_same(channel_state(channel).postgres_worker, expected=None)
     release_first.set()
     await subscription.emit_subscribed()
     await subscription.emit(insert(3))
     _ = await asyncio.wait_for(third_received.wait(), timeout=0.2)
 
     assert received == [1, 3]
-    assert channel._postgres_worker is not first_worker
+    assert channel_state(channel).postgres_worker is not first_worker
     await client.realtime.disconnect()
 
 
@@ -1418,12 +1458,12 @@ def test_realtime_only_queues_changes_with_an_interested_listener() -> None:
         await subscription.emit(publication("UPDATE", "messages"))
         await subscription.emit(publication("INSERT", "other"))
 
-        assert_same(channel._postgres_worker, expected=None)
+        assert_same(channel_state(channel).postgres_worker, expected=None)
 
         stop()
         await subscription.emit(publication("INSERT", "messages"))
 
-        assert_same(channel._postgres_worker, expected=None)
+        assert_same(channel_state(channel).postgres_worker, expected=None)
 
         _ = channel.on("*", UnhashableListener(unfiltered, unfiltered_received))
         await subscription.emit(publication("UPDATE", "other"))
@@ -1431,7 +1471,7 @@ def test_realtime_only_queues_changes_with_an_interested_listener() -> None:
 
         assert filtered == []
         assert len(unfiltered) == 1
-        assert channel._postgres_worker is not None
+        assert channel_state(channel).postgres_worker is not None
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -1461,16 +1501,16 @@ def test_realtime_captures_supported_postgres_fetch_request() -> None:
             mode="lightweight",
         )
 
-        request = channel._postgres_fetch_request(change)
+        request = channel_state(channel).postgres_fetch_request(change)
         client.realtime.set_database_name("next")
 
-        assert request == realtime_module._PostgresFetchRequest(
+        assert request == PostgresFetchRequest(
             database_name="app",
             access_token="access-1",
             table="messages",
             row_id=42,
         )
-        assert channel._postgres_fetch_request(
+        assert channel_state(channel).postgres_fetch_request(
             realtime_module.PostgresChange(
                 type="INSERT",
                 schema="private",
@@ -1478,14 +1518,14 @@ def test_realtime_captures_supported_postgres_fetch_request() -> None:
                 id=42,
                 mode="lightweight",
             )
-        ) == realtime_module._PostgresFetchRequest(
+        ) == PostgresFetchRequest(
             database_name="next",
             access_token="access-1",
             table="private.messages",
             row_id=42,
         )
         assert (
-            channel._postgres_fetch_request(
+            channel_state(channel).postgres_fetch_request(
                 realtime_module.PostgresChange(
                     type="DELETE",
                     schema="public",
@@ -1497,7 +1537,7 @@ def test_realtime_captures_supported_postgres_fetch_request() -> None:
             is None
         )
         assert (
-            channel._postgres_fetch_request(
+            channel_state(channel).postgres_fetch_request(
                 realtime_module.PostgresChange(
                     type="UPDATE",
                     schema="public",
@@ -1508,7 +1548,7 @@ def test_realtime_captures_supported_postgres_fetch_request() -> None:
             is None
         )
         client.realtime.set_database_name(None)
-        assert channel._postgres_fetch_request(change) is None
+        assert channel_state(channel).postgres_fetch_request(change) is None
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -1885,7 +1925,7 @@ def test_realtime_disconnect_invalidates_channels_before_clearing_auth() -> None
     )
     _ = client.auth.sign_in(email="user@example.com", password="secret")
     with pytest.raises(RuntimeError, match="no session binding"):
-        _ = client.realtime._connection_token()
+        _ = realtime_state(client.realtime).connection_token()
 
     async def scenario() -> None:
         channel = client.realtime.channel(
@@ -1897,8 +1937,8 @@ def test_realtime_disconnect_invalidates_channels_before_clearing_auth() -> None
 
         def observe_disconnect_boundary() -> None:
             nonlocal observed
-            assert_same(channel._subscribed, expected=False)
-            assert client.realtime._connection_token() == "access-1"
+            assert_same(channel_state(channel).subscribed, expected=False)
+            assert realtime_state(client.realtime).connection_token() == "access-1"
             observed = True
 
         official.disconnect_probe = observe_disconnect_boundary
@@ -1906,7 +1946,7 @@ def test_realtime_disconnect_invalidates_channels_before_clearing_auth() -> None
 
         assert observed
         with pytest.raises(RuntimeError, match="no session binding"):
-            _ = client.realtime._connection_token()
+            _ = realtime_state(client.realtime).connection_token()
 
     asyncio.run(scenario())
 
@@ -2182,7 +2222,7 @@ def test_realtime_rejects_each_invalid_postgres_envelope_field(
     }
     payload[field] = invalid
 
-    assert realtime_module._postgres_change(payload) is None
+    assert postgres_change(payload) is None
 
 
 @pytest.mark.parametrize(
@@ -2207,7 +2247,7 @@ def test_realtime_rejects_malformed_postgres_payloads(
     }
     payload[field] = invalid
 
-    assert realtime_module._postgres_change(payload) is None
+    assert postgres_change(payload) is None
 
 
 @pytest.mark.parametrize(
@@ -2236,7 +2276,7 @@ def test_realtime_postgres_route_requires_exact_publication_shape(
 def test_realtime_preserves_valid_postgres_column_order(
     columns: Annotated[list[str], st.lists(st.text(), max_size=20)],
 ) -> None:
-    change = realtime_module._postgres_change(
+    change = postgres_change(
         {
             "type": "UPDATE",
             "schema": "public",
@@ -2326,7 +2366,9 @@ def test_realtime_presence_sync_tracks_initial_join_and_leave_state() -> None:
         await official.subscription.emit_join(
             SimpleNamespace(client="carol-client", user="carol", conn_info={})
         )
-        await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+        await asyncio.wait_for(
+            channel_state(channel).callback_queue.join(), timeout=0.2
+        )
         assert len(sync_states) == snapshots_before_unsubscribe
         assert "carol-client" in channel.get_presence_state()
         await client.realtime.remove_channel("lobby", channel_type="presence")
@@ -2387,7 +2429,9 @@ def test_realtime_presence_resyncs_after_resubscription() -> None:
         _ = await asyncio.wait_for(
             official.subscription.presence_entered.wait(), timeout=2
         )
-        await asyncio.wait_for(channel._wait_presence_sync(), timeout=0.2)
+        await asyncio.wait_for(
+            channel_state(channel).presence.wait_presence_sync(), timeout=0.2
+        )
 
         assert set(channel.get_presence_state()) == {"carol-client"}
         await client.realtime.disconnect()
@@ -2453,7 +2497,9 @@ def test_realtime_presence_replays_a_resync_requested_during_a_query() -> None:
             )
         }
         official.subscription.presence_release.set()
-        await asyncio.wait_for(channel._wait_presence_sync(), timeout=0.2)
+        await asyncio.wait_for(
+            channel_state(channel).presence.wait_presence_sync(), timeout=0.2
+        )
 
         assert official.subscription.calls.count(("presence", None)) == 3
         assert set(channel.get_presence_state()) == {"carol-client"}
@@ -2629,29 +2675,29 @@ def test_realtime_newer_queued_snapshot_discards_older_pending_snapshot() -> Non
             _ = await asyncio.Event().wait()
 
         blocker = asyncio.create_task(wait_forever())
-        channel._callback_task = blocker
-        for _ in range(channel._callback_queue.maxsize):
-            channel._callback_queue.put_nowait(
-                realtime_module._CallbackDelivery(
+        channel_state(channel).callback_task = blocker
+        for _ in range(channel_state(channel).callback_queue.maxsize):
+            channel_state(channel).callback_queue.put_nowait(
+                CallbackDelivery(
                     "presence_sync",
                     {"version": 0},
                 )
             )
 
-        await channel._emit("presence_sync", {"version": 1})
-        _ = channel._callback_queue.get_nowait()
-        channel._callback_queue.task_done()
-        await channel._emit("presence_sync", {"version": 2})
+        await channel_state(channel).emit("presence_sync", {"version": 1})
+        _ = channel_state(channel).callback_queue.get_nowait()
+        channel_state(channel).callback_queue.task_done()
+        await channel_state(channel).emit("presence_sync", {"version": 2})
         queued: list[object] = []
-        while not channel._callback_queue.empty():
-            queued.append(channel._callback_queue.get_nowait().data)
-            channel._callback_queue.task_done()
-        channel._enqueue_pending_presence_sync()
+        while not channel_state(channel).callback_queue.empty():
+            queued.append(channel_state(channel).callback_queue.get_nowait().data)
+            channel_state(channel).callback_queue.task_done()
+        channel_state(channel).enqueue_pending_presence_sync()
         _ = blocker.cancel()
         _ = await asyncio.gather(blocker, return_exceptions=True)
 
         assert queued[-1] == {"version": 2}
-        assert channel._callback_queue.empty()
+        assert channel_state(channel).callback_queue.empty()
 
     asyncio.run(scenario())
 
@@ -2761,7 +2807,9 @@ def test_realtime_reports_presence_query_failures() -> None:
         await official.subscription.emit_subscribed()
         _ = await asyncio.wait_for(reported.wait(), timeout=0.1)
         assert channel.get_presence_state() == {}
-        await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+        await asyncio.wait_for(
+            channel_state(channel).callback_queue.join(), timeout=0.2
+        )
         assert snapshots[-1] == {}
         await client.realtime.disconnect()
 
@@ -2795,7 +2843,7 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
         )
         return official
 
-    client = VolcanoClient(
+    client = InspectedClient(
         api_url="https://api.test.volcano.dev",
         anon_key="anon key",
         _transport=transport,
@@ -2824,13 +2872,13 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
         with pytest.raises(RuntimeError, match="must be subscribed"):
             await channel.send({"event": "message", "value": "late"})
 
-        generation, _lineage, _session = client._capture_session_binding()
+        generation, _lineage, _session = client.capture_session_binding()
         refreshed = Session(
             access_token="access-2",
             refresh_token="refresh-token-2",
             user_id="user-123",
         )
-        assert client._set_session_if_current(
+        assert client.set_session_if_current(
             refreshed,
             generation,
             event="TOKEN_REFRESHED",
@@ -2841,7 +2889,7 @@ def test_realtime_wraps_official_client_without_exposing_it() -> None:
         _ = client.auth.sign_in(email="user@example.com", password="secret")
         with pytest.raises(RuntimeError, match="session changed"):
             _ = await factory_arguments[0]["get_token"]()
-        assert client.realtime._connection_token() == "access-2"
+        assert realtime_state(client.realtime).connection_token() == "access-2"
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -2913,13 +2961,17 @@ def test_realtime_paused_channel_ignores_wire_publications(
             await official.emit_wire_publication(
                 f"project-id:{channel.name}", {"value": "paused"}
             )
-            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            await asyncio.wait_for(
+                channel_state(channel).callback_queue.join(), timeout=0.2
+            )
             assert received == []
             await channel.subscribe()
             await official.emit_wire_publication(
                 f"project-id:{channel.name}", {"value": "resumed"}
             )
-            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            await asyncio.wait_for(
+                channel_state(channel).callback_queue.join(), timeout=0.2
+            )
             assert received == [{"value": "resumed"}]
         finally:
             await client.realtime.disconnect()
@@ -2959,7 +3011,9 @@ def test_realtime_discards_queued_messages_when_delivery_is_paused(
             if resume:
                 await channel.subscribe()
             release.set()
-            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            await asyncio.wait_for(
+                channel_state(channel).callback_queue.join(), timeout=0.2
+            )
             assert received == ["active"]
         finally:
             release.set()
@@ -2992,7 +3046,9 @@ def test_realtime_discards_queued_presence_events_on_pause(*, resume: bool) -> N
         _ = channel.on("join", received.append).on("leave", received.append)
         _ = channel.on_presence_sync(snapshots.append)
         await channel.subscribe()
-        await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+        await asyncio.wait_for(
+            channel_state(channel).callback_queue.join(), timeout=0.2
+        )
         snapshots.clear()
         assert official.subscription is not None
         try:
@@ -3005,7 +3061,9 @@ def test_realtime_discards_queued_presence_events_on_pause(*, resume: bool) -> N
             if resume:
                 await channel.subscribe()
             release.set()
-            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            await asyncio.wait_for(
+                channel_state(channel).callback_queue.join(), timeout=0.2
+            )
             assert received == []
             assert snapshots
             assert all(state == {} for state in snapshots)
@@ -3040,13 +3098,15 @@ def test_realtime_explicit_pause_frees_queue_capacity_for_recovered_messages() -
         try:
             await official.subscription.emit("active")
             _ = await asyncio.wait_for(entered.wait(), timeout=0.2)
-            for _ in range(channel._callback_queue.maxsize):
+            for _ in range(channel_state(channel).callback_queue.maxsize):
                 await official.subscription.emit("obsolete")
             await channel.unsubscribe()
             await channel.subscribe()
             await official.subscription.emit("recovered")
             release.set()
-            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            await asyncio.wait_for(
+                channel_state(channel).callback_queue.join(), timeout=0.2
+            )
             assert received == ["active", "recovered"]
         finally:
             release.set()
@@ -3113,7 +3173,9 @@ def test_realtime_reconnect_preserves_messages_already_accepted_by_centrifuge(
                 presence = await factory.command()
                 await factory.reply(presence, presence={"presence": {}})
             release.set()
-            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            await asyncio.wait_for(
+                channel_state(channel).callback_queue.join(), timeout=0.2
+            )
             assert received == [1, 2, 3]
         finally:
             release.set()
@@ -3175,9 +3237,9 @@ def test_realtime_rejects_a_session_change_during_connect() -> None:
     asyncio.run(scenario())
 
     assert official.calls == ["connect", "disconnect"]
-    assert client.realtime._connection is None
-    assert client.realtime._connection_session_lineage is None
-    assert client.realtime._connection_access_token is None
+    assert realtime_state(client.realtime).connection is None
+    assert realtime_state(client.realtime).connection_session_lineage is None
+    assert realtime_state(client.realtime).connection_access_token is None
 
 
 def test_realtime_retains_a_provisional_connection_when_cleanup_fails() -> None:
@@ -3201,7 +3263,7 @@ def test_realtime_retains_a_provisional_connection_when_cleanup_fails() -> None:
 
         with pytest.raises(type(cleanup_error), match="disconnect failed"):
             await subscribing
-        assert client.realtime._connection is not None
+        assert realtime_state(client.realtime).connection is not None
 
         official.disconnect_error = None
         with pytest.raises(RuntimeError, match="session changed"):
@@ -3211,7 +3273,7 @@ def test_realtime_retains_a_provisional_connection_when_cleanup_fails() -> None:
     asyncio.run(scenario())
 
     assert official.calls == ["connect", "disconnect", "disconnect"]
-    assert client.realtime._connection is None
+    assert realtime_state(client.realtime).connection is None
 
 
 def test_realtime_connection_callbacks_receive_immutable_contexts() -> None:
@@ -3398,7 +3460,7 @@ def test_realtime_continues_removing_channels_after_one_failure() -> None:
         await first.subscribe()
         await second.subscribe()
         error = centrifuge_error("unsubscribe failed")
-        official._subs["broadcast:first"].unsubscribe_error = error
+        official.subscriptions["broadcast:first"].unsubscribe_error = error
 
         with pytest.raises(type(error), match="unsubscribe failed"):
             await client.realtime.remove_all_channels()
@@ -3489,7 +3551,7 @@ def test_realtime_removes_all_channels_without_disconnecting() -> None:
         second = client.realtime.channel("second")
         await first.subscribe()
         await second.subscribe()
-        subscriptions = tuple(official._subs.values())
+        subscriptions = tuple(official.subscriptions.values())
 
         await client.realtime.remove_all_channels()
 
@@ -3605,9 +3667,9 @@ def test_realtime_opens_one_connection_when_first_used_concurrently(
     _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
-        first = asyncio.create_task(client.realtime._connect())
+        first = asyncio.create_task(realtime_state(client.realtime).connect())
         _ = await asyncio.wait_for(entered.wait(), timeout=2)
-        second = asyncio.create_task(client.realtime._connect())
+        second = asyncio.create_task(realtime_state(client.realtime).connect())
         await asyncio.sleep(0)
         release.set()
         assert await first is await second
@@ -3740,7 +3802,7 @@ def test_realtime_disconnect_excludes_a_concurrent_first_connect(
         with pytest.raises(asyncio.CancelledError):
             await subscribing
         await disconnecting
-        assert channel._subscription is None
+        assert channel_state(channel).subscription is None
 
     asyncio.run(scenario())
     assert official.calls == ["connect", "channel:broadcast:contract", "disconnect"]
@@ -3779,7 +3841,7 @@ def test_realtime_disconnect_resets_channels_after_transport_failure(
         with pytest.raises(RuntimeError, match="disconnect failed"):
             await client.realtime.disconnect()
 
-        assert channel._subscription is None
+        assert channel_state(channel).subscription is None
         await channel.subscribe()
         await client.realtime.disconnect()
 
@@ -3807,7 +3869,7 @@ def test_realtime_disconnect_closes_transport_when_channel_reset_is_cancelled(
         await second.subscribe()
         reset_started = asyncio.Event()
         second_reset = False
-        original_second_reset = second._reset
+        original_second_reset = channel_state(second).reset
 
         async def blocking_reset() -> None:
             reset_started.set()
@@ -3818,8 +3880,8 @@ def test_realtime_disconnect_closes_transport_when_channel_reset_is_cancelled(
             await original_second_reset()
             second_reset = True
 
-        monkeypatch.setattr(first, "_reset", blocking_reset)
-        monkeypatch.setattr(second, "_reset", observe_second_reset)
+        monkeypatch.setattr(channel_state(first), "reset", blocking_reset)
+        monkeypatch.setattr(channel_state(second), "reset", observe_second_reset)
         disconnecting = asyncio.create_task(client.realtime.disconnect())
         _ = await asyncio.wait_for(reset_started.wait(), timeout=2)
         _ = disconnecting.cancel()
@@ -3829,14 +3891,14 @@ def test_realtime_disconnect_closes_transport_when_channel_reset_is_cancelled(
 
         assert official.state.value == "disconnected"
         assert official.calls[-1] == "disconnect"
-        assert first._subscription is None
-        assert not first._subscribed
+        assert channel_state(first).subscription is None
+        assert not channel_state(first).subscribed
         assert second_reset
-        assert second._subscription is None
-        assert not second._subscribed
-        assert client.realtime._connection is None
-        assert client.realtime._connection_access_token is None
-        assert client.realtime._connection_session_lineage is None
+        assert channel_state(second).subscription is None
+        assert not channel_state(second).subscribed
+        assert realtime_state(client.realtime).connection is None
+        assert realtime_state(client.realtime).connection_access_token is None
+        assert realtime_state(client.realtime).connection_session_lineage is None
 
     asyncio.run(scenario())
 
@@ -3870,7 +3932,7 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
             join_leave=join_leave,
             recoverable=recoverable,
         )
-        official._subs[name] = official.subscription
+        official.subscriptions[name] = official.subscription
         return official.subscription
 
     monkeypatch.setattr(official, "new_subscription", new_subscription)
@@ -3882,7 +3944,7 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
     _ = client.auth.sign_in(email="user@example.com", password="secret")
 
     async def scenario() -> None:
-        _ = await client.realtime._connect()
+        _ = await realtime_state(client.realtime).connect()
         channel = client.realtime.channel("contract")
         subscribing = asyncio.create_task(channel.subscribe())
         _ = await asyncio.wait_for(entered.wait(), timeout=2)
@@ -3893,7 +3955,7 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
         with pytest.raises(asyncio.CancelledError):
             await subscribing
         await disconnecting
-        assert channel._subscription is None
+        assert channel_state(channel).subscription is None
 
     asyncio.run(scenario())
     assert official.calls == ["connect", "channel:broadcast:contract", "disconnect"]
@@ -3916,20 +3978,20 @@ def test_realtime_disconnect_snapshots_channels_before_resetting(
         await first.subscribe()
         entered = asyncio.Event()
         release = asyncio.Event()
-        original_reset = first._reset
+        original_reset = channel_state(first).reset
 
         async def blocking_reset() -> None:
             entered.set()
             _ = await asyncio.wait_for(release.wait(), timeout=2)
             await original_reset()
 
-        monkeypatch.setattr(first, "_reset", blocking_reset)
+        monkeypatch.setattr(channel_state(first), "reset", blocking_reset)
         disconnecting = asyncio.create_task(client.realtime.disconnect())
         _ = await asyncio.wait_for(entered.wait(), timeout=2)
         second = client.realtime.channel("second")
         release.set()
         await disconnecting
-        assert second._subscription is None
+        assert channel_state(second).subscription is None
 
     asyncio.run(scenario())
 
@@ -3973,10 +4035,12 @@ def test_realtime_shutdown_does_not_cancel_or_wait_for_application_work(
             assert not completed.is_set()
             release.set()
             _ = await asyncio.wait_for(completed.wait(), timeout=0.2)
-            await asyncio.wait_for(channel._callback_queue.join(), timeout=1)
+            await asyncio.wait_for(
+                channel_state(channel).callback_queue.join(), timeout=1
+            )
             assert received == ["running"]
             await asyncio.sleep(0)
-            assert not client.realtime._callback_tasks
+            assert not realtime_state(client.realtime).callback_tasks
         finally:
             release.set()
             await client.realtime.disconnect()
@@ -4019,7 +4083,9 @@ def test_realtime_reconnect_serializes_delivery_after_running_callback() -> None
             await asyncio.sleep(0)
             assert received == ["first"]
             release.set()
-            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            await asyncio.wait_for(
+                channel_state(channel).callback_queue.join(), timeout=0.2
+            )
             assert received == ["first", "finished", "resumed"]
         finally:
             release.set()
@@ -4080,7 +4146,8 @@ def test_realtime_event_loop_shutdown_does_not_start_queued_callbacks() -> None:
 
     asyncio.run(scenario())
     assert received == ["running"]
-    assert channel._callback_task is None or channel._callback_task.done()
+    callback_task = channel_state(channel).callback_task
+    assert callback_task is None or callback_task.done()
 
 
 def test_realtime_callback_workers_finish_when_idle() -> None:
@@ -4099,9 +4166,12 @@ def test_realtime_callback_workers_finish_when_idle() -> None:
         try:
             for message in ("first", "second"):
                 await official.emit_wire_publication(channel.name, message)
-                await asyncio.wait_for(channel._callback_queue.join(), timeout=1)
+                await asyncio.wait_for(
+                    channel_state(channel).callback_queue.join(), timeout=1
+                )
                 await asyncio.sleep(0)
-                assert channel._callback_task is None or channel._callback_task.done()
+                callback_task = channel_state(channel).callback_task
+                assert callback_task is None or callback_task.done()
             assert received == ["first", "second"]
         finally:
             await client.realtime.disconnect()
@@ -4138,7 +4208,9 @@ def test_realtime_callback_cancellation_does_not_cancel_later_delivery() -> None
         try:
             await official.emit_wire_publication(channel.name, "cancel")
             await official.emit_wire_publication(channel.name, "next")
-            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            await asyncio.wait_for(
+                channel_state(channel).callback_queue.join(), timeout=0.2
+            )
             assert received == ["next"]
             assert len(errors) == 1
             assert isinstance(errors[0]["exception"], asyncio.CancelledError)
@@ -4180,8 +4252,8 @@ def test_realtime_worker_registration_precedes_callback_execution(
         await factory.reply(await factory.command(), subscribe={})
         await factory.reply(await factory.command(), presence={"presence": {}})
         await subscribing
-        await channel._wait_presence_sync()
-        await asyncio.wait_for(channel._callback_queue.join(), timeout=1)
+        await channel_state(channel).presence.wait_presence_sync()
+        await asyncio.wait_for(channel_state(channel).callback_queue.join(), timeout=1)
         await asyncio.sleep(0)
         received.clear()
         loop = asyncio.get_running_loop()
@@ -4196,7 +4268,9 @@ def test_realtime_worker_registration_precedes_callback_execution(
             await factory.reply(command, unsubscribe={})
             assert received == ["message started"]
             release.set()
-            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            await asyncio.wait_for(
+                channel_state(channel).callback_queue.join(), timeout=0.2
+            )
             assert received == ["message started", "message finished", "presence"]
         finally:
             release.set()
@@ -4238,7 +4312,7 @@ def test_realtime_subscribe_waits_for_server_acknowledgement(
                 assert official.subscription is not None
                 await official.subscription.emit_subscribed()
                 await asyncio.wait_for(subscribing, timeout=0.2)
-                assert_same(channel._subscribed, expected=True)
+                assert_same(channel_state(channel).subscribed, expected=True)
                 if channel_type == "broadcast":
                     await channel.send({"value": "ready"})
                     assert official.subscription.calls[-1] == (
@@ -4271,7 +4345,7 @@ def test_realtime_subscribe_releases_connection_lock_after_readiness_failure(
 
     async def fail_ready(subscription: FakeSubscription) -> None:
         readiness_calls.append(subscription)
-        raise error
+        await failed_operation(error)
 
     monkeypatch.setattr(FakeSubscription, "ready", fail_ready)
 
@@ -4345,8 +4419,10 @@ async def test_realtime_failed_readiness_cannot_activate_later(
     try:
         await stale.emit_subscribed()
         await stale.emit("late acknowledgement")
-        await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
-        assert_same(channel._subscribed, expected=False)
+        await asyncio.wait_for(
+            channel_state(channel).callback_queue.join(), timeout=0.2
+        )
+        assert_same(channel_state(channel).subscribed, expected=False)
         assert received == []
         assert ("unsubscribe", None) in stale.calls
         stale.unsubscribe_error = None
@@ -4355,7 +4431,9 @@ async def test_realtime_failed_readiness_cannot_activate_later(
         await stale.emit("obsolete subscription")
         await channel.send("retry")
         await official.emit_wire_publication(channel.name, "retry")
-        await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+        await asyncio.wait_for(
+            channel_state(channel).callback_queue.join(), timeout=0.2
+        )
         assert received == ["retry"]
     finally:
         await client.realtime.disconnect()
@@ -4450,7 +4528,7 @@ def test_realtime_pending_readiness_does_not_block_other_operations(
             if operation in {"remove", "disconnect"}:
                 assert official.subscription is not None
                 await official.subscription.emit_subscribed()
-                assert not pending._subscribed
+                assert not channel_state(pending).subscribed
                 with pytest.raises(asyncio.CancelledError):
                     await asyncio.wait_for(subscribing, timeout=0.2)
             else:
@@ -4491,7 +4569,7 @@ def test_realtime_native_subscription_waits_for_acknowledgement(
                 assert not subscribing.done()
                 await factory.reply(command, presence={"presence": {}})
             await asyncio.wait_for(subscribing, timeout=0.2)
-            assert_same(channel._subscribed, expected=True)
+            assert_same(channel_state(channel).subscribed, expected=True)
             if channel_type == "broadcast":
                 sending = asyncio.create_task(channel.send("ready"))
                 command = await factory.command()
@@ -4539,8 +4617,8 @@ def test_realtime_native_failed_readiness_stops_late_acknowledgement_and_allows_
             )
             with pytest.raises(error):
                 await asyncio.wait_for(subscribing, timeout=0.2)
-            assert_same(channel._subscribed, expected=False)
-            assert channel._subscription is None
+            assert_same(channel_state(channel).subscribed, expected=False)
+            assert channel_state(channel).subscription is None
             assert received == []
 
             subscribing = asyncio.create_task(channel.subscribe())
@@ -4550,7 +4628,9 @@ def test_realtime_native_failed_readiness_stops_late_acknowledgement_and_allows_
             subscription = factory.subscription(channel.name)
             assert subscription is not original_subscription
             await subscription.process_publication({"data": "retry"})
-            await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+            await asyncio.wait_for(
+                channel_state(channel).callback_queue.join(), timeout=0.2
+            )
             assert received == ["retry"]
         finally:
             await client.realtime.disconnect()
@@ -4593,13 +4673,13 @@ def test_realtime_cancelled_subscribe_settles_late_presence_reply(
             await factory.reply(stopping, unsubscribe={})
             with pytest.raises(asyncio.CancelledError):
                 await subscribing
-            assert channel._subscription is None
+            assert channel_state(channel).subscription is None
             assert channel.get_presence_state() == {}
             subscribing = asyncio.create_task(channel.subscribe())
             await factory.reply(await factory.command(), subscribe={})
             await factory.reply(await factory.command(), presence={"presence": {}})
             await asyncio.wait_for(subscribing, timeout=0.2)
-            assert_same(channel._subscribed, expected=True)
+            assert_same(channel_state(channel).subscribed, expected=True)
         finally:
             await client.realtime.disconnect()
             _ = await asyncio.gather(subscribing, return_exceptions=True)
@@ -4642,7 +4722,7 @@ def test_realtime_removed_channel_does_not_cancel_callback_subscription(
             assert not completed.is_set()
             await factory.reply(pending_command, subscribe={})
             _ = await asyncio.wait_for(completed.wait(), timeout=0.2)
-            assert pending._subscribed
+            assert channel_state(pending).subscribed
             assert client.realtime.channel("active") is not active
         finally:
             await client.realtime.disconnect()
@@ -4684,7 +4764,7 @@ def test_realtime_pause_during_readiness_retains_native_recovery(
             await pausing
             with pytest.raises(RuntimeError, match="subscription was interrupted"):
                 await subscribing
-            assert channel._subscription is subscription
+            assert channel_state(channel).subscription is subscription
             subscribing = asyncio.create_task(channel.subscribe())
             command = await factory.command()
             assert _command_section(command, "subscribe")["offset"] == 10
@@ -4730,7 +4810,7 @@ def test_realtime_failed_removal_clears_presence(
                 await removing
             assert channel.get_presence_state() == {}
             assert channel.tracked_state == {}
-            assert_same(channel._subscribed, expected=False)
+            assert_same(channel_state(channel).subscribed, expected=False)
         finally:
             await client.realtime.disconnect()
             _ = await asyncio.gather(removing, return_exceptions=True)
@@ -4780,7 +4860,7 @@ def test_realtime_disconnect_cancels_readiness_and_allows_immediate_retry(
             if channel_type == "presence":
                 await second.reply(await second.command(), presence={"presence": {}})
             await asyncio.wait_for(retrying, timeout=0.2)
-            assert_same(channel._subscribed, expected=True)
+            assert_same(channel_state(channel).subscribed, expected=True)
         finally:
             _ = subscribing.cancel()
             if retrying is not None:
@@ -4827,7 +4907,7 @@ def test_realtime_cancelled_local_removal_clears_presence(*, remove_all: bool) -
                 await removing
             assert channel.get_presence_state() == {}
             assert channel.tracked_state == {}
-            assert_same(channel._subscribed, expected=False)
+            assert_same(channel_state(channel).subscribed, expected=False)
         finally:
             await client.realtime.disconnect()
             _ = await asyncio.gather(removing, return_exceptions=True)
@@ -4860,7 +4940,7 @@ def test_realtime_repeated_subscribe_does_not_stop_active_delivery(
             assert not subscribing.cancel()
             await subscribing
             assert factory.commands.empty()
-            assert_same(channel._subscribed, expected=True)
+            assert_same(channel_state(channel).subscribed, expected=True)
         finally:
             await client.realtime.disconnect()
             _ = await asyncio.gather(subscribing, return_exceptions=True)
@@ -4909,14 +4989,14 @@ async def test_realtime_stop_invalidates_queued_subscribe_calls(
         assert done == {subscribing, queued}
         with pytest.raises(asyncio.CancelledError):
             await queued
-        assert_same(channel._subscribed, expected=False)
+        assert_same(channel_state(channel).subscribed, expected=False)
         assert first.commands.empty()
         assert second.commands.empty()
         retrying = asyncio.create_task(channel.subscribe())
         current = second if disconnect else first
         await current.reply(await current.command(), subscribe={})
         await asyncio.wait_for(retrying, timeout=0.2)
-        assert_same(channel._subscribed, expected=True)
+        assert_same(channel_state(channel).subscribed, expected=True)
     finally:
         for task in (subscribing, queued, stopping, retrying):
             if task is not None:
@@ -4951,7 +5031,7 @@ def test_realtime_repeated_pause_invalidates_intervening_subscribe(
             assert done == {first, queued}
             with pytest.raises(asyncio.CancelledError):
                 await queued
-            assert_same(channel._subscribed, expected=False)
+            assert_same(channel_state(channel).subscribed, expected=False)
             assert factory.commands.empty()
         finally:
             await client.realtime.disconnect()
@@ -5004,7 +5084,7 @@ async def test_realtime_cancelled_unsubscribe_keeps_native_replies_valid(
             await factory.reply(command, unsubscribe={})
         with pytest.raises(asyncio.CancelledError):
             await asyncio.wait_for(stopping, timeout=0.2)
-        assert_same(channel._subscribed, expected=False)
+        assert_same(channel_state(channel).subscribed, expected=False)
         if retrying is not None:
             await factory.reply(await factory.command(), subscribe={})
             await asyncio.wait_for(retrying, timeout=0.2)
@@ -5038,7 +5118,7 @@ def test_realtime_cancelled_unsubscribe_settles_on_native_timeout(
         try:
             with pytest.raises(asyncio.CancelledError):
                 await asyncio.wait_for(stopping, timeout=0.2)
-            assert_same(channel._subscribed, expected=False)
+            assert_same(channel_state(channel).subscribed, expected=False)
             assert not factory.client.has_inflight_commands
         finally:
             await client.realtime.disconnect()
@@ -5057,7 +5137,8 @@ def test_realtime_binds_bootstrap_refresh_without_profile(
         return f"header.{payload}.signature"
 
     class BootstrapTransport(AuthTransport):
-        def auth_refresh(self, **_arguments: object) -> Response:
+        @staticmethod
+        def auth_refresh(**_arguments: object) -> Response:
             return Response(
                 200,
                 {

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier, Event, Thread
-from typing import TYPE_CHECKING
 
 import httpx
 import pytest
@@ -18,6 +17,7 @@ from volcano_sdk import (
 from volcano_sdk._transport import GeneratedTransport
 
 from .session_fixtures import access_token
+from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable

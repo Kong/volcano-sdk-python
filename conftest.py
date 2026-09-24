@@ -6,7 +6,7 @@ from typing import Protocol
 
 import pytest
 
-pytest_plugins = ["pytester"]
+pytest_plugins = ["pytester", "volcano_sdk._tests.realtime_probes"]
 
 _WARNING_PREFIX = "ignore:'asyncio.iscoroutinefunction' is deprecated"
 _REVIEWED_WARNING = f"{_WARNING_PREFIX}:{DeprecationWarning.__name__}"
