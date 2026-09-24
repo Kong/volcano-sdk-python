@@ -11,14 +11,18 @@ in `pyproject.toml`; it excludes only the generated OpenAPI client. Mutmut can
 select modules by name but has no Git-changed-module option and returns success
 when mutants survive. `scripts/mutation.sh` selects module names from Git and
 `scripts/mutation_results.py` reads only those modules' native metadata. The
-report at `reports/mutation.json` distinguishes survivors, uncovered mutants,
-timeouts, crashes, interrupted runs, and missing results. A pytest internal
-error is a harness crash, not a killed mutant. All non-killed outcomes fail.
+report at `reports/mutation.json` distinguishes killed, statically invalid,
+surviving, uncovered, timed-out, crashed, interrupted, and missing results.
+A pytest internal error is a harness crash, not a killed mutant.
+The pinned Pyrefly check rejects type-invalid realtime mutants before pytest;
+the report counts these as `type_checked`, separately from test-killed mutants.
+Surviving, uncovered, timed-out, crashed, and incomplete mutants still fail.
 Mutmut passes pytest `-x` so a selected test's first assertion failure kills the
 mutant before a later selected test can hang on the same defect. Mutants that
 hang before any failure remain timeouts and fail separately.
-Its native cache watches Python test files; changing an existing test resets
-cached function-to-test selection and mutant verdicts.
+The runner rebuilds mutmut's native test-selection cache for each gate so newly
+added tests are included. Direct mutmut runs also watch Python test files for
+cache invalidation.
 The runner uses one mutmut child at a time because competing async mutant
 processes can time out tests that kill the same mutant when run alone.
 Mutmut uses its native forkserver isolation because forking from a process that
