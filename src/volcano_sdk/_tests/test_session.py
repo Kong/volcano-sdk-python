@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, cast
+
 import httpx
 import pytest
 
@@ -7,7 +9,6 @@ from volcano_sdk import Session, VolcanoClient
 from volcano_sdk._transport import GeneratedTransport
 
 from .session_fixtures import access_token
-from .typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

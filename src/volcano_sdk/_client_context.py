@@ -30,33 +30,73 @@ class ClientContext:
     ]
 
     def transport(self) -> Transport:
-        """Return the current transport."""
+        """Read a live facade capability.
+
+        Returns:
+            The current transport.
+
+        """
         return self._get_transport()
 
     def auth(self) -> AuthRequests:
-        """Return the current auth."""
+        """Read a live facade capability.
+
+        Returns:
+            The current auth.
+
+        """
         return self._get_auth()
 
     def anon_token(self) -> str:
-        """Return the current anon token."""
+        """Read a live facade capability.
+
+        Returns:
+            The current anon token.
+
+        """
         return self._get_anon_token()
 
     def session_token(self) -> str:
-        """Return the current session token."""
+        """Read a live facade capability.
+
+        Returns:
+            The current session token.
+
+        """
         return self._get_session_token()
 
     def function_token(self) -> str:
-        """Return the current function token."""
+        """Read a live facade capability.
+
+        Returns:
+            The current function token.
+
+        """
         return self._get_function_token()
 
     def service_token(self) -> str:
-        """Return the current service token."""
+        """Read a live facade capability.
+
+        Returns:
+            The current service token.
+
+        """
         return self._get_service_token()
 
     def api_base_url(self) -> str:
-        """Return the current api base url."""
+        """Read a live facade capability.
+
+        Returns:
+            The current api base url.
+
+        """
         return self._get_api_base_url()
 
     def capture_session_binding(self) -> tuple[int, SessionOperations, Session | None]:
-        """Return the current capture session binding."""
+        """Read a live facade capability.
+
+        Returns:
+            The current capture session binding.
+
+        """
         return self._get_capture_session_binding()

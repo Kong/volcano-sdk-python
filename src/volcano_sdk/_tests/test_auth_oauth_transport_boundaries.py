@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from volcano_sdk import Session, VolcanoClient
 
 from .transport_fixtures import RejectingTransport
-from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
 import pytest
-
-from volcano_sdk._realtime_fetch_worker import PostgresFetchOutcome
 
 from .realtime_probes import InspectableFetchWorker as PostgresFetchWorker
 from .realtime_probes import completed_operation, failed_operation
@@ -14,7 +13,6 @@ from .test_realtime_fetch_worker import (
     RecordingBatchFetch,
     fetch_job,
 )
-from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from volcano_sdk._realtime_fetch_worker import (
@@ -248,7 +246,7 @@ async def test_zero_batch_window_keeps_queued_followup_fetches_separate() -> Non
     recording_fetch = RecordingBatchFetch()
 
     async def fetch(
-        requests: tuple[_PostgresFetchRequest, ...],
+        requests: tuple[PostgresFetchRequest, ...],
     ) -> tuple[dict[str, int], ...]:
         if requests[0].row_id == 1:
             first_fetch_started.set()

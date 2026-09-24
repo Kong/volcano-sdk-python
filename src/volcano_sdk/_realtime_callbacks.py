@@ -10,7 +10,7 @@ from ._callbacks import require_callable
 
 ContextT = TypeVar("ContextT")
 Invocation: TypeAlias = Callable[[], object]
-DynamicCallback: TypeAlias = Callable[..., object]
+DynamicCallback: TypeAlias = Callable[..., object]  # type: ignore[explicit-any]
 
 
 def bind_callback(

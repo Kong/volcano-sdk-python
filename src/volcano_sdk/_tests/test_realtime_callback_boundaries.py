@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import gc
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -17,7 +18,6 @@ from volcano_sdk._realtime_transport import (
 from .fixtures.invalid_realtime_callback import register_non_callable
 from .realtime_probes import channel_state, failed_operation, realtime_state
 from .test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory
-from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator

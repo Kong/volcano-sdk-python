@@ -316,7 +316,7 @@ def test_postgres_fetch_worker_rejects_work_after_delivery_failure() -> None:
             await asyncio.wait_for(worker.enqueue(fetch_job(3)), timeout=1)
 
         assert raised.value is failure
-        assert worker._queue.empty()
+        assert worker.queue.empty()
 
     asyncio.run(scenario())
 

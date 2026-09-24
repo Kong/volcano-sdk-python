@@ -12,7 +12,7 @@ from typing import cast
 import pytest
 from mutmut.utils.format_utils import get_mutant_name
 
-from scripts.mutation_results import main
+from scripts.mutation_results import has_functions, main
 
 PROJECT = Path(__file__).parents[2]
 
@@ -345,3 +345,26 @@ def test_harness_failure_does_not_pass(
     targets, failed = fixture_report(tmp_path, 1)
     _ = failed.write_bytes(b"src/volcano_sdk/probe.py\0")
     assert main(targets, failed) == 1
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("class Reader(Protocol):\n    def read(self) -> bytes: ...\n", False),
+        (
+            'async def read():\n    "Read data."\n    ...\n',
+            False,
+        ),
+        ("def read() -> bytes: return b''\n", True),
+        ("def read() -> None: pass\n", True),
+        ("def read() -> None: ...; write()\n", True),
+        ('def read() -> None:\n    "Read data."\n', True),
+    ],
+)
+def test_mutation_inventory_distinguishes_signatures_from_runtime_functions(
+    tmp_path: Path, source: str, *, expected: bool
+) -> None:
+    module = tmp_path / "module.py"
+    _ = module.write_text(source)
+
+    assert has_functions(module) is expected

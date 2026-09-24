@@ -4,6 +4,7 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
+from typing import TYPE_CHECKING, cast, get_origin, get_type_hints
 
 import pytest
 
@@ -12,7 +13,6 @@ from volcano_sdk.logs import Logs, LogsTransport
 
 from .fixtures.invalid_arguments import non_json_log_request, non_mapping_log_request
 from .transport_fixtures import RejectingTransport
-from .typing import TYPE_CHECKING, cast, get_origin, get_type_hints
 
 if TYPE_CHECKING:
     from volcano_sdk.models import JSONValue

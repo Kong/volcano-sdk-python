@@ -5,6 +5,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from threading import Event, Thread, current_thread
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
@@ -14,7 +15,6 @@ from volcano_sdk._transport import GeneratedTransport
 from volcano_sdk.errors import VolcanoError
 
 from .client_inspection import InspectedClient
-from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable

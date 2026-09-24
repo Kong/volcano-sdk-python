@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from volcano_sdk import PostgresChange, VolcanoClient
@@ -7,8 +9,6 @@ from volcano_sdk._realtime_messages import (
     filter_postgres_changes,
     postgres_change,
 )
-
-from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from volcano_sdk.realtime import ChannelType, PostgresEvent, PostgresListenerEvent

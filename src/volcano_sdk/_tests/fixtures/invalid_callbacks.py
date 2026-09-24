@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from volcano_sdk._tests.typing import TYPE_CHECKING
+from typing import TYPE_CHECKING
+
 from volcano_sdk.durable_authoring import WaitUntilOptions, durable
 
 if TYPE_CHECKING:

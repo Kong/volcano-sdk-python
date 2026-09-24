@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from io import SEEK_END, BufferedReader, BytesIO, RawIOBase
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from typing_extensions import override
@@ -25,7 +26,6 @@ from volcano_sdk._storage_values import (
 from volcano_sdk.storage import BinaryReader
 
 from .transport_fixtures import RejectingTransport
-from .typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable

@@ -71,16 +71,35 @@ def exit_codes(path: Path) -> dict[str, int | None]:
     return cast("dict[str, int | None]", entries)
 
 
+def declaration_only(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Recognize annotation-only signatures without exempting executable bodies.
+
+    Returns:
+        Whether the optional docstring is followed only by an ellipsis.
+
+    """
+    body = node.body[1:] if ast.get_docstring(node) is not None else node.body
+    if len(body) != 1:
+        return False
+    statement = body[0]
+    return (
+        isinstance(statement, ast.Expr)
+        and isinstance(statement.value, ast.Constant)
+        and statement.value.value is Ellipsis
+    )
+
+
 def has_functions(path: Path) -> bool:
     """Distinguish an export-only module from a missing mutation report.
 
     Returns:
-        Whether the source defines a function or method.
+        Whether the source defines a function or method with a runtime body.
 
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))
     return any(
         isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and not declaration_only(node)
         for node in ast.walk(tree)
     )
 

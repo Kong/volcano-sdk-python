@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pytest
 from typing_extensions import override
@@ -32,7 +33,6 @@ from volcano_sdk._realtime_transport import (
 from .client_inspection import InspectedClient
 from .realtime_probes import channel_state, completed_operation, realtime_state
 from .test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory, FakeSubscription
-from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable

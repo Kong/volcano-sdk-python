@@ -110,7 +110,7 @@ class VolcanoClient:
             self.realtime: Realtime = Realtime(self._facades, api_url=self._api_url)
         else:
             self.realtime = Realtime(
-                self,
+                self._facades,
                 api_url=self._api_url,
                 client_factory=_realtime_client_factory,
             )

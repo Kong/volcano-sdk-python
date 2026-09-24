@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import httpx
@@ -16,7 +17,6 @@ from volcano_sdk._transport import GeneratedTransport
 from .client_inspection import InspectedClient
 from .lock_inspection import InspectedLockGuard, InspectedLocks
 from .transport_fixtures import RejectingTransport
-from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable

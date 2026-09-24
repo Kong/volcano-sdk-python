@@ -320,3 +320,56 @@ def test_reviewed_subprocess_import_cannot_be_repeated(tmp_path: Path) -> None:
     errors = check_comments(tmp_path, {name}, [])
 
     assert any("repeated S404" in error for error in errors)
+
+
+def test_recorded_callback_erasure_is_limited_to_its_declaration(
+    tmp_path: Path,
+) -> None:
+    name = "src/volcano_sdk/_realtime_callbacks.py"
+    source = tmp_path / name
+    source.parent.mkdir(parents=True)
+    declaration = "DynamicCallback: TypeAlias = Callable[..., object]"
+    _ = source.write_text(f"{declaration}  # type: ignore[explicit-any]\n")
+
+    errors = check_comments(tmp_path, {name}, [])
+
+    assert not any("type ignore outside" in error for error in errors)
+    assert f"unused exception: {name}:DynamicCallback mypy.explicit-any" not in errors
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "OtherCallback: TypeAlias = Callable[..., object]",
+        "DynamicCallback: TypeAlias = Callable[..., object]; other: Any = 1",
+        "DynamicCallback = Callable[..., object]",
+        "DynamicCallback: TypeAlias = Any",
+        "DynamicCallback: TypeAlias = Callable[..., Any]",
+        "def callback():\n    DynamicCallback: TypeAlias = Callable[..., object]",
+    ],
+)
+def test_callback_erasure_cannot_expand_to_another_type_or_scope(
+    tmp_path: Path, statement: str
+) -> None:
+    name = "src/volcano_sdk/_realtime_callbacks.py"
+    source = tmp_path / name
+    source.parent.mkdir(parents=True)
+    _ = source.write_text(f"{statement}  # type: ignore[explicit-any]\n")
+
+    assert any(
+        "type ignore outside diagnostic fixture" in error
+        for error in check_comments(tmp_path, {name}, [])
+    )
+
+
+def test_callback_erasure_cannot_hide_another_error_code(tmp_path: Path) -> None:
+    name = "src/volcano_sdk/_realtime_callbacks.py"
+    source = tmp_path / name
+    source.parent.mkdir(parents=True)
+    declaration = "DynamicCallback: TypeAlias = Callable[..., object]"
+    _ = source.write_text(f"{declaration}  # type: ignore[explicit-any,assignment]\n")
+
+    assert any(
+        "type ignore outside diagnostic fixture" in error
+        for error in check_comments(tmp_path, {name}, [])
+    )

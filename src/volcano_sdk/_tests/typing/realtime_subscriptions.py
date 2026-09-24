@@ -1,11 +1,11 @@
 """Subscription lookup preserves the value and fallback types."""
 
 from collections.abc import Mapping
+from typing import assert_type
 
 from volcano_sdk._realtime_transport import (
     ProjectAwareSubscriptions,
 )
-from volcano_sdk._tests.typing import assert_type
 from volcano_sdk.realtime import (
     Channel,
     Realtime,
@@ -33,7 +33,7 @@ def legacy_callback_types(channel: Channel) -> None:
         return value.upper()
 
     def record_message(value: dict[str, int]) -> int:
-        return value["count"]
+        return value["count"] + 1
 
     _text_channel = assert_type(channel.on("message", text_message), Channel)
     _record_channel = assert_type(channel.on("message", record_message), Channel)

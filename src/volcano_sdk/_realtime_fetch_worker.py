@@ -49,17 +49,18 @@ class PostgresFetchOutcome(Generic[FallbackT]):
 
 
 @dataclass(frozen=True, slots=True)
-class _StopWorker:
-    pass
+class StopWorker:
+    """Mark a graceful end to the pending fetch queue."""
 
 
-_STOP_WORKER = _StopWorker()
+_STOP_WORKER = StopWorker()
 
 
-async def _wait_for_close(
+async def wait_for_close(
     task: asyncio.Task[None],
     stop_task: asyncio.Task[None],
 ) -> None:
+    """Wait for both processing and its stop request, including cancellation cleanup."""
     completed, _pending = await asyncio.wait(
         (task, stop_task),
         return_when=asyncio.FIRST_COMPLETED,
@@ -114,7 +115,7 @@ class PostgresFetchWorker(Generic[FallbackT]):
         )
         self._batch_window_seconds: float = batch_window_seconds
         self._max_batch_size: int = max_batch_size
-        self._queue: asyncio.Queue[PostgresFetchJob[FallbackT] | _StopWorker] = (
+        self._queue: asyncio.Queue[PostgresFetchJob[FallbackT] | StopWorker] = (
             asyncio.Queue(maxsize=queue_limit)
         )
         self._state_lock: asyncio.Lock = asyncio.Lock()
@@ -152,7 +153,7 @@ class PostgresFetchWorker(Generic[FallbackT]):
                 self._stop_task = asyncio.create_task(self._queue.put(_STOP_WORKER))
             stop_task = self._stop_task
         if task is not None and stop_task is not None:
-            await _wait_for_close(task, stop_task)
+            await wait_for_close(task, stop_task)
 
     async def abort(self) -> None:
         """Discard obsolete jobs and stop without waiting for row fetches."""
@@ -202,13 +203,13 @@ class PostgresFetchWorker(Generic[FallbackT]):
             self._queue.task_done()
 
     async def _run(self) -> None:
-        pending: PostgresFetchJob[FallbackT] | _StopWorker | None = None
+        pending: PostgresFetchJob[FallbackT] | StopWorker | None = None
         while True:
             item = pending if pending is not None else await self._queue.get()
             pending = None
             batch: list[PostgresFetchJob[FallbackT]] = []
             try:
-                if isinstance(item, _StopWorker):
+                if isinstance(item, StopWorker):
                     return
                 batch.append(item)
                 pending = await self._collect_batch(batch)
@@ -221,14 +222,14 @@ class PostgresFetchWorker(Generic[FallbackT]):
     async def _collect_batch(
         self,
         batch: list[PostgresFetchJob[FallbackT]],
-    ) -> PostgresFetchJob[FallbackT] | _StopWorker | None:
+    ) -> PostgresFetchJob[FallbackT] | StopWorker | None:
         first_request = batch[0].request
         if first_request is None or self._max_batch_size == 1:
             return None
         deadline = asyncio.get_running_loop().time() + self._batch_window_seconds
         while len(batch) < self._max_batch_size:
             candidate = await self._next_before(deadline)
-            if candidate is None or isinstance(candidate, _StopWorker):
+            if candidate is None or isinstance(candidate, StopWorker):
                 return candidate
             request = candidate.request
             if (
@@ -243,7 +244,7 @@ class PostgresFetchWorker(Generic[FallbackT]):
     async def _next_before(
         self,
         deadline: float,
-    ) -> PostgresFetchJob[FallbackT] | _StopWorker | None:
+    ) -> PostgresFetchJob[FallbackT] | StopWorker | None:
         remaining = deadline - asyncio.get_running_loop().time()
         if remaining <= 0:
             return None

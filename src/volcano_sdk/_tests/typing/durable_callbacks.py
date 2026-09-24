@@ -1,7 +1,8 @@
 """Durable operation selection preserves callback signatures and results."""
 
+from typing import assert_type
+
 from volcano_sdk._callbacks import named_operation, operation_callable
-from volcano_sdk._tests.typing import assert_type
 
 
 def label(value: int, *, prefix: str) -> str:

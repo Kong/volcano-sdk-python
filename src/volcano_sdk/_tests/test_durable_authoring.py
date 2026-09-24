@@ -13,6 +13,7 @@ import logging
 from collections.abc import Mapping
 from contextlib import contextmanager
 from types import ModuleType, SimpleNamespace
+from typing import TYPE_CHECKING, TypeGuard
 
 import pytest
 from aws_durable_execution_sdk_python.config import (
@@ -73,7 +74,6 @@ from .fixtures.invalid_callbacks import (
     use_non_callable_retry,
 )
 from .fixtures.invalid_wait_options import invalid_wait_duration, non_callable_predicate
-from .typing import TYPE_CHECKING, TypeGuard
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterator

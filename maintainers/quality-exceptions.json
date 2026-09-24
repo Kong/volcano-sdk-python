@@ -70,5 +70,14 @@
     "approved_by": "swkeever",
     "approved_at": "2026-09-24",
     "approval_evidence": "User explicitly approved all six exact subprocess import scopes in the Codex strict SDK guardrails conversation on 2026-09-24."
+  },
+  {
+    "rule": "mypy.explicit-any",
+    "scope": "src/volcano_sdk/_realtime_callbacks.py:DynamicCallback",
+    "rationale": "Channel.on accepts callbacks with caller-defined payload types and stores different event payloads in one legacy registry. Callable[..., object] preserves that public contract at this single internal registration boundary; connection events retain fully typed callback batches.",
+    "evidence": "https://typing.python.org/en/latest/spec/callables.html#meaning-of-in-callable \u2014 ellipsis permits arbitrary callback arguments. src/volcano_sdk/_tests/typing/realtime_subscriptions.py verifies str and dict callbacks retain the public Channel return type; runtime tests verify callable rejection and event delivery.",
+    "approved_by": "swkeever",
+    "approved_at": "2026-09-24",
+    "approval_evidence": "User authorized pragmatic exceptions in the Codex strict SDK guardrails conversation on 2026-09-24 after this exact callback compatibility boundary was surfaced."
   }
 ]

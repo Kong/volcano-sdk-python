@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, assert_type
+
 from aws_durable_execution_sdk_python.config import (
     CompletionConfig,
     ParallelConfig,
@@ -10,8 +12,6 @@ from aws_durable_execution_sdk_python.config import (
 )
 from aws_durable_execution_sdk_python.config import Duration as EngineDuration
 from aws_durable_execution_sdk_python.retries import RetryDecision, RetryStrategyConfig
-
-from volcano_sdk._tests.typing import TYPE_CHECKING, assert_type
 
 if TYPE_CHECKING:
     from volcano_sdk._durable_engine import Engine

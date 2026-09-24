@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import ModuleType
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -12,8 +13,6 @@ from volcano_sdk._durable_modules import (
     load_root,
     load_waits,
 )
-
-from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable

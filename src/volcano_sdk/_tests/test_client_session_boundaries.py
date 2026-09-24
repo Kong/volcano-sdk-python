@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gc
 import weakref
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
@@ -17,7 +18,6 @@ from volcano_sdk._transport import GeneratedTransport
 
 from .client_inspection import InspectedClient
 from .test_function_refresh import make_client, refreshed_response
-from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from volcano_sdk.models import AuthChangeEvent, AuthStateCallback

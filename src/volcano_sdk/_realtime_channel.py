@@ -8,6 +8,7 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
+    Protocol,
     TypeVar,
 )
 
@@ -60,9 +61,32 @@ if TYPE_CHECKING:
     from ._session_operations import SessionOperations
     from .models import JSONValue
 
-from typing import Protocol
 
 _MessageT = TypeVar("_MessageT")
+
+
+class ChannelOperations(Protocol):
+    """Operations consumed by the public facade without native transport state."""
+
+    presence: ChannelPresence
+
+    @property
+    def name(self) -> str: ...
+    def on(self, event: str, callback: Callable[[_MessageT], object]) -> object: ...
+    def on_postgres_changes(
+        self,
+        event: PostgresListenerEvent,
+        *,
+        schema: str,
+        table: str,
+        callback: PostgresChangeCallback,
+    ) -> UnsubscribeCallback: ...
+    def on_presence_sync(
+        self, callback: Callable[[Mapping[str, RealtimePresenceInfo]], object]
+    ) -> UnsubscribeCallback: ...
+    async def subscribe(self) -> None: ...
+    async def send(self, data: object) -> None: ...
+    async def unsubscribe(self) -> None: ...
 
 
 class RealtimeOperations(Protocol):

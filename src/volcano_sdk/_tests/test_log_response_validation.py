@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
 
 from .test_logs import FakeLogsTransport, FakeResponse, logs_client
 from .test_logs_refresh import make_client
-from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from volcano_sdk import VolcanoClient

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
@@ -28,7 +29,6 @@ from volcano_sdk._generated.models import (
 from volcano_sdk._generated.types import UNSET, Unset
 
 from .test_auth_facade_recovery import client_for
-from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable

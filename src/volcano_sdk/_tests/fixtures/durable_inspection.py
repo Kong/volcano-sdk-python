@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from aws_durable_execution_sdk_python_testing.scheduler import Scheduler
 from typing_extensions import override
 
 from volcano_sdk._durable_engine import Engine
-from volcano_sdk._tests.typing import TYPE_CHECKING
 from volcano_sdk.durable_authoring import DurableContext
 
 if TYPE_CHECKING:

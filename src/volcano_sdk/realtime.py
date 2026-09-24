@@ -12,7 +12,7 @@ from ._realtime_connection import RealtimeState
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from ._realtime_channel import ChannelState
+    from ._realtime_channel import ChannelOperations
     from .models import JSONValue
 
 _MessageT = TypeVar("_MessageT")
@@ -61,9 +61,9 @@ POSTGRES_FETCH_FAILED_MESSAGE = _messages.POSTGRES_FETCH_FAILED_MESSAGE
 class Channel:
     """Realtime broadcast, presence, or Postgres channel."""
 
-    def __init__(self, state: ChannelState) -> None:
+    def __init__(self, state: ChannelOperations) -> None:
         """Wrap an owned internal channel lifecycle."""
-        self._state: ChannelState = state
+        self._state: ChannelOperations = state
 
     @property
     def name(self) -> str:

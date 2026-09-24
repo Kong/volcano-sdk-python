@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from itertools import count
 from typing import (
     TYPE_CHECKING,
+    Generic,
     TypeAlias,
     TypeVar,
 )
@@ -24,6 +25,12 @@ from ._realtime_callbacks import (
     ConnectionDelivery,
     Invocation,
     register_callback,
+)
+from ._realtime_channel import (
+    ChannelEvents,
+    ChannelState,
+    reset_realtime_channels,
+    wait_subscription,
 )
 from ._realtime_messages import (
     BROADCAST_ONLY,
@@ -66,14 +73,6 @@ if TYPE_CHECKING:
     from ._session_operations import SessionOperations
     from .models import JSONValue, Session
 
-from typing import Generic
-
-from ._realtime_channel import (
-    ChannelEvents,
-    ChannelState,
-    reset_realtime_channels,
-    wait_subscription,
-)
 
 FacadeT = TypeVar("FacadeT")
 ConnectionContext: TypeAlias = (

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Annotated, TypeAlias
 
 import httpx
 import pytest
@@ -12,7 +13,6 @@ from volcano_sdk import _function_resolution as cache
 from volcano_sdk._transport import GeneratedTransport
 
 from .property_support import PROPERTY_SEED
-from .typing import Annotated, TypeAlias
 
 API_URL = "https://api.volcano.test"
 AUTHORIZATION = "service-key"

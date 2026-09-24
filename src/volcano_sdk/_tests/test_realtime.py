@@ -5,6 +5,7 @@ import base64
 import json
 from dataclasses import dataclass
 from types import MappingProxyType, SimpleNamespace
+from typing import TYPE_CHECKING, Annotated, Literal, TypedDict, TypeGuard, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -57,10 +58,9 @@ from .property_support import PROPERTY_SEED
 from .realtime_probes import channel_state, failed_operation, realtime_state
 from .state_assertions import assert_same
 from .transport_fixtures import RejectingTransport
-from .typing import TYPE_CHECKING, Annotated, Literal, TypedDict, TypeGuard, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Mapping
+    from collections.abc import Awaitable, Callable, Mapping, MutableMapping
 
     from volcano_sdk.models import JSONValue
 
@@ -566,10 +566,10 @@ class FakeCentrifugeClient:
         self.disconnect_probe: Callable[[], None] | None = None
         self.disconnect_error: Exception | None = None
         self.subscription: FakeSubscription | None = None
-        self._subs: dict[str, FakeSubscription] = {}
+        self._subs: MutableMapping[str, FakeSubscription] = {}
 
     @property
-    def subscriptions(self) -> dict[str, FakeSubscription]:
+    def subscriptions(self) -> MutableMapping[str, FakeSubscription]:
         return self._subs
 
     def set_events(self, events: object) -> None:

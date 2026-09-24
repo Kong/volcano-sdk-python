@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -21,7 +22,6 @@ from volcano_sdk._realtime_messages import (
 from .realtime_probes import channel_state, completed_operation, realtime_state
 from .state_assertions import assert_same
 from .test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory
-from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from volcano_sdk._realtime_messages import PostgresDeliveryIdentity

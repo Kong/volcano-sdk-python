@@ -4,6 +4,7 @@ import base64
 import json
 from copy import deepcopy
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
@@ -13,7 +14,6 @@ from volcano_sdk import _auth_oauth as auth_module
 from volcano_sdk._transport import GeneratedTransport
 
 from .session_fixtures import access_token
-from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable

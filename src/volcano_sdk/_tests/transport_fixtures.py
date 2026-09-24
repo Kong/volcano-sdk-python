@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Never
+
 from typing_extensions import override
 
 from volcano_sdk._transport import Transport
-
-from .typing import Never
 
 
 class RejectingTransport(Transport):

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 GENERATED = "src/volcano_sdk/_generated"
-LOCK_SHA256 = "3eea92085dce48f7454bc9e2b82854cc99a8787083da471609ae41da57d75560"
+LOCK_SHA256 = "240651dd1d59a81883c77f831b6b51a020023d6fc2b8dc764611cce5f8ec5ad0"
 TYPE_FIXTURES = {
     "src/volcano_sdk/_tests/typing/contract_steps.py",
     "src/volcano_sdk/_tests/typing/durable_callbacks.py",
@@ -48,9 +48,16 @@ CONFIG_NAMES = {
     ".coveragerc",
 }
 APPROVED_EXCEPTION_SHA256 = (
-    "0a64e5eb684cca9ff200e5ea5f05b4d362917a84543b71104fb4a6b56492b311"
+    "de57c0a2200e17929c06fea1b237623eb5049c9259c75b1a13434d4d43c80e19"
+)
+CALLBACK_SCOPE = "src/volcano_sdk/_realtime_callbacks.py:DynamicCallback"
+CALLBACK_RULE = "mypy.explicit-any"
+CALLBACK_DECLARATION = ast.dump(
+    ast.parse("DynamicCallback: TypeAlias = Callable[..., object]").body[0],
+    include_attributes=False,
 )
 APPROVED_RULES = {
+    (CALLBACK_SCOPE, CALLBACK_RULE),
     ("scripts/generate_openapi.py:generate", "S603"),
     (
         "src/volcano_sdk/_tests/test_durable_authoring.py:pytestmark",
@@ -247,6 +254,48 @@ def check_ruff_comment(
     return errors
 
 
+def callback_exception(name: str, source: str, token: tokenize.TokenInfo) -> bool:
+    """Identify the sole callback argument-erasure declaration.
+
+    Returns:
+        Whether the exact declaration carries its reviewed mypy diagnostic.
+
+    """
+    if (name, token.string) != (
+        CALLBACK_SCOPE.split(":", maxsplit=1)[0],
+        "# type: ignore[explicit-any]",
+    ):
+        return False
+    statements = [
+        node for node in ast.parse(source).body if node.lineno == token.start[0]
+    ]
+    return (
+        len(statements) == 1
+        and ast.dump(statements[0], include_attributes=False) == CALLBACK_DECLARATION
+    )
+
+
+def check_type_comment(
+    name: str,
+    source: str,
+    token: tokenize.TokenInfo,
+    approved: set[tuple[str, str]],
+    used: set[tuple[str, str]],
+) -> list[str]:
+    """Limit native type expectations to fixtures and one callback boundary.
+
+    Returns:
+        Unreviewed or repeated type-suppression errors.
+
+    """
+    if not TYPE_IGNORE.search(token.string) or name in TYPE_FIXTURES:
+        return []
+    location = f"{name}:{token.start[0]}"
+    if not callback_exception(name, source, token):
+        return [f"{location}: type ignore outside diagnostic fixture"]
+    return check_rule((CALLBACK_SCOPE, CALLBACK_RULE), location, approved, used)
+
+
 def check_comment(
     name: str,
     source: str,
@@ -268,8 +317,7 @@ def check_comment(
     errors = (
         [f"{location}: forbidden suppression"] if FORBIDDEN.search(remaining) else []
     )
-    if TYPE_IGNORE.search(token.string) and name not in TYPE_FIXTURES:
-        errors.append(f"{location}: type ignore outside diagnostic fixture")
+    errors.extend(check_type_comment(name, source, token, approved, used))
     if pyright_ignores and name not in TYPE_FIXTURES:
         errors.append(f"{location}: pyright ignore outside diagnostic fixture")
     errors.extend(check_ruff_comment(name, source, token, approved, used))

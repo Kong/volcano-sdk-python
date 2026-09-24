@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING, Never, TypeVar
 
 import pytest
 
@@ -14,13 +15,13 @@ from volcano_sdk._realtime_connection import RealtimeState
 from volcano_sdk._realtime_fetch_worker import PostgresFetchWorker
 from volcano_sdk.realtime import Channel, Realtime
 
-from .typing import TYPE_CHECKING, Never, TypeVar
-
 if TYPE_CHECKING:
     from volcano_sdk._realtime_callbacks import ConnectionDelivery, DynamicCallback
     from volcano_sdk._realtime_fetch_worker import (
+        PostgresFetchJob,
         PostgresFetchOutcome,
         PostgresFetchRequest,
+        StopWorker,
     )
     from volcano_sdk._realtime_messages import (
         CallbackDelivery,
@@ -40,7 +41,9 @@ if TYPE_CHECKING:
 class InspectableChannel(Channel):
     @property
     def state(self) -> ChannelState:
-        return self._state
+        state = self._state
+        assert isinstance(state, ChannelState)
+        return state
 
 
 class InspectableRealtime(Realtime):
@@ -86,6 +89,26 @@ class InspectableFetchWorker(PostgresFetchWorker[WorkerValueT]):
     @property
     def stop_task(self) -> asyncio.Task[None] | None:
         return self._stop_task
+
+    @property
+    def queue(self) -> asyncio.Queue[PostgresFetchJob[WorkerValueT] | StopWorker]:
+        return self._queue
+
+    @queue.setter
+    def queue(
+        self, value: asyncio.Queue[PostgresFetchJob[WorkerValueT] | StopWorker]
+    ) -> None:
+        self._queue: asyncio.Queue[PostgresFetchJob[WorkerValueT] | StopWorker] = value
+
+    async def put_while_running(
+        self, job: PostgresFetchJob[WorkerValueT], task: asyncio.Task[None]
+    ) -> None:
+        await self._put_while_running(job, task)
+
+    async def next_before(
+        self, deadline: float
+    ) -> PostgresFetchJob[WorkerValueT] | StopWorker | None:
+        return await self._next_before(deadline)
 
 
 class InspectedChannelState(ChannelState):
@@ -196,17 +219,17 @@ class InspectedRealtimeState(RealtimeState[Channel]):
     async def connect_locked(self) -> VolcanoCentrifugeConnection:
         return await self._connect_locked()
 
-    @staticmethod
+    @classmethod
     async def resume_subscription(
-        channel: ChannelState, subscription: CentrifugeSubscription
+        cls, channel: ChannelState, subscription: CentrifugeSubscription
     ) -> None:
-        return await RealtimeState._resume_subscription(channel, subscription)
+        return await cls._resume_subscription(channel, subscription)
 
-    @staticmethod
+    @classmethod
     async def wait_subscription_readiness(
-        channel: ChannelState, subscription: CentrifugeSubscription
+        cls, channel: ChannelState, subscription: CentrifugeSubscription
     ) -> None:
-        return await RealtimeState._wait_subscription_readiness(channel, subscription)
+        return await cls._wait_subscription_readiness(channel, subscription)
 
     async def cleanup_failed_subscription(
         self,

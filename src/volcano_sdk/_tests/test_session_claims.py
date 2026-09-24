@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -19,7 +20,6 @@ from .test_session_continuity import (
     client_for,
     refreshed,
 )
-from .typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import httpx

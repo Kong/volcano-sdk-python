@@ -7,11 +7,12 @@ from typing_extensions import override
 
 from volcano_sdk._realtime_fetch_worker import (
     PostgresFetchJob,
-    PostgresFetchWorker,
-    _StopWorker,
-    _wait_for_close,
+    StopWorker,
+    wait_for_close,
 )
 
+from .realtime_probes import InspectableFetchWorker as PostgresFetchWorker
+from .realtime_probes import completed_operation, failed_operation
 from .test_realtime_fetch_lifecycle import cancel_operation
 from .test_realtime_fetch_worker import (
     BlockingRowFetch,
@@ -37,7 +38,7 @@ class DelayedCancellation:
             raise
 
 
-class CleanupQueue(asyncio.Queue[PostgresFetchJob[str] | _StopWorker]):
+class CleanupQueue(asyncio.Queue[PostgresFetchJob[str] | StopWorker]):
     def __init__(self) -> None:
         super().__init__(maxsize=1)
         self.started: asyncio.Event = asyncio.Event()
@@ -45,7 +46,7 @@ class CleanupQueue(asyncio.Queue[PostgresFetchJob[str] | _StopWorker]):
         self.release_cleanup: asyncio.Event = asyncio.Event()
 
     @override
-    async def put(self, item: PostgresFetchJob[str] | _StopWorker) -> None:
+    async def put(self, item: PostgresFetchJob[str] | StopWorker) -> None:
         self.started.set()
         try:
             await super().put(item)
@@ -56,15 +57,14 @@ class CleanupQueue(asyncio.Queue[PostgresFetchJob[str] | _StopWorker]):
 
 
 async def fail_worker() -> None:
-    message = "delivery failed"
-    raise RuntimeError(message)
+    await failed_operation(RuntimeError("delivery failed"))
 
 
 async def test_close_waits_for_cancelled_stop_cleanup() -> None:
     stop = DelayedCancellation()
     stop_task = asyncio.create_task(stop.wait())
     task = asyncio.create_task(fail_worker())
-    closing = asyncio.create_task(_wait_for_close(task, stop_task))
+    closing = asyncio.create_task(wait_for_close(task, stop_task))
     try:
         _ = await asyncio.wait_for(stop.cancelled.wait(), timeout=1)
         await asyncio.sleep(0)
@@ -86,10 +86,10 @@ async def test_cancelled_enqueue_waits_for_its_queue_put_cleanup() -> None:
     worker = PostgresFetchWorker(
         RecordingBatchFetch(), OutcomeRecorder(), queue_limit=1
     )
-    worker._queue = queue
+    worker.queue = queue
     waiting = DelayedCancellation()
     task = asyncio.create_task(waiting.wait())
-    enqueueing = asyncio.create_task(worker._put_while_running(fetch_job(2), task))
+    enqueueing = asyncio.create_task(worker.put_while_running(fetch_job(2), task))
     try:
         _ = await asyncio.wait_for(queue.started.wait(), timeout=1)
         _ = enqueueing.cancel()
@@ -120,7 +120,7 @@ async def test_abort_cancels_an_outstanding_stop_request() -> None:
         await asyncio.wait_for(worker.enqueue(fetch_job(2)), timeout=1)
         closing = asyncio.create_task(worker.close())
         await asyncio.sleep(0)
-        stop_task = worker._stop_task
+        stop_task = worker.stop_task
         assert stop_task is not None
         assert not stop_task.done()
         await cancel_operation(closing)
@@ -158,7 +158,7 @@ async def test_repeated_close_completes_all_queued_tasks() -> None:
         await asyncio.wait_for(worker.enqueue(fetch_job(2)), timeout=1)
         await asyncio.wait_for(worker.close(), timeout=1)
         await asyncio.wait_for(worker.close(), timeout=1)
-        await asyncio.wait_for(worker._queue.join(), timeout=1)
+        await asyncio.wait_for(worker.queue.join(), timeout=1)
     finally:
         await asyncio.wait_for(worker.abort(), timeout=1)
 
@@ -167,8 +167,9 @@ async def test_batch_capacity_flushes_without_an_extra_row() -> None:
     fetch = RecordingBatchFetch()
     delivered = asyncio.Event()
 
-    async def deliver(_outcome: object) -> None:
+    def deliver(_outcome: object) -> asyncio.Future[None]:
         delivered.set()
+        return completed_operation(None)
 
     worker = PostgresFetchWorker[str](
         fetch, deliver, queue_limit=3, max_batch_size=2, batch_window_seconds=60
@@ -191,9 +192,9 @@ async def test_expired_batch_deadline_preserves_queued_row(
     worker = PostgresFetchWorker(
         RecordingBatchFetch(), OutcomeRecorder(), queue_limit=1
     )
-    worker._queue.put_nowait(fetch_job(1))
+    worker.queue.put_nowait(fetch_job(1))
     loop = asyncio.get_running_loop()
     with monkeypatch.context() as scoped:
         scoped.setattr(loop, "time", lambda: 42.0)
-        assert await worker._next_before(42.0) is None
-    assert worker._queue.get_nowait() == fetch_job(1)
+        assert await worker.next_before(42.0) is None
+    assert worker.queue.get_nowait() == fetch_job(1)

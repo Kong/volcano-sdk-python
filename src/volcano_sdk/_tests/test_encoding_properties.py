@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from typing import Literal
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 import pytest
@@ -10,7 +11,6 @@ from hypothesis import given, seed
 from volcano_sdk import VolcanoClient, database_connection_string
 
 from .property_support import PROPERTY_SEED
-from .typing import Literal
 
 BASE = "postgresql://user:password@db.example.test/app?sslmode=require&application_name=old"
 
