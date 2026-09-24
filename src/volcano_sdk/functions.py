@@ -52,6 +52,7 @@ _FUNCTION_INVOKED_HEADER = "X-Volcano-Function-Invoked"
 _FUNCTION_VERSION_HEADER = "X-Volcano-Version"
 _CONTENT_TYPE_HEADER = "Content-Type"
 _FUNCTION_TEXT_ENCODING = "utf-8-sig"
+_FUNCTION_JSON_ENCODING = "utf-8"
 
 
 _Result = TypeVar("_Result")
@@ -380,13 +381,45 @@ def _reject_json_constant(_value: str) -> None:
     raise ValueError
 
 
-def _json_mapping(value: Mapping[object, object]) -> Mapping[str, JSONValue]:
-    frozen: dict[str, JSONValue] = {}
-    for key, item in value.items():
-        if not isinstance(key, str):
-            raise TypeError(_INVALID_FUNCTION_JSON_KEY)
-        frozen[key] = _json_value(item)
-    return MappingProxyType(frozen)
+def _json_mapping(
+    value: Mapping[object, object], active: set[int]
+) -> Mapping[str, JSONValue]:
+    marker = _enter_json_container(value, active)
+    try:
+        frozen: dict[str, JSONValue] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError(_INVALID_FUNCTION_JSON_KEY)
+            _validate_json_string(key, _INVALID_FUNCTION_JSON_KEY)
+            frozen[key] = _json_value_checked(item, active)
+        return MappingProxyType(frozen)
+    finally:
+        active.remove(marker)
+
+
+def _json_sequence(
+    value: list[object] | tuple[object, ...], active: set[int]
+) -> tuple[JSONValue, ...]:
+    marker = _enter_json_container(value, active)
+    try:
+        return tuple(_json_value_checked(item, active) for item in value)
+    finally:
+        active.remove(marker)
+
+
+def _enter_json_container(value: object, active: set[int]) -> int:
+    marker = id(value)
+    if marker in active:
+        raise TypeError(_INVALID_FUNCTION_DATA)
+    active.add(marker)
+    return marker
+
+
+def _validate_json_string(value: str, message: str) -> None:
+    try:
+        _ = str.encode(value, _FUNCTION_JSON_ENCODING)
+    except UnicodeEncodeError as error:
+        raise TypeError(message) from error
 
 
 def _is_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
@@ -398,15 +431,39 @@ def _is_sequence(value: object) -> TypeGuard[list[object] | tuple[object, ...]]:
 
 
 def _json_value(value: object) -> JSONValue:
+    try:
+        return _json_value_checked(value, set())
+    except RecursionError as error:
+        raise TypeError(_INVALID_FUNCTION_DATA) from error
+
+
+def _json_value_checked(value: object, active: set[int]) -> JSONValue:
     if _is_mapping(value):
-        return _json_mapping(value)
+        return _json_mapping(value, active)
     if _is_sequence(value):
-        return tuple(_json_value(item) for item in value)
+        return _json_sequence(value, active)
+    return _json_scalar(value)
+
+
+def _json_scalar(value: object) -> JSONValue:
+    if isinstance(value, str):
+        _validate_json_string(value, _INVALID_FUNCTION_DATA)
+        return value
     if isinstance(value, float) and not math.isfinite(value):
         raise TypeError(_INVALID_FUNCTION_DATA)
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if isinstance(value, int) and not isinstance(value, bool):
+        return _json_int(value)
+    if value is None or isinstance(value, (float, bool)):
         return value
     raise TypeError(_INVALID_FUNCTION_DATA)
+
+
+def _json_int(value: int) -> int:
+    try:
+        _ = int.__str__(value)
+    except ValueError as error:
+        raise TypeError(_INVALID_FUNCTION_DATA) from error
+    return value
 
 
 def _header(headers: Mapping[str, str] | None, name: str) -> str | None:
@@ -429,4 +486,7 @@ def _function_payload(value: object) -> Mapping[str, JSONValue]:
         return {}
     if not _is_mapping(value):
         raise TypeError(_INVALID_FUNCTION_PAYLOAD)
-    return _json_mapping(value)
+    try:
+        return _json_mapping(value, set())
+    except RecursionError as error:
+        raise TypeError(_INVALID_FUNCTION_DATA) from error

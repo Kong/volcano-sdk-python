@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import math
+import sys
 from dataclasses import dataclass
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
 from transport_fixtures import RejectingTransport
+from typing_extensions import override
 
 from volcano_sdk import (
     NotFoundError,
@@ -18,6 +21,9 @@ from volcano_sdk import (
 from volcano_sdk import functions as functions_module
 from volcano_sdk._transport import GeneratedTransport
 from volcano_sdk.functions import Functions
+
+if TYPE_CHECKING:
+    from volcano_sdk.models import JSONValue
 
 
 @dataclass(frozen=True)
@@ -505,6 +511,134 @@ def test_functions_preserves_a_response_without_headers() -> None:
 def test_functions_rejects_non_json_response_payloads(invalid: object) -> None:
     transport = FakeFunctionsTransport()
     transport.invoke_response = FakeResponse(200, {"bad": invalid}, {})
+
+    with pytest.raises(TypeError, match="Function data must be JSON-compatible"):
+        _ = functions_client(transport).functions.invoke("send-welcome")
+
+
+@pytest.mark.parametrize("mode", ["mapping", "list", "tuple-list"])
+def test_functions_rejects_cyclic_payloads_before_resolution(mode: str) -> None:
+    payload: dict[str, JSONValue] = {}
+    if mode == "mapping":
+        payload["cycle"] = payload
+    else:
+        linked: list[JSONValue] = []
+        payload["cycle"] = linked
+        linked.append(linked if mode == "list" else (linked,))
+    transport = FakeFunctionsTransport()
+
+    with pytest.raises(TypeError, match="Function data must be JSON-compatible"):
+        _ = functions_client(transport).functions.invoke("send-welcome", payload)
+
+    assert transport.calls == []
+
+
+@pytest.mark.parametrize("payload", [{"bad": "\ud800"}, {"\udfff": "bad"}])
+def test_functions_rejects_surrogates_before_resolution(
+    payload: dict[str, JSONValue],
+) -> None:
+    transport = FakeFunctionsTransport()
+
+    with pytest.raises(TypeError, match=r"Function (data|JSON object keys)"):
+        _ = functions_client(transport).functions.invoke("send-welcome", payload)
+
+    assert transport.calls == []
+
+
+def test_functions_rejects_escaped_surrogates_in_response_json() -> None:
+    transport = FakeFunctionsTransport()
+    transport.invoke_response = FakeResponse(
+        200, None, {"Content-Type": "application/json"}, b'{"bad":"\\ud800"}'
+    )
+
+    with pytest.raises(TypeError, match="Function data must be JSON-compatible"):
+        _ = functions_client(transport).functions.invoke("send-welcome")
+
+
+def test_functions_accepts_shared_acyclic_values_and_unicode() -> None:
+    shared: dict[str, JSONValue] = {"text": "🌋"}
+    payload: dict[str, JSONValue] = {"first": shared, "second": shared}
+    transport = FakeFunctionsTransport()
+
+    result = functions_client(transport).functions.invoke("send-welcome", payload)
+    assert result.status == 200
+    assert transport.calls[-1][1]["payload"] == {
+        "first": {"text": "🌋"},
+        "second": {"text": "🌋"},
+    }
+
+
+def test_functions_accepts_nested_acyclic_sequences() -> None:
+    transport = FakeFunctionsTransport()
+
+    result = functions_client(transport).functions.invoke(
+        "send-welcome", {"grid": [[1], [2]]}
+    )
+
+    assert result.status == 200
+    assert transport.calls[-1][1]["payload"] == {"grid": ((1,), (2,))}
+
+
+def test_functions_rejects_subclass_spoofed_surrogates() -> None:
+    class ForgedString(str):
+        __slots__ = ()
+
+        @override
+        def encode(self, encoding: str = "utf-8", errors: str = "strict") -> bytes:
+            _ = (encoding, errors)
+            return b"ok"
+
+    transport = FakeFunctionsTransport()
+    invalid = ForgedString("\ud800")
+    payloads: tuple[dict[str, JSONValue], ...] = (
+        {"bad": invalid},
+        {invalid: "bad"},
+    )
+    for payload in payloads:
+        with pytest.raises(TypeError, match=r"Function (data|JSON object keys)"):
+            _ = functions_client(transport).functions.invoke("send-welcome", payload)
+
+    assert transport.calls == []
+
+
+def test_functions_rejects_integers_the_json_encoder_cannot_render() -> None:
+    limit = sys.get_int_max_str_digits()
+    value = 10 ** (limit or 4300)
+    transport = FakeFunctionsTransport()
+    client = functions_client(transport)
+
+    if limit:
+        with pytest.raises(TypeError, match="Function data must be JSON-compatible"):
+            _ = client.functions.invoke("send-welcome", {"value": value})
+        assert transport.calls == []
+    else:
+        assert client.functions.invoke("send-welcome", {"value": value}).status == 200
+
+
+def test_functions_rejects_excessively_nested_payloads_before_resolution() -> None:
+    root: list[JSONValue] = []
+    current = root
+    for _ in range(sys.getrecursionlimit()):
+        nested: list[JSONValue] = []
+        current.append(nested)
+        current = nested
+    transport = FakeFunctionsTransport()
+
+    with pytest.raises(TypeError, match="Function data must be JSON-compatible"):
+        _ = functions_client(transport).functions.invoke("send-welcome", {"deep": root})
+
+    assert transport.calls == []
+
+
+def test_functions_rejects_excessively_nested_response_values() -> None:
+    root: list[JSONValue] = []
+    current = root
+    for _ in range(sys.getrecursionlimit()):
+        nested: list[JSONValue] = []
+        current.append(nested)
+        current = nested
+    transport = FakeFunctionsTransport()
+    transport.invoke_response = FakeResponse(200, root, {})
 
     with pytest.raises(TypeError, match="Function data must be JSON-compatible"):
         _ = functions_client(transport).functions.invoke("send-welcome")
