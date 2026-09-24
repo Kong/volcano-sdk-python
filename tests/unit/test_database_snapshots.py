@@ -52,4 +52,21 @@ def test_filter_snapshots_nested_mappings_lists_and_tuples(operation: str) -> No
 
 def test_filter_base_requires_a_concrete_builder() -> None:
     with pytest.raises(NotImplementedError):
-        _ = FilterBuilder()._with_filters(())
+        _ = FilterBuilder()._append_filter(
+            {"column": "id", "operator": "eq", "value": 1}
+        )
+
+
+@pytest.mark.parametrize("value", [True, False])
+def test_identity_filter_preserves_boolean_values(value: object) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return rows_response()
+
+    query = make_client(handle).database("db").from_("items").is_("enabled", value)
+    assert query.execute() == [{"id": 1}]
+    assert json.loads(requests[0].content)["filters"] == [
+        {"column": "enabled", "operator": "is", "value": value}
+    ]
