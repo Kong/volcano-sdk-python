@@ -19,6 +19,16 @@ from ._transport import Transport, invoke, response_payload
 _INVALID_DATABASE_ROWS = "Expected a list of database rows with string keys"
 
 
+def _is_object_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, Mapping)
+
+
+def _is_object_sequence(
+    value: object,
+) -> TypeGuard[list[object] | tuple[object, ...]]:
+    return isinstance(value, (list, tuple))
+
+
 def _is_database_row(value: object) -> TypeGuard[dict[str, object]]:
     if not isinstance(value, dict):
         return False
@@ -54,12 +64,10 @@ def _snapshot_row(values: Mapping[str, JSONValue]) -> dict[str, JSONValue]:
 
 
 def _snapshot_filter_value(value: object) -> object:
-    if isinstance(value, Mapping):
-        mapping = cast("Mapping[object, object]", value)
-        return {key: _snapshot_filter_value(item) for key, item in mapping.items()}
-    if isinstance(value, (list, tuple)):
-        sequence = cast("list[object] | tuple[object, ...]", value)
-        return [_snapshot_filter_value(item) for item in sequence]
+    if _is_object_mapping(value):
+        return {key: _snapshot_filter_value(item) for key, item in value.items()}
+    if _is_object_sequence(value):
+        return [_snapshot_filter_value(item) for item in value]
     return value
 
 
