@@ -220,11 +220,8 @@ def check_comment(
     """
     location = f"{name}:{token.start[0]}"
     pyright_ignores = PYRIGHT_IGNORE.findall(token.string)
-    remaining = (
-        PYRIGHT_IGNORE.sub("", token.string) if name in TYPE_FIXTURES else token.string
-    )
     errors = (
-        [f"{location}: forbidden suppression"] if FORBIDDEN.search(remaining) else []
+        [f"{location}: forbidden suppression"] if FORBIDDEN.search(token.string) else []
     )
     if TYPE_IGNORE.search(token.string) and name not in TYPE_FIXTURES:
         errors.append(f"{location}: type ignore outside diagnostic fixture")

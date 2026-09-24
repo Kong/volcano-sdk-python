@@ -206,6 +206,21 @@ def test_type_fixture_cannot_hide_other_suppression(tmp_path: Path) -> None:
     )
 
 
+def test_type_fixture_cannot_hide_pyright_suppression(tmp_path: Path) -> None:
+    name = "tests/unit/fixtures/invalid_arguments.py"
+    source = tmp_path / name
+    source.parent.mkdir(parents=True)
+    _ = source.write_text(
+        "value: str = 1  # pyright: ignore[reportAssignmentType]\n",
+        encoding="utf-8",
+    )
+
+    assert any(
+        "forbidden suppression" in error
+        for error in check_comments(tmp_path, {name}, [])
+    )
+
+
 def test_self_authorized_exception_fails(tmp_path: Path) -> None:
     exception = {
         "scope": "src/volcano_sdk/auth.py:login",
