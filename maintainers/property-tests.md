@@ -5,7 +5,7 @@ seed for the run is saved in `reports/hypothesis/seed.txt`. Replay the same
 inputs with the pinned Hypothesis version:
 
 ```sh
-VOLCANO_PROPERTY_SEED=12345 uv run pytest tests/unit/test_encoding_properties.py
+VOLCANO_PROPERTY_SEED=12345 uv run --locked poe test
 ```
 
 The quality command writes `reports/unit.xml`, including Hypothesis's minimized

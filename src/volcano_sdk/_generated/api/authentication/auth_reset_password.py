@@ -15,7 +15,7 @@ from typing import cast
 
 
 
-def _get_kwargs(
+def request_kwargs(
     *,
     body: AuthResetPasswordBody,
 
@@ -70,7 +70,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | AuthResetPasswordResponse200 | Error]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | AuthResetPasswordResponse200 | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -102,7 +102,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         body=body,
 
     )
@@ -111,7 +111,7 @@ def sync_detailed(
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
     *,
@@ -165,7 +165,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         body=body,
 
     )
@@ -174,7 +174,7 @@ async def asyncio_detailed(
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
     *,

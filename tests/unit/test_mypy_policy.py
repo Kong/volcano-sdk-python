@@ -25,6 +25,7 @@ def test_typed_program_passes(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("source", "diagnostic"),
     [
+        ("from typing import Any\nvalue: Any = 1\n", "explicit-any"),
         (
             "def unreachable() -> None:\n    return\n    print('dead code')\n",
             "unreachable",

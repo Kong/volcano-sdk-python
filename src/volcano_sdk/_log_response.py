@@ -30,16 +30,16 @@ def _is_json_scalar(value: object) -> TypeGuard[str | int | float | bool | None]
     return value is None or isinstance(value, (str, int, bool))
 
 
-def _is_json_value(value: object) -> TypeGuard[JSONValue]:
+def is_json_value(value: object) -> TypeGuard[JSONValue]:
     if _is_json_scalar(value):
         return True
     if _is_object_list(value):
-        return all(_is_json_value(item) for item in value)
+        return all(is_json_value(item) for item in value)
     if _is_object_tuple(value):
-        return all(_is_json_value(item) for item in value)
+        return all(is_json_value(item) for item in value)
     if _is_object_mapping(value):
         return all(
-            isinstance(key, str) and _is_json_value(item) for key, item in value.items()
+            isinstance(key, str) and is_json_value(item) for key, item in value.items()
         )
     return False
 
@@ -69,7 +69,7 @@ def _row_values(item: object) -> Mapping[str, JSONValue]:
         raise TypeError(INVALID_LOG_RESPONSE)
     row: dict[str, JSONValue] = {}
     for key, value in item.items():
-        if not isinstance(key, str) or not _is_json_value(value):
+        if not isinstance(key, str) or not is_json_value(value):
             raise TypeError(INVALID_LOG_RESPONSE)
         row[key] = value
     return row

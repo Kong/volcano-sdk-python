@@ -16,8 +16,8 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    id: UUID,
+def request_kwargs(
+    id: UUID | str,
     *,
     action: RenderDefaultManagedAuthPageAction | Unset = UNSET,
     user_code: str | Unset = UNSET,
@@ -77,7 +77,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | str]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | str]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -87,7 +87,7 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient | Client,
     action: RenderDefaultManagedAuthPageAction | Unset = UNSET,
@@ -117,7 +117,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 action=action,
 user_code=user_code,
@@ -130,10 +130,10 @@ state=state,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient | Client,
     action: RenderDefaultManagedAuthPageAction | Unset = UNSET,
@@ -174,7 +174,7 @@ state=state,
     ).parsed
 
 async def asyncio_detailed(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient | Client,
     action: RenderDefaultManagedAuthPageAction | Unset = UNSET,
@@ -204,7 +204,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 action=action,
 user_code=user_code,
@@ -217,10 +217,10 @@ state=state,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient | Client,
     action: RenderDefaultManagedAuthPageAction | Unset = UNSET,

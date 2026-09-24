@@ -16,8 +16,8 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    project_id: UUID,
+def request_kwargs(
+    project_id: UUID | str,
     bucket_name: str,
     path: str,
 
@@ -69,7 +69,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error | File]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error | File]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -79,7 +79,7 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    project_id: UUID,
+    project_id: UUID | str,
     bucket_name: str,
     path: str,
     *,
@@ -126,7 +126,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         project_id=project_id,
 bucket_name=bucket_name,
 path=path,
@@ -137,10 +137,10 @@ path=path,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    project_id: UUID,
+    project_id: UUID | str,
     bucket_name: str,
     path: str,
     *,
@@ -196,7 +196,7 @@ client=client,
     ).parsed
 
 async def asyncio_detailed(
-    project_id: UUID,
+    project_id: UUID | str,
     bucket_name: str,
     path: str,
     *,
@@ -243,7 +243,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         project_id=project_id,
 bucket_name=bucket_name,
 path=path,
@@ -254,10 +254,10 @@ path=path,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    project_id: UUID,
+    project_id: UUID | str,
     bucket_name: str,
     path: str,
     *,

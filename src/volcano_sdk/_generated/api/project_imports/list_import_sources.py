@@ -17,10 +17,10 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
+def request_kwargs(
     provider: ImportProvider,
     *,
-    connection_id: UUID,
+    connection_id: UUID | str,
 
 ) -> dict[str, Any]:
     
@@ -117,7 +117,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | ImportSourcesResponse]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | ImportSourcesResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -130,7 +130,7 @@ def sync_detailed(
     provider: ImportProvider,
     *,
     client: AuthenticatedClient,
-    connection_id: UUID,
+    connection_id: UUID | str,
 
 ) -> Response[Error | ImportSourcesResponse]:
     """ List project sources available from a provider connection
@@ -150,7 +150,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         provider=provider,
 connection_id=connection_id,
 
@@ -160,13 +160,13 @@ connection_id=connection_id,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
     provider: ImportProvider,
     *,
     client: AuthenticatedClient,
-    connection_id: UUID,
+    connection_id: UUID | str,
 
 ) -> Error | ImportSourcesResponse | None:
     """ List project sources available from a provider connection
@@ -197,7 +197,7 @@ async def asyncio_detailed(
     provider: ImportProvider,
     *,
     client: AuthenticatedClient,
-    connection_id: UUID,
+    connection_id: UUID | str,
 
 ) -> Response[Error | ImportSourcesResponse]:
     """ List project sources available from a provider connection
@@ -217,7 +217,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         provider=provider,
 connection_id=connection_id,
 
@@ -227,13 +227,13 @@ connection_id=connection_id,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
     provider: ImportProvider,
     *,
     client: AuthenticatedClient,
-    connection_id: UUID,
+    connection_id: UUID | str,
 
 ) -> Error | ImportSourcesResponse | None:
     """ List project sources available from a provider connection

@@ -17,6 +17,6 @@ Sources: [typeshed signatures](https://github.com/python/typeshed/blob/main/stub
 [Behave registration](https://github.com/behave/behave/blob/v1.3.3/behave/step_registry.py),
 [Pyright partial stub resolution](https://github.com/microsoft/pyright/blob/main/packages/pyright-internal/src/partialStubService.ts).
 
-`tests/typing/contract_steps.py` checks retained argument types and deliberately
+`src/volcano_sdk/_tests/typing/contract_steps.py` checks retained argument types and deliberately
 invalid calls. The shared scenarios still require an executed contract run
 against disposable infrastructure; `poe contract-check` only checks discovery.

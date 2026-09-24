@@ -16,8 +16,8 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    id: UUID,
+def request_kwargs(
+    id: UUID | str,
     *,
     page: int | Unset = UNSET,
     limit: int | Unset = 10,
@@ -102,7 +102,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | PaginatedProjectCustomDomains]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | PaginatedProjectCustomDomains]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -112,7 +112,7 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     page: int | Unset = UNSET,
@@ -148,7 +148,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 page=page,
 limit=limit,
@@ -163,10 +163,10 @@ search=search,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     page: int | Unset = UNSET,
@@ -215,7 +215,7 @@ search=search,
     ).parsed
 
 async def asyncio_detailed(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     page: int | Unset = UNSET,
@@ -251,7 +251,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 page=page,
 limit=limit,
@@ -266,10 +266,10 @@ search=search,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     page: int | Unset = UNSET,

@@ -12,7 +12,7 @@ _JITTER_SCALE = 10_000
 _MINIMUM_JITTER = 0.1
 
 
-def _renewal_jitter() -> float:
+def renewal_jitter() -> float:
     return (secrets.randbelow(_JITTER_STEPS) / _JITTER_SCALE) - _MINIMUM_JITTER
 
 
@@ -32,7 +32,7 @@ def renewal_delay(ttl: int, *, remaining: float) -> float:
     )
     delay = min(ttl / 3, MAX_RENEWAL_DELAY_SECONDS, latest)
     return min(
-        max(0.0, delay * (1 + _renewal_jitter())),
+        max(0.0, delay * (1 + renewal_jitter())),
         MAX_RENEWAL_DELAY_SECONDS,
         latest,
     )

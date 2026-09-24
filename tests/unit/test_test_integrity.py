@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import subprocess
+import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed argv; no shell.
 from pathlib import Path
 
 import pytest
 
-INTEGRITY = (Path(__file__).parents[1] / "conftest.py").read_text()
+INTEGRITY = (Path(__file__).parents[2] / "conftest.py").read_text()
 PROJECT = Path(__file__).parents[2]
 
 
@@ -86,15 +86,15 @@ def test_disabled_tests_fail(guarded: pytest.Pytester, source: str) -> None:
 def test_only_reviewed_warning_filter_is_allowed(
     guarded: pytest.Pytester, module: str, warning: str, exit_code: pytest.ExitCode
 ) -> None:
-    target = guarded.path / "tests" / "unit" / module
+    target = guarded.path / "src" / "volcano_sdk" / "_tests" / module
     target.parent.mkdir(parents=True)
-    _ = target.write_text(
+    source = (
         "import pytest\n"
         f"pytestmark = pytest.mark.filterwarnings({warning!r})\n"
-        "def test_passes(): assert True\n",
-        encoding="utf-8",
+        "def test_passes(): assert True\n"
     )
-    result = guarded.runpytest_subprocess("tests/unit")
+    _ = target.write_text(source, encoding="utf-8")
+    result = guarded.runpytest_subprocess()
     result.assert_outcomes(passed=1)
     assert result.ret == exit_code
     if exit_code == pytest.ExitCode.TESTS_FAILED:
@@ -233,3 +233,19 @@ def test_reportless_success_fails_quality_task() -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("selected", ["tests/unit", "src/volcano_sdk/_tests"])
+def test_selecting_only_one_required_test_root_fails(
+    guarded: pytest.Pytester, selected: str
+) -> None:
+    for root in ("tests/unit", "src/volcano_sdk/_tests"):
+        target = guarded.path / root / "test_visible.py"
+        target.parent.mkdir(parents=True)
+        _ = target.write_text("def test_visible(): assert True\n", encoding="utf-8")
+
+    result = guarded.runpytest_subprocess(selected)
+
+    result.assert_outcomes(passed=1)
+    assert result.ret == pytest.ExitCode.TESTS_FAILED
+    result.stdout.fnmatch_lines(["*Incomplete test run: focused test paths*"])

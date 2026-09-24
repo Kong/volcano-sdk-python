@@ -18,19 +18,19 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 GENERATED = "src/volcano_sdk/_generated"
-LOCK_SHA256 = "3eea92085dce48f7454bc9e2b82854cc99a8787083da471609ae41da57d75560"
+LOCK_SHA256 = "d85da62afd3ea7353774b03f53b271fd4de8081f72b019266c600627e979c714"
 TYPE_FIXTURES = {
-    "tests/typing/contract_steps.py",
-    "tests/typing/durable_callbacks.py",
-    "tests/typing/durable_configuration.py",
-    "tests/typing/durable_logger.py",
-    "tests/typing/mypy_correctness.py",
-    "tests/typing/realtime_subscriptions.py",
-    "tests/typing/transport.py",
-    "tests/unit/fixtures/invalid_arguments.py",
-    "tests/unit/fixtures/invalid_callbacks.py",
-    "tests/unit/fixtures/invalid_realtime_callback.py",
-    "tests/unit/fixtures/invalid_wait_options.py",
+    "src/volcano_sdk/_tests/typing/contract_steps.py",
+    "src/volcano_sdk/_tests/typing/durable_callbacks.py",
+    "src/volcano_sdk/_tests/typing/durable_configuration.py",
+    "src/volcano_sdk/_tests/typing/durable_logger.py",
+    "src/volcano_sdk/_tests/typing/mypy_correctness.py",
+    "src/volcano_sdk/_tests/typing/realtime_subscriptions.py",
+    "src/volcano_sdk/_tests/typing/transport.py",
+    "src/volcano_sdk/_tests/fixtures/invalid_arguments.py",
+    "src/volcano_sdk/_tests/fixtures/invalid_callbacks.py",
+    "src/volcano_sdk/_tests/fixtures/invalid_realtime_callback.py",
+    "src/volcano_sdk/_tests/fixtures/invalid_wait_options.py",
 }
 CONFIG_NAMES = {
     "pyproject.toml",
@@ -48,11 +48,42 @@ CONFIG_NAMES = {
     ".coveragerc",
 }
 APPROVED_EXCEPTION_SHA256 = (
-    "e97935a8767e870713640b4cf9ec1d65ec65464b68cb156ea4e40e8e9c763cf7"
+    "c99ab5004030aac824f434ab55626e40a8a0899867e77960c5dc7bbc0a0e247c"
 )
+CALLBACK_SCOPE = "src/volcano_sdk/_realtime_callbacks.py:DynamicCallback"
+CALLBACK_RULE = "mypy.explicit-any"
+CALLBACK_DECLARATION = ast.dump(
+    ast.parse("DynamicCallback: TypeAlias = Callable[..., object]").body[0],
+    include_attributes=False,
+)
+PRIVATE_CONTEXT_FACTORIES = {
+    "src/volcano_sdk/_auth_context.py": ("auth_context", "_auth_context"),
+    "src/volcano_sdk/_client_context.py": ("facade_context", "_facade_context"),
+}
+PRIVATE_CONTEXT_RULE = "basedpyright.reportPrivateUsage"
 APPROVED_RULES = {
+    *{
+        (f"{name}:{scope}", rule)
+        for name, (scope, _) in PRIVATE_CONTEXT_FACTORIES.items()
+        for rule in ("SLF001", PRIVATE_CONTEXT_RULE)
+    },
+    (CALLBACK_SCOPE, CALLBACK_RULE),
     ("scripts/generate_openapi.py:generate", "S603"),
-    ("tests/unit/test_durable_authoring.py:pytestmark", "pytest.filterwarnings"),
+    (
+        "src/volcano_sdk/_tests/test_durable_authoring.py:pytestmark",
+        "pytest.filterwarnings",
+    ),
+    ("scripts/generate_openapi.py:import:subprocess", "S404"),
+    ("tests/unit/test_dependency_audit.py:import:subprocess", "S404"),
+    ("tests/unit/test_generation.py:import:subprocess", "S404"),
+    ("tests/unit/test_mutation_results.py:import:subprocess", "S404"),
+    ("tests/unit/test_quality_configuration.py:import:subprocess", "S404"),
+    ("tests/unit/test_test_integrity.py:import:subprocess", "S404"),
+}
+RULE_NAMES = {
+    "private-member-access": "SLF001",
+    "suspicious-subprocess-import": "S404",
+    "subprocess-without-shell-equals-true": "S603",
 }
 WARNING_PREFIX = "ignore:'asyncio.iscoroutinefunction' is deprecated"
 REVIEWED_WARNING = f"{WARNING_PREFIX}:{DeprecationWarning.__name__}"
@@ -72,7 +103,7 @@ FORBIDDEN = re.compile(
 )
 TYPE_IGNORE = re.compile(r"\btype:\s*ignore(?:\[[^]]+\])?(?=$|[\s#])", re.IGNORECASE)
 PYRIGHT_IGNORE = re.compile(r"\bpyright:\s*ignore\[[A-Za-z0-9, ]+\]", re.IGNORECASE)
-RUFF_IGNORE = re.compile(r"\bruff:\s*ignore\[([A-Z0-9, ]+)\]", re.IGNORECASE)
+RUFF_IGNORE = re.compile(r"\bruff:\s*ignore\[([A-Z0-9, -]+)\]", re.IGNORECASE)
 
 
 def changed_paths(expected: object, actual: object, path: str) -> list[str]:
@@ -166,6 +197,25 @@ def enclosing_function(source: str, line: int) -> str | None:
     return nearest.name if nearest is not None else None
 
 
+def suppression_scope(source: str, line: int) -> str | None:
+    """Identify the exact function or subprocess import owning a directive.
+
+    Returns:
+        The reviewed syntax scope, if present.
+
+    """
+    for node in ast.parse(source).body:
+        if (
+            isinstance(node, ast.Import)
+            and node.lineno == line
+            and len(node.names) == 1
+            and node.names[0].name == "subprocess"
+            and node.names[0].asname is None
+        ):
+            return "import:subprocess"
+    return enclosing_function(source, line)
+
+
 def check_rule(
     key: tuple[str, str],
     location: str,
@@ -208,10 +258,101 @@ def check_ruff_comment(
     if len(matches) != 1 or comment.lower().count("ruff:") != 1:
         return [f"{location}: unrecognized or multiple Ruff directives"]
     errors: list[str] = []
-    scope = f"{name}:{enclosing_function(source, token.start[0])}"
-    for rule in matches[0].group(1).replace(" ", "").upper().split(","):
+    scope = f"{name}:{suppression_scope(source, token.start[0])}"
+    for label in matches[0].group(1).replace(" ", "").split(","):
+        rule = RULE_NAMES.get(label.lower(), label.upper())
         errors.extend(check_rule((scope, rule), location, approved, used))
     return errors
+
+
+def callback_exception(name: str, source: str, token: tokenize.TokenInfo) -> bool:
+    """Identify the sole callback argument-erasure declaration.
+
+    Returns:
+        Whether the exact declaration carries its reviewed mypy diagnostic.
+
+    """
+    if (name, token.string) != (
+        CALLBACK_SCOPE.split(":", maxsplit=1)[0],
+        "# type: ignore[explicit-any]",
+    ):
+        return False
+    statements = [
+        node for node in ast.parse(source).body if node.lineno == token.start[0]
+    ]
+    return (
+        len(statements) == 1
+        and ast.dump(statements[0], include_attributes=False) == CALLBACK_DECLARATION
+    )
+
+
+def check_type_comment(
+    name: str,
+    source: str,
+    token: tokenize.TokenInfo,
+    approved: set[tuple[str, str]],
+    used: set[tuple[str, str]],
+) -> list[str]:
+    """Limit native type expectations to fixtures and one callback boundary.
+
+    Returns:
+        Unreviewed or repeated type-suppression errors.
+
+    """
+    if not TYPE_IGNORE.search(token.string) or name in TYPE_FIXTURES:
+        return []
+    location = f"{name}:{token.start[0]}"
+    if not callback_exception(name, source, token):
+        return [f"{location}: type ignore outside diagnostic fixture"]
+    return check_rule((CALLBACK_SCOPE, CALLBACK_RULE), location, approved, used)
+
+
+def private_factory_exception(
+    name: str, source: str, token: tokenize.TokenInfo
+) -> bool:
+    """Match the two private calls that preserve direct facade construction.
+
+    Returns:
+        Whether this comment annotates the exact approved factory call.
+
+    """
+    expected = PRIVATE_CONTEXT_FACTORIES.get(name)
+    if expected is None:
+        return False
+    scope, method = expected
+    if enclosing_function(source, token.start[0]) != scope:
+        return False
+    statement = source.splitlines()[token.start[0] - 1].split("#", maxsplit=1)[0]
+    return statement.strip() == f"return client.{method}()" and token.string == (
+        "# ruff: ignore[private-member-access] # pyright: ignore[reportPrivateUsage]"
+    )
+
+
+def check_pyright_comment(
+    name: str,
+    source: str,
+    token: tokenize.TokenInfo,
+    approved: set[tuple[str, str]],
+    used: set[tuple[str, str]],
+) -> tuple[list[str], str]:
+    """Limit native private-access exceptions to their two compatibility adapters.
+
+    Returns:
+        Violations and the comment remaining after a recognized native exception.
+
+    """
+    if not PYRIGHT_IGNORE.search(token.string):
+        return [], token.string
+    if name in TYPE_FIXTURES and TYPE_IGNORE.search(token.string):
+        return [], PYRIGHT_IGNORE.sub("", token.string)
+    location = f"{name}:{token.start[0]}"
+    if private_factory_exception(name, source, token):
+        scope = f"{name}:{enclosing_function(source, token.start[0])}"
+        return (
+            check_rule((scope, PRIVATE_CONTEXT_RULE), location, approved, used),
+            PYRIGHT_IGNORE.sub("", token.string),
+        )
+    return [f"{location}: pyright ignore outside diagnostic fixture"], token.string
 
 
 def check_comment(
@@ -228,14 +369,10 @@ def check_comment(
 
     """
     location = f"{name}:{token.start[0]}"
-    pyright_ignores = PYRIGHT_IGNORE.findall(token.string)
-    errors = (
-        [f"{location}: forbidden suppression"] if FORBIDDEN.search(token.string) else []
-    )
-    if TYPE_IGNORE.search(token.string) and name not in TYPE_FIXTURES:
-        errors.append(f"{location}: type ignore outside diagnostic fixture")
-    if pyright_ignores and name not in TYPE_FIXTURES:
-        errors.append(f"{location}: pyright ignore outside diagnostic fixture")
+    errors, remaining = check_pyright_comment(name, source, token, approved, used)
+    if FORBIDDEN.search(remaining):
+        errors.append(f"{location}: forbidden suppression")
+    errors.extend(check_type_comment(name, source, token, approved, used))
     errors.extend(check_ruff_comment(name, source, token, approved, used))
     return errors
 
@@ -288,7 +425,7 @@ def check_comments(
         for token in tokenize.generate_tokens(io.StringIO(source).readline):
             errors.extend(check_token(name, source, token, approved, used))
         if (
-            name == "tests/unit/test_durable_authoring.py"
+            name == "src/volcano_sdk/_tests/test_durable_authoring.py"
             and sum(
                 ast.dump(statement, include_attributes=False) == REVIEWED_WARNING_FILTER
                 for statement in ast.parse(source).body

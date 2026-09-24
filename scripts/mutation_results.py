@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import ast
 import json
 import os
 import sys
 from collections import Counter
 from pathlib import Path
 from typing import cast
+
+from mutmut.mutation.file_mutation import mutate_file_contents
 
 EXIT_OUTCOMES = {
     0: "survived",
@@ -71,18 +72,15 @@ def exit_codes(path: Path) -> dict[str, int | None]:
     return cast("dict[str, int | None]", entries)
 
 
-def has_functions(path: Path) -> bool:
-    """Distinguish an export-only module from a missing mutation report.
+def has_mutations(path: Path) -> bool:
+    """Ask the pinned native generator whether a module has mutation candidates.
 
     Returns:
-        Whether the source defines a function or method.
+        Whether Mutmut can modify any expression in the module.
 
     """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return any(
-        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        for node in ast.walk(tree)
-    )
+    generated = mutate_file_contents(str(path), path.read_text(encoding="utf-8"))
+    return bool(generated.mutant_names)
 
 
 def outcomes(path: Path) -> tuple[Counter[str], bool]:
@@ -97,13 +95,13 @@ def outcomes(path: Path) -> tuple[Counter[str], bool]:
     """
     meta = Path("mutants") / f"{path}.meta"
     if not meta.is_file():
-        if not has_functions(path):
+        if not has_mutations(path):
             return Counter(), True
         msg = f"Missing mutmut report: {path}"
         raise ValueError(msg)
     codes = exit_codes(meta)
     if not codes:
-        if not has_functions(path):
+        if not has_mutations(path):
             return Counter(), True
         msg = f"Empty mutmut report: {path}"
         raise ValueError(msg)

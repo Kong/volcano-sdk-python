@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-import subprocess
+import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed argv; no shell.
 from pathlib import Path
 
 import pytest

@@ -4,19 +4,25 @@
 handwritten runtime module. CI runs the same `checks` and `mutation` tasks,
 assigning one handwritten module to each independent matrix job. Git's current
 handwritten module inventory determines the jobs, including newly added modules.
-`Mutation Gate` requires every module job, and `Quality Gate` requires it and the Python test matrix. The
-weekly audit runs the same full mutation task without a debt baseline.
+`Mutation Gate` requires every module job. `Quality Gate` requires it and the
+Python test matrix. The weekly audit runs the same full mutation task without a
+debt baseline.
 
 Mutmut's [native configuration](https://mutmut.readthedocs.io/en/latest/) lives
-in `pyproject.toml`; it excludes only the generated OpenAPI client. Mutmut can
-select modules by name but returns success when mutants survive.
+in `pyproject.toml`; it excludes the generated OpenAPI client and private test
+package. Mutmut can select modules by name but returns success when mutants
+survive.
 `scripts/mutation.sh` selects the full handwritten inventory from Git and
 `scripts/mutation_results.py` reads each selected module's native metadata. The
 report at `reports/mutation.json` distinguishes killed, statically invalid,
 surviving, uncovered, timed-out, crashed, interrupted, and missing results.
-Mutmut creates mutants inside functions. Export-only modules remain in the
-inventory; the runner verifies that they define no functions and records them
-as unmutatable. Coverage and installed-package checks still include them.
+Mutmut creates mutants inside functions, but some functions have no candidates:
+zero-argument getter delegation and protocol declarations are examples. Every
+module remains in the inventory. The runner calls the pinned Mutmut generator's
+`mutate_file_contents` API to verify zero candidates, then records the module as
+unmutatable. This uses the same operators as the native run, without source
+heuristics or per-module exemptions. Coverage and installed-package checks still
+include these modules.
 A pytest internal error is a harness crash, not a killed mutant.
 The pinned Pyrefly check covers the handwritten runtime and rejects
 type-invalid mutants before pytest;
