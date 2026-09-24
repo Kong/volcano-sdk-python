@@ -185,6 +185,18 @@ def test_wait_options_forward_predicate_timing_and_attempt_budget(
     assert configured.initial_state is False
 
 
+def test_durable_runtime_adapter_is_loaded_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(durable_authoring._Engine, "_loaded", None)
+
+    first = durable_authoring._Engine.load()
+    second = durable_authoring._Engine.load()
+
+    assert isinstance(first, durable_authoring._Engine)
+    assert first is second
+
+
 def test_wait_options_name_invalid_timing_fields() -> None:
     engine = durable_authoring._Engine()
 
