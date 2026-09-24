@@ -94,6 +94,14 @@ def test_postgres_listener_removal_is_idempotent() -> None:
     )
 
 
+def test_postgres_channel_without_listeners_ignores_changes() -> None:
+    channel = make_client().realtime.channel("public:messages", channel_type="postgres")
+
+    assert not channel._has_postgres_listener(
+        PostgresChange(type="INSERT", schema="public", table="messages")
+    )
+
+
 async def test_postgres_failure_cannot_deliver_into_a_replacement_session() -> None:
     client = make_client()
     channel = client.realtime.channel("public:messages", channel_type="postgres")
@@ -183,6 +191,52 @@ async def test_cancelling_presence_sync_drains_the_running_task() -> None:
         _ = await asyncio.wait_for(
             asyncio.gather(task, return_exceptions=True), timeout=0.2
         )
+
+
+async def test_presence_failure_cleanup_aborts_if_error_reporting_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    realtime = make_client().realtime
+    channel = realtime.channel("lobby", channel_type="presence")
+    await channel._begin_presence_sync()
+
+    async def fail_reporting() -> None:
+        raise RuntimeError
+
+    monkeypatch.setattr(channel, "_fail_presence_sync", fail_reporting)
+    with pytest.raises(RuntimeError):
+        await realtime._report_presence_sync_failure(channel, RuntimeError())
+
+    assert not channel._presence_syncing
+    assert channel._presence_events == []
+
+
+async def test_running_presence_sync_coalesces_a_second_request() -> None:
+    native = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    channel = client.realtime.channel("lobby", channel_type="presence")
+    try:
+        await channel.subscribe()
+        subscription = native.subscription
+        assert subscription is not None
+        subscription.presence_entered = asyncio.Event()
+        subscription.presence_release = asyncio.Event()
+        channel._schedule_presence_sync()
+        first = channel._presence_sync_task
+        assert first is not None
+        _ = await asyncio.wait_for(subscription.presence_entered.wait(), timeout=0.2)
+
+        channel._schedule_presence_sync()
+        assert channel._presence_sync_task is first
+        assert channel._presence_sync_pending
+        subscription.presence_release.set()
+        await asyncio.wait_for(channel._wait_presence_sync(), timeout=0.2)
+    finally:
+        await client.realtime.disconnect()
 
 
 async def test_removing_an_unsubscribed_channel_preserves_a_new_registration() -> None:

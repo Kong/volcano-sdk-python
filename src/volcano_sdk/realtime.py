@@ -1814,33 +1814,40 @@ class Realtime:
         if channel._subscription is None:
             return
         await channel._begin_presence_sync()
-        query_succeeded = False
         try:
             # Native replies must settle even after the roster refresh is cancelled.
             query = asyncio.create_task(channel._subscription.presence())
             query.add_done_callback(_consume_presence_result)
             result = await asyncio.shield(query)
-            query_succeeded = True
         except CENTRIFUGE_ERROR as error:
-            await channel._fail_presence_sync()
-            query_succeeded = True
-            self._enqueue_connection_callbacks(
-                "error",
-                RealtimeErrorContext(
-                    code=getattr(error, "code", None),
-                    message=str(error),
-                    error=error,
-                ),
-            )
+            await self._report_presence_sync_failure(channel, error)
             return
-        finally:
-            if not query_succeeded:
-                await channel._abort_presence_sync()
+        except BaseException:
+            await channel._abort_presence_sync()
+            raise
         clients = _native_presence_clients(_native_attribute(result, "clients"))
         if clients is not None:
             await channel._complete_presence_sync(clients)
         else:
             await channel._abort_presence_sync()
+
+    async def _report_presence_sync_failure(
+        self, channel: Channel, error: Exception
+    ) -> None:
+        try:
+            await channel._fail_presence_sync()
+        except BaseException:
+            await channel._abort_presence_sync()
+            raise
+        code = _native_attribute(error, "code")
+        self._enqueue_connection_callbacks(
+            "error",
+            RealtimeErrorContext(
+                code=code if isinstance(code, int) else None,
+                message=str(error),
+                error=error,
+            ),
+        )
 
     async def _publish(self, channel: Channel, data: object) -> None:
         async with self._connection_lock:

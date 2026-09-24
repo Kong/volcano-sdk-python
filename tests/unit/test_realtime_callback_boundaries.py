@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 from typing import TYPE_CHECKING
 
 import pytest
 from fixtures.invalid_realtime_callback import register_non_callable
 from test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory
 
-from volcano_sdk import RealtimeConnectContext, VolcanoClient
-from volcano_sdk.realtime import _CallbackDelivery
+from volcano_sdk import PostgresChange, RealtimeConnectContext, Session, VolcanoClient
+from volcano_sdk.realtime import (
+    _CallbackDelivery,
+    _consume_presence_result,
+    _finish_unsubscribe,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -48,6 +53,101 @@ async def test_connection_queue_overflow_reports_the_dropped_callback(
     assert loop_errors == [
         {"message": "Volcano realtime connection callback queue is full"}
     ]
+
+
+async def test_removed_connection_listener_does_not_block_later_listeners() -> None:
+    realtime = VolcanoClient(anon_key="anon").realtime
+    received: list[RealtimeConnectContext] = []
+    stop_first = realtime.on_connect(received.append)
+    _ = realtime.on_connect(received.append)
+    context = RealtimeConnectContext(client="connected")
+
+    realtime._enqueue_connection_callbacks("connect", context)
+    stop_first()
+    await asyncio.wait_for(realtime._connection_callback_queue.join(), timeout=0.2)
+
+    assert received == [context]
+
+
+async def test_detached_presence_query_exception_is_consumed(
+    loop_errors: list[dict[str, object]],
+) -> None:
+    async def fail() -> None:
+        raise RuntimeError
+
+    task = asyncio.create_task(fail())
+    await asyncio.sleep(0)
+    assert task.done()
+    _consume_presence_result(task)
+    del task
+    _ = gc.collect()
+    await asyncio.sleep(0)
+
+    assert loop_errors == []
+
+
+async def test_cancelled_unsubscribe_consumes_a_native_failure(
+    loop_errors: list[dict[str, object]],
+) -> None:
+    async def fail() -> None:
+        raise RuntimeError
+
+    task = asyncio.create_task(fail())
+    await asyncio.sleep(0)
+    assert task.done()
+    with pytest.raises(asyncio.CancelledError):
+        _finish_unsubscribe(task, asyncio.CancelledError("caller cancelled"))
+    del task
+    _ = gc.collect()
+    await asyncio.sleep(0)
+
+    assert loop_errors == []
+
+
+async def test_pending_presence_snapshot_is_not_requeued_or_delivered_after_reset() -> (
+    None
+):
+    channel = VolcanoClient(anon_key="anon").realtime.channel(
+        "lobby", channel_type="presence"
+    )
+    received: list[object] = []
+    _ = channel.on_presence_sync(received.append)
+    channel._pending_presence_sync = {"version": 1}
+
+    channel._enqueue_pending_presence_sync()
+    delivery = channel._callback_queue.get_nowait()
+    channel._callback_queue.task_done()
+    channel._enqueue_pending_presence_sync()
+    assert channel._callback_queue.empty()
+
+    channel._discard_callbacks(presence_only=True)
+    await channel._dispatch_delivery(delivery)
+    assert received == []
+
+
+async def test_stale_postgres_callback_cannot_cross_a_session_change() -> None:
+    native = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    channel = client.realtime.channel("public:messages", channel_type="postgres")
+    received: list[object] = []
+    channel.on("*", received.append)
+    try:
+        await channel.subscribe()
+        delivery = _CallbackDelivery(
+            "*",
+            PostgresChange(type="INSERT", schema="public", table="messages"),
+            postgres_identity=channel._capture_postgres_delivery_identity(),
+        )
+        client.auth.set_session(Session("new-access", "new-refresh", "new-user"))
+        await channel._dispatch_delivery(delivery)
+
+        assert received == []
+    finally:
+        await client.realtime.disconnect()
 
 
 async def test_channel_queue_overflow_preserves_previously_accepted_delivery(

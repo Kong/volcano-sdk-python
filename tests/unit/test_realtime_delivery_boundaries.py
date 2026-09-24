@@ -15,7 +15,7 @@ from volcano_sdk._realtime_fetch_worker import (
     PostgresFetchOutcome,
     PostgresFetchRequest,
 )
-from volcano_sdk.realtime import _postgres_change, _PostgresDelivery
+from volcano_sdk.realtime import _postgres_change, _PostgresDelivery, _presence_info
 
 if TYPE_CHECKING:
     from volcano_sdk.models import JSONValue
@@ -70,6 +70,38 @@ async def test_presence_events_do_not_populate_inactive_or_non_presence_channels
     assert channel._presence_state == {}
     assert channel._presence_events == []
     assert channel._callback_queue.empty()
+
+
+async def test_active_broadcast_channel_ignores_misrouted_presence_events() -> None:
+    client = make_client()
+    channel = client.realtime.channel("messages")
+    peer = Peer("alice")
+    try:
+        await channel.subscribe()
+        await channel._presence_join(peer)
+        assert channel._presence_state == {}
+
+        channel._presence_state[peer.client] = _presence_info(peer)
+        await channel._presence_leave(peer)
+        assert tuple(channel._presence_state) == (peer.client,)
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_presence_leave_notifies_with_the_current_roster() -> None:
+    client = make_client()
+    channel = client.realtime.channel("lobby", channel_type="presence")
+    snapshots: list[object] = []
+    _ = channel.on_presence_sync(snapshots.append)
+    try:
+        await channel.subscribe()
+        await channel._presence_join(Peer("alice"))
+        await channel._presence_leave(Peer("alice"))
+        await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+
+        assert snapshots[-1] == {}
+    finally:
+        await client.realtime.disconnect()
 
 
 async def test_presence_sync_without_a_subscription_has_no_work() -> None:

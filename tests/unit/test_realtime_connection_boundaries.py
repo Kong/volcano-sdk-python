@@ -87,6 +87,30 @@ async def test_connection_requires_a_session_before_constructing_transport() -> 
     assert client.realtime._connection is None
 
 
+async def test_connection_token_is_available_during_native_connect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    native = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    observed: list[str] = []
+    connect = native.connect
+
+    async def inspect_connect() -> None:
+        observed.append(client.realtime._connection_token())
+        await connect()
+
+    monkeypatch.setattr(native, "connect", inspect_connect)
+    try:
+        await client.realtime.channel("messages").subscribe()
+        assert observed == ["access"]
+    finally:
+        await client.realtime.disconnect()
+
+
 async def test_token_callback_requires_a_connection_identity() -> None:
     realtime = VolcanoClient(anon_key="anon").realtime
     with pytest.raises(
@@ -226,6 +250,56 @@ async def test_server_subscription_events_do_not_dispatch_project_callbacks() ->
     assert received == []
     assert realtime._connection_callback_queue.empty()
     assert realtime._connection_callback_task is None
+
+
+async def test_recovering_channel_drops_publications_before_acknowledgement() -> None:
+    native = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    received: list[object] = []
+    channel = client.realtime.channel("messages").on("message", received.append)
+    try:
+        await channel.subscribe()
+        subscription = native.subscription
+        assert subscription is not None
+
+        await subscription.emit_subscribing()
+        await subscription.emit("before acknowledgement")
+        await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+
+        assert received == []
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_stale_acknowledgement_cannot_revive_a_recovering_channel() -> None:
+    native = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    channel = client.realtime.channel("messages")
+    try:
+        await channel.subscribe()
+        stale_events = channel._subscription_events
+        assert stale_events is not None
+        await client.realtime.disconnect()
+        await channel.subscribe()
+        current_events = channel._subscription_events
+        assert current_events is not None
+        assert current_events is not stale_events
+
+        await current_events.on_subscribing(object())
+        assert not channel._subscribed
+        await stale_events.on_subscribed(object())
+
+        assert not channel._subscribed
+    finally:
+        await client.realtime.disconnect()
 
 
 async def test_malformed_native_connection_contexts_are_sanitized() -> None:

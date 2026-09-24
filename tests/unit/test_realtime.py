@@ -3117,6 +3117,8 @@ def test_realtime_rejects_a_session_change_during_connect() -> None:
 
     assert official.calls == ["connect", "disconnect"]
     assert client.realtime._connection is None
+    assert client.realtime._connection_session_lineage is None
+    assert client.realtime._connection_access_token is None
 
 
 def test_realtime_retains_a_provisional_connection_when_cleanup_fails() -> None:
