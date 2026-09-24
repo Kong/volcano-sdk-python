@@ -23,7 +23,16 @@ strict = True
 INI
 cat > "$smoke_dir/consumer.py" <<'PY'
 from typing import assert_type
-from volcano_sdk import Session, User, VolcanoClient
+from volcano_sdk import (
+    DurableExecution,
+    FunctionResponse,
+    LockLease,
+    LogActivityResponse,
+    LogSearchResponse,
+    Session,
+    User,
+    VolcanoClient,
+)
 
 client = VolcanoClient(anon_key="example", access_token="supplied-access")
 assert_type(client.auth.get_session(), Session | None)
@@ -33,6 +42,13 @@ if session is not None:
     assert_type(session.user_id, str | None)
 assert_type(client.auth.get_user(), User)
 assert_type(client.storage.from_("assets").download("hello.txt"), bytes)
+assert_type(client.functions.invoke("echo"), FunctionResponse)
+assert_type(client.database("main").from_("items").execute(), list[dict[str, object]])
+assert_type(client.logs.search("project", {}), LogSearchResponse)
+assert_type(client.logs.activity("project", {}), LogActivityResponse)
+assert_type(client.locks.acquire("build", ttl=30), LockLease)
+assert_type(client.durable.get("project", "function", "execution"), DurableExecution)
+assert_type(client.realtime.is_connected, bool)
 PY
 for artifact in "${artifacts[@]}"; do
   artifact_digest="$(shasum -a 256 "$artifact")"
@@ -41,6 +57,7 @@ for artifact in "${artifacts[@]}"; do
   "$smoke_dir/venv/bin/python" -I - <<'PY'
 import os
 from importlib.metadata import distribution
+from importlib.resources import files
 from volcano_sdk import VolcanoClient
 
 package = distribution("volcano-sdk-python")
@@ -48,6 +65,7 @@ assert package.metadata["Name"] == "volcano-sdk-python"
 assert package.version == os.environ["PACKAGE_VERSION"]
 assert VolcanoClient
 assert package.read_text("WHEEL")
+assert files("volcano_sdk").joinpath("py.typed").is_file()
 print(f"Installed {package.metadata['Name']} {package.version}; volcano_sdk import OK")
 PY
   env -i PATH="$PATH" HOME="$smoke_dir" \

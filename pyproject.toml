@@ -449,10 +449,50 @@ format-check = "ruff format --check --config pyproject.toml ."
 types = ["mypy", "basedpyright"]
 mypy = "mypy --config-file pyproject.toml"
 basedpyright = "basedpyright --project pyproject.toml"
-test = "pytest -c pyproject.toml tests/unit -q --junitxml=reports/unit.xml"
-coverage = "uv run --locked --isolated --python 3.12 pytest -c pyproject.toml tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:reports/coverage.json --junitxml=reports/coverage-unit.xml"
 mutation = "bash scripts/mutation.sh"
 mutation-full = "MUTATION_FULL=1 bash scripts/mutation.sh"
+
+[tool.poe.tasks.test]
+interpreter = "bash"
+shell = """
+set -euo pipefail
+report_dir="$(mktemp -d)"
+trap 'rm -rf "$report_dir"' EXIT
+test_status=0
+pytest -c pyproject.toml tests/unit -q --junitxml="$report_dir/unit.xml" || test_status=$?
+mkdir -p reports
+if test -s "$report_dir/unit.xml"; then
+  mv "$report_dir/unit.xml" reports/unit.xml
+else
+  echo 'pytest did not write a JUnit report' >&2
+  if [[ $test_status -eq 0 ]]; then test_status=1; fi
+fi
+exit "$test_status"
+"""
+
+[tool.poe.tasks.coverage]
+interpreter = "bash"
+shell = """
+set -euo pipefail
+report_dir="$(mktemp -d)"
+trap 'rm -rf "$report_dir"' EXIT
+test_status=0
+uv run --locked --isolated --python 3.12 pytest -c pyproject.toml tests/unit -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:"$report_dir/coverage.json" --junitxml="$report_dir/unit.xml" || test_status=$?
+mkdir -p reports
+if test -s "$report_dir/coverage.json"; then
+  mv "$report_dir/coverage.json" reports/coverage.json
+else
+  echo 'pytest-cov did not write a coverage report' >&2
+  if [[ $test_status -eq 0 ]]; then test_status=1; fi
+fi
+if test -s "$report_dir/unit.xml"; then
+  mv "$report_dir/unit.xml" reports/coverage-unit.xml
+else
+  echo 'pytest did not write a JUnit report' >&2
+  if [[ $test_status -eq 0 ]]; then test_status=1; fi
+fi
+exit "$test_status"
+"""
 
 [tool.poe.tasks.contract-check]
 sequence = [

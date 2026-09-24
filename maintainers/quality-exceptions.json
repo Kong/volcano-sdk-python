@@ -7,5 +7,14 @@
     "approved_by": "swkeever",
     "approved_at": "2026-08-27",
     "approval_evidence": "Original suppression introduced in commit 95ea362b and merged by swkeever in PR #1 on 2026-08-27."
+  },
+  {
+    "rule": "pytest.filterwarnings",
+    "scope": "tests/unit/test_durable_authoring.py:pytestmark",
+    "rationale": "The AWS durable local test runner calls asyncio.iscoroutinefunction, deprecated in Python 3.14. This exact upstream warning does not originate in SDK code; all other warnings remain errors.",
+    "evidence": "The module-scoped marker was introduced in commit f97aeee6 (PR #133) with its upstream-runner rationale at tests/unit/test_durable_authoring.py:48-56.",
+    "approved_by": "subnetmarco",
+    "approved_at": "2026-09-19",
+    "approval_evidence": "Existing filter shipped in PR #133, merged by subnetmarco on 2026-09-19."
   }
 ]
