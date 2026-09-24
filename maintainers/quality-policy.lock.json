@@ -400,7 +400,6 @@
         "generated": "python -m scripts.check_openapi",
         "lint": "ruff check --config pyproject.toml .",
         "mutation": "bash scripts/mutation.sh",
-        "mutation-full": "MUTATION_FULL=1 bash scripts/mutation.sh",
         "mypy": "mypy --config-file pyproject.toml",
         "package-check": {
           "interpreter": "bash",

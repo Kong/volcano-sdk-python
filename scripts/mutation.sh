@@ -4,71 +4,69 @@ set -euo pipefail
 # Forked macOS workers must not query SystemConfiguration through urllib/httpx.
 export NO_PROXY='*' no_proxy='*'
 
-# Refresh mutmut's test-to-mutant map so newly added tests are selected.
-rm -rf -- mutants
+shard_count=8
+paths=()
+while IFS= read -r -d '' path; do
+  if [[ $path == src/volcano_sdk/*.py && $path != src/volcano_sdk/_generated/* && -f $path ]]; then
+    paths+=("$path")
+  fi
+done < <(git ls-files --cached --others --exclude-standard -z -- src/volcano_sdk)
+
+if (( ${#paths[@]} == 0 )); then
+  echo 'No handwritten SDK runtime modules found' >&2
+  exit 1
+fi
+
+if [[ ${1:-} == --matrix && $# == 1 ]]; then
+  printf '['
+  for ((shard = 0; shard < shard_count; shard++)); do
+    ((shard == 0)) || printf ','
+    printf '%s' "$shard"
+  done
+  printf ']\n'
+  exit
+fi
+if (( $# != 0 )); then
+  echo 'Usage: scripts/mutation.sh [--matrix]' >&2
+  exit 2
+fi
+
+if [[ -n ${MUTATION_SHARD:-} ]]; then
+  if [[ ! $MUTATION_SHARD =~ ^(0|[1-9][0-9]*)$ ]] || (( MUTATION_SHARD >= shard_count )); then
+    echo "Invalid mutation shard: $MUTATION_SHARD" >&2
+    exit 2
+  fi
+fi
 
 mkdir -p reports
 targets=reports/mutation-targets.bin
 failed=reports/mutation-failed.bin
 : > "$targets"
 : > "$failed"
-
-modules=()
-add_module() {
-  for known in "${modules[@]-}"; do
-    [[ $known == "$1" ]] && return
-  done
-  modules+=("$1")
-}
-if [[ ${MUTATION_FULL:-0} == 1 ]]; then
-  git ls-files -z 'src/volcano_sdk/*.py' > reports/mutation-source.bin
-  while IFS= read -r -d '' path; do
-    if [[ $path != src/volcano_sdk/_generated/* && -f $path ]]; then
-      add_module "$path"
-    fi
-  done < reports/mutation-source.bin
-else
-  for path in \
-    src/volcano_sdk/locks.py \
-    src/volcano_sdk/_lock_guard.py \
-    src/volcano_sdk/_lock_renewer.py \
-    src/volcano_sdk/_lock_worker.py; do
-    add_module "$path"
-  done
-
-  base=${MUTATION_BASE_SHA:-origin/main}
-  ancestor=$(git merge-base "$base" HEAD)
-  changed() {
-    git diff --name-only --diff-filter=ACMRT -z "$ancestor" HEAD
-    git diff --name-only --diff-filter=ACMRT -z HEAD
-    git ls-files -z --others --exclude-standard
-  }
-  changed > reports/mutation-changed.bin
-  while IFS= read -r -d '' path; do
-    if [[ $path == src/volcano_sdk/*.py && $path != src/volcano_sdk/_generated/* && -f $path ]]; then
-      add_module "$path"
-    fi
-  done < reports/mutation-changed.bin
-fi
-
-for path in "${modules[@]}"; do
+patterns=()
+for index in "${!paths[@]}"; do
+  if [[ -n ${MUTATION_SHARD:-} ]] && (( index % shard_count != MUTATION_SHARD )); then
+    continue
+  fi
+  path=${paths[$index]}
   printf '%s\0' "$path" >> "$targets"
+  module=${path#src/}
+  module=${module%.py}
+  if [[ $module == */__init__ ]]; then
+    module=${module%/__init__}
+  fi
+  patterns+=("${module//\//.}.x*")
 done
 
-if [[ ${MUTATION_FULL:-0} == 1 ]]; then
-  if ! mutmut run --max-children 1; then
-    printf '%s\0' "full mutation run" >> "$failed"
-  fi
-else
-  patterns=()
-  for path in "${modules[@]}"; do
-    module=${path#src/}
-    module=${module%.py}
-    patterns+=("${module//\//.}.x*")
-  done
-  if ! mutmut run --max-children 1 "${patterns[@]}"; then
-    printf '%s\0' "scoped mutation run" >> "$failed"
-  fi
+if (( ${#patterns[@]} == 0 )); then
+  echo 'Selected mutation shard has no runtime modules' >&2
+  exit 1
+fi
+
+# A fresh run must not inherit stale test-to-mutant mappings or verdicts.
+rm -rf -- mutants
+if ! mutmut run --max-children 1 "${patterns[@]}"; then
+  printf '%s\0' 'mutation run' >> "$failed"
 fi
 
 python -m scripts.mutation_results "$targets" "$failed"

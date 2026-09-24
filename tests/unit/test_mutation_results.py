@@ -15,14 +15,17 @@ from scripts.mutation_results import main
 PROJECT = Path(__file__).parents[2]
 
 
-def test_scoped_mutation_excludes_prefix_sibling_module(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def mutation_harness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, modules: list[str]
 ) -> None:
-    source = tmp_path / "src/volcano_sdk/durable.py"
-    source.parent.mkdir(parents=True)
-    _ = source.write_text("def durable() -> bool: return True\n", encoding="utf-8")
-    sibling = source.with_name("durable_authoring.py")
-    _ = sibling.write_text("def authoring() -> bool: return True\n", encoding="utf-8")
+    """Install shell stubs for testing the native Mutmut selector."""
+    for module in modules:
+        source = tmp_path / module
+        source.parent.mkdir(parents=True, exist_ok=True)
+        _ = source.write_text("def probe() -> bool: return True\n", encoding="utf-8")
+    _ = (tmp_path / "git-paths.bin").write_bytes(
+        b"\0".join(module.encode() for module in modules) + b"\0"
+    )
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     _ = (scripts / "mutation.sh").write_bytes(
@@ -31,12 +34,7 @@ def test_scoped_mutation_excludes_prefix_sibling_module(
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     stubs = {
-        "git": """#!/bin/sh
-case "$1" in
-  merge-base) printf 'base\\n' ;;
-  diff) printf 'src/volcano_sdk/durable.py\\0' ;;
-esac
-""",
+        "git": "#!/bin/sh\ncat git-paths.bin\n",
         "mutmut": "#!/bin/sh\nprintf '%s\\n' \"$@\" > mutation-args.txt\n",
         "python": "#!/bin/sh\nexit 0\n",
     }
@@ -46,7 +44,15 @@ esac
         stub.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
 
-    result = subprocess.run(
+
+def run_mutation_script(tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    """Run the mutation orchestrator against the shell stubs.
+
+    Returns:
+        Completed script process.
+
+    """
+    return subprocess.run(
         ["/bin/bash", "scripts/mutation.sh"],
         cwd=tmp_path,
         capture_output=True,
@@ -54,10 +60,94 @@ esac
         check=False,
     )
 
-    assert result.returncode == 0, result.stdout + result.stderr
-    arguments = (tmp_path / "mutation-args.txt").read_text(encoding="utf-8")
-    assert "volcano_sdk.durable.x*" in arguments.splitlines()
-    assert "volcano_sdk.durable*" not in arguments.splitlines()
+
+def run_mutation_matrix(tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    """Read the complete CI shard plan.
+
+    Returns:
+        Completed script process.
+
+    """
+    return subprocess.run(
+        ["/bin/bash", "scripts/mutation.sh", "--matrix"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def mutant_pattern(module: str) -> str:
+    """Mirror Mutmut's package-init name normalization.
+
+    Returns:
+        Exact function-prefix selector for the module.
+
+    """
+    name = module.removeprefix("src/").removesuffix(".py")
+    return f"{name.removesuffix('/__init__').replace('/', '.')}.x*"
+
+
+def test_mutation_shards_cover_all_handwritten_modules(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    modules = [f"src/volcano_sdk/module_{index}.py" for index in range(8)]
+    modules.extend(
+        [
+            "src/volcano_sdk/__init__.py",
+            "src/volcano_sdk/durable.py",
+            "src/volcano_sdk/durable_authoring.py",
+            "src/volcano_sdk/nested/cache.py",
+            "src/volcano_sdk/nested/__init__.py",
+        ]
+    )
+    generated = "src/volcano_sdk/_generated/wire.py"
+    mutation_harness(tmp_path, monkeypatch, [*modules, generated])
+
+    plan = run_mutation_matrix(tmp_path)
+    assert plan.returncode == 0, plan.stderr
+    assert json.loads(plan.stdout) == list(range(8))
+
+    selected: list[str] = []
+    selected_patterns: list[str] = []
+    for shard in range(8):
+        monkeypatch.setenv("MUTATION_SHARD", str(shard))
+        result = run_mutation_script(tmp_path)
+        assert result.returncode == 0, result.stderr
+        paths = (tmp_path / "reports/mutation-targets.bin").read_bytes().split(b"\0")
+        shard_modules = [os.fsdecode(path) for path in paths if path]
+        selected.extend(shard_modules)
+        patterns = [mutant_pattern(module) for module in shard_modules]
+        selected_patterns.extend(patterns)
+        arguments = (tmp_path / "mutation-args.txt").read_text(encoding="utf-8")
+        assert arguments.splitlines() == ["run", "--max-children", "1", *patterns]
+
+    assert sorted(selected) == sorted(modules)
+    assert len(selected) == len(set(selected))
+    assert "volcano_sdk.durable.x*" in selected_patterns
+    assert "volcano_sdk.durable*" not in selected_patterns
+    assert "volcano_sdk.nested.x*" in selected_patterns
+    assert "volcano_sdk.x*" in selected_patterns
+
+
+def test_empty_mutation_inventory_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mutation_harness(tmp_path, monkeypatch, [])
+    result = run_mutation_matrix(tmp_path)
+    assert result.returncode == 1
+    assert "No handwritten SDK runtime modules found" in result.stderr
+
+
+@pytest.mark.parametrize("shard", ["8", "-1", "not-a-number"])
+def test_invalid_mutation_shard_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shard: str
+) -> None:
+    mutation_harness(tmp_path, monkeypatch, ["src/volcano_sdk/probe.py"])
+    monkeypatch.setenv("MUTATION_SHARD", shard)
+    result = run_mutation_script(tmp_path)
+    assert result.returncode == 2
+    assert "Invalid mutation shard" in result.stderr
 
 
 def fixture_report(tmp_path: Path, code: int | None) -> tuple[Path, Path]:

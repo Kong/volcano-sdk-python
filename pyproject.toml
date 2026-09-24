@@ -498,7 +498,6 @@ types = ["mypy", "basedpyright"]
 mypy = "mypy --config-file pyproject.toml"
 basedpyright = "basedpyright --project pyproject.toml"
 mutation = "bash scripts/mutation.sh"
-mutation-full = "MUTATION_FULL=1 bash scripts/mutation.sh"
 
 [tool.poe.tasks.test]
 interpreter = "bash"
