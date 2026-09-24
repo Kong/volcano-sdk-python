@@ -2,13 +2,46 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypeGuard
 
 if TYPE_CHECKING:
     from .models import JSONValue
 
 INVALID_LOG_RESPONSE = "Expected a complete log response"
+
+
+def _is_object_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, Mapping)
+
+
+def _is_object_list(value: object) -> TypeGuard[list[object]]:
+    return isinstance(value, list)
+
+
+def _is_object_tuple(value: object) -> TypeGuard[tuple[object, ...]]:
+    return isinstance(value, tuple)
+
+
+def _is_json_scalar(value: object) -> TypeGuard[str | int | float | bool | None]:
+    if isinstance(value, float):
+        return math.isfinite(value)
+    return value is None or isinstance(value, (str, int, bool))
+
+
+def _is_json_value(value: object) -> TypeGuard[JSONValue]:
+    if _is_json_scalar(value):
+        return True
+    if _is_object_list(value):
+        return all(_is_json_value(item) for item in value)
+    if _is_object_tuple(value):
+        return all(_is_json_value(item) for item in value)
+    if _is_object_mapping(value):
+        return all(
+            isinstance(key, str) and _is_json_value(item) for key, item in value.items()
+        )
+    return False
 
 
 def response_values(payload: object) -> Mapping[str, object]:
@@ -21,9 +54,25 @@ def response_values(payload: object) -> Mapping[str, object]:
         TypeError: The response envelope is not an object.
 
     """
-    if not isinstance(payload, Mapping):
+    if not _is_object_mapping(payload):
         raise TypeError(INVALID_LOG_RESPONSE)
-    return cast("Mapping[str, object]", payload)
+    values: dict[str, object] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            raise TypeError(INVALID_LOG_RESPONSE)
+        values[key] = value
+    return values
+
+
+def _row_values(item: object) -> Mapping[str, JSONValue]:
+    if not _is_object_mapping(item):
+        raise TypeError(INVALID_LOG_RESPONSE)
+    row: dict[str, JSONValue] = {}
+    for key, value in item.items():
+        if not isinstance(key, str) or not _is_json_value(value):
+            raise TypeError(INVALID_LOG_RESPONSE)
+        row[key] = value
+    return row
 
 
 def response_data(values: Mapping[str, object]) -> tuple[Mapping[str, JSONValue], ...]:
@@ -37,12 +86,9 @@ def response_data(values: Mapping[str, object]) -> tuple[Mapping[str, JSONValue]
 
     """
     raw_data = values.get("data")
-    if not isinstance(raw_data, list):
+    if not _is_object_list(raw_data):
         raise TypeError(INVALID_LOG_RESPONSE)
-    data = cast("list[object]", raw_data)
-    if any(not isinstance(item, Mapping) for item in data):
-        raise TypeError(INVALID_LOG_RESPONSE)
-    return tuple(cast("Mapping[str, JSONValue]", item) for item in data)
+    return tuple(_row_values(item) for item in raw_data)
 
 
 def search_metadata(values: Mapping[str, object]) -> tuple[int, bool, str | None]:

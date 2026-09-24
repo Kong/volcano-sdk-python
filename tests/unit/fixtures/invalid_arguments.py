@@ -61,6 +61,10 @@ def non_mapping_log_request(logs: Logs) -> None:
     _ = logs.activity("project-1", [])  # type: ignore[arg-type]
 
 
+def non_json_log_request(logs: Logs, request: object) -> None:
+    _ = logs.search("project-1", request)  # type: ignore[arg-type]
+
+
 def unknown_oauth_sign_in(auth: Auth) -> None:
     _ = auth.sign_in_with_oauth(
         provider="invalid",  # type: ignore[arg-type]

@@ -14,6 +14,7 @@ from volcano_sdk.errors import (
     NotFoundError,
     RateLimitedError,
     ServerError,
+    SessionChangedError,
     TransportError,
     ValidationError,
     VolcanoError,
@@ -147,3 +148,12 @@ def test_network_failure_maps_to_transport_error() -> None:
     assert len(requests) == 1
     assert caught.value.__cause__.request is requests[0]
     assert client.auth.get_session() is None
+
+
+def test_session_changed_error_preserves_its_public_contract() -> None:
+    error = SessionChangedError()
+
+    assert str(error) == "Session changed during authentication operation"
+    assert error.status == 409
+    assert error.code == "auth_session_changed"
+    assert error.retry_after is None
