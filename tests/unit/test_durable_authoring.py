@@ -20,6 +20,7 @@ from aws_durable_execution_sdk_python.config import (
     Duration,
     MapConfig,
     ParallelConfig,
+    StepSemantics,
 )
 from aws_durable_execution_sdk_python.config import (
     ParallelBranch as EngineParallelBranch,
@@ -326,6 +327,7 @@ def local_runner(handler: FunctionHandler) -> Generator[DurableFunctionTestRunne
     # Fail an unavailable or malformed runtime before entering the scheduler:
     # it otherwise waits for a result that the handler cannot produce.
     assert_runtime_surface()
+    assert to_seconds({"seconds": 5}, "wait") == 5
     # An invalid no-retry decision can leave the scheduler waiting forever.
     no_retry = durable_authoring._Engine.load()._never_retry()(
         RuntimeError("preflight"), 1
@@ -776,6 +778,9 @@ def test_a_custom_retry_callable_decides_per_attempt() -> None:
 
 
 def test_at_most_once_runs_the_step_once() -> None:
+    config = durable_authoring._Engine().step_options(retry=None, at_most_once=True)
+    assert config.step_semantics is StepSemantics.AT_MOST_ONCE_PER_RETRY
+
     @durable
     def handler(_event: object, ctx: DurableContext) -> object:
         return ctx.step("charge", lambda _scope: "charged", at_most_once=True)
@@ -1105,6 +1110,14 @@ def test_an_unknown_duration_field_names_what_it_accepts() -> None:
 @pytest.mark.parametrize(
     ("value", "error_type", "message"),
     [
+        (
+            None,
+            TypeError,
+            (
+                "interval must be a duration string, a whole number of seconds, "
+                "or a mapping of days, hours, minutes, seconds"
+            ),
+        ),
         (
             True,
             TypeError,

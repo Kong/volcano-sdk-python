@@ -1153,8 +1153,7 @@ def _parse_duration(text: str, field_name: str) -> int:
         ValueError: The text is empty or contains an invalid number or unit.
 
     """
-    seconds = 0
-    segments = 0
+    parts: list[int] = []
     at = 0
     while at < len(text):
         if text[at] == " ":
@@ -1165,16 +1164,15 @@ def _parse_duration(text: str, field_name: str) -> int:
         unit = text[number_end:unit_end]
         if number_end == at or unit not in _DURATION_UNITS:
             break
-        seconds += int(text[at:number_end]) * _DURATION_UNITS[unit]
-        segments += 1
+        parts.append(int(text[at:number_end]) * _DURATION_UNITS[unit])
         at = unit_end
-    if segments == 0 or at != len(text):
+    if not parts or at != len(text):
         message = (
             f"{field_name} must be a duration in whole seconds, such as '30s', "
             f"'5m', '2h', '1d' or '1m30s' (got {text!r})"
         )
         raise ValueError(message)
-    return seconds
+    return sum(parts)
 
 
 def _scan(text: str, start: int, accept: Callable[[str], bool]) -> int:
