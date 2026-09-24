@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import math
+import sys
 from dataclasses import dataclass
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
 from transport_fixtures import RejectingTransport
+from typing_extensions import override
 
 from volcano_sdk import (
     NotFoundError,
@@ -14,14 +18,19 @@ from volcano_sdk import (
     VolcanoError,
     _function_resolution,
 )
+from volcano_sdk import functions as functions_module
 from volcano_sdk._transport import GeneratedTransport
+from volcano_sdk.functions import Functions
+
+if TYPE_CHECKING:
+    from volcano_sdk.models import JSONValue
 
 
 @dataclass(frozen=True)
 class FakeResponse:
     status_code: int
     payload: object
-    headers: dict[str, str]
+    headers: dict[str, str] | None
     content: bytes = b""
 
 
@@ -161,6 +170,27 @@ def test_functions_raise_when_the_platform_refuses_the_invocation() -> None:
     assert "function cannot be invoked" in str(caught.value)
 
 
+def test_functions_rejects_a_platform_redirect_before_dispatch() -> None:
+    transport = FakeFunctionsTransport()
+    transport.invoke_response = FakeResponse(300, {"error": "redirected"}, {})
+
+    with pytest.raises(VolcanoError, match="redirected"):
+        _ = functions_client(transport).functions.invoke("send-welcome")
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [(b'{"ok":true}', {"ok": True}), (b"[1,2]", (1, 2))],
+)
+def test_functions_recognizes_json_containers_without_content_type(
+    content: bytes, expected: object
+) -> None:
+    transport = FakeFunctionsTransport()
+    transport.invoke_response = FakeResponse(200, None, {}, content)
+
+    assert functions_client(transport).functions.invoke("send-welcome").data == expected
+
+
 @pytest.mark.parametrize("version", [None, "v2"])
 def test_functions_returns_none_for_an_empty_http_204(version: str | None) -> None:
     def handle(request: httpx.Request) -> httpx.Response:
@@ -209,6 +239,7 @@ def test_functions_returns_none_for_an_empty_http_204(version: str | None) -> No
         (b"\n [1, 2]", "text/plain", "\n [1, 2]"),
         (b"broken json", "application/json", "broken json"),
         (b"NaN", "application/json", "NaN"),
+        (b"\xff", "text/plain", "\ufffd"),
         (b"", "text/plain", None),
     ],
 )
@@ -435,6 +466,184 @@ def test_functions_rejects_a_resolve_without_a_usable_lifetime(
         _ = functions_client(transport).functions.invoke("send-welcome")
 
 
+def test_functions_accepts_a_one_second_resolution_lifetime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_function_resolution, "_now", _FakeClock())
+    transport = FakeFunctionsTransport()
+    transport.cache_ttl_seconds = 1
+    client = functions_client(transport)
+
+    assert client.functions.invoke("send-welcome").status == 200
+    assert client.functions.invoke("send-welcome").status == 200
+    assert transport.resolve_calls == 1
+
+
+def test_functions_cache_hit_does_not_wait_for_a_resolve_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = FakeFunctionsTransport()
+    client = functions_client(transport)
+    _ = client.functions.invoke("send-welcome")
+
+    def unexpected_resolve_lock(api_url: str, authorization: str, name: str) -> None:
+        _ = (api_url, authorization, name)
+        pytest.fail("cache hit tried to acquire a resolve lock")
+
+    monkeypatch.setattr(functions_module, "resolve_lock", unexpected_resolve_lock)
+    assert client.functions.invoke("send-welcome").status == 200
+    assert transport.resolve_calls == 1
+
+
+def test_functions_preserves_a_response_without_headers() -> None:
+    transport = FakeFunctionsTransport()
+    transport.invoke_response = FakeResponse(200, {"ok": True}, None)
+
+    result = functions_client(transport).functions.invoke("send-welcome")
+
+    assert result.status == 200
+    assert result.headers == {}
+    assert result.version is None
+    assert result.data == {"ok": True}
+
+
+@pytest.mark.parametrize("invalid", [{1, 2}, math.nan, math.inf, -math.inf])
+def test_functions_rejects_non_json_response_payloads(invalid: object) -> None:
+    transport = FakeFunctionsTransport()
+    transport.invoke_response = FakeResponse(200, {"bad": invalid}, {})
+
+    with pytest.raises(TypeError, match="Function data must be JSON-compatible"):
+        _ = functions_client(transport).functions.invoke("send-welcome")
+
+
+@pytest.mark.parametrize("mode", ["mapping", "list", "tuple-list"])
+def test_functions_rejects_cyclic_payloads_before_resolution(mode: str) -> None:
+    payload: dict[str, JSONValue] = {}
+    if mode == "mapping":
+        payload["cycle"] = payload
+    else:
+        linked: list[JSONValue] = []
+        payload["cycle"] = linked
+        linked.append(linked if mode == "list" else (linked,))
+    transport = FakeFunctionsTransport()
+
+    with pytest.raises(TypeError, match="Function data must be JSON-compatible"):
+        _ = functions_client(transport).functions.invoke("send-welcome", payload)
+
+    assert transport.calls == []
+
+
+@pytest.mark.parametrize("payload", [{"bad": "\ud800"}, {"\udfff": "bad"}])
+def test_functions_rejects_surrogates_before_resolution(
+    payload: dict[str, JSONValue],
+) -> None:
+    transport = FakeFunctionsTransport()
+
+    with pytest.raises(TypeError, match=r"Function (data|JSON object keys)"):
+        _ = functions_client(transport).functions.invoke("send-welcome", payload)
+
+    assert transport.calls == []
+
+
+def test_functions_rejects_escaped_surrogates_in_response_json() -> None:
+    transport = FakeFunctionsTransport()
+    transport.invoke_response = FakeResponse(
+        200, None, {"Content-Type": "application/json"}, b'{"bad":"\\ud800"}'
+    )
+
+    with pytest.raises(TypeError, match="Function data must be JSON-compatible"):
+        _ = functions_client(transport).functions.invoke("send-welcome")
+
+
+def test_functions_accepts_shared_acyclic_values_and_unicode() -> None:
+    shared: dict[str, JSONValue] = {"text": "🌋"}
+    payload: dict[str, JSONValue] = {"first": shared, "second": shared}
+    transport = FakeFunctionsTransport()
+
+    result = functions_client(transport).functions.invoke("send-welcome", payload)
+    assert result.status == 200
+    assert transport.calls[-1][1]["payload"] == {
+        "first": {"text": "🌋"},
+        "second": {"text": "🌋"},
+    }
+
+
+def test_functions_accepts_nested_acyclic_sequences() -> None:
+    transport = FakeFunctionsTransport()
+
+    result = functions_client(transport).functions.invoke(
+        "send-welcome", {"grid": [[1], [2]]}
+    )
+
+    assert result.status == 200
+    assert transport.calls[-1][1]["payload"] == {"grid": ((1,), (2,))}
+
+
+def test_functions_rejects_subclass_spoofed_surrogates() -> None:
+    class ForgedString(str):
+        __slots__ = ()
+
+        @override
+        def encode(self, encoding: str = "utf-8", errors: str = "strict") -> bytes:
+            _ = (encoding, errors)
+            return b"ok"
+
+    transport = FakeFunctionsTransport()
+    invalid = ForgedString("\ud800")
+    payloads: tuple[dict[str, JSONValue], ...] = (
+        {"bad": invalid},
+        {invalid: "bad"},
+    )
+    for payload in payloads:
+        with pytest.raises(TypeError, match=r"Function (data|JSON object keys)"):
+            _ = functions_client(transport).functions.invoke("send-welcome", payload)
+
+    assert transport.calls == []
+
+
+def test_functions_rejects_integers_the_json_encoder_cannot_render() -> None:
+    limit = sys.get_int_max_str_digits()
+    value = 10 ** (limit or 4300)
+    transport = FakeFunctionsTransport()
+    client = functions_client(transport)
+
+    if limit:
+        with pytest.raises(TypeError, match="Function data must be JSON-compatible"):
+            _ = client.functions.invoke("send-welcome", {"value": value})
+        assert transport.calls == []
+    else:
+        assert client.functions.invoke("send-welcome", {"value": value}).status == 200
+
+
+def test_functions_rejects_excessively_nested_payloads_before_resolution() -> None:
+    root: list[JSONValue] = []
+    current = root
+    for _ in range(sys.getrecursionlimit()):
+        nested: list[JSONValue] = []
+        current.append(nested)
+        current = nested
+    transport = FakeFunctionsTransport()
+
+    with pytest.raises(TypeError, match="Function data must be JSON-compatible"):
+        _ = functions_client(transport).functions.invoke("send-welcome", {"deep": root})
+
+    assert transport.calls == []
+
+
+def test_functions_rejects_excessively_nested_response_values() -> None:
+    root: list[JSONValue] = []
+    current = root
+    for _ in range(sys.getrecursionlimit()):
+        nested: list[JSONValue] = []
+        current.append(nested)
+        current = nested
+    transport = FakeFunctionsTransport()
+    transport.invoke_response = FakeResponse(200, root, {})
+
+    with pytest.raises(TypeError, match="Function data must be JSON-compatible"):
+        _ = functions_client(transport).functions.invoke("send-welcome")
+
+
 def test_functions_remembers_an_unknown_name_briefly() -> None:
     transport = FakeFunctionsTransport()
     transport.resolve_response = FakeResponse(404, {"error": "function not found"}, {})
@@ -528,3 +737,24 @@ def test_functions_preserves_owned_error_metadata_in_negative_cache() -> None:
     ) == ("Unknown function", 404, "function_missing", None)
     assert second.value is not first.value
     assert transport.resolve_calls == 1
+
+
+def test_functions_negative_cache_preserves_retry_metadata() -> None:
+    api_url = "https://api.cache.test.volcano.dev"
+    authorization = "cache-test-key"
+    name = "missing-function"
+    _function_resolution.store_missing(
+        api_url,
+        authorization,
+        name,
+        NotFoundError(
+            "Try again later", status=404, code="function_missing", retry_after=7
+        ),
+    )
+
+    with pytest.raises(NotFoundError) as caught:
+        _ = Functions._cached(api_url, authorization, name)
+
+    assert caught.value.status == 404
+    assert caught.value.code == "function_missing"
+    assert caught.value.retry_after == 7

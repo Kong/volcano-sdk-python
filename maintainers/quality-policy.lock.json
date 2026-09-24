@@ -271,7 +271,8 @@
         "--output-format=json",
         "src/volcano_sdk/realtime.py",
         "src/volcano_sdk/auth.py",
-        "src/volcano_sdk/storage.py"
+        "src/volcano_sdk/storage.py",
+        "src/volcano_sdk/functions.py"
       ]
     },
     "mypy": {

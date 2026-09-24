@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, Protocol, TypeVar, cast, runtime_checkable
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Protocol, TypeGuard, TypeVar, cast, runtime_checkable
 
 from ._function_resolution import (
     FunctionResolution,
@@ -23,7 +25,7 @@ from .errors import (
     SessionChangedError,
     VolcanoError,
 )
-from .models import FunctionResponse, JSONValue, _freeze_json
+from .models import FunctionResponse, JSONValue
 
 if TYPE_CHECKING:
     from ._session_operations import SessionOperations
@@ -37,13 +39,19 @@ _INVALID_FUNCTION_NAME = (
 )
 _INVALID_FUNCTION_RESPONSE = "Expected a complete function response"
 _INVALID_FUNCTION_PAYLOAD = "Function payload must be a mapping"
+_INVALID_FUNCTION_JSON_KEY = "Function JSON object keys must be strings"
+_INVALID_FUNCTION_DATA = "Function data must be JSON-compatible"
 _INVALID_FUNCTION_TRANSPORT = "Transport does not support function invocation"
 _HTTP_SUCCESS_MIN = 200
 _HTTP_SUCCESS_MAX = 300
+_HTTP_SUCCESS_STATUSES = range(_HTTP_SUCCESS_MIN, _HTTP_SUCCESS_MAX)
 _HTTP_NOT_FOUND = 404
 _HTTP_UNAUTHORIZED = 401
 # Present only once the platform has dispatched to the function.
 _FUNCTION_INVOKED_HEADER = "X-Volcano-Function-Invoked"
+_FUNCTION_VERSION_HEADER = "X-Volcano-Version"
+_CONTENT_TYPE_HEADER = "Content-Type"
+_FUNCTION_TEXT_ENCODING = "utf-8-sig"
 
 
 _Result = TypeVar("_Result")
@@ -312,14 +320,14 @@ class Functions:
     @staticmethod
     def _response(response: TransportResponse) -> FunctionResponse:
         status = int(response.status_code)
-        version = _header(response.headers, "X-Volcano-Version")
+        version = _header(response.headers, _FUNCTION_VERSION_HEADER)
         # A non-2xx the platform produced never reached the function, so it is
         # an SDK error rather than the function's answer. That turns on the
         # dispatch marker, not on the version stamp, which every response
         # carries — keying on the stamp would classify every platform failure
         # as though the function had returned it.
         dispatched = _header(response.headers, _FUNCTION_INVOKED_HEADER) is not None
-        if not _HTTP_SUCCESS_MIN <= status < _HTTP_SUCCESS_MAX and not dispatched:
+        if status not in _HTTP_SUCCESS_STATUSES and not dispatched:
             _ = response_payload(response, _HTTP_SUCCESS_MIN)
         headers = {} if response.headers is None else dict(response.headers)
         return FunctionResponse(
@@ -353,23 +361,108 @@ def _stale_mapping(response: TransportResponse) -> bool:
 
 def _function_data(response: TransportResponse) -> JSONValue:
     if not response.content:
-        return cast("JSONValue", response.payload)
-    text = response.content.decode("utf-8-sig", errors="replace")
+        return _json_value(response.payload)
+    text = response.content.decode(_FUNCTION_TEXT_ENCODING, errors="replace")
     if not text:
         return None
-    content_type = (_header(response.headers, "Content-Type") or "").lower()
-    if "application/json" in content_type or text.startswith(("{", "[")):
+    content_type = _header(response.headers, _CONTENT_TYPE_HEADER)
+    is_json = content_type is not None and "application/json" in content_type.lower()
+    if is_json or text.startswith(("{", "[")):
         try:
-            return cast(
-                "JSONValue", json.loads(text, parse_constant=_reject_json_constant)
-            )
+            decoded: object = json.loads(text, parse_constant=_reject_json_constant)
+            return _json_value(decoded)
         except ValueError:
             pass
     return text
 
 
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(value)
+def _reject_json_constant(_value: str) -> None:
+    raise ValueError
+
+
+def _json_mapping(
+    value: Mapping[object, object], active: set[int]
+) -> Mapping[str, JSONValue]:
+    marker = _enter_json_container(value, active)
+    try:
+        frozen: dict[str, JSONValue] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError(_INVALID_FUNCTION_JSON_KEY)
+            _validate_json_string(key, _INVALID_FUNCTION_JSON_KEY)
+            frozen[key] = _json_value_checked(item, active)
+        return MappingProxyType(frozen)
+    finally:
+        active.remove(marker)
+
+
+def _json_sequence(
+    value: list[object] | tuple[object, ...], active: set[int]
+) -> tuple[JSONValue, ...]:
+    marker = _enter_json_container(value, active)
+    try:
+        return tuple(_json_value_checked(item, active) for item in value)
+    finally:
+        active.remove(marker)
+
+
+def _enter_json_container(value: object, active: set[int]) -> int:
+    marker = id(value)
+    if marker in active:
+        raise TypeError(_INVALID_FUNCTION_DATA)
+    active.add(marker)
+    return marker
+
+
+def _validate_json_string(value: str, message: str) -> None:
+    try:
+        _ = str.encode(value)
+    except UnicodeEncodeError as error:
+        raise TypeError(message) from error
+
+
+def _is_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, Mapping)
+
+
+def _is_sequence(value: object) -> TypeGuard[list[object] | tuple[object, ...]]:
+    return isinstance(value, (list, tuple))
+
+
+def _json_value(value: object) -> JSONValue:
+    try:
+        return _json_value_checked(value, set())
+    except RecursionError as error:
+        raise TypeError(_INVALID_FUNCTION_DATA) from error
+
+
+def _json_value_checked(value: object, active: set[int]) -> JSONValue:
+    if _is_mapping(value):
+        return _json_mapping(value, active)
+    if _is_sequence(value):
+        return _json_sequence(value, active)
+    return _json_scalar(value)
+
+
+def _json_scalar(value: object) -> JSONValue:
+    if isinstance(value, str):
+        _validate_json_string(value, _INVALID_FUNCTION_DATA)
+        return value
+    if isinstance(value, float) and not math.isfinite(value):
+        raise TypeError(_INVALID_FUNCTION_DATA)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return _json_int(value)
+    if value is None or isinstance(value, (float, bool)):
+        return value
+    raise TypeError(_INVALID_FUNCTION_DATA)
+
+
+def _json_int(value: int) -> int:
+    try:
+        _ = int.__str__(value)
+    except ValueError as error:
+        raise TypeError(_INVALID_FUNCTION_DATA) from error
+    return value
 
 
 def _header(headers: Mapping[str, str] | None, name: str) -> str | None:
@@ -390,6 +483,9 @@ def _function_name(value: object) -> str:
 def _function_payload(value: object) -> Mapping[str, JSONValue]:
     if value is None:
         return {}
-    if not isinstance(value, Mapping):
+    if not _is_mapping(value):
         raise TypeError(_INVALID_FUNCTION_PAYLOAD)
-    return cast("Mapping[str, JSONValue]", _freeze_json(cast("JSONValue", value)))
+    try:
+        return _json_mapping(value, set())
+    except RecursionError as error:
+        raise TypeError(_INVALID_FUNCTION_DATA) from error
