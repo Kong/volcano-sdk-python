@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.4](https://github.com/Kong/volcano-sdk-python/compare/v0.13.3...v0.13.4) (2026-09-24)
+
+
+### Bug Fixes
+
+* **durable:** validate execution snapshots and exact mutation scope ([5652b49](https://github.com/Kong/volcano-sdk-python/commit/5652b49c5d6533cfd1c35dec7e2751234aedeae5))
+
 ## [0.13.3](https://github.com/Kong/volcano-sdk-python/compare/v0.13.2...v0.13.3) (2026-09-24)
 
 
