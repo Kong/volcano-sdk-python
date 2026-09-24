@@ -6,9 +6,10 @@ import threading
 from collections import deque
 from dataclasses import replace
 from itertools import count
-from typing import TYPE_CHECKING, TypedDict, Unpack
+from typing import TYPE_CHECKING, TypedDict, Unpack, cast
 from uuid import UUID
 
+from ._sandbox import SandboxRequests
 from ._session import validate_refresh_identity
 from ._session_operations import SessionOperations
 from ._transport import GeneratedTransport, Transport
@@ -27,12 +28,15 @@ from .models import (
     Session,
 )
 from .realtime import CentrifugeFactory, Realtime
+from .sandboxes import Sandboxes
 from .storage import Storage
 
 if TYPE_CHECKING:
     from _thread import LockType
     from collections.abc import Callable, Mapping
     from types import TracebackType
+
+    from ._sandbox import SandboxTransport
 
 _NO_ACTIVE_SESSION = "No active session"
 _NO_SERVICE_KEY = "No service key configured"
@@ -155,6 +159,11 @@ class VolcanoClient:
         self.logs: Logs = Logs(self)
         self.storage: Storage = Storage(self)
         self.locks: Locks = Locks(self)
+        self.sandboxes: Sandboxes = Sandboxes(
+            SandboxRequests(
+                cast("SandboxTransport", self._transport), self._sandbox_token
+            )
+        )
         if _realtime_client_factory is None:
             self.realtime: Realtime = Realtime(self, api_url=self._api_url)
         else:
@@ -194,6 +203,14 @@ class VolcanoClient:
         if self._service_key is None:
             raise RuntimeError(_NO_SERVICE_KEY)
         return self._service_key
+
+    def _sandbox_token(self) -> str:
+        session = self._capture_session()[1]
+        if session is not None:
+            return session.access_token
+        if self._service_key is not None:
+            return self._service_key
+        raise AuthenticationError(_NO_SERVICE_KEY, status=401)
 
     def _function_token(self) -> str:
         session = self._capture_session()[1]

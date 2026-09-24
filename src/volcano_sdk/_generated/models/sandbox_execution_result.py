@@ -1,0 +1,126 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any, TypeVar, BinaryIO, TextIO, TYPE_CHECKING, Generator
+
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
+
+from ..types import UNSET, Unset
+
+from uuid import UUID
+
+
+
+
+
+
+T = TypeVar("T", bound="SandboxExecutionResult")
+
+
+
+@_attrs_define
+class SandboxExecutionResult:
+    """ 
+        Attributes:
+            stdout (str):
+            stderr (str):
+            exit_code (int):
+            stdout_truncated (bool):
+            stderr_truncated (bool):
+            timed_out (bool):
+            session_id (UUID):
+            region (str):
+            duration_ms (int):
+     """
+
+    stdout: str
+    stderr: str
+    exit_code: int
+    stdout_truncated: bool
+    stderr_truncated: bool
+    timed_out: bool
+    session_id: UUID
+    region: str
+    duration_ms: int
+
+
+
+
+
+    def to_dict(self) -> dict[str, Any]:
+        stdout = self.stdout
+
+        stderr = self.stderr
+
+        exit_code = self.exit_code
+
+        stdout_truncated = self.stdout_truncated
+
+        stderr_truncated = self.stderr_truncated
+
+        timed_out = self.timed_out
+
+        session_id = str(self.session_id)
+
+        region = self.region
+
+        duration_ms = self.duration_ms
+
+
+        field_dict: dict[str, Any] = {}
+
+        field_dict.update({
+            "stdout": stdout,
+            "stderr": stderr,
+            "exit_code": exit_code,
+            "stdout_truncated": stdout_truncated,
+            "stderr_truncated": stderr_truncated,
+            "timed_out": timed_out,
+            "session_id": session_id,
+            "region": region,
+            "duration_ms": duration_ms,
+        })
+
+        return field_dict
+
+
+
+    @classmethod
+    def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        d = dict(src_dict)
+        stdout = d.pop("stdout")
+
+        stderr = d.pop("stderr")
+
+        exit_code = d.pop("exit_code")
+
+        stdout_truncated = d.pop("stdout_truncated")
+
+        stderr_truncated = d.pop("stderr_truncated")
+
+        timed_out = d.pop("timed_out")
+
+        session_id = UUID(d.pop("session_id"))
+
+
+
+
+        region = d.pop("region")
+
+        duration_ms = d.pop("duration_ms")
+
+        sandbox_execution_result = cls(
+            stdout=stdout,
+            stderr=stderr,
+            exit_code=exit_code,
+            stdout_truncated=stdout_truncated,
+            stderr_truncated=stderr_truncated,
+            timed_out=timed_out,
+            session_id=session_id,
+            region=region,
+            duration_ms=duration_ms,
+        )
+
+        return sandbox_execution_result
+

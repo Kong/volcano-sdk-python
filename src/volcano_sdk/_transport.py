@@ -166,6 +166,45 @@ from ._generated.api.o_auth_authentication.get_o_auth_provider_token import (
 from ._generated.api.o_auth_authentication.refresh_o_auth_provider_token import (
     _get_kwargs as refresh_oauth_provider_token_kwargs,
 )
+from ._generated.api.sandboxes.create_sandbox_session import (
+    _get_kwargs as create_sandbox_session_kwargs,
+)
+from ._generated.api.sandboxes.create_sandbox_session_access import (
+    _get_kwargs as create_sandbox_session_access_kwargs,
+)
+from ._generated.api.sandboxes.execute_sandbox import (
+    _get_kwargs as execute_sandbox_kwargs,
+)
+from ._generated.api.sandboxes.execute_sandbox_session import (
+    _get_kwargs as execute_sandbox_session_kwargs,
+)
+from ._generated.api.sandboxes.get_sandbox_session import (
+    _get_kwargs as get_sandbox_session_kwargs,
+)
+from ._generated.api.sandboxes.grant_sandbox_session import (
+    _get_kwargs as grant_sandbox_session_kwargs,
+)
+from ._generated.api.sandboxes.list_sandbox_presets import (
+    _get_kwargs as list_sandbox_presets_kwargs,
+)
+from ._generated.api.sandboxes.read_sandbox_session_file import (
+    _get_kwargs as read_sandbox_session_file_kwargs,
+)
+from ._generated.api.sandboxes.resume_sandbox_session import (
+    _get_kwargs as resume_sandbox_session_kwargs,
+)
+from ._generated.api.sandboxes.revoke_sandbox_session import (
+    _get_kwargs as revoke_sandbox_session_kwargs,
+)
+from ._generated.api.sandboxes.suspend_sandbox_session import (
+    _get_kwargs as suspend_sandbox_session_kwargs,
+)
+from ._generated.api.sandboxes.terminate_sandbox_session import (
+    _get_kwargs as terminate_sandbox_session_kwargs,
+)
+from ._generated.api.sandboxes.write_sandbox_session_file import (
+    _get_kwargs as write_sandbox_session_file_kwargs,
+)
 from ._generated.api.storage_objects import (
     copy_storage_object,
     delete_storage_object,
@@ -234,6 +273,11 @@ from ._generated.models.project_lock_lease_request import ProjectLockLeaseReques
 from ._generated.models.refresh_o_auth_provider_token_response_200 import (
     RefreshOAuthProviderTokenResponse200,
 )
+from ._generated.models.sandbox_access_request import SandboxAccessRequest
+from ._generated.models.sandbox_command_request import SandboxCommandRequest
+from ._generated.models.sandbox_file_read_request import SandboxFileReadRequest
+from ._generated.models.sandbox_file_write_request import SandboxFileWriteRequest
+from ._generated.models.sandbox_subject_grant_request import SandboxSubjectGrantRequest
 from ._generated.models.storage_copy_request import StorageCopyRequest
 from ._generated.models.storage_move_request import StorageMoveRequest
 from ._generated.models.storage_visibility_request import StorageVisibilityRequest
@@ -916,6 +960,63 @@ def response_payload(response: TransportResponse, expected_status: int) -> objec
     return response.payload
 
 
+@dataclass(frozen=True)
+class SandboxRequest:
+    """Generated operation and immutable addressing for one request."""
+
+    operation: str
+    resource_id: str | None = None
+    subject_id: str | None = None
+    body: Mapping[str, JSONValue] | None = None
+    request_id: str | None = None
+    timeout: float = 180.0
+
+
+_SANDBOX_OPERATIONS: dict[str, Callable[..., dict[str, object]]] = {
+    "create_sandbox_session": create_sandbox_session_kwargs,
+    "execute_sandbox": execute_sandbox_kwargs,
+    "get_sandbox_session": get_sandbox_session_kwargs,
+    "grant_sandbox_session": grant_sandbox_session_kwargs,
+    "revoke_sandbox_session": revoke_sandbox_session_kwargs,
+    "list_sandbox_presets": list_sandbox_presets_kwargs,
+    "suspend_sandbox_session": suspend_sandbox_session_kwargs,
+    "resume_sandbox_session": resume_sandbox_session_kwargs,
+    "terminate_sandbox_session": terminate_sandbox_session_kwargs,
+    "execute_sandbox_session": execute_sandbox_session_kwargs,
+    "read_sandbox_session_file": read_sandbox_session_file_kwargs,
+    "write_sandbox_session_file": write_sandbox_session_file_kwargs,
+    "create_sandbox_session_access": create_sandbox_session_access_kwargs,
+}
+_SANDBOX_BODIES: dict[str, Callable[[dict[str, JSONValue]], object]] = {
+    "grant_sandbox_session": SandboxSubjectGrantRequest.from_dict,
+    "execute_sandbox_session": SandboxCommandRequest.from_dict,
+    "read_sandbox_session_file": SandboxFileReadRequest.from_dict,
+    "write_sandbox_session_file": SandboxFileWriteRequest.from_dict,
+    "create_sandbox_session_access": SandboxAccessRequest.from_dict,
+}
+
+
+def _sandbox_kwargs(request: SandboxRequest) -> dict[str, object]:
+    arguments: dict[str, object] = {}
+    if request.resource_id is not None:
+        key = (
+            "id"
+            if request.operation in {"execute_sandbox", "create_sandbox_session"}
+            else "session_id"
+        )
+        arguments[key] = UUID(request.resource_id)
+    if request.subject_id is not None:
+        arguments["subject_id"] = UUID(request.subject_id)
+    if request.request_id is not None:
+        arguments["idempotency_key"] = request.request_id
+    if request.body is not None:
+        convert = _SANDBOX_BODIES.get(request.operation)
+        arguments["body"] = (
+            dict(request.body) if convert is None else convert(dict(request.body))
+        )
+    return _SANDBOX_OPERATIONS[request.operation](**arguments)
+
+
 class GeneratedTransport:
     def __init__(
         self,
@@ -971,6 +1072,15 @@ class GeneratedTransport:
             content=response.content,
             headers=dict(response.headers),
         )
+
+    def sandbox_request(
+        self, *, authorization: str, request: SandboxRequest
+    ) -> TransportResponse:
+        with self._client(authorization).with_timeout(
+            httpx.Timeout(max(self._timeout, request.timeout))
+        ) as client:
+            response = _generated_request(client, _sandbox_kwargs(request))
+        return self._raw_response(response)
 
     def auth_signin(
         self,

@@ -8,11 +8,14 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.project_config_frontend_variable_scope import check_project_config_frontend_variable_scope
+from ..models.project_config_frontend_variable_scope import ProjectConfigFrontendVariableScope
 from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
   from ..models.project_config_custom_domain import ProjectConfigCustomDomain
+  from ..models.project_config_frontend_function_route import ProjectConfigFrontendFunctionRoute
 
 
 
@@ -30,16 +33,26 @@ class ProjectConfigFrontend:
 
         Attributes:
             name (str):
+            variable_scope (ProjectConfigFrontendVariableScope | Unset): All preserves access to all project variables.
+                Shared includes the project frontend_shared_variables list. Scoped includes only explicitly declared variables
+                in builds and runtime. Omission preserves the stored selection.
+            variables (list[str] | Unset): Names selected when variable_scope is scoped. Missing declared values reject
+                deployment. Omission preserves the stored list; an empty list clears it.
             custom_domain (ProjectConfigCustomDomain | Unset): Custom domain with BYOC TLS (PRO plan). `tls` is required
                 when the
                 domain is first created and optional afterwards: providing new TLS
                 material for the same domain rotates the certificate in place (zero
                 downtime); omitting `tls` keeps the stored certificate. TLS material is
                 write-only and omitted from config export.
+            function_routes (list[ProjectConfigFrontendFunctionRoute] | Unset): Complete set of same-origin Function path
+                mappings when declared. Omission preserves existing mappings; an empty list deletes all mappings.
      """
 
     name: str
+    variable_scope: ProjectConfigFrontendVariableScope | Unset = UNSET
+    variables: list[str] | Unset = UNSET
     custom_domain: ProjectConfigCustomDomain | Unset = UNSET
+    function_routes: list[ProjectConfigFrontendFunctionRoute] | Unset = UNSET
 
 
 
@@ -47,11 +60,32 @@ class ProjectConfigFrontend:
 
     def to_dict(self) -> dict[str, Any]:
         from ..models.project_config_custom_domain import ProjectConfigCustomDomain
+        from ..models.project_config_frontend_function_route import ProjectConfigFrontendFunctionRoute
         name = self.name
+
+        variable_scope: str | Unset = UNSET
+        if not isinstance(self.variable_scope, Unset):
+            variable_scope = self.variable_scope
+
+
+        variables: list[str] | Unset = UNSET
+        if not isinstance(self.variables, Unset):
+            variables = self.variables
+
+
 
         custom_domain: dict[str, Any] | Unset = UNSET
         if not isinstance(self.custom_domain, Unset):
             custom_domain = self.custom_domain.to_dict()
+
+        function_routes: list[dict[str, Any]] | Unset = UNSET
+        if not isinstance(self.function_routes, Unset):
+            function_routes = []
+            for function_routes_item_data in self.function_routes:
+                function_routes_item = function_routes_item_data.to_dict()
+                function_routes.append(function_routes_item)
+
+
 
 
         field_dict: dict[str, Any] = {}
@@ -59,8 +93,14 @@ class ProjectConfigFrontend:
         field_dict.update({
             "name": name,
         })
+        if variable_scope is not UNSET:
+            field_dict["variable_scope"] = variable_scope
+        if variables is not UNSET:
+            field_dict["variables"] = variables
         if custom_domain is not UNSET:
             field_dict["custom_domain"] = custom_domain
+        if function_routes is not UNSET:
+            field_dict["function_routes"] = function_routes
 
         return field_dict
 
@@ -69,8 +109,22 @@ class ProjectConfigFrontend:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.project_config_custom_domain import ProjectConfigCustomDomain
+        from ..models.project_config_frontend_function_route import ProjectConfigFrontendFunctionRoute
         d = dict(src_dict)
         name = d.pop("name")
+
+        _variable_scope = d.pop("variable_scope", UNSET)
+        variable_scope: ProjectConfigFrontendVariableScope | Unset
+        if isinstance(_variable_scope,  Unset):
+            variable_scope = UNSET
+        else:
+            variable_scope = check_project_config_frontend_variable_scope(_variable_scope)
+
+
+
+
+        variables = cast(list[str], d.pop("variables", UNSET))
+
 
         _custom_domain = d.pop("custom_domain", UNSET)
         custom_domain: ProjectConfigCustomDomain | Unset
@@ -82,9 +136,24 @@ class ProjectConfigFrontend:
 
 
 
+        _function_routes = d.pop("function_routes", UNSET)
+        function_routes: list[ProjectConfigFrontendFunctionRoute] | Unset = UNSET
+        if _function_routes is not UNSET:
+            function_routes = []
+            for function_routes_item_data in _function_routes:
+                function_routes_item = ProjectConfigFrontendFunctionRoute.from_dict(function_routes_item_data)
+
+
+
+                function_routes.append(function_routes_item)
+
+
         project_config_frontend = cls(
             name=name,
+            variable_scope=variable_scope,
+            variables=variables,
             custom_domain=custom_domain,
+            function_routes=function_routes,
         )
 
         return project_config_frontend

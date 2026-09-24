@@ -12,6 +12,8 @@ from ..types import UNSET, Unset
 
 from ..models.create_frontend_body_framework import check_create_frontend_body_framework
 from ..models.create_frontend_body_framework import CreateFrontendBodyFramework
+from ..models.create_frontend_body_variable_scope import check_create_frontend_body_variable_scope
+from ..models.create_frontend_body_variable_scope import CreateFrontendBodyVariableScope
 from ..types import File, FileTypes
 from ..types import UNSET, Unset
 from io import BytesIO
@@ -37,12 +39,18 @@ class CreateFrontendBody:
                 Default: 'nextjs'.
             app_root (str | Unset): Optional relative POSIX path from the uploaded archive root to the Next.js app to build,
                 for example `apps/web`. Example: apps/web.
+            variable_scope (CreateFrontendBodyVariableScope | Unset): Variable selection for this deployment. New frontends
+                default to `scoped`; omitting this field for an existing frontend preserves its current selection.
+            variables (list[str] | Unset): Project variable names selected when `variable_scope` is `scoped`. Submit each
+                name as a repeated multipart field.
      """
 
     name: str
     archive: File
     framework: CreateFrontendBodyFramework | Unset = 'nextjs'
     app_root: str | Unset = UNSET
+    variable_scope: CreateFrontendBodyVariableScope | Unset = UNSET
+    variables: list[str] | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -62,6 +70,17 @@ class CreateFrontendBody:
 
         app_root = self.app_root
 
+        variable_scope: str | Unset = UNSET
+        if not isinstance(self.variable_scope, Unset):
+            variable_scope = self.variable_scope
+
+
+        variables: list[str] | Unset = UNSET
+        if not isinstance(self.variables, Unset):
+            variables = self.variables
+
+
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -73,6 +92,10 @@ class CreateFrontendBody:
             field_dict["framework"] = framework
         if app_root is not UNSET:
             field_dict["app_root"] = app_root
+        if variable_scope is not UNSET:
+            field_dict["variable_scope"] = variable_scope
+        if variables is not UNSET:
+            field_dict["variables"] = variables
 
         return field_dict
 
@@ -95,6 +118,18 @@ class CreateFrontendBody:
 
         if not isinstance(self.app_root, Unset):
             files.append(("app_root", (None, str(self.app_root).encode(), "text/plain")))
+
+
+
+        if not isinstance(self.variable_scope, Unset):
+            files.append(("variable_scope", (None, str(self.variable_scope).encode(), "text/plain")))
+
+
+
+        if not isinstance(self.variables, Unset):
+            for variables_item_element in self.variables:
+                files.append(("variables", (None, str(variables_item_element).encode(), "text/plain")))
+
 
 
 
@@ -131,11 +166,26 @@ class CreateFrontendBody:
 
         app_root = d.pop("app_root", UNSET)
 
+        _variable_scope = d.pop("variable_scope", UNSET)
+        variable_scope: CreateFrontendBodyVariableScope | Unset
+        if isinstance(_variable_scope,  Unset):
+            variable_scope = UNSET
+        else:
+            variable_scope = check_create_frontend_body_variable_scope(_variable_scope)
+
+
+
+
+        variables = cast(list[str], d.pop("variables", UNSET))
+
+
         create_frontend_body = cls(
             name=name,
             archive=archive,
             framework=framework,
             app_root=app_root,
+            variable_scope=variable_scope,
+            variables=variables,
         )
 
 

@@ -68,7 +68,7 @@ def sync_detailed(
     """ Regenerate service key
 
      Generate new JWT value for existing key.
-    The old key is immediately invalidated.
+    The old key stops working within a few seconds.
     Update your backend services with the new key before regenerating in production.
 
     Args:
@@ -106,7 +106,7 @@ def sync(
     """ Regenerate service key
 
      Generate new JWT value for existing key.
-    The old key is immediately invalidated.
+    The old key stops working within a few seconds.
     Update your backend services with the new key before regenerating in production.
 
     Args:
@@ -139,7 +139,7 @@ async def asyncio_detailed(
     """ Regenerate service key
 
      Generate new JWT value for existing key.
-    The old key is immediately invalidated.
+    The old key stops working within a few seconds.
     Update your backend services with the new key before regenerating in production.
 
     Args:
@@ -177,7 +177,7 @@ async def asyncio(
     """ Regenerate service key
 
      Generate new JWT value for existing key.
-    The old key is immediately invalidated.
+    The old key stops working within a few seconds.
     Update your backend services with the new key before regenerating in production.
 
     Args:
