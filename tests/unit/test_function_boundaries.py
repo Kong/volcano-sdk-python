@@ -27,7 +27,15 @@ def key_client(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCli
 
 @pytest.mark.parametrize(
     "payload",
-    [None, [], "invalid", 1, {}, {"function_id": ""}, {"function_id": 1}],
+    [
+        None,
+        [],
+        "invalid",
+        1,
+        {},
+        {"function_id": "", "cache_ttl_seconds": 60},
+        {"function_id": 1, "cache_ttl_seconds": 60},
+    ],
 )
 def test_function_rejects_incomplete_resolution_before_dispatch(
     payload: object,
@@ -92,6 +100,12 @@ def test_key_binding_rejects_a_session_installed_before_dispatch() -> None:
 @pytest.mark.parametrize("payload", [False, 1, [], "invalid"])
 def test_function_payload_rejects_non_mappings(payload: object) -> None:
     with pytest.raises(TypeError, match="Function payload must be a mapping"):
+        _ = _function_payload(payload)
+
+
+@pytest.mark.parametrize("payload", [{1: "invalid"}, {"nested": {1, 2}}])
+def test_function_payload_rejects_non_json_values(payload: object) -> None:
+    with pytest.raises(TypeError, match=r"JSON|JSON-compatible"):
         _ = _function_payload(payload)
 
 
