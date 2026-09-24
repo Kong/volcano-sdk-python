@@ -24,7 +24,7 @@ dependencies = [
   "attrs>=26.1.0",
   "centrifuge-python>=0.6.0,<0.7.0",
   "httpx>=0.28.1,<0.29.0",
-  "typing-extensions>=4.10.0",
+  "typing-extensions>=4.12.2",
 ]
 
 [project.optional-dependencies]
@@ -132,6 +132,10 @@ mypy_path = [
 ]
 exclude = ["src/volcano_sdk/_generated/"]
 
+[[tool.mypy.overrides]]
+module = ["volcano_sdk.durable_authoring", "test_durable_authoring"]
+disallow_any_explicit = true
+
 [tool.basedpyright]
 stubPath = "typings"
 include = ["src", "tests", "scripts", "features", "typings"]
@@ -165,6 +169,15 @@ reportIncompatibleVariableOverride = "error"
 # Package-level collaborators intentionally share private implementation details;
 # Ruff still enforces private access everywhere else.
 reportPrivateUsage = false
+
+[[tool.basedpyright.executionEnvironments]]
+root = "src/volcano_sdk/durable_authoring.py"
+reportExplicitAny = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/unit/test_durable_authoring.py"
+reportAny = "error"
+reportExplicitAny = "error"
 
 [[tool.basedpyright.executionEnvironments]]
 root = "src/volcano_sdk/storage.py"
@@ -449,6 +462,7 @@ type_check_command = [
   "src/volcano_sdk/auth.py",
   "src/volcano_sdk/storage.py",
   "src/volcano_sdk/functions.py",
+  "src/volcano_sdk/durable_authoring.py",
   "src/volcano_sdk/database.py",
   "src/volcano_sdk/_function_resolution.py",
   "src/volcano_sdk/_transport.py",
@@ -557,9 +571,12 @@ package = "wheel"
 commands = [["python", "-I", "tests/package/optional_dependency.py", "base"]]
 
 [tool.tox.env.package-min-typing]
-deps = ["typing-extensions==4.10.0"]
+deps = ["typing-extensions==4.12.2"]
 constrain_package_deps = true
-commands = [["python", "-I", "-c", "from importlib.metadata import version; assert version('typing-extensions') == '4.10.0'; import volcano_sdk"]]
+commands = [
+  ["python", "-I", "-c", "from importlib.metadata import version; assert version('typing-extensions') == '4.12.2'"],
+  ["python", "-I", "tests/package/optional_dependency.py", "base"],
+]
 
 [tool.tox.env.package-durable]
 extras = ["durable"]

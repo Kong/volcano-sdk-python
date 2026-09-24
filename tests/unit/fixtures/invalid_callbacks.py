@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from volcano_sdk.durable_authoring import durable
+from volcano_sdk.durable_authoring import WaitUntilOptions, durable
 
 if TYPE_CHECKING:
     from volcano_sdk.auth import Auth
@@ -21,6 +21,21 @@ def decorate_non_callable() -> None:
 
 def register_non_callable_branch(context: DurableContext) -> None:
     _ = context.parallel(["not a branch"])  # type: ignore[list-item]
+
+
+def register_non_callable_map(context: DurableContext) -> None:
+    _ = context.map([1], None)  # type: ignore[arg-type]
+
+
+def register_non_callable_wait(context: DurableContext) -> None:
+    options = WaitUntilOptions(until=lambda state: state, initial_state=False)
+    _ = context.wait_until(None, options)  # type: ignore[arg-type]
+
+
+def run_non_callable_operation(context: DurableContext, operation: str) -> object:
+    if operation == "step":
+        return context.step("named", "not a function")  # type: ignore[arg-type]
+    return context.child("named", "not a function")  # type: ignore[arg-type]
 
 
 def use_non_callable_retry(context: DurableContext) -> None:

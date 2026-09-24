@@ -2,7 +2,12 @@
 
 from typing import TypedDict, assert_type
 
-from volcano_sdk.durable_authoring import DurableContext, FunctionHandler, durable
+from volcano_sdk.durable_authoring import (
+    DurableContext,
+    DurableHandler,
+    FunctionHandler,
+    durable,
+)
 
 
 class Order(TypedDict):
@@ -29,6 +34,8 @@ def configured(event: Order, _context: DurableContext) -> int:
 
 
 wrapped = durable(order_quantity)
+legacy_handler: DurableHandler = order_quantity
+specific_handler: DurableHandler[Order, int] = order_quantity
 _: object = assert_type(wrapped, FunctionHandler)
 _ = assert_type(bare, FunctionHandler)
 _ = assert_type(called, FunctionHandler)
