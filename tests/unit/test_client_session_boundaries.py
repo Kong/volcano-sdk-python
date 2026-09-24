@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import gc
+import weakref
 from typing import TYPE_CHECKING
 
 import httpx
@@ -92,6 +94,25 @@ def test_callback_dispatch_state_has_boolean_ownership_and_empty_failure() -> No
     _ = client.auth.sign_in(email="user@example.com", password="example")
     assert events == ["INITIAL_SESSION", "SIGNED_IN"]
     assert client._dispatching_auth_notifications is False
+
+
+def test_unsubscribe_releases_callback_ownership() -> None:
+    client = VolcanoClient(anon_key="anon")
+
+    class Listener:
+        def __call__(self, _event: AuthChangeEvent, _session: Session | None) -> None:
+            return None
+
+    listener = Listener()
+    callback = weakref.ref(listener)
+    subscription = client.auth.on_auth_state_change(listener)
+    del listener
+
+    assert callback() is not None
+    subscription.unsubscribe()
+    _ = gc.collect()
+    assert callback() is None
+    subscription.unsubscribe()
 
 
 def test_refresh_commit_rejects_a_changed_user_before_replacing_credentials() -> None:
