@@ -328,10 +328,18 @@ def local_runner(handler: FunctionHandler) -> Generator[DurableFunctionTestRunne
     # it otherwise waits for a result that the handler cannot produce.
     assert_runtime_surface()
     assert to_seconds({"seconds": 5}, "wait") == 5
-    # An invalid no-retry decision can leave the scheduler waiting forever.
-    no_retry = durable_authoring._Engine.load()._never_retry()(
-        RuntimeError("preflight"), 1
+    assert to_seconds("1s", "wait") == 1
+    engine = durable_authoring._Engine.load()
+    wait_config = engine.wait_condition_options(
+        WaitUntilOptions(until=lambda state: state, initial_state=False, max_attempts=2)
     )
+    assert _is_wait_config(wait_config)
+    not_ready = False
+    ready = True
+    assert wait_config.wait_strategy(not_ready, 1).should_continue is True
+    assert wait_config.wait_strategy(ready, 1).should_continue is False
+    # An invalid no-retry decision can leave the scheduler waiting forever.
+    no_retry = engine._never_retry()(RuntimeError("preflight"), 1)
     assert no_retry.should_retry is False
     assert no_retry.delay.to_seconds() == 0
     runner = DurableFunctionTestRunner(handler)
