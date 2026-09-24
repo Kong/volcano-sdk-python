@@ -84,6 +84,7 @@ def test_default_transport_uses_the_documented_timeout(
     assert observed == [("https://api.volcano.dev", 60.0)]
 
 
+@pytest.mark.order(0)
 @pytest.mark.parametrize("refresh_token", [None, "supplied-refresh"])
 def test_token_bootstrap_is_local_until_profile_validation(
     refresh_token: str | None,

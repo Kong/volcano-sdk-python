@@ -31,6 +31,28 @@ if TYPE_CHECKING:
     from volcano_sdk.storage import StorageBucket
 
 
+class EndOfUploadSource:
+    """Record the terminal read and fail if an upload retries EOF."""
+
+    def __init__(self) -> None:
+        self.sizes: list[int] = []
+
+    def read(self, size: int = -1, /) -> bytes:
+        if self.sizes:
+            message = "upload source read after end of stream"
+            raise AssertionError(message)
+        self.sizes.append(size)
+        return b""
+
+
+@pytest.mark.order(0)
+def test_upload_part_stops_reading_at_end_of_stream() -> None:
+    source = EndOfUploadSource()
+
+    assert _read_upload_part(source, 4) == b""
+    assert source.sizes == [4]
+
+
 class UnavailableRawStream(RawIOBase):
     @override
     def readable(self) -> bool:
