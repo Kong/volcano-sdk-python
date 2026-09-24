@@ -299,16 +299,9 @@
         "pyrefly",
         "check",
         "--output-format=json",
-        "src/volcano_sdk/realtime.py",
-        "src/volcano_sdk/auth.py",
-        "src/volcano_sdk/storage.py",
-        "src/volcano_sdk/functions.py",
-        "src/volcano_sdk/durable_authoring.py",
-        "src/volcano_sdk/database.py",
-        "src/volcano_sdk/_function_resolution.py",
-        "src/volcano_sdk/_transport.py",
-        "src/volcano_sdk/_session.py",
-        "src/volcano_sdk/_session_operations.py"
+        "--project-excludes",
+        "src/volcano_sdk/_generated/**",
+        "src/volcano_sdk"
       ]
     },
     "mypy": {
@@ -400,7 +393,6 @@
         "generated": "python -m scripts.check_openapi",
         "lint": "ruff check --config pyproject.toml .",
         "mutation": "bash scripts/mutation.sh",
-        "mutation-full": "MUTATION_FULL=1 bash scripts/mutation.sh",
         "mypy": "mypy --config-file pyproject.toml",
         "package-check": {
           "interpreter": "bash",

@@ -138,6 +138,22 @@ def test_retry_false_produces_an_immediate_no_retry_decision() -> None:
     assert decision.delay.to_seconds() == 0
 
 
+@pytest.mark.order(0)
+def test_step_forwards_a_disabled_retry_before_scheduling() -> None:
+    runtime = RecordingContext()
+    context = DurableContext(runtime, durable_authoring._Engine())
+
+    with pytest.raises(AssertionError, match="unexpected runtime operation"):
+        _ = context.step("once", lambda _scope: "done", retry=False)
+
+    assert isinstance(runtime.config, StepConfig)
+    retry = runtime.config.retry_strategy
+    assert retry is not None
+    decision = retry(RuntimeError("failed"), 1)
+    assert decision.should_retry is False
+    assert decision.delay.to_seconds() == 0
+
+
 def test_custom_retry_receives_the_original_error() -> None:
     engine = InspectedEngine()
     failure = RuntimeError("failed")
@@ -190,6 +206,18 @@ def test_wait_options_forward_predicate_timing_and_attempt_budget(
     assert config.backoff_rate == pytest.approx(1.25)
     assert _is_wait_config(configured)
     assert configured.initial_state is False
+
+
+def test_durable_runtime_adapter_is_loaded_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(durable_authoring._Engine, "_loaded", None)
+
+    first = durable_authoring._Engine.load()
+    second = durable_authoring._Engine.load()
+
+    assert isinstance(first, durable_authoring._Engine)
+    assert first is second
 
 
 def test_wait_options_name_invalid_timing_fields() -> None:
@@ -991,16 +1019,15 @@ def test_wait_refuses_a_wait_longer_than_an_execution_may_run() -> None:
 
 
 def test_wait_until_refuses_a_timeout() -> None:
-    @durable
-    def handler(_event: object, ctx: DurableContext) -> object:
-        return ctx.wait_until(
+    context = DurableContext(RecordingContext(), durable_authoring._Engine())
+
+    # Validate before handing the condition to the runtime, which may wait
+    # indefinitely when the unsupported timeout is silently ignored.
+    with pytest.raises(TypeError, match="has no `timeout`"):
+        _ = context.wait_until(
             lambda state, _scope: state,
             WaitUntilOptions(until=bool, initial_state=False, timeout="1h"),
         )
-
-    # A condition is bounded by checks, not by a deadline: the platform holds
-    # the wait between them and has no clock to compare against on resume.
-    assert "has no `timeout`" in failing_handler(handler)
 
 
 def test_wait_until_requires_an_initial_state() -> None:

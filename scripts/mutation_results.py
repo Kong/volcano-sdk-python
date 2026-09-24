@@ -134,7 +134,7 @@ def main(targets_path: Path, failed_path: Path) -> int:
         counts.update(module_counts)
         if empty:
             unmutatable.append(name)
-    if not counts:
+    if not counts and (not targets or len(unmutatable) != len(targets)):
         failures.append("No mutants were tested")
     failures.extend(
         f"{name}: {count} mutant(s)"
