@@ -989,16 +989,15 @@ def test_wait_refuses_a_wait_longer_than_an_execution_may_run() -> None:
 
 
 def test_wait_until_refuses_a_timeout() -> None:
-    @durable
-    def handler(_event: object, ctx: DurableContext) -> object:
-        return ctx.wait_until(
+    context = DurableContext(RecordingContext(), durable_authoring._Engine())
+
+    # Validate before handing the condition to the runtime, which may wait
+    # indefinitely when the unsupported timeout is silently ignored.
+    with pytest.raises(TypeError, match="has no `timeout`"):
+        _ = context.wait_until(
             lambda state, _scope: state,
             WaitUntilOptions(until=bool, initial_state=False, timeout="1h"),
         )
-
-    # A condition is bounded by checks, not by a deadline: the platform holds
-    # the wait between them and has no clock to compare against on resume.
-    assert "has no `timeout`" in failing_handler(handler)
 
 
 def test_wait_until_requires_an_initial_state() -> None:
