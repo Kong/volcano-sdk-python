@@ -84,18 +84,21 @@ def test_default_transport_uses_the_documented_timeout(
     assert observed == [("https://api.volcano.dev", 60.0)]
 
 
-def test_token_bootstrap_is_local_until_profile_validation() -> None:
+@pytest.mark.parametrize("refresh_token", [None, "supplied-refresh"])
+def test_token_bootstrap_is_local_until_profile_validation(
+    refresh_token: str | None,
+) -> None:
     requests: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         return httpx.Response(200, json={"user": PROFILE})
 
-    client = token_client(handle)
+    client = token_client(handle, refresh_token=refresh_token)
     initial = client.auth.get_session()
     assert initial is not None
     assert initial.access_token == "supplied-access"
-    assert initial.refresh_token is None
+    assert initial.refresh_token == refresh_token
     assert initial.user_id is None
     assert initial.user is None
     assert not requests
@@ -105,7 +108,7 @@ def test_token_bootstrap_is_local_until_profile_validation() -> None:
     assert current.user_id == USER_ID
     assert current.user == PROFILE
     assert current.access_token == initial.access_token
-    assert current.refresh_token is None
+    assert current.refresh_token == refresh_token
     assert initial.user_id is None
     assert requests[0].headers["authorization"] == "Bearer supplied-access"
 
