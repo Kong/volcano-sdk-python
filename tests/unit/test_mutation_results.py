@@ -3,12 +3,61 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from pathlib import Path
 from typing import cast
 
 import pytest
 
 from scripts.mutation_results import main
+
+PROJECT = Path(__file__).parents[2]
+
+
+def test_scoped_mutation_excludes_prefix_sibling_module(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "src/volcano_sdk/durable.py"
+    source.parent.mkdir(parents=True)
+    _ = source.write_text("def durable() -> bool: return True\n", encoding="utf-8")
+    sibling = source.with_name("durable_authoring.py")
+    _ = sibling.write_text("def authoring() -> bool: return True\n", encoding="utf-8")
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    _ = (scripts / "mutation.sh").write_bytes(
+        (PROJECT / "scripts/mutation.sh").read_bytes()
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stubs = {
+        "git": """#!/bin/sh
+case "$1" in
+  merge-base) printf 'base\\n' ;;
+  diff) printf 'src/volcano_sdk/durable.py\\0' ;;
+esac
+""",
+        "mutmut": "#!/bin/sh\nprintf '%s\\n' \"$@\" > mutation-args.txt\n",
+        "python": "#!/bin/sh\nexit 0\n",
+    }
+    for name, content in stubs.items():
+        stub = bin_dir / name
+        _ = stub.write_text(content, encoding="utf-8")
+        stub.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+
+    result = subprocess.run(
+        ["/bin/bash", "scripts/mutation.sh"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    arguments = (tmp_path / "mutation-args.txt").read_text(encoding="utf-8")
+    assert "volcano_sdk.durable.x*" in arguments.splitlines()
+    assert "volcano_sdk.durable*" not in arguments.splitlines()
 
 
 def fixture_report(tmp_path: Path, code: int | None) -> tuple[Path, Path]:
