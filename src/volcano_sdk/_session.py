@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import base64
 import json
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, cast
+from collections.abc import Callable, Mapping
+from typing import TYPE_CHECKING, TypeGuard
 from uuid import UUID
 
 from .errors import AuthenticationError
@@ -17,6 +17,11 @@ _JWT_PARTS = 3
 _REFRESH_USER_MISMATCH = "Refreshed session belongs to a different user"
 _REFRESH_SESSION_MISMATCH = "Refreshed credentials belong to a different server session"
 _MISSING_SESSION_ID = "Cannot refresh supplied credentials without a session identifier"
+_decode_json: Callable[[str], object] = json.loads
+
+
+def _is_claim_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, Mapping)
 
 
 def session_id_from_access_token(access_token: str) -> str | None:
@@ -33,15 +38,12 @@ def session_id_from_access_token(access_token: str) -> str | None:
         return None
     padding = "=" * (-len(parts[1]) % 4)
     try:
-        payload = cast(
-            "object", json.loads(base64.urlsafe_b64decode(parts[1] + padding).decode())
-        )
+        payload = _decode_json(base64.urlsafe_b64decode(parts[1] + padding).decode())
     except (ValueError, UnicodeDecodeError, RecursionError):
         return None
-    if not isinstance(payload, Mapping):
+    if not _is_claim_mapping(payload):
         return None
-    values = cast("Mapping[object, object]", payload)
-    return _normalized_session_id(values.get("session_id"))
+    return _normalized_session_id(payload.get("session_id"))
 
 
 def _normalized_session_id(session_id: object) -> str | None:

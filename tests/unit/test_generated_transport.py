@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from types import MappingProxyType
+from uuid import UUID
 
 import httpx
 import pytest
@@ -55,8 +56,12 @@ def test_generated_transport_queries_a_database_asynchronously() -> None:
     assert requests[0].headers["authorization"] == "Bearer access-token"
 
 
-def test_generated_transport_builds_an_oauth_authorization_url() -> None:
-    transport = GeneratedTransport(api_url="https://api.test.volcano.dev")
+@pytest.mark.parametrize(
+    "api_url",
+    ["https://api.test.volcano.dev", "https://api.test.volcano.dev///"],
+)
+def test_generated_transport_builds_an_oauth_authorization_url(api_url: str) -> None:
+    transport = GeneratedTransport(api_url=api_url)
 
     result = transport.auth_oauth_authorization_url(
         anon_key="anon key",
@@ -74,6 +79,38 @@ def test_generated_transport_builds_an_oauth_authorization_url() -> None:
         "redirect_url": "https://app.example/callback?next=/repos",
         "client_state": "state-value",
         "response_mode": "code",
+    }
+
+
+@pytest.mark.parametrize("timeout", [None, 0.25, 60.0])
+def test_generated_transport_applies_request_timeout(timeout: float | None) -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"data": []})
+
+    if timeout is None:
+        transport = GeneratedTransport(
+            api_url="https://api.test.volcano.dev",
+            httpx_transport=httpx.MockTransport(handle),
+        )
+    else:
+        transport = GeneratedTransport(
+            api_url="https://api.test.volcano.dev",
+            timeout=timeout,
+            httpx_transport=httpx.MockTransport(handle),
+        )
+    _ = transport.query_database_select(
+        authorization="access-token", database_name="app", body={"table": "items"}
+    )
+
+    expected_timeout = 60.0 if timeout is None else timeout
+    assert requests[0].extensions["timeout"] == {
+        "connect": expected_timeout,
+        "read": expected_timeout,
+        "write": expected_timeout,
+        "pool": expected_timeout,
     }
 
 
@@ -1423,6 +1460,7 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
         "filters": [{"column": "slug", "operator": "eq", "value": "a"}],
     }
     assert b"hello" in requests[3].content
+    assert b"Content-Type: application/octet-stream" in requests[3].content
     assert requests[4].headers["range"] == "bytes=0-4"
     assert json.loads(requests[6].content) == {"ttl_seconds": 30}
     assert requests[6].headers["x-volcano-lock-token"] == (
@@ -1431,6 +1469,32 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
     assert requests[7].headers["x-volcano-lock-token"] == (
         "00000000-0000-4000-8000-000000000001"
     )
+    assert UUID(requests[6].headers["x-volcano-request-id"]).version == 4
+    assert UUID(requests[7].headers["x-volcano-request-id"]).version == 4
+
+
+def test_generated_transport_names_an_upload_without_a_basename() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"path": "/"})
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    _ = transport.upload_storage_object(
+        authorization="access-token",
+        bucket_name="assets",
+        path="/",
+        data=b"binary\x00data",
+    )
+
+    assert len(requests) == 1
+    assert b'filename="file"' in requests[0].content
+    assert b"binary\x00data" in requests[0].content
 
 
 def test_generated_transport_deletes_a_storage_object() -> None:
@@ -1721,7 +1785,7 @@ def test_generated_transport_gets_project_lock_state() -> None:
     assert requests[0].method == "GET"
     assert requests[0].url.path == "/locks/build:queue"
     assert requests[0].headers["authorization"] == "Bearer service-key"
-    assert requests[0].headers["x-volcano-request-id"]
+    assert UUID(requests[0].headers["x-volcano-request-id"]).version == 4
 
 
 def test_generated_transport_renews_a_project_lock() -> None:
@@ -1758,7 +1822,7 @@ def test_generated_transport_renews_a_project_lock() -> None:
     assert requests[0].headers["x-volcano-lock-token"] == (
         "00000000-0000-4000-8000-000000000001"
     )
-    assert requests[0].headers["x-volcano-request-id"]
+    assert UUID(requests[0].headers["x-volcano-request-id"]).version == 4
 
 
 def test_generated_transport_force_releases_a_project_lock() -> None:
@@ -1783,7 +1847,7 @@ def test_generated_transport_force_releases_a_project_lock() -> None:
     assert requests[0].method == "DELETE"
     assert requests[0].url.path == "/locks/build:queue"
     assert requests[0].headers["authorization"] == "Bearer service-key"
-    assert requests[0].headers["x-volcano-request-id"]
+    assert UUID(requests[0].headers["x-volcano-request-id"]).version == 4
     assert "x-volcano-lock-token" not in requests[0].headers
 
 

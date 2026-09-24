@@ -274,7 +274,10 @@
         "src/volcano_sdk/storage.py",
         "src/volcano_sdk/functions.py",
         "src/volcano_sdk/database.py",
-        "src/volcano_sdk/_function_resolution.py"
+        "src/volcano_sdk/_function_resolution.py",
+        "src/volcano_sdk/_transport.py",
+        "src/volcano_sdk/_session.py",
+        "src/volcano_sdk/_session_operations.py"
       ]
     },
     "mypy": {
@@ -383,6 +386,7 @@
     },
     "pytest": {
       "ini_options": {
+        "addopts": "--disable-socket --allow-unix-socket",
         "asyncio_debug": true,
         "asyncio_default_fixture_loop_scope": "function",
         "asyncio_default_test_loop_scope": "function",

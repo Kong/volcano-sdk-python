@@ -11,6 +11,7 @@ from typing import (
     TYPE_CHECKING,
     ParamSpec,
     Protocol,
+    TypeGuard,
     TypeVar,
     cast,
     overload,
@@ -288,6 +289,8 @@ HTTP_RATE_LIMITED = 429
 HTTP_OK = 200
 HTTP_SERVER_ERROR_MIN = 500
 HTTP_SERVER_ERROR_MAX = 599
+_RETRY_AFTER_HEADER = "Retry-After"
+_URL_TRAILING_SLASHES = "/"
 _MALFORMED_USER_PROFILE = "Expected a complete user profile"
 _MALFORMED_SESSION_PAGE = "Expected a complete session page"
 _MALFORMED_LINKED_OAUTH_PROVIDERS = "Expected complete linked OAuth providers"
@@ -349,6 +352,17 @@ class _RawHTTPResponse(Protocol):
 class _ParsedHTTPResponse(_RawHTTPResponse, Protocol):
     @property
     def parsed(self) -> object: ...
+
+
+class _JSONResponse(Protocol):
+    def json(self) -> object: ...
+
+
+class _JSONDecoder(Protocol):
+    def __call__(self, document: bytes, /) -> object: ...
+
+
+_decode_json: _JSONDecoder = json.loads
 
 
 @runtime_checkable
@@ -704,7 +718,7 @@ class Transport(Protocol):
         bucket_name: str,
         path: str,
         data: bytes,
-        content_type: str = "application/octet-stream",
+        content_type: str,
     ) -> TransportResponse: ...
 
     def download_storage_object(
@@ -802,14 +816,21 @@ def _required_request_string(kwargs: Mapping[str, object], key: str) -> str:
     return value
 
 
+def _is_object_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, Mapping)
+
+
+def _is_object_dict(value: object) -> TypeGuard[dict[object, object]]:
+    return isinstance(value, dict)
+
+
 def _request_headers(kwargs: Mapping[str, object]) -> dict[str, str]:
     raw_headers = kwargs.get("headers", {})
-    if not isinstance(raw_headers, Mapping):
+    if not _is_object_mapping(raw_headers):
         field = "headers"
         raise _InvalidGeneratedRequestError(field)
-    source = cast("Mapping[object, object]", raw_headers)
     headers: dict[str, str] = {}
-    for key, value in source.items():
+    for key, value in raw_headers.items():
         if not isinstance(key, str) or not isinstance(value, str):
             field = "headers"
             raise _InvalidGeneratedRequestError(field)
@@ -823,12 +844,11 @@ def _request_params(
     raw_params = kwargs.get("params")
     if raw_params is None:
         return None
-    if not isinstance(raw_params, Mapping):
+    if not _is_object_mapping(raw_params):
         field = "params"
         raise _InvalidGeneratedRequestError(field)
-    source = cast("Mapping[object, object]", raw_params)
     params: dict[str, str | int | float | bool | None] = {}
-    for key, value in source.items():
+    for key, value in raw_params.items():
         if not isinstance(key, str) or (
             value is not None and not isinstance(value, (str, int, float, bool))
         ):
@@ -853,14 +873,13 @@ def _generated_request(
     )
 
 
-def _json_object(response: httpx.Response) -> dict[str, object]:
-    raw = cast("object", response.json())
-    if not isinstance(raw, dict):
+def _json_object(response: _JSONResponse) -> dict[str, object]:
+    raw = response.json()
+    if not _is_object_dict(raw):
         field = "response body"
         raise _InvalidGeneratedRequestError(field)
-    source = cast("Mapping[object, object]", raw)
     payload: dict[str, object] = {}
-    for key, value in source.items():
+    for key, value in raw.items():
         if not isinstance(key, str):
             field = "response body key"
             raise _InvalidGeneratedRequestError(field)
@@ -873,10 +892,7 @@ def response_payload(response: TransportResponse, expected_status: int) -> objec
     if status != expected_status:
         payload: Mapping[object, object]
         raw_payload = response.payload
-        if isinstance(raw_payload, dict):
-            payload = cast("Mapping[object, object]", raw_payload)
-        else:
-            payload = {}
+        payload = raw_payload if _is_object_dict(raw_payload) else {}
         message = str(
             payload.get("error") or payload.get("message") or "Volcano request failed"
         )
@@ -884,7 +900,7 @@ def response_payload(response: TransportResponse, expected_status: int) -> objec
         code = str(code_value) if code_value is not None else None
         retry_after = None
         if status == HTTP_RATE_LIMITED:
-            retry_after_value = _header(response.headers, "Retry-After")
+            retry_after_value = _header(response.headers, _RETRY_AFTER_HEADER)
             try:
                 retry_after = (
                     int(retry_after_value) if retry_after_value is not None else None
@@ -908,7 +924,7 @@ class GeneratedTransport:
         timeout: float = 60.0,
         httpx_transport: httpx.BaseTransport | None = None,
     ) -> None:
-        self._api_url: str = api_url.rstrip("/")
+        self._api_url: str = api_url.rstrip(_URL_TRAILING_SLASHES)
         self._timeout: float = timeout
         self._httpx_transport: httpx.BaseTransport | None = httpx_transport
 
@@ -932,7 +948,7 @@ class GeneratedTransport:
             payload = parsed
         else:
             try:
-                raw = cast("object", json.loads(response.content))
+                raw = _decode_json(response.content)
                 payload = raw
             except (json.JSONDecodeError, UnicodeDecodeError):
                 payload = None
@@ -946,7 +962,7 @@ class GeneratedTransport:
     @staticmethod
     def _raw_response(response: _RawHTTPResponse) -> TransportResponse:
         try:
-            payload = cast("object", json.loads(response.content))
+            payload = _decode_json(response.content)
         except (json.JSONDecodeError, UnicodeDecodeError):
             payload = None
         return _GeneratedTransportResponse(
@@ -1833,14 +1849,8 @@ class GeneratedTransport:
         # invoke contract's { payload } envelope.
         plain_payload = _plain_json(payload)
         with self._client(authorization) as client:
-            response = client.get_httpx_client().request(
-                method="POST",
-                url=invoke_url,
-                json={"payload": plain_payload},
-                headers={
-                    "Authorization": f"Bearer {authorization}",
-                    "Content-Type": "application/json",
-                },
+            response = client.get_httpx_client().post(
+                invoke_url, json={"payload": plain_payload}
             )
         return self._raw_response(response)
 

@@ -26,6 +26,8 @@ import pytest
 
 from volcano_sdk import NotFoundError, VolcanoClient
 
+pytestmark = pytest.mark.allow_hosts(["127.0.0.1"])
+
 FUNCTION_ID = "00000000-0000-4000-8000-000000000040"
 
 # (status, payload) or (status, payload, extra response headers).
@@ -37,6 +39,8 @@ class RecordedRequest:
     path: str
     body: object
     authorization: str | None
+    method: str
+    content_type: str | None
 
 
 @dataclass
@@ -78,6 +82,8 @@ class Handler(BaseHTTPRequestHandler):
                 path=self.path,
                 body=body,
                 authorization=self.headers.get("Authorization"),
+                method=self.command,
+                content_type=self.headers.get("Content-Type"),
             )
         )
         answer = self.respond(self.path)
@@ -194,6 +200,8 @@ def test_repeated_invocations_resolve_once_and_reach_the_resolved_host(
         invoked = function_requests.requests[0]
         assert invoked.body == {"payload": {"user_id": "u-1"}}
         assert invoked.authorization == "Bearer service-key"
+        assert invoked.method == "POST"
+        assert invoked.content_type == "application/json"
     finally:
         api.close()
 

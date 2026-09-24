@@ -15,9 +15,35 @@ from test_session_continuity import (
 )
 
 from volcano_sdk import AuthenticationError, Session
+from volcano_sdk._session import (
+    session_id_from_access_token,
+    validate_refresh_source,
+)
 
 if TYPE_CHECKING:
     import httpx
+
+
+@pytest.mark.parametrize(("suffix", "remainder"), [("a", 2), ("aa", 3)])
+def test_session_claim_decodes_unpadded_base64url(suffix: str, remainder: int) -> None:
+    payload = json.dumps({"session_id": SESSION_A, "x": suffix}).encode()
+    encoded = base64.urlsafe_b64encode(payload).decode().rstrip("=")
+    assert len(encoded) % 4 == remainder
+    assert session_id_from_access_token(f"header.{encoded}.signature") == SESSION_A
+
+
+def test_session_claim_rejects_a_malformed_prefix_even_if_payload_decodes() -> None:
+    payload = json.dumps({"session_id": SESSION_A, "x": "a"}).encode()
+    encoded = base64.urlsafe_b64encode(payload).decode().rstrip("=")
+    assert len(encoded) % 4 == 2
+    assert session_id_from_access_token(f"header.!{encoded}.signature") is None
+
+
+def test_refresh_source_requires_a_claim_without_explicit_verification() -> None:
+    session = Session("opaque-token", "refresh-token", USER_A)
+    with pytest.raises(AuthenticationError, match="without a session identifier"):
+        validate_refresh_source(session)
+    validate_refresh_source(session, verified=True)
 
 
 @pytest.mark.parametrize(
