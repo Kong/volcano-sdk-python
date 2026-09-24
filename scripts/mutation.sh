@@ -4,6 +4,9 @@ set -euo pipefail
 # Forked macOS workers must not query SystemConfiguration through urllib/httpx.
 export NO_PROXY='*' no_proxy='*'
 
+# Refresh mutmut's test-to-mutant map so newly added tests are selected.
+rm -rf -- mutants
+
 mkdir -p reports
 targets=reports/mutation-targets.bin
 failed=reports/mutation-failed.bin

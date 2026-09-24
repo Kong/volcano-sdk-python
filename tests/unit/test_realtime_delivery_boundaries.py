@@ -151,6 +151,42 @@ async def test_queued_callbacks_keep_their_delivery_identity() -> None:
         _ = await asyncio.gather(blocker, return_exceptions=True)
 
 
+async def test_postgres_delivery_queued_before_unsubscribe_is_not_dispatched() -> None:
+    client = make_client()
+    channel = client.realtime.channel("public:messages", channel_type="postgres")
+    received: list[PostgresChange] = []
+    channel.on("*", received.append)
+
+    async def hold() -> None:
+        _ = await asyncio.Event().wait()
+
+    blocker = asyncio.create_task(hold())
+    try:
+        await channel.subscribe()
+        channel._callback_task = blocker
+        change = PostgresChange(type="INSERT", schema="public", table="messages")
+        identity = channel._capture_postgres_delivery_identity()
+        await channel._deliver_postgres(
+            PostgresFetchOutcome(
+                job=PostgresFetchJob(
+                    request=None,
+                    fallback=_PostgresDelivery(change=change, identity=identity),
+                )
+            )
+        )
+        queued = channel._callback_queue.get_nowait()
+        channel._callback_queue.task_done()
+        await channel._end_postgres_epoch()
+        await channel._dispatch_delivery(queued)
+
+        assert received == []
+    finally:
+        channel._callback_task = None
+        _ = blocker.cancel()
+        _ = await asyncio.gather(blocker, return_exceptions=True)
+        await client.realtime.disconnect()
+
+
 async def test_missing_postgres_row_reports_its_identity() -> None:
     channel = make_client().realtime.channel("public:messages", channel_type="postgres")
     loop = asyncio.get_running_loop()

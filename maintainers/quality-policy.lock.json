@@ -215,6 +215,12 @@
       ],
       "source_paths": [
         "src/volcano_sdk"
+      ],
+      "type_check_command": [
+        "pyrefly",
+        "check",
+        "--output-format=json",
+        "src/volcano_sdk/realtime.py"
       ]
     },
     "mypy": {

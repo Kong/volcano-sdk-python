@@ -1,4 +1,4 @@
-"""Fail scoped mutmut runs unless every generated mutant was killed by tests."""
+"""Fail scoped mutmut runs on surviving, uncovered, or incomplete mutants."""
 
 from __future__ import annotations
 
@@ -118,7 +118,7 @@ def main(targets_path: Path, failed_path: Path) -> int:
     """Write a machine-readable report and enforce the mutation gate.
 
     Returns:
-        Zero only when every selected mutant is killed.
+        Zero when each selected mutant is killed or statically invalid.
 
     """
     targets = sorted(set(nul_paths(targets_path)))
@@ -139,7 +139,7 @@ def main(targets_path: Path, failed_path: Path) -> int:
     failures.extend(
         f"{name}: {count} mutant(s)"
         for name, count in sorted(counts.items())
-        if name != "killed"
+        if name not in {"killed", "type_checked"}
     )
     report = {
         "modules": targets,

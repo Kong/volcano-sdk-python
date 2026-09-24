@@ -14,6 +14,7 @@ from volcano_sdk._realtime_fetch_worker import (
     PostgresFetchRequest,
 )
 from volcano_sdk.realtime import (
+    _CallbackDelivery,
     _consume_presence_result,
     _finish_unsubscribe,
     _PostgresDelivery,
@@ -180,7 +181,7 @@ async def test_cancelling_presence_sync_drains_the_running_task() -> None:
     channel._presence_sync_task = task
     try:
         _ = await asyncio.wait_for(entered.wait(), timeout=0.2)
-        await channel._cancel_presence_sync()
+        await asyncio.wait_for(channel._cancel_presence_sync(), timeout=0.2)
 
         assert task.done()
         assert stopped.is_set()
@@ -251,6 +252,49 @@ async def test_removing_an_unsubscribed_channel_preserves_a_new_registration() -
     assert replacement is not original
     assert realtime._removing_channels == set()
     assert realtime._connection is None
+
+
+async def test_removing_a_never_subscribed_channel_leaves_other_native_channels() -> (
+    None
+):
+    client = make_client()
+    active = client.realtime.channel("active")
+    _ = client.realtime.channel("inactive")
+    try:
+        await active.subscribe()
+        await client.realtime.remove_channel("inactive")
+
+        assert active._subscribed
+        assert client.realtime.channel("active") is active
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_recovering_presence_channel_drops_queued_join_callback() -> None:
+    native = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    channel = client.realtime.channel("lobby", channel_type="presence")
+    received: list[object] = []
+    channel.on("join", received.append)
+    try:
+        await channel.subscribe()
+        subscription = native.subscription
+        assert subscription is not None
+        queued = _CallbackDelivery(
+            "join",
+            SimpleNamespace(client="stale"),
+            delivery_epoch=channel._presence_epoch,
+        )
+        await subscription.emit_subscribing()
+        await channel._dispatch_delivery(queued)
+
+        assert received == []
+    finally:
+        await client.realtime.disconnect()
 
 
 async def test_failed_subscription_cleanup_rechecks_ownership_after_lock_wait(

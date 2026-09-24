@@ -18,6 +18,8 @@ from volcano_sdk.realtime import (
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from volcano_sdk.realtime import ChannelType
+
 
 @pytest.fixture
 async def loop_errors() -> AsyncIterator[list[dict[str, object]]]:
@@ -67,6 +69,37 @@ async def test_removed_connection_listener_does_not_block_later_listeners() -> N
     await asyncio.wait_for(realtime._connection_callback_queue.join(), timeout=0.2)
 
     assert received == [context]
+
+
+async def test_connection_callbacks_keep_order_while_a_listener_is_running() -> None:
+    realtime = VolcanoClient(anon_key="anon").realtime
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    received: list[str] = []
+
+    async def observe(context: RealtimeConnectContext) -> None:
+        assert context.client is not None
+        if context.client == "first":
+            entered.set()
+            await release.wait()
+        received.append(context.client)
+
+    realtime.on_connect(observe)
+    realtime._enqueue_connection_callbacks(
+        "connect", RealtimeConnectContext(client="first")
+    )
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=0.2)
+        realtime._enqueue_connection_callbacks(
+            "connect", RealtimeConnectContext(client="second")
+        )
+        await asyncio.sleep(0)
+        assert received == []
+    finally:
+        release.set()
+        await asyncio.wait_for(realtime._connection_callback_queue.join(), timeout=0.2)
+
+    assert received == ["first", "second"]
 
 
 async def test_detached_presence_query_exception_is_consumed(
@@ -123,6 +156,43 @@ async def test_pending_presence_snapshot_is_not_requeued_or_delivered_after_rese
     channel._discard_callbacks(presence_only=True)
     await channel._dispatch_delivery(delivery)
     assert received == []
+
+
+def test_full_queue_coalesces_presence_sync_without_dispatcher() -> None:
+    channel = VolcanoClient(anon_key="anon").realtime.channel(
+        "lobby", channel_type="presence"
+    )
+    for index in range(channel._callback_queue.maxsize):
+        channel._callback_queue.put_nowait(
+            _CallbackDelivery("join", index, delivery_epoch=channel._presence_epoch)
+        )
+
+    queued = channel._queue_callback(_CallbackDelivery("presence_sync", {"version": 1}))
+
+    assert not queued
+    assert channel._callback_task is None
+    assert channel._callback_queue.full()
+    assert channel._pending_presence_sync == {"version": 1}
+
+
+def test_new_presence_channel_has_empty_public_state_and_no_pending_snapshot() -> None:
+    channel = VolcanoClient(anon_key="anon").realtime.channel(
+        "lobby", channel_type="presence"
+    )
+
+    assert channel.tracked_state == {}
+    channel._enqueue_pending_presence_sync()
+    assert channel._callback_queue.empty()
+
+
+async def test_reset_presence_channel_exposes_empty_local_state() -> None:
+    channel = VolcanoClient(anon_key="anon").realtime.channel(
+        "lobby", channel_type="presence"
+    )
+
+    await channel._reset()
+
+    assert channel.tracked_state == {}
 
 
 async def test_stale_postgres_callback_cannot_cross_a_session_change() -> None:
@@ -287,6 +357,53 @@ async def test_stale_delivery_is_rejected_before_dispatch_and_callback_execution
         assert received == ["current"]
     finally:
         await client.realtime.disconnect()
+
+
+async def test_callback_queued_before_first_unsubscribe_cannot_run_later() -> None:
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(FakeCentrifugeClient()),
+    )
+    channel = client.realtime.channel("messages")
+    received: list[object] = []
+    channel.on("message", received.append)
+    try:
+        await channel.subscribe()
+        queued = _CallbackDelivery(
+            "message", "before unsubscribe", delivery_epoch=channel._delivery_epoch
+        )
+        await channel.unsubscribe()
+        await channel._dispatch_delivery(queued)
+
+        assert received == []
+    finally:
+        await client.realtime.disconnect()
+
+
+@pytest.mark.parametrize(
+    ("channel_type", "event"),
+    [("broadcast", "message"), ("presence", "join")],
+)
+async def test_repeated_callback_invalidation_drops_intermediate_delivery(
+    channel_type: ChannelType, event: str
+) -> None:
+    channel = VolcanoClient(anon_key="anon").realtime.channel(
+        "messages", channel_type=channel_type
+    )
+    received: list[object] = []
+    channel.on(event, received.append)
+    channel._paused = False
+    presence_only = channel_type == "presence"
+    channel._discard_callbacks(presence_only=presence_only)
+    queued = _CallbackDelivery(
+        event, "old connection", delivery_epoch=channel._callback_epoch(event)
+    )
+    channel._discard_callbacks(presence_only=presence_only)
+
+    await channel._dispatch_delivery(queued)
+
+    assert received == []
 
 
 async def test_delivery_with_no_remaining_callback_is_safe() -> None:

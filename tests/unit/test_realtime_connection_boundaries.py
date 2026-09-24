@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
-from test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory
+from test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory, FakeSubscription
 from typing_extensions import override
 
 from volcano_sdk import (
@@ -22,6 +22,7 @@ from volcano_sdk.realtime import (
     _native_presence_clients,
     _presence_info,
     _VolcanoCentrifugeConnection,
+    _wait_subscription,
 )
 
 if TYPE_CHECKING:
@@ -85,6 +86,15 @@ async def test_connection_requires_a_session_before_constructing_transport() -> 
 
     assert native.calls == []
     assert client.realtime._connection is None
+
+
+async def test_readiness_reports_an_interrupted_subscription() -> None:
+    channel = VolcanoClient(anon_key="anon").realtime.channel("messages")
+    native = FakeSubscription(channel.name, None, join_leave=False, recoverable=True)
+    native.subscribed.set()
+
+    with pytest.raises(RuntimeError, match=r"^realtime subscription was interrupted$"):
+        await _wait_subscription(channel, native)
 
 
 async def test_connection_token_is_available_during_native_connect(
@@ -323,4 +333,22 @@ async def test_malformed_native_connection_contexts_are_sanitized() -> None:
     assert errors == [
         RealtimeErrorContext(code=None, message=None, error=None),
         RealtimeErrorContext(code=None, message="wire error", error=None),
+    ]
+
+
+async def test_presence_failure_reports_a_non_numeric_native_code_as_absent() -> None:
+    class InvalidCodeError(RuntimeError):
+        code = "invalid"
+
+    realtime = VolcanoClient(anon_key="anon").realtime
+    channel = realtime.channel("lobby", channel_type="presence")
+    errors: list[RealtimeErrorContext] = []
+    realtime.on_error(errors.append)
+    failure = InvalidCodeError("presence failed")
+
+    await realtime._report_presence_sync_failure(channel, failure)
+    await asyncio.wait_for(realtime._connection_callback_queue.join(), timeout=0.2)
+
+    assert errors == [
+        RealtimeErrorContext(code=None, message="presence failed", error=failure)
     ]

@@ -745,14 +745,15 @@ class Channel:
         self._tracked_state: Mapping[str, JSONValue] = MappingProxyType({})
         self._subscribe_lock: asyncio.Lock = asyncio.Lock()
         # Fresh identities invalidate stale work without implying an order.
-        self._subscribe_generation: object = object()
+        self._subscribe_generation: object
+        self._supersede_subscribe_intent()
         self._readiness_task: asyncio.Task[None] | None = None
         self._subscription: CentrifugeSubscription | None = None
         self._subscription_events: _ChannelEvents | None = None
-        self._subscribed: bool = False
-        self._paused: bool = True
-        self._delivery_epoch: object = object()
-        self._presence_epoch: object = object()
+        self._subscribed: bool
+        self._paused: bool
+        self._delivery_epoch: object
+        self._presence_epoch: object
         self._presence_lock: asyncio.Lock = asyncio.Lock()
         self._presence_sync_task: asyncio.Task[None] | None = None
         self._presence_sync_pending: bool = False
@@ -760,8 +761,9 @@ class Channel:
             maxsize=CALLBACK_QUEUE_LIMIT
         )
         self._callback_task: asyncio.Task[None] | None = None
-        self._pending_presence_sync: object = NO_PENDING_CALLBACK
-        self._postgres_epoch: object = object()
+        self._pending_presence_sync: object
+        self._postgres_epoch: object
+        self._rotate_postgres_epoch()
         self._postgres_session_lineage: SessionOperations | None = None
         self._postgres_lock: asyncio.Lock = asyncio.Lock()
         self._postgres_worker: PostgresFetchWorker[_PostgresDelivery] | None = None
@@ -769,6 +771,16 @@ class Channel:
             int,
             tuple[PostgresListenerEvent, str, str],
         ] = {}
+        self._pause_delivery()
+
+    def _supersede_subscribe_intent(self) -> None:
+        self._subscribe_generation = object()
+
+    def _rotate_postgres_epoch(self) -> None:
+        self._postgres_epoch = object()
+
+    def _clear_readiness_task(self) -> None:
+        self._readiness_task = None
 
     @property
     def name(self) -> str:
@@ -911,13 +923,13 @@ class Channel:
         if self._type != "postgres":
             return
         await self._stop_postgres_worker()
-        self._postgres_epoch = object()
+        self._rotate_postgres_epoch()
         self._postgres_session_lineage = self._realtime._connection_lineage()
 
     async def _end_postgres_epoch(self) -> None:
         if self._type != "postgres":
             return
-        self._postgres_epoch = object()
+        self._rotate_postgres_epoch()
         await self._stop_postgres_worker()
 
     async def _stop_postgres_worker(self) -> None:
@@ -1313,7 +1325,6 @@ class Channel:
     async def _cancel_presence_sync(self) -> None:
         task = self._presence_sync_task
         self._presence_sync_task = None
-        self._presence_sync_pending = False
         if task is None or task.done():
             return
         _ = task.cancel()
@@ -1608,7 +1619,7 @@ class Realtime:
             self._removing_channels.add(wire_name)
             try:
                 await self._remove_channel(channel)
-                _ = self._channels.pop(wire_name, None)
+                del self._channels[wire_name]
             finally:
                 self._removing_channels.remove(wire_name)
 
@@ -1640,7 +1651,7 @@ class Realtime:
         return None
 
     async def _remove_channel(self, channel: Channel) -> None:
-        channel._subscribe_generation = object()
+        channel._supersede_subscribe_intent()
         await self._discard_subscription(channel)
         await channel._reset()
 
@@ -1765,7 +1776,7 @@ class Realtime:
         try:
             await channel._readiness_task
         finally:
-            channel._readiness_task = None
+            channel._clear_readiness_task()
 
     async def _cleanup_failed_subscription(
         self,
@@ -1780,7 +1791,7 @@ class Realtime:
         ):
             # An explicit pause or removal owns the newer subscription intent.
             return
-        channel._subscribe_generation = object()
+        channel._supersede_subscribe_intent()
         channel._subscription_events = None
         channel._pause_delivery()
         try:
@@ -1860,7 +1871,7 @@ class Realtime:
 
     async def _unsubscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
-            channel._subscribe_generation = object()
+            channel._supersede_subscribe_intent()
             if not channel._paused:
                 channel._pause_delivery()
             if channel._subscription is not None:
@@ -1873,9 +1884,8 @@ class Realtime:
             self._connection = None
             channels = tuple(self._channels.values())
             for channel in channels:
-                channel._subscribe_generation = object()
+                channel._supersede_subscribe_intent()
                 channel._invalidate()
-            cancelled: asyncio.CancelledError | None = None
             try:
                 cancelled = await _reset_realtime_channels(channels)
             finally:
