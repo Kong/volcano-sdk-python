@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Annotated, TypeAlias
 
 import httpx
@@ -111,9 +112,10 @@ def test_resolved_url_rejects_ascii_controls(control: URLControl) -> None:
         "https://functions.volcano.test/\x00path",
         "https://functions.volcano.test/\x1bpath",
         "https://functions.volcano.test/\x7fpath",
+        "https://functions.volcano.test/\ud800path",
     ],
 )
-def test_invalid_control_in_resolved_url_uses_api_path(invoke_url: str) -> None:
+def test_invalid_character_in_resolved_url_uses_api_path(invoke_url: str) -> None:
     paths: list[str] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -121,12 +123,15 @@ def test_invalid_control_in_resolved_url_uses_api_path(invoke_url: str) -> None:
         if request.url.path == "/functions/resolve":
             return httpx.Response(
                 200,
-                json={
-                    "name": "send-welcome",
-                    "function_id": "00000000-0000-4000-8000-000000000040",
-                    "invoke_url": invoke_url,
-                    "cache_ttl_seconds": 60,
-                },
+                content=json.dumps(
+                    {
+                        "name": "send-welcome",
+                        "function_id": "00000000-0000-4000-8000-000000000040",
+                        "invoke_url": invoke_url,
+                        "cache_ttl_seconds": 60,
+                    }
+                ).encode(),
+                headers={"content-type": "application/json"},
             )
         return httpx.Response(200, json={"ok": True})
 
