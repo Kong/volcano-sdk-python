@@ -12,9 +12,10 @@ from uuid import UUID
 from ._auth_requests import AuthRequests
 from ._client_context import ClientContext
 from ._client_session import BootstrapCredentials, CallbackOutcome, bootstrap_session
+from ._sandbox import SandboxRequests, SandboxTransport
 from ._session import validate_refresh_identity
 from ._session_operations import SessionOperations
-from ._transport import GeneratedTransport, Transport
+from ._transport import GeneratedTransport, Transport, TransportResponse, invoke
 from .auth import Auth, AuthContext
 from .database import Database
 from .durable import Durable
@@ -30,11 +31,14 @@ from .models import (
     Session,
 )
 from .realtime import CentrifugeFactory, Realtime
+from .sandboxes import Sandboxes
 from .storage import Storage
 
 if TYPE_CHECKING:
     from _thread import LockType
     from collections.abc import Callable, Mapping
+
+    from ._transport_sandbox import SandboxRequest
 
 _NO_ACTIVE_SESSION = "No active session"
 _NO_SERVICE_KEY = "No service key configured"
@@ -89,6 +93,7 @@ class VolcanoClient:
         self.logs: Logs = Logs(self._facades)
         self.storage: Storage = Storage(self._facades)
         self.locks: Locks = Locks(self._facades)
+        self.sandboxes: Sandboxes = Sandboxes(SandboxRequests(self._sandbox_request))
         if _realtime_client_factory is None:
             self.realtime: Realtime = Realtime(self._facades, api_url=self._api_url)
         else:
@@ -160,6 +165,32 @@ class VolcanoClient:
         if self._service_key is None:
             raise RuntimeError(_NO_SERVICE_KEY)
         return self._service_key
+
+    def _sandbox_request(self, request: SandboxRequest) -> TransportResponse:
+        transport = self._transport
+        if not isinstance(transport, SandboxTransport):
+            message = "Transport does not support Sandbox operations"
+            raise TypeError(message)
+
+        def dispatch(token: str) -> TransportResponse:
+            return invoke(
+                transport.sandbox_request,
+                authorization=token,
+                request=request,
+            )
+
+        binding = self._capture_session_binding()
+        if binding[2] is not None and request.operation in {
+            "get_sandbox_session",
+            "execute_sandbox_session",
+            "read_sandbox_session_file",
+            "write_sandbox_session_file",
+            "create_sandbox_session_access",
+        }:
+            return self._auth_requests.request(dispatch, binding=binding)
+        if self._service_key is None:
+            raise AuthenticationError(_NO_SERVICE_KEY, status=401)
+        return dispatch(self._service_key)
 
     def _function_token(self) -> str:
         session = self._capture_session()[1]

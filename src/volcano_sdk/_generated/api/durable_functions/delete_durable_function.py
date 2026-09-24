@@ -72,10 +72,14 @@ def sync_detailed(
     """ Delete a durable function
 
      Accepted for asynchronous teardown; the work continues after the
-    response. The function's executions go with it: history stops being
-    readable whatever `retention_days` had left, and the executions still
-    running stop counting against the project's concurrency cap. Stop an
-    execution first if you need it to end before the function does.
+    response. The function's executions go with it: executions still in
+    flight are stopped, and history stops being readable whatever
+    `retention_days` had left.
+
+    Stopping is asynchronous at the platform, and it does not interrupt a
+    step already running -- that step runs to its next checkpoint. So a
+    delete ends an execution rather than halting it mid-step; stop the
+    execution yourself first if you need to observe it ending.
 
     Args:
         id (UUID):
@@ -112,10 +116,14 @@ def sync(
     """ Delete a durable function
 
      Accepted for asynchronous teardown; the work continues after the
-    response. The function's executions go with it: history stops being
-    readable whatever `retention_days` had left, and the executions still
-    running stop counting against the project's concurrency cap. Stop an
-    execution first if you need it to end before the function does.
+    response. The function's executions go with it: executions still in
+    flight are stopped, and history stops being readable whatever
+    `retention_days` had left.
+
+    Stopping is asynchronous at the platform, and it does not interrupt a
+    step already running -- that step runs to its next checkpoint. So a
+    delete ends an execution rather than halting it mid-step; stop the
+    execution yourself first if you need to observe it ending.
 
     Args:
         id (UUID):
@@ -147,10 +155,14 @@ async def asyncio_detailed(
     """ Delete a durable function
 
      Accepted for asynchronous teardown; the work continues after the
-    response. The function's executions go with it: history stops being
-    readable whatever `retention_days` had left, and the executions still
-    running stop counting against the project's concurrency cap. Stop an
-    execution first if you need it to end before the function does.
+    response. The function's executions go with it: executions still in
+    flight are stopped, and history stops being readable whatever
+    `retention_days` had left.
+
+    Stopping is asynchronous at the platform, and it does not interrupt a
+    step already running -- that step runs to its next checkpoint. So a
+    delete ends an execution rather than halting it mid-step; stop the
+    execution yourself first if you need to observe it ending.
 
     Args:
         id (UUID):
@@ -187,10 +199,14 @@ async def asyncio(
     """ Delete a durable function
 
      Accepted for asynchronous teardown; the work continues after the
-    response. The function's executions go with it: history stops being
-    readable whatever `retention_days` had left, and the executions still
-    running stop counting against the project's concurrency cap. Stop an
-    execution first if you need it to end before the function does.
+    response. The function's executions go with it: executions still in
+    flight are stopped, and history stops being readable whatever
+    `retention_days` had left.
+
+    Stopping is asynchronous at the platform, and it does not interrupt a
+    step already running -- that step runs to its next checkpoint. So a
+    delete ends an execution rather than halting it mid-step; stop the
+    execution yourself first if you need to observe it ending.
 
     Args:
         id (UUID):

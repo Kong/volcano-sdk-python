@@ -96,6 +96,13 @@ from .ban_user_response_status import BanUserResponseStatus
 from .batch_function_deploy_failure import BatchFunctionDeployFailure
 from .batch_function_deploy_failure_operation import BatchFunctionDeployFailureOperation
 from .batch_function_deploy_response import BatchFunctionDeployResponse
+from .call_mcp_body import CallMCPBody
+from .call_mcp_body_jsonrpc import CallMCPBodyJsonrpc
+from .call_mcp_body_params import CallMCPBodyParams
+from .call_mcp_response_200 import CallMCPResponse200
+from .call_mcp_response_200_error import CallMCPResponse200Error
+from .call_mcp_response_200_jsonrpc import CallMCPResponse200Jsonrpc
+from .call_mcp_response_200_result import CallMCPResponse200Result
 from .call_o_auth_provider_api_body import CallOAuthProviderAPIBody
 from .call_o_auth_provider_api_body_body import CallOAuthProviderAPIBodyBody
 from .call_o_auth_provider_api_body_method import CallOAuthProviderAPIBodyMethod
@@ -121,7 +128,9 @@ from .create_email_template_request import CreateEmailTemplateRequest
 from .create_email_template_request_template_type import CreateEmailTemplateRequestTemplateType
 from .create_frontend_body import CreateFrontendBody
 from .create_frontend_body_framework import CreateFrontendBodyFramework
+from .create_frontend_body_variable_scope import CreateFrontendBodyVariableScope
 from .create_frontend_custom_domain_request import CreateFrontendCustomDomainRequest
+from .create_frontend_function_route_request import CreateFrontendFunctionRouteRequest
 from .create_function_body import CreateFunctionBody
 from .create_function_body_runtime import CreateFunctionBodyRuntime
 from .create_function_body_variable_scope import CreateFunctionBodyVariableScope
@@ -130,7 +139,11 @@ from .create_function_scheduler_request_payload import CreateFunctionSchedulerRe
 from .create_functions_batch_body import CreateFunctionsBatchBody
 from .create_o_auth_config_request import CreateOAuthConfigRequest
 from .create_o_auth_config_request_provider import CreateOAuthConfigRequestProvider
+from .create_project_access_token_request import CreateProjectAccessTokenRequest
 from .create_project_request import CreateProjectRequest
+from .create_sandbox_template_request import CreateSandboxTemplateRequest
+from .create_sandbox_template_request_memory_mb import CreateSandboxTemplateRequestMemoryMb
+from .create_sandbox_template_request_preset import CreateSandboxTemplateRequestPreset
 from .create_service_key_body import CreateServiceKeyBody
 from .create_storage_bucket_request import CreateStorageBucketRequest
 from .create_storage_policy_request import CreateStoragePolicyRequest
@@ -138,6 +151,7 @@ from .create_storage_policy_request_operation import CreateStoragePolicyRequestO
 from .create_upload_session_request import CreateUploadSessionRequest
 from .create_upload_session_response import CreateUploadSessionResponse
 from .create_variable_request import CreateVariableRequest
+from .created_project_access_token import CreatedProjectAccessToken
 from .database import Database
 from .database_backup import DatabaseBackup
 from .database_backup_list import DatabaseBackupList
@@ -210,10 +224,13 @@ from .frontend_domain_routing_record import FrontendDomainRoutingRecord
 from .frontend_domain_routing_record_record_type import FrontendDomainRoutingRecordRecordType
 from .frontend_domain_verification_record import FrontendDomainVerificationRecord
 from .frontend_framework import FrontendFramework
+from .frontend_function_route import FrontendFunctionRoute
+from .frontend_function_route_list import FrontendFunctionRouteList
 from .frontend_status import FrontendStatus
 from .frontend_usage_daily_entry import FrontendUsageDailyEntry
 from .frontend_usage_data import FrontendUsageData
 from .frontend_usage_history_response import FrontendUsageHistoryResponse
+from .frontend_variable_scope import FrontendVariableScope
 from .function import Function
 from .function_deployment import FunctionDeployment
 from .function_deployment_deploy_source import FunctionDeploymentDeploySource
@@ -313,6 +330,7 @@ from .metric_usage_data import MetricUsageData
 from .o_auth_config import OAuthConfig
 from .o_auth_config_provider import OAuthConfigProvider
 from .o_auth_error_response import OAuthErrorResponse
+from .open_api_spec_document import OpenAPISpecDocument
 from .paginated_auth_users import PaginatedAuthUsers
 from .paginated_databases import PaginatedDatabases
 from .paginated_durable_executions import PaginatedDurableExecutions
@@ -321,6 +339,7 @@ from .paginated_frontend_deployments import PaginatedFrontendDeployments
 from .paginated_frontends import PaginatedFrontends
 from .paginated_function_deployments import PaginatedFunctionDeployments
 from .paginated_functions import PaginatedFunctions
+from .paginated_project_access_tokens import PaginatedProjectAccessTokens
 from .paginated_project_custom_domains import PaginatedProjectCustomDomains
 from .paginated_project_deployments import PaginatedProjectDeployments
 from .paginated_projects import PaginatedProjects
@@ -332,6 +351,12 @@ from .platform_exchange_response import PlatformExchangeResponse
 from .preview_auth_page_request import PreviewAuthPageRequest
 from .preview_auth_page_response import PreviewAuthPageResponse
 from .project import Project
+from .project_access_token import ProjectAccessToken
+from .project_access_token_scope import ProjectAccessTokenScope
+from .project_access_token_status import ProjectAccessTokenStatus
+from .project_access_token_token_source import ProjectAccessTokenTokenSource
+from .project_access_token_usage import ProjectAccessTokenUsage
+from .project_access_token_usage_daily_entry import ProjectAccessTokenUsageDailyEntry
 from .project_config import ProjectConfig
 from .project_config_apply_result import ProjectConfigApplyResult
 from .project_config_apply_result_entry import ProjectConfigApplyResultEntry
@@ -366,6 +391,8 @@ from .project_config_database_pg_version import ProjectConfigDatabasePgVersion
 from .project_config_email_template import ProjectConfigEmailTemplate
 from .project_config_email_templates import ProjectConfigEmailTemplates
 from .project_config_frontend import ProjectConfigFrontend
+from .project_config_frontend_function_route import ProjectConfigFrontendFunctionRoute
+from .project_config_frontend_variable_scope import ProjectConfigFrontendVariableScope
 from .project_config_function import ProjectConfigFunction
 from .project_config_function_openapi_spec_type_0 import ProjectConfigFunctionOpenapiSpecType0
 from .project_config_function_variable_scope import ProjectConfigFunctionVariableScope
@@ -449,17 +476,46 @@ from .project_source_export_state import ProjectSourceExportState
 from .project_source_export_state_mode import ProjectSourceExportStateMode
 from .project_status import ProjectStatus
 from .project_usage_response import ProjectUsageResponse
+from .publish_sandbox_preset_request import PublishSandboxPresetRequest
+from .publish_sandbox_preset_request_memory_mb import PublishSandboxPresetRequestMemoryMb
+from .publish_sandbox_preset_request_preset import PublishSandboxPresetRequestPreset
 from .realtime_config import RealtimeConfig
 from .realtime_plan_limits import RealtimePlanLimits
 from .realtime_stats import RealtimeStats
 from .refresh_o_auth_provider_token_provider import RefreshOAuthProviderTokenProvider
 from .refresh_o_auth_provider_token_response_200 import RefreshOAuthProviderTokenResponse200
 from .render_default_managed_auth_page_action import RenderDefaultManagedAuthPageAction
+from .replace_frontend_shared_variables_body import ReplaceFrontendSharedVariablesBody
 from .replace_shared_variables_body import ReplaceSharedVariablesBody
 from .reset_database_password_response_200 import ResetDatabasePasswordResponse200
 from .resolve_function_response import ResolveFunctionResponse
 from .resource_reference import ResourceReference
 from .resource_reference_type import ResourceReferenceType
+from .sandbox_access import SandboxAccess
+from .sandbox_access_request import SandboxAccessRequest
+from .sandbox_capacity import SandboxCapacity
+from .sandbox_capacity_list import SandboxCapacityList
+from .sandbox_command_request import SandboxCommandRequest
+from .sandbox_command_request_environment import SandboxCommandRequestEnvironment
+from .sandbox_command_result import SandboxCommandResult
+from .sandbox_deployment import SandboxDeployment
+from .sandbox_deployment_page import SandboxDeploymentPage
+from .sandbox_execution_result import SandboxExecutionResult
+from .sandbox_file_read_request import SandboxFileReadRequest
+from .sandbox_file_result import SandboxFileResult
+from .sandbox_file_write_request import SandboxFileWriteRequest
+from .sandbox_pagination import SandboxPagination
+from .sandbox_preset import SandboxPreset
+from .sandbox_preset_list import SandboxPresetList
+from .sandbox_preset_memory_mb import SandboxPresetMemoryMb
+from .sandbox_session import SandboxSession
+from .sandbox_session_desired_state import SandboxSessionDesiredState
+from .sandbox_session_page import SandboxSessionPage
+from .sandbox_session_state import SandboxSessionState
+from .sandbox_subject_grant_request import SandboxSubjectGrantRequest
+from .sandbox_template import SandboxTemplate
+from .sandbox_template_page import SandboxTemplatePage
+from .sandbox_template_status import SandboxTemplateStatus
 from .schedule_request import ScheduleRequest
 from .schedule_request_kind import ScheduleRequestKind
 from .service_key import ServiceKey
@@ -501,6 +557,7 @@ from .update_o_auth_config_request import UpdateOAuthConfigRequest
 from .update_project_git_deploy_settings_request import UpdateProjectGitDeploySettingsRequest
 from .update_project_request import UpdateProjectRequest
 from .update_realtime_config_request import UpdateRealtimeConfigRequest
+from .update_sandbox_template_request import UpdateSandboxTemplateRequest
 from .update_storage_bucket_request import UpdateStorageBucketRequest
 from .update_variable_request import UpdateVariableRequest
 from .upload_project_logo_body import UploadProjectLogoBody
@@ -611,6 +668,13 @@ __all__ = (
     "BatchFunctionDeployFailure",
     "BatchFunctionDeployFailureOperation",
     "BatchFunctionDeployResponse",
+    "CallMCPBody",
+    "CallMCPBodyJsonrpc",
+    "CallMCPBodyParams",
+    "CallMCPResponse200",
+    "CallMCPResponse200Error",
+    "CallMCPResponse200Jsonrpc",
+    "CallMCPResponse200Result",
     "CallOAuthProviderAPIBody",
     "CallOAuthProviderAPIBodyBody",
     "CallOAuthProviderAPIBodyMethod",
@@ -629,6 +693,7 @@ __all__ = (
     "CreateDatabaseRequestDatabaseType",
     "CreateDatabaseRequestPgVersion",
     "CreateDatabaseRestoreRequest",
+    "CreatedProjectAccessToken",
     "CreateDurableFunctionBody",
     "CreateDurableFunctionBodyRuntime",
     "CreateDurableFunctionBodyVariableScope",
@@ -636,7 +701,9 @@ __all__ = (
     "CreateEmailTemplateRequestTemplateType",
     "CreateFrontendBody",
     "CreateFrontendBodyFramework",
+    "CreateFrontendBodyVariableScope",
     "CreateFrontendCustomDomainRequest",
+    "CreateFrontendFunctionRouteRequest",
     "CreateFunctionBody",
     "CreateFunctionBodyRuntime",
     "CreateFunctionBodyVariableScope",
@@ -645,7 +712,11 @@ __all__ = (
     "CreateFunctionSchedulerRequestPayload",
     "CreateOAuthConfigRequest",
     "CreateOAuthConfigRequestProvider",
+    "CreateProjectAccessTokenRequest",
     "CreateProjectRequest",
+    "CreateSandboxTemplateRequest",
+    "CreateSandboxTemplateRequestMemoryMb",
+    "CreateSandboxTemplateRequestPreset",
     "CreateServiceKeyBody",
     "CreateStorageBucketRequest",
     "CreateStoragePolicyRequest",
@@ -725,10 +796,13 @@ __all__ = (
     "FrontendDomainRoutingRecordRecordType",
     "FrontendDomainVerificationRecord",
     "FrontendFramework",
+    "FrontendFunctionRoute",
+    "FrontendFunctionRouteList",
     "FrontendStatus",
     "FrontendUsageDailyEntry",
     "FrontendUsageData",
     "FrontendUsageHistoryResponse",
+    "FrontendVariableScope",
     "Function",
     "FunctionDeployment",
     "FunctionDeploymentDeploySource",
@@ -828,6 +902,7 @@ __all__ = (
     "OAuthConfig",
     "OAuthConfigProvider",
     "OAuthErrorResponse",
+    "OpenAPISpecDocument",
     "PaginatedAuthUsers",
     "PaginatedDatabases",
     "PaginatedDurableExecutions",
@@ -836,6 +911,7 @@ __all__ = (
     "PaginatedFrontends",
     "PaginatedFunctionDeployments",
     "PaginatedFunctions",
+    "PaginatedProjectAccessTokens",
     "PaginatedProjectCustomDomains",
     "PaginatedProjectDeployments",
     "PaginatedProjects",
@@ -847,6 +923,12 @@ __all__ = (
     "PreviewAuthPageRequest",
     "PreviewAuthPageResponse",
     "Project",
+    "ProjectAccessToken",
+    "ProjectAccessTokenScope",
+    "ProjectAccessTokenStatus",
+    "ProjectAccessTokenTokenSource",
+    "ProjectAccessTokenUsage",
+    "ProjectAccessTokenUsageDailyEntry",
     "ProjectConfig",
     "ProjectConfigApplyResult",
     "ProjectConfigApplyResultEntry",
@@ -881,6 +963,8 @@ __all__ = (
     "ProjectConfigEmailTemplate",
     "ProjectConfigEmailTemplates",
     "ProjectConfigFrontend",
+    "ProjectConfigFrontendFunctionRoute",
+    "ProjectConfigFrontendVariableScope",
     "ProjectConfigFunction",
     "ProjectConfigFunctionOpenapiSpecType0",
     "ProjectConfigFunctionVariableScope",
@@ -964,17 +1048,46 @@ __all__ = (
     "ProjectSourceExportStateMode",
     "ProjectStatus",
     "ProjectUsageResponse",
+    "PublishSandboxPresetRequest",
+    "PublishSandboxPresetRequestMemoryMb",
+    "PublishSandboxPresetRequestPreset",
     "RealtimeConfig",
     "RealtimePlanLimits",
     "RealtimeStats",
     "RefreshOAuthProviderTokenProvider",
     "RefreshOAuthProviderTokenResponse200",
     "RenderDefaultManagedAuthPageAction",
+    "ReplaceFrontendSharedVariablesBody",
     "ReplaceSharedVariablesBody",
     "ResetDatabasePasswordResponse200",
     "ResolveFunctionResponse",
     "ResourceReference",
     "ResourceReferenceType",
+    "SandboxAccess",
+    "SandboxAccessRequest",
+    "SandboxCapacity",
+    "SandboxCapacityList",
+    "SandboxCommandRequest",
+    "SandboxCommandRequestEnvironment",
+    "SandboxCommandResult",
+    "SandboxDeployment",
+    "SandboxDeploymentPage",
+    "SandboxExecutionResult",
+    "SandboxFileReadRequest",
+    "SandboxFileResult",
+    "SandboxFileWriteRequest",
+    "SandboxPagination",
+    "SandboxPreset",
+    "SandboxPresetList",
+    "SandboxPresetMemoryMb",
+    "SandboxSession",
+    "SandboxSessionDesiredState",
+    "SandboxSessionPage",
+    "SandboxSessionState",
+    "SandboxSubjectGrantRequest",
+    "SandboxTemplate",
+    "SandboxTemplatePage",
+    "SandboxTemplateStatus",
     "ScheduleRequest",
     "ScheduleRequestKind",
     "ServiceKey",
@@ -1016,6 +1129,7 @@ __all__ = (
     "UpdateProjectGitDeploySettingsRequest",
     "UpdateProjectRequest",
     "UpdateRealtimeConfigRequest",
+    "UpdateSandboxTemplateRequest",
     "UpdateStorageBucketRequest",
     "UpdateVariableRequest",
     "UploadProjectLogoBody",

@@ -1,0 +1,210 @@
+from http import HTTPStatus
+from typing import Any, cast
+from urllib.parse import quote
+
+import httpx
+
+from ...client import AuthenticatedClient, Client
+from ...types import Response, UNSET
+from ... import errors
+
+from ...models.create_sandbox_template_request import CreateSandboxTemplateRequest
+from ...models.error import Error
+from ...models.sandbox_template import SandboxTemplate
+from typing import cast
+from uuid import UUID
+
+
+
+def request_kwargs(
+    id: UUID | str,
+    *,
+    body: CreateSandboxTemplateRequest,
+    idempotency_key: UUID | str,
+
+) -> dict[str, Any]:
+    headers: dict[str, Any] = {}
+    headers["Idempotency-Key"] = str(idempotency_key)
+
+
+
+    
+
+    
+
+    _kwargs: dict[str, Any] = {
+        "method": "post",
+        "url": "/projects/{id}/sandboxes".format(id=quote(str(id), safe=""),),
+    }
+
+    _kwargs["json"] = body.to_dict()
+
+    headers["Content-Type"] = "application/json"
+
+    _kwargs["headers"] = headers
+    return _kwargs
+
+
+
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Error | SandboxTemplate:
+    if response.status_code == 201:
+        response_201 = SandboxTemplate.from_dict(response.json())
+
+
+
+        return response_201
+
+    response_default = Error.from_dict(response.json())
+
+
+
+    return response_default
+
+
+
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | SandboxTemplate]:
+    return Response(
+        status_code=HTTPStatus(response.status_code),
+        content=response.content,
+        headers=response.headers,
+        parsed=_parse_response(client=client, response=response),
+    )
+
+
+def sync_detailed(
+    id: UUID | str,
+    *,
+    client: AuthenticatedClient,
+    body: CreateSandboxTemplateRequest,
+    idempotency_key: UUID | str,
+
+) -> Response[Error | SandboxTemplate]:
+    """ Create a sandbox template from a verified preset
+
+    Args:
+        id (UUID):
+        idempotency_key (UUID):
+        body (CreateSandboxTemplateRequest):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[Error | SandboxTemplate]
+     """
+
+
+    kwargs = request_kwargs(
+        id=id,
+body=body,
+idempotency_key=idempotency_key,
+
+    )
+
+    response = client.get_httpx_client().request(
+        **kwargs,
+    )
+
+    return build_response(client=client, response=response)
+
+def sync(
+    id: UUID | str,
+    *,
+    client: AuthenticatedClient,
+    body: CreateSandboxTemplateRequest,
+    idempotency_key: UUID | str,
+
+) -> Error | SandboxTemplate | None:
+    """ Create a sandbox template from a verified preset
+
+    Args:
+        id (UUID):
+        idempotency_key (UUID):
+        body (CreateSandboxTemplateRequest):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Error | SandboxTemplate
+     """
+
+
+    return sync_detailed(
+        id=id,
+client=client,
+body=body,
+idempotency_key=idempotency_key,
+
+    ).parsed
+
+async def asyncio_detailed(
+    id: UUID | str,
+    *,
+    client: AuthenticatedClient,
+    body: CreateSandboxTemplateRequest,
+    idempotency_key: UUID | str,
+
+) -> Response[Error | SandboxTemplate]:
+    """ Create a sandbox template from a verified preset
+
+    Args:
+        id (UUID):
+        idempotency_key (UUID):
+        body (CreateSandboxTemplateRequest):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[Error | SandboxTemplate]
+     """
+
+
+    kwargs = request_kwargs(
+        id=id,
+body=body,
+idempotency_key=idempotency_key,
+
+    )
+
+    response = await client.get_async_httpx_client().request(
+        **kwargs
+    )
+
+    return build_response(client=client, response=response)
+
+async def asyncio(
+    id: UUID | str,
+    *,
+    client: AuthenticatedClient,
+    body: CreateSandboxTemplateRequest,
+    idempotency_key: UUID | str,
+
+) -> Error | SandboxTemplate | None:
+    """ Create a sandbox template from a verified preset
+
+    Args:
+        id (UUID):
+        idempotency_key (UUID):
+        body (CreateSandboxTemplateRequest):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Error | SandboxTemplate
+     """
+
+
+    return (await asyncio_detailed(
+        id=id,
+client=client,
+body=body,
+idempotency_key=idempotency_key,
+
+    )).parsed

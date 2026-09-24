@@ -101,9 +101,13 @@ def sync_detailed(
 ) -> Response[Error | ResolveFunctionResponse]:
     """ Resolve function name for invocation
 
-     Resolves a DNS-safe function name to its function ID within the caller's project.
+     Resolves a DNS-safe function name to its function ID and invocation URL within the caller's project.
 
     SDKs use this endpoint internally to invoke by function name while routing by function ID.
+    Invoke the returned `invoke_url` as-is. It does not share a domain with the API, so a host
+    built from the API URL will not reach the function. When the deployment serves no public
+    invocation domain, as in local development, `invoke_url` is omitted and callers invoke
+    through `POST /functions/{functionId}/invoke`.
 
     **With Service Key**:
     - Allowed
@@ -146,9 +150,13 @@ def sync(
 ) -> Error | ResolveFunctionResponse | None:
     """ Resolve function name for invocation
 
-     Resolves a DNS-safe function name to its function ID within the caller's project.
+     Resolves a DNS-safe function name to its function ID and invocation URL within the caller's project.
 
     SDKs use this endpoint internally to invoke by function name while routing by function ID.
+    Invoke the returned `invoke_url` as-is. It does not share a domain with the API, so a host
+    built from the API URL will not reach the function. When the deployment serves no public
+    invocation domain, as in local development, `invoke_url` is omitted and callers invoke
+    through `POST /functions/{functionId}/invoke`.
 
     **With Service Key**:
     - Allowed
@@ -186,9 +194,13 @@ async def asyncio_detailed(
 ) -> Response[Error | ResolveFunctionResponse]:
     """ Resolve function name for invocation
 
-     Resolves a DNS-safe function name to its function ID within the caller's project.
+     Resolves a DNS-safe function name to its function ID and invocation URL within the caller's project.
 
     SDKs use this endpoint internally to invoke by function name while routing by function ID.
+    Invoke the returned `invoke_url` as-is. It does not share a domain with the API, so a host
+    built from the API URL will not reach the function. When the deployment serves no public
+    invocation domain, as in local development, `invoke_url` is omitted and callers invoke
+    through `POST /functions/{functionId}/invoke`.
 
     **With Service Key**:
     - Allowed
@@ -231,9 +243,13 @@ async def asyncio(
 ) -> Error | ResolveFunctionResponse | None:
     """ Resolve function name for invocation
 
-     Resolves a DNS-safe function name to its function ID within the caller's project.
+     Resolves a DNS-safe function name to its function ID and invocation URL within the caller's project.
 
     SDKs use this endpoint internally to invoke by function name while routing by function ID.
+    Invoke the returned `invoke_url` as-is. It does not share a domain with the API, so a host
+    built from the API URL will not reach the function. When the deployment serves no public
+    invocation domain, as in local development, `invoke_url` is omitted and callers invoke
+    through `POST /functions/{functionId}/invoke`.
 
     **With Service Key**:
     - Allowed
