@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import httpx
@@ -37,6 +38,49 @@ def test_logs_reject_non_object_responses(
 
     with pytest.raises(TypeError, match="Expected a complete log response"):
         _ = read(PROJECT_ID, REQUEST)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {1: "unexpected", "data": [], "limit": 25, "has_more": False},
+        {"data": [{1: "unexpected"}], "limit": 25, "has_more": False},
+        {
+            "data": [{"body": {1: "unexpected"}}],
+            "limit": 25,
+            "has_more": False,
+        },
+        {
+            "data": [{"body": object()}],
+            "limit": 25,
+            "has_more": False,
+        },
+        {
+            "data": [{"body": [object()]}],
+            "limit": 25,
+            "has_more": False,
+        },
+        {
+            "data": [{"body": (object(),)}],
+            "limit": 25,
+            "has_more": False,
+        },
+        {
+            "data": [{"body": {"invalid": object()}}],
+            "limit": 25,
+            "has_more": False,
+        },
+        *(
+            {"data": [{"body": value}], "limit": 25, "has_more": False}
+            for value in (math.nan, math.inf, -math.inf)
+        ),
+    ],
+)
+def test_logs_reject_non_json_response_values(payload: object) -> None:
+    with pytest.raises(TypeError, match="Expected a complete log response"):
+        _ = response_client(payload, native_transport=False).logs.search(
+            PROJECT_ID, REQUEST
+        )
 
 
 @pytest.mark.parametrize("native_transport", [False, True])

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
 from ._log_response import (
+    _is_json_value,
     activity_total,
     response_data,
     response_values,
@@ -20,6 +22,10 @@ if TYPE_CHECKING:
 _INVALID_PROJECT_ID = "project_id must be a non-empty string"
 _INVALID_LOG_REQUEST = "Log request must be a mapping"
 _INVALID_LOG_TRANSPORT = "Transport does not support project logs"
+
+
+def _is_log_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, Mapping)
 
 
 class LogsContext(Protocol):
@@ -124,10 +130,14 @@ def _log_request(
 ) -> tuple[str, Mapping[str, JSONValue]]:
     if not isinstance(project_id, str) or not project_id.strip():
         raise ValueError(_INVALID_PROJECT_ID)
-    if not isinstance(request, Mapping):
+    if not _is_log_mapping(request):
         raise TypeError(_INVALID_LOG_REQUEST)
-    snapshot = _freeze_json(cast("Mapping[str, JSONValue]", request))
-    return project_id, cast("Mapping[str, JSONValue]", snapshot)
+    snapshot: dict[str, JSONValue] = {}
+    for key, value in request.items():
+        if not isinstance(key, str) or not _is_json_value(value):
+            raise TypeError(_INVALID_LOG_REQUEST)
+        snapshot[key] = _freeze_json(value)
+    return project_id, MappingProxyType(snapshot)
 
 
 def _search_response(payload: object) -> LogSearchResponse:

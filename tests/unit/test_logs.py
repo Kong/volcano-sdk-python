@@ -1,18 +1,19 @@
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_origin, get_type_hints
 
 import pytest
-from fixtures.invalid_arguments import non_mapping_log_request
+from fixtures.invalid_arguments import non_json_log_request, non_mapping_log_request
 from transport_fixtures import RejectingTransport
 
 from volcano_sdk import ServerError, Session, VolcanoClient
+from volcano_sdk.logs import Logs, LogsTransport
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from volcano_sdk.models import JSONValue
 
 
@@ -84,6 +85,19 @@ def logs_client(transport: FakeLogsTransport) -> VolcanoClient:
         )
     )
     return client
+
+
+def test_log_public_request_annotations_resolve_at_runtime() -> None:
+    assert get_origin(get_type_hints(Logs.search)["request"]) is Mapping
+    assert get_origin(get_type_hints(Logs.activity)["request"]) is Mapping
+    assert (
+        get_origin(get_type_hints(LogsTransport.search_project_logs)["request"])
+        is Mapping
+    )
+    assert (
+        get_origin(get_type_hints(LogsTransport.get_project_log_activity)["request"])
+        is Mapping
+    )
 
 
 def test_logs_requires_a_transport_with_log_methods() -> None:
@@ -171,6 +185,38 @@ def test_logs_rejects_a_non_mapping_request() -> None:
         non_mapping_log_request(logs_client(transport).logs)
 
     assert transport.calls == []
+
+
+@pytest.mark.parametrize(
+    "invalid_request",
+    [
+        {1: "invalid"},
+        {"resource": object()},
+        {"resource": {1: "invalid"}},
+        *({"resource": value} for value in (math.nan, math.inf, -math.inf)),
+    ],
+)
+def test_logs_rejects_non_json_requests(invalid_request: object) -> None:
+    transport = FakeLogsTransport()
+
+    with pytest.raises(TypeError, match="Log request must be a mapping"):
+        non_json_log_request(logs_client(transport).logs, invalid_request)
+
+    assert transport.calls == []
+
+
+def test_logs_snapshots_nested_request_values() -> None:
+    transport = FakeLogsTransport()
+    nested: list[JSONValue] = ["first"]
+    request: Mapping[str, JSONValue] = {
+        "resource": {"ids": nested, "kinds": ("function",)}
+    }
+
+    _ = logs_client(transport).logs.search("project-1", request)
+    nested.append("second")
+
+    sent = transport.calls[0][1]["request"]
+    assert sent == {"resource": {"ids": ("first",), "kinds": ("function",)}}
 
 
 def test_logs_maps_platform_errors() -> None:
