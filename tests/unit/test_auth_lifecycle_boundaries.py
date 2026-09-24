@@ -206,6 +206,17 @@ def test_rejected_refresh_defers_sign_out_notification_until_owner_unwinds() -> 
     assert events == ["SIGNED_OUT"]
 
 
+@pytest.mark.order(0)
+def test_stale_refresh_binding_after_local_sign_out_is_session_changed() -> None:
+    client = VolcanoClient(anon_key="anon")
+    _ = client.auth.set_session(Session("access", "refresh", "user"))
+    binding = client._capture_session_binding()
+    assert client._clear_session_if_current(binding[0], event="SIGNED_OUT")
+
+    with pytest.raises(SessionChangedError):
+        _ = client.auth._owned_refresh_session(binding)
+
+
 def test_auth_facade_rejects_a_refresh_from_another_server_session() -> None:
     current = Session(access_token(SESSION_A), "refresh", USER_A)
     binding = (0, SessionOperations(current), current)
