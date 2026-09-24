@@ -9,6 +9,7 @@ from test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory
 from typing_extensions import override
 
 from volcano_sdk import (
+    RealtimeConnectContext,
     RealtimeDisconnectContext,
     RealtimeErrorContext,
     Session,
@@ -19,6 +20,7 @@ from volcano_sdk.realtime import (
     _centrifuge_client,
     _ClientEvents,
     _native_presence_clients,
+    _presence_info,
     _VolcanoCentrifugeConnection,
 )
 
@@ -111,8 +113,25 @@ def test_native_adapter_rejects_an_incompatible_subscription_registry(
         _ = _VolcanoCentrifugeConnection(native)
 
 
+def test_native_adapter_rejects_non_string_subscription_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    native = FakeCentrifugeClient()
+    monkeypatch.setattr(native, "_subs", {1: object()})
+
+    with pytest.raises(TypeError, match="subscription registry"):
+        _VolcanoCentrifugeConnection(native)
+
+
 def test_native_presence_rejects_non_string_client_keys() -> None:
     assert _native_presence_clients({"known": object(), 1: object()}) is None
+
+
+def test_native_presence_sanitizes_missing_client_and_invalid_user() -> None:
+    presence = _presence_info(SimpleNamespace(user=42, conn_info={}))
+
+    assert presence.client == ""
+    assert presence.user is None
 
 
 async def test_default_factory_constructs_the_installed_centrifuge_client() -> None:
@@ -211,17 +230,21 @@ async def test_server_subscription_events_do_not_dispatch_project_callbacks() ->
 
 async def test_malformed_native_connection_contexts_are_sanitized() -> None:
     realtime = VolcanoClient(anon_key="anon").realtime
+    connected: list[RealtimeConnectContext] = []
     disconnected: list[RealtimeDisconnectContext] = []
     errors: list[RealtimeErrorContext] = []
+    realtime.on_connect(connected.append)
     realtime.on_disconnect(disconnected.append)
     realtime.on_error(errors.append)
     events = _ClientEvents(realtime)
 
+    await events.on_connected(SimpleNamespace(client=42))
     await events.on_disconnected(SimpleNamespace(code="invalid", reason=5))
     await events.on_error(SimpleNamespace(code="invalid", error=None))
     await events.on_error(SimpleNamespace(code="invalid", error="wire error"))
     await asyncio.wait_for(realtime._connection_callback_queue.join(), timeout=0.2)
 
+    assert connected == [RealtimeConnectContext(client=None)]
     assert disconnected == [RealtimeDisconnectContext(code=None, reason=None)]
     assert errors == [
         RealtimeErrorContext(code=None, message=None, error=None),

@@ -175,7 +175,7 @@ async def test_stale_delivery_is_rejected_before_dispatch_and_callback_execution
     try:
         await channel.subscribe()
         epoch = channel._delivery_epoch
-        delivery = _CallbackDelivery("message", "obsolete", delivery_epoch=epoch - 1)
+        delivery = _CallbackDelivery("message", "obsolete", delivery_epoch=object())
         await channel._dispatch_delivery(delivery)
         await channel._run_callback(received.append, delivery)
 

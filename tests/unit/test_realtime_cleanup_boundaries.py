@@ -237,3 +237,25 @@ async def test_failed_subscription_cleanup_rechecks_ownership_after_lock_wait(
         assert channel._subscribed
     finally:
         await client.realtime.disconnect()
+
+
+async def test_failed_subscription_cleanup_preserves_an_existing_replacement() -> None:
+    client = make_client()
+    channel = client.realtime.channel("messages")
+    try:
+        await channel.subscribe()
+        stale = channel._subscription
+        await client.realtime.disconnect()
+        await channel.subscribe()
+        replacement = channel._subscription
+        assert stale is not None
+        assert replacement is not stale
+
+        await client.realtime._cleanup_failed_subscription(
+            channel, stale, RuntimeError("stale readiness failed")
+        )
+
+        assert channel._subscription is replacement
+        assert channel._subscribed
+    finally:
+        await client.realtime.disconnect()

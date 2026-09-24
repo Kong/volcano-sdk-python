@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
+from state_assertions import assert_same
 from test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory
 
 from volcano_sdk import PostgresChange, VolcanoClient
@@ -14,7 +15,7 @@ from volcano_sdk._realtime_fetch_worker import (
     PostgresFetchOutcome,
     PostgresFetchRequest,
 )
-from volcano_sdk.realtime import _PostgresDelivery
+from volcano_sdk.realtime import _postgres_change, _PostgresDelivery
 
 if TYPE_CHECKING:
     from volcano_sdk.models import JSONValue
@@ -48,6 +49,12 @@ def publication() -> dict[str, object]:
         "record": {"id": "record"},
         "timestamp": "2026-09-22T12:00:00Z",
     }
+
+
+def test_postgres_wire_event_rejects_non_json_identifier() -> None:
+    malformed = {**publication(), "id": object()}
+
+    assert _postgres_change(malformed) is None
 
 
 @pytest.mark.parametrize("channel_type", ["broadcast", "presence"])
@@ -92,7 +99,7 @@ async def test_queued_callbacks_keep_their_delivery_identity() -> None:
         await presence._emit("join", Peer("alice"))
         presence_delivery = presence._callback_queue.get_nowait()
         presence._callback_queue.task_done()
-        assert presence_delivery.delivery_epoch == presence._presence_epoch
+        assert presence_delivery.delivery_epoch is presence._presence_epoch
         assert presence_delivery.postgres_identity is None
 
         identity = postgres._capture_postgres_delivery_identity()
@@ -179,6 +186,73 @@ async def test_invalid_presence_snapshot_preserves_the_previous_roster(
         assert channel.get_presence_state() == original
         assert not channel._presence_syncing
         assert channel._presence_events == []
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_presence_query_replays_a_join_received_while_loading() -> None:
+    native = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    channel = client.realtime.channel("lobby", channel_type="presence")
+    try:
+        await channel.subscribe()
+        subscription = native.subscription
+        assert subscription is not None
+        subscription.presence_clients = {"alice": Peer("alice")}
+        subscription.presence_entered = asyncio.Event()
+        subscription.presence_release = asyncio.Event()
+        sync = asyncio.create_task(client.realtime._sync_presence(channel))
+        try:
+            _ = await asyncio.wait_for(
+                subscription.presence_entered.wait(), timeout=0.2
+            )
+            await channel._presence_join(Peer("bob"))
+            subscription.presence_release.set()
+            await asyncio.wait_for(sync, timeout=0.2)
+        finally:
+            subscription.presence_release.set()
+            _ = sync.cancel()
+            _ = await asyncio.gather(sync, return_exceptions=True)
+
+        assert set(channel.get_presence_state()) == {"alice", "bob"}
+        assert not channel._presence_syncing
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_cancelled_presence_query_releases_the_sync_state() -> None:
+    native = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    channel = client.realtime.channel("lobby", channel_type="presence")
+    try:
+        await channel.subscribe()
+        subscription = native.subscription
+        assert subscription is not None
+        subscription.presence_entered = asyncio.Event()
+        subscription.presence_release = asyncio.Event()
+        sync = asyncio.create_task(client.realtime._sync_presence(channel))
+        try:
+            _ = await asyncio.wait_for(
+                subscription.presence_entered.wait(), timeout=0.2
+            )
+            assert channel._presence_syncing
+            _ = sync.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await sync
+
+            assert_same(channel._presence_syncing, expected=False)
+            assert channel._presence_events == []
+        finally:
+            subscription.presence_release.set()
+            _ = await asyncio.gather(sync, return_exceptions=True)
     finally:
         await client.realtime.disconnect()
 

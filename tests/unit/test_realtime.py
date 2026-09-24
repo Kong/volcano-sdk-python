@@ -1101,8 +1101,14 @@ def test_realtime_rejects_conflicting_channel_fetch_configuration() -> None:
 @pytest.mark.parametrize(
     ("options", "message"),
     [
-        ({"fetch_batch_window_ms": True}, "fetch_batch_window_ms"),
-        ({"fetch_batch_window_ms": 0}, "fetch_batch_window_ms"),
+        (
+            {"fetch_batch_window_ms": True},
+            "^fetch_batch_window_ms must be a positive integer$",
+        ),
+        (
+            {"fetch_batch_window_ms": 0},
+            "^fetch_batch_window_ms must be a positive integer$",
+        ),
         ({"fetch_max_batch_size": True}, "fetch_max_batch_size"),
         ({"fetch_max_batch_size": 0}, "fetch_max_batch_size"),
         ({"fetch_max_batch_size": 129}, "fetch_max_batch_size"),
@@ -2672,6 +2678,7 @@ def test_realtime_reports_presence_query_failures() -> None:
     )
     _ = client.auth.sign_in(email="user@example.com", password="secret")
     errors: list[RealtimeErrorContext] = []
+    snapshots: list[Mapping[str, RealtimePresenceInfo]] = []
     presence_error = CodedPresenceError("presence unavailable")
 
     async def scenario() -> None:
@@ -2686,6 +2693,7 @@ def test_realtime_reports_presence_query_failures() -> None:
             "lobby",
             channel_type="presence",
         )
+        _ = channel.on_presence_sync(snapshots.append)
         await channel.subscribe()
         assert channel.get_presence_state()
         assert official.subscription is not None
@@ -2693,6 +2701,8 @@ def test_realtime_reports_presence_query_failures() -> None:
         await official.subscription.emit_subscribed()
         _ = await asyncio.wait_for(reported.wait(), timeout=0.1)
         assert channel.get_presence_state() == {}
+        await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+        assert snapshots[-1] == {}
         await client.realtime.disconnect()
 
     asyncio.run(scenario())
@@ -4218,9 +4228,19 @@ def test_realtime_subscribe_releases_connection_lock_after_readiness_failure(
 
 
 @pytest.mark.parametrize("cancelled", [False, True])
-@pytest.mark.parametrize("cleanup_fails", [False, True])
+@pytest.mark.parametrize(
+    ("cleanup_fails", "expected_notes"),
+    [
+        (False, []),
+        (True, ["Failed to clean up the realtime subscription"]),
+    ],
+)
 async def test_realtime_failed_readiness_cannot_activate_later(
-    monkeypatch: pytest.MonkeyPatch, *, cancelled: bool, cleanup_fails: bool
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    cancelled: bool,
+    cleanup_fails: bool,
+    expected_notes: list[str],
 ) -> None:
     official = FakeCentrifugeClient()
     client = VolcanoClient(
@@ -4258,8 +4278,9 @@ async def test_realtime_failed_readiness_cannot_activate_later(
         else:
             fail.set()
         error = asyncio.CancelledError if cancelled else type(centrifuge_error(""))
-        with pytest.raises(error):
+        with pytest.raises(error) as failure:
             await subscribing
+        assert getattr(failure.value, "__notes__", []) == expected_notes
     try:
         await stale.emit_subscribed()
         await stale.emit("late acknowledgement")

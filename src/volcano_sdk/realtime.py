@@ -17,7 +17,7 @@ from typing import (
     TypeVar,
     overload,
 )
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 
 from centrifuge import CentrifugeError, Client
 from typing_extensions import override
@@ -247,7 +247,7 @@ def _postgres_fetch_config(
 @dataclass(frozen=True, slots=True)
 class _PostgresDeliveryIdentity:
     session_lineage: SessionOperations | None
-    subscription_epoch: int
+    subscription_epoch: object
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,7 +261,7 @@ class _CallbackDelivery:
     event: str
     data: object
     postgres_identity: _PostgresDeliveryIdentity | None = None
-    delivery_epoch: int | None = None
+    delivery_epoch: object | None = None
 
 
 def _is_postgres_event(value: object) -> TypeGuard[PostgresEvent]:
@@ -270,6 +270,10 @@ def _is_postgres_event(value: object) -> TypeGuard[PostgresEvent]:
 
 def _is_object_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
     return isinstance(value, Mapping)
+
+
+def _is_object_dict(value: object) -> TypeGuard[dict[object, object]]:
+    return isinstance(value, dict)
 
 
 def _is_object_sequence(value: object) -> TypeGuard[list[object] | tuple[object, ...]]:
@@ -535,7 +539,7 @@ class _ProjectAwareSubscriptions(dict[str, _SubscriptionT]):
 
 
 def _project_subscriptions(value: object) -> _ProjectAwareSubscriptions[object]:
-    if not _is_object_mapping(value) or not isinstance(value, dict):
+    if not _is_object_dict(value):
         raise TypeError(SUBSCRIPTION_REGISTRY_UNAVAILABLE)
     subscriptions = _ProjectAwareSubscriptions[object]()
     for channel, subscription in value.items():
@@ -740,14 +744,15 @@ class Channel:
         self._presence_syncing: bool = False
         self._tracked_state: Mapping[str, JSONValue] = MappingProxyType({})
         self._subscribe_lock: asyncio.Lock = asyncio.Lock()
-        self._subscribe_generation: int = 0
+        # Fresh identities invalidate stale work without implying an order.
+        self._subscribe_generation: object = object()
         self._readiness_task: asyncio.Task[None] | None = None
         self._subscription: CentrifugeSubscription | None = None
         self._subscription_events: _ChannelEvents | None = None
         self._subscribed: bool = False
         self._paused: bool = True
-        self._delivery_epoch: int = 0
-        self._presence_epoch: int = 0
+        self._delivery_epoch: object = object()
+        self._presence_epoch: object = object()
         self._presence_lock: asyncio.Lock = asyncio.Lock()
         self._presence_sync_task: asyncio.Task[None] | None = None
         self._presence_sync_pending: bool = False
@@ -756,7 +761,7 @@ class Channel:
         )
         self._callback_task: asyncio.Task[None] | None = None
         self._pending_presence_sync: object = NO_PENDING_CALLBACK
-        self._postgres_epoch: int = 0
+        self._postgres_epoch: object = object()
         self._postgres_session_lineage: SessionOperations | None = None
         self._postgres_lock: asyncio.Lock = asyncio.Lock()
         self._postgres_worker: PostgresFetchWorker[_PostgresDelivery] | None = None
@@ -828,7 +833,7 @@ class Channel:
         self._postgres_filters[id(filtered)] = (event, schema, table)
 
         def unsubscribe() -> None:
-            callbacks = self._callbacks.get("*", [])
+            callbacks = self._callbacks["*"]
             if filtered in callbacks:
                 callbacks.remove(filtered)
             _ = self._postgres_filters.pop(id(filtered), None)
@@ -850,7 +855,7 @@ class Channel:
         self._callbacks.setdefault("presence_sync", []).append(callback)
 
         def unsubscribe() -> None:
-            callbacks = self._callbacks.get("presence_sync", [])
+            callbacks = self._callbacks["presence_sync"]
             if callback in callbacks:
                 callbacks.remove(callback)
 
@@ -906,13 +911,13 @@ class Channel:
         if self._type != "postgres":
             return
         await self._stop_postgres_worker()
-        self._postgres_epoch += 1
+        self._postgres_epoch = object()
         self._postgres_session_lineage = self._realtime._connection_lineage()
 
     async def _end_postgres_epoch(self) -> None:
         if self._type != "postgres":
             return
-        self._postgres_epoch += 1
+        self._postgres_epoch = object()
         await self._stop_postgres_worker()
 
     async def _stop_postgres_worker(self) -> None:
@@ -932,7 +937,7 @@ class Channel:
         return (
             self._subscribed
             and session is not None
-            and identity.subscription_epoch == self._postgres_epoch
+            and identity.subscription_epoch is self._postgres_epoch
             and identity.session_lineage == lineage
         )
 
@@ -1165,11 +1170,11 @@ class Channel:
         if delivery.delivery_epoch is not None:
             return (
                 not self._paused or delivery.event == "presence_sync"
-            ) and delivery.delivery_epoch == self._callback_epoch(delivery.event)
+            ) and delivery.delivery_epoch is self._callback_epoch(delivery.event)
         identity = delivery.postgres_identity
         return identity is None or self._postgres_delivery_is_current(identity)
 
-    def _callback_epoch(self, event: str) -> int:
+    def _callback_epoch(self, event: str) -> object:
         if event in {"join", "leave", "presence_sync"}:
             return self._presence_epoch
         return self._delivery_epoch
@@ -1336,9 +1341,9 @@ class Channel:
         self._discard_callbacks()
 
     def _discard_callbacks(self, *, presence_only: bool = False) -> None:
-        self._presence_epoch += 1
+        self._presence_epoch = object()
         if not presence_only:
-            self._delivery_epoch += 1
+            self._delivery_epoch = object()
         # Free capacity before recovered publications arrive behind a slow callback.
         for _ in range(self._callback_queue.qsize()):
             delivery = self._callback_queue.get_nowait()
@@ -1635,7 +1640,7 @@ class Realtime:
         return None
 
     async def _remove_channel(self, channel: Channel) -> None:
-        channel._subscribe_generation += 1
+        channel._subscribe_generation = object()
         await self._discard_subscription(channel)
         await channel._reset()
 
@@ -1682,7 +1687,9 @@ class Realtime:
     def _address(self) -> str:
         parsed = urlsplit(self._api_url)
         scheme = "wss" if parsed.scheme == "https" else "ws"
-        query = f"apikey={quote(self._client_context._anon_token(), safe='')}"
+        query = urlencode(
+            {"apikey": self._client_context._anon_token()}, quote_via=quote
+        )
         return urlunsplit((scheme, parsed.netloc, "/realtime/v1/websocket", query, ""))
 
     async def _connect(self) -> _VolcanoCentrifugeConnection:
@@ -1773,7 +1780,7 @@ class Realtime:
         ):
             # An explicit pause or removal owns the newer subscription intent.
             return
-        channel._subscribe_generation += 1
+        channel._subscribe_generation = object()
         channel._subscription_events = None
         channel._pause_delivery()
         try:
@@ -1784,9 +1791,9 @@ class Realtime:
             error.add_note("Failed to clean up the realtime subscription")
 
     async def _prepare_subscription(
-        self, channel: Channel, generation: int
+        self, channel: Channel, generation: object
     ) -> CentrifugeSubscription:
-        if generation != channel._subscribe_generation:
+        if generation is not channel._subscribe_generation:
             raise asyncio.CancelledError
         if self._channels.get(channel._name) is not channel:
             raise RuntimeError(CHANNEL_NOT_MANAGED)
@@ -1846,7 +1853,7 @@ class Realtime:
 
     async def _unsubscribe(self, channel: Channel) -> None:
         async with self._connection_lock:
-            channel._subscribe_generation += 1
+            channel._subscribe_generation = object()
             if not channel._paused:
                 channel._pause_delivery()
             if channel._subscription is not None:
@@ -1859,7 +1866,7 @@ class Realtime:
             self._connection = None
             channels = tuple(self._channels.values())
             for channel in channels:
-                channel._subscribe_generation += 1
+                channel._subscribe_generation = object()
                 channel._invalidate()
             cancelled: asyncio.CancelledError | None = None
             try:
