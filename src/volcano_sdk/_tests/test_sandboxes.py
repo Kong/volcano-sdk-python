@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from typing_extensions import override
 
 from volcano_sdk import (
     AuthenticationError,
@@ -18,15 +19,20 @@ from volcano_sdk import (
     Sandboxes,
     SandboxSession,
     Session,
+    SessionChangedError,
     TransportError,
     ValidationError,
     VolcanoClient,
 )
 from volcano_sdk._transport import GeneratedTransport
 
+from .session_fixtures import access_token
+from .transport_fixtures import RejectingTransport
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from volcano_sdk._session_operations import SessionOperations
     from volcano_sdk.sandbox_models import SandboxExecOptions
 
 PROJECT = "00000000-0000-4000-8000-000000000001"
@@ -417,3 +423,141 @@ def test_sandbox_file_boundary_and_invalid_encoding() -> None:
     server.reply({"data": "!!!!"})
     with pytest.raises(binascii.Error):
         _ = session.files.read("/workspace/invalid")
+
+
+def test_sandbox_management_keeps_service_credentials_after_sign_in() -> None:
+    server = SandboxHTTP()
+    _ = server.client.auth.set_session(Session("user-access", "refresh", "user"))
+    server.reply(session_body(), 201)
+    handle = server.client.sandboxes.create(
+        PROJECT, region="aws-us-east-1", preset="python3.12"
+    )
+    for operation in (handle.suspend, handle.resume, handle.terminate):
+        server.reply(session_body(), 202)
+        _ = operation()
+    server.reply(None, 204)
+    server.client.sandboxes.grant(SESSION, SUBJECT, "2026-09-25T00:00:00Z")
+    server.reply(None, 204)
+    server.client.sandboxes.revoke(SESSION, SUBJECT)
+    server.reply(
+        command_body()
+        | {"session_id": SESSION, "region": "aws-us-east-1", "duration_ms": 1}
+    )
+    _ = server.client.sandboxes.exec(
+        PROJECT, "run", region="aws-us-east-1", preset="python3.12"
+    )
+    server.reply({"data": []})
+    _ = server.client.sandboxes.presets()
+    assert {request.headers["Authorization"] for request in server.requests} == {
+        "Bearer service"
+    }
+
+
+def test_sandbox_project_user_cannot_manage_without_service_credentials() -> None:
+    client = VolcanoClient(anon_key="anon")
+    _ = client.auth.set_session(Session("user-access", "refresh", "user"))
+    with pytest.raises(AuthenticationError, match="No service key configured"):
+        _ = client.sandboxes.create(
+            PROJECT, region="aws-us-east-1", preset="python3.12"
+        )
+
+
+def test_sandbox_refresh_keeps_command_identity() -> None:
+    server = SandboxHTTP()
+    _ = server.client.auth.set_session(Session(access_token("old"), "refresh", SUBJECT))
+    server.reply(session_body())
+    handle = server.client.sandboxes.get(SESSION)
+    server.reply({}, 401)
+    server.reply(
+        {
+            "access_token": access_token("new"),
+            "refresh_token": "new-refresh",
+            "token_type": "bearer",
+            "expires_in": 3600,
+            "user": {"id": SUBJECT, "email": "user@example.com", "status": "active"},
+        }
+    )
+    server.reply(command_body())
+    assert handle.exec("run", request_id=KEY).stdout == "hello"
+    assert server.requests[-3].headers["Idempotency-Key"] == KEY
+    assert server.requests[-1].headers["Idempotency-Key"] == KEY
+    assert (
+        server.requests[-1].headers["Authorization"] == f"Bearer {access_token('new')}"
+    )
+    assert len(server.requests) == 4
+
+
+def test_sandbox_granted_operations_keep_user_credentials() -> None:
+    server = SandboxHTTP()
+    _ = server.client.auth.set_session(Session("user-access", "refresh", "user"))
+    server.reply(session_body())
+    handle = server.client.sandboxes.get(SESSION)
+    server.reply(command_body())
+    _ = handle.exec("run")
+    server.reply(None, 204)
+    handle.files.write("/workspace/file", b"hello")
+    server.reply({"data": "aGVsbG8="})
+    assert handle.files.read("/workspace/file") == b"hello"
+    server.reply(
+        {"url": "https://access.test", "token": "secret", "expires_at": "tomorrow"}
+    )
+    _ = handle.access(8080)
+    assert {request.headers["Authorization"] for request in server.requests} == {
+        "Bearer user-access"
+    }
+
+
+def test_sandbox_requires_its_transport_capability() -> None:
+    client = VolcanoClient(
+        anon_key="anon", service_key="service", _transport=RejectingTransport()
+    )
+    with pytest.raises(
+        TypeError, match=r"^Transport does not support Sandbox operations$"
+    ):
+        _ = client.sandboxes.get(SESSION)
+
+
+def test_sandbox_cleanup_preserves_the_body_failure() -> None:
+    server = SandboxHTTP()
+    server.reply(session_body())
+    handle = server.client.sandboxes.get(SESSION)
+    server.reply({"error": "cleanup failed"}, 409)
+    with pytest.raises(ValueError, match="body failed") as caught:
+        fail_inside_session(handle)
+    assert caught.value.__notes__ == ["Sandbox cleanup failed: cleanup failed"]
+    assert server.requests[-1].method == "DELETE"
+    server.reply({"error": "cleanup failed"}, 409)
+    with pytest.raises(ConflictError, match="cleanup failed"), handle:
+        pass
+
+
+class SwitchingSandboxClient(VolcanoClient):
+    def __init__(self, server: SandboxHTTP) -> None:
+        self.switch_next: bool = False
+        super().__init__(
+            anon_key="anon",
+            service_key="service",
+            _transport=GeneratedTransport(
+                api_url="https://sandbox.test",
+                httpx_transport=httpx.MockTransport(server.handle),
+            ),
+        )
+
+    @override
+    def _capture_session_binding(self) -> tuple[int, SessionOperations, Session | None]:
+        binding = super()._capture_session_binding()
+        if self.switch_next:
+            self.switch_next = False
+            _ = self.auth.set_session(Session("new-access", "refresh", "new-user"))
+        return binding
+
+
+def test_sandbox_rejects_a_user_switch_before_dispatch() -> None:
+    server = SandboxHTTP()
+    client = SwitchingSandboxClient(server)
+    _ = client.auth.set_session(Session("old-access", "refresh", "old-user"))
+    client.switch_next = True
+    server.reply(session_body())
+    with pytest.raises(SessionChangedError):
+        _ = client.sandboxes.get(SESSION)
+    assert server.requests == []

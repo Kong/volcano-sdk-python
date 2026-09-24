@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from uuid import UUID, uuid4
 
-from ._transport import TransportResponse, invoke, response_payload
+from ._transport import TransportResponse, response_payload
 from .errors import ValidationError
 
 if TYPE_CHECKING:
@@ -184,6 +184,7 @@ def command_body(command: str, options: Mapping[str, object]) -> dict[str, JSONV
     return body
 
 
+@runtime_checkable
 class SandboxTransport(Protocol):
     """Internal transport implemented using generated operations."""
 
@@ -197,12 +198,9 @@ class SandboxTransport(Protocol):
 class SandboxRequests:
     """Bind current credentials without falling back to an anonymous key."""
 
-    def __init__(
-        self, transport: SandboxTransport, authorization: Callable[[], str]
-    ) -> None:
-        """Bind a transport and a credential provider."""
-        self.transport: SandboxTransport = transport
-        self.authorization: Callable[[], str] = authorization
+    def __init__(self, dispatch: Callable[[SandboxRequest], TransportResponse]) -> None:
+        """Bind credential-aware dispatch."""
+        self.dispatch: Callable[[SandboxRequest], TransportResponse] = dispatch
 
     def send(self, request: SandboxRequest, status: int = 200) -> object:
         """Dispatch through normal typed error handling.
@@ -211,11 +209,7 @@ class SandboxRequests:
             The validated response or request value.
 
         """
-        response = invoke(
-            self.transport.sandbox_request,
-            authorization=self.authorization(),
-            request=request,
-        )
+        response = self.dispatch(request)
         return response_payload(response, status)
 
 

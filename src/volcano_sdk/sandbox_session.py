@@ -186,4 +186,9 @@ class SandboxSession:
     ) -> None:
         """Request cleanup even if the context body raises."""
         if self.state != "terminated":
-            _ = self.terminate()
+            try:
+                _ = self.terminate()
+            except Exception as cleanup_error:
+                if _error is None:
+                    raise
+                _error.add_note(f"Sandbox cleanup failed: {cleanup_error}")

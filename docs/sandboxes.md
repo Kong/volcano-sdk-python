@@ -28,7 +28,8 @@ print(result.stdout, result.exit_code)
 ```
 
 Keep the same `request_id` when retrying an uncertain create or execution. A new
-ID represents a new operation. The SDK does not automatically replay commands.
+ID represents a new operation. The SDK does not replay commands after transport failures. A rejected user token
+is refreshed once; the retry preserves the request ID.
 Nonzero command exits and timeouts are result fields, not API exceptions.
 API failures raise typed exceptions such as `ConflictError` or `RateLimitedError`;
 these preserve `status`, `code`, and `retry_after` when supplied by the server.
@@ -89,3 +90,9 @@ Only trusted backend code should call
 `client.sandboxes.revoke(session_id, auth_user_id)`. Project users can access only
 sessions explicitly granted to them; they cannot create or manage sessions.
 Service keys stay on the backend. Anonymous keys alone cannot use this facade.
+
+When both credentials are configured, management operations use the service key.
+Granted session reads, commands, files, and HTTP access use the signed-in user.
+
+Context cleanup preserves an existing body exception when termination also fails,
+and attaches the cleanup failure as an exception note.
