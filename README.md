@@ -69,17 +69,22 @@ execution = client.durable.start(
 )
 print(execution.id, execution.status)
 
-execution = client.durable.get(
+owner_client = VolcanoClient(
+    api_url="https://api.volcano.dev",
+    anon_key="your-anon-key",
+    access_token="your-platform-user-token",
+)
+execution = owner_client.durable.get(
     "00000000-0000-4000-8000-000000000001", "order-pipeline", execution.id
 )
 print(execution.is_terminal, execution.result)
 
-executions = client.durable.list(
+executions = owner_client.durable.list(
     "00000000-0000-4000-8000-000000000001", "order-pipeline", status="running"
 )
 print(executions.total, executions.has_more)
 
-client.durable.stop(
+owner_client.durable.stop(
     "00000000-0000-4000-8000-000000000001", "order-pipeline", execution.id
 )
 
@@ -239,18 +244,18 @@ A function's own response, HTTP 403, or a network failure never triggers this re
 Anonymous and service keys do not refresh.
 
 `durable.start()` begins an execution of a deployed durable function and returns
-a handle rather than a result: an execution can run for hours, so its result is
-read back with `durable.get()`. It takes the credential `functions.invoke()`
+a handle rather than a result: an execution can run for up to 366 days, so its
+result is read back with `durable.get()`. It takes the credential `functions.invoke()`
 takes, and is the only durable operation an application credential may perform.
 An `execution_name` makes the start idempotent — starting again under the same
 name returns the execution that already exists rather than beginning a second
 one, and is charged once.
 
 `durable.get()`, `durable.list()` and `durable.stop()` are owner-scoped and need
-the project's own platform token, because an execution is addressed by its id
-alone and an anonymous key is held by everyone who loads the page. Neither an
-auth-user session from `sign_in()` nor a service key is accepted -- the routes
-take a user token, and anything else is answered 401. Poll them from a backend.
+the project owner's platform user token, because an execution is addressed by
+its id alone and an anonymous key is held by everyone who loads the page.
+Auth-user sessions from `sign_in()`, anonymous keys, service keys, and project
+access tokens are not accepted. Poll them from a trusted backend.
 `get()` carries `result` once the execution has succeeded and `error` when it
 failed; `result_expired` separates a result the platform has discarded from a
 function that returned nothing. `is_terminal` reports whether the execution has
@@ -330,6 +335,20 @@ platform rather than by your code, so an execution suspended for an hour costs
 nothing while it waits. Running the handler anywhere durable execution does not
 exist raises `DurableRuntimeMissingError` rather than an import error from an
 unfamiliar package.
+
+Run the same handler through the local durable engine:
+
+```bash
+volcano start
+volcano durable deploy --all
+volcano durable start order-pipeline --input '{"order_id":"order-9"}'
+```
+
+Local waits resolve immediately by default while preserving checkpoint and replay
+behavior. Set `LOCAL_DURABLE_REAL_TIME=true` before `volcano start` when wait
+timing must match the deployed function. Local executions persist across
+`volcano stop` and `volcano start`. Volcano does not expose externally completed
+callbacks; use `ctx.wait_until` to poll application state instead.
 
 `logs.search()` returns an immutable page of retained runtime or deployment log
 events. Pass `next_cursor` back as `cursor` to continue a search. `logs.activity()`
