@@ -202,21 +202,20 @@ class PostgresFetchWorker(Generic[FallbackT]):
             self._queue.task_done()
 
     async def _run(self) -> None:
-        pending: PostgresFetchJob[FallbackT] | _StopWorker | None = None
+        item = await self._queue.get()
         while True:
-            item = pending if pending is not None else await self._queue.get()
-            pending = None
             batch: list[PostgresFetchJob[FallbackT]] = []
             try:
                 if isinstance(item, _StopWorker):
                     return
                 batch.append(item)
-                pending = await self._collect_batch(batch)
+                next_item = await self._collect_batch(batch)
                 await self._fetch_and_deliver(batch)
             finally:
                 self._queue.task_done()
                 for _job in batch[1:]:
                     self._queue.task_done()
+            item = next_item if next_item is not None else await self._queue.get()
 
     async def _collect_batch(
         self,
@@ -244,11 +243,8 @@ class PostgresFetchWorker(Generic[FallbackT]):
         self,
         deadline: float,
     ) -> PostgresFetchJob[FallbackT] | _StopWorker | None:
-        remaining = deadline - asyncio.get_running_loop().time()
-        if remaining <= 0:
-            return None
         try:
-            async with asyncio.timeout(remaining):
+            async with asyncio.timeout_at(deadline):
                 return await self._queue.get()
         except TimeoutError:
             return None
@@ -295,7 +291,8 @@ class PostgresFetchWorker(Generic[FallbackT]):
             return
         if len(result) != len(jobs):
             raise RuntimeError(_INVALID_RESULT_COUNT)
-        for job, record in zip(jobs, result, strict=True):
+        for index, job in enumerate(jobs):
+            record = result[index]
             await self._deliver(PostgresFetchOutcome(job=job, record=record))
 
     async def _deliver_failure(

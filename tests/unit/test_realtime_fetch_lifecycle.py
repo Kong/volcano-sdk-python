@@ -9,6 +9,7 @@ from test_realtime_fetch_worker import (
     OutcomeRecorder,
     RecordingBatchFetch,
     fetch_job,
+    passthrough_job,
 )
 
 from volcano_sdk._realtime_fetch_worker import PostgresFetchOutcome, PostgresFetchWorker
@@ -207,6 +208,73 @@ async def test_batch_window_flushes_without_waiting_for_another_row_or_close() -
         await asyncio.wait_for(worker.close(), timeout=1)
 
         assert fetch.calls == [(1,)]
+    finally:
+        await worker.abort()
+
+
+async def test_default_batch_window_flushes_before_another_row_arrives() -> None:
+    fetch = RecordingBatchFetch()
+    delivered = asyncio.Event()
+
+    async def deliver(_outcome: PostgresFetchOutcome[str]) -> None:
+        delivered.set()
+
+    worker = PostgresFetchWorker(fetch, deliver, queue_limit=2, max_batch_size=2)
+    try:
+        await worker.enqueue(fetch_job(1))
+        _ = await asyncio.wait_for(delivered.wait(), timeout=0.5)
+        await worker.enqueue(fetch_job(2))
+        await asyncio.wait_for(worker.close(), timeout=1)
+
+        assert fetch.calls == [(1,), (2,)]
+    finally:
+        await worker.abort()
+
+
+async def test_full_batch_flushes_before_close() -> None:
+    fetch = RecordingBatchFetch()
+    delivered = asyncio.Event()
+    outcomes: list[PostgresFetchOutcome[str]] = []
+
+    async def deliver(outcome: PostgresFetchOutcome[str]) -> None:
+        outcomes.append(outcome)
+        if len(outcomes) == 2:
+            delivered.set()
+
+    worker = PostgresFetchWorker(
+        fetch, deliver, queue_limit=2, max_batch_size=2, batch_window_seconds=60
+    )
+    try:
+        await worker.enqueue(fetch_job(1))
+        await worker.enqueue(fetch_job(2))
+        _ = await asyncio.wait_for(delivered.wait(), timeout=1)
+        await asyncio.wait_for(worker.close(), timeout=1)
+
+        assert fetch.calls == [(1, 2)]
+        assert outcomes == [
+            PostgresFetchOutcome(job=fetch_job(1), record={"id": 1}),
+            PostgresFetchOutcome(job=fetch_job(2), record={"id": 2}),
+        ]
+    finally:
+        await worker.abort()
+
+
+async def test_passthrough_does_not_enter_a_fetch_batch() -> None:
+    fetch = RecordingBatchFetch()
+    deliver = OutcomeRecorder()
+    worker = PostgresFetchWorker(
+        fetch, deliver, queue_limit=2, max_batch_size=2, batch_window_seconds=0.01
+    )
+    try:
+        await worker.enqueue(passthrough_job("full-payload"))
+        await worker.enqueue(fetch_job(1))
+        await asyncio.wait_for(worker.close(), timeout=1)
+
+        assert fetch.calls == [(1,)]
+        assert deliver.items == [
+            PostgresFetchOutcome(job=passthrough_job("full-payload")),
+            PostgresFetchOutcome(job=fetch_job(1), record={"id": 1}),
+        ]
     finally:
         await worker.abort()
 
