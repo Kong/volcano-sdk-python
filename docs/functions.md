@@ -104,6 +104,30 @@ def handler(event, ctx):
     return {"charge_id": charge["id"]}
 ```
 
+Place the handler and its dependency file under the function name:
+
+```text
+volcano/functions/charge-order/
+├── main.py
+└── requirements.txt
+```
+
+```text
+# volcano/functions/charge-order/requirements.txt
+volcano-sdk-python
+```
+
+Declare the same name as durable in `volcano-config.yaml`; the decorator does not register the function with the CLI:
+
+```yaml
+version: 1
+project:
+  name: my-app
+functions:
+  - name: charge-order
+    kind: durable
+```
+
 Volcano records each context operation. Resumed executions replay recorded results instead of repeating completed work. Keep changing decisions inside `ctx.step()`. Use `ctx.wait_until()` to poll application state. Volcano does not expose externally completed callbacks.
 
 ## Run durable functions locally
