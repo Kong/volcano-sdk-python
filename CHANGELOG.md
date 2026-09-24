@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/Kong/volcano-sdk-python/compare/v0.13.0...v0.13.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* **realtime:** validate wire events and bound callback lifecycle ([#350](https://github.com/Kong/volcano-sdk-python/issues/350)) ([9a4deb1](https://github.com/Kong/volcano-sdk-python/commit/9a4deb13477150c6b26e7fed61fc56ce7c7aa1e6))
+
 ## [0.13.0](https://github.com/Kong/volcano-sdk-python/compare/v0.12.0...v0.13.0) (2026-09-23)
 
 
