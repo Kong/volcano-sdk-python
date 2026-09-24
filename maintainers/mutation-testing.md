@@ -1,16 +1,20 @@
 # Mutation testing
 
-`uv run --locked poe quality` runs all native checks and mutates every changed
-handwritten runtime module plus the lock acquisition, guard, renewal, and worker
-modules. CI uses the same `checks` and `mutation` tasks in separate jobs, then
-requires both through `Quality Gate`. The weekly `poe mutation-full` task audits
-every handwritten runtime module without a debt baseline.
+`uv run --locked poe quality` runs all native checks and mutates every handwritten
+runtime module. CI runs `checks` and divides `mutation-full` across eight jobs;
+the required `Quality Gate` checks every job and the complete runtime inventory.
+The weekly full audit also runs `mutation-full` without sharding. `poe mutation`
+remains a faster local diagnostic for changed modules and the lock runtime.
 
 Mutmut's [native configuration](https://mutmut.readthedocs.io/en/latest/) lives
 in `pyproject.toml`; it excludes only the generated OpenAPI client. Mutmut can
-select modules by name but has no Git-changed-module option and returns success
-when mutants survive. `scripts/mutation.sh` selects module names from Git and
-`scripts/mutation_results.py` reads only those modules' native metadata. The
+select modules by name but cannot divide a run across CI jobs or verify that
+their combined results cover every tracked source module. GitHub's matrix
+reports job success without checking that source inventory.
+`scripts/mutation.sh` assigns Git-tracked runtime modules to shards,
+`scripts/mutation_results.py` reads each shard's native metadata, and
+`scripts/check_mutation_shards.py` checks that all eight reports cover each
+handwritten module exactly once. The
 report at `reports/mutation.json` distinguishes killed, statically invalid,
 surviving, uncovered, timed-out, crashed, interrupted, and missing results.
 A pytest internal error is a harness crash, not a killed mutant.
