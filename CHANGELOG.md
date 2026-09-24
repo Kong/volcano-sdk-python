@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.2](https://github.com/Kong/volcano-sdk-python/compare/v0.13.1...v0.13.2) (2026-09-24)
+
+
+### Bug Fixes
+
+* **python:** guard function resolution and lock expiry boundaries ([#361](https://github.com/Kong/volcano-sdk-python/issues/361)) ([505b7e2](https://github.com/Kong/volcano-sdk-python/commit/505b7e2e8c79be9a086430cc462a04191994be84))
+* validate log JSON boundaries and close mutation gaps ([#356](https://github.com/Kong/volcano-sdk-python/issues/356)) ([d1e76da](https://github.com/Kong/volcano-sdk-python/commit/d1e76da9a7c164a69b87f570bd2216ebe20afe82))
+
 ## [0.13.1](https://github.com/Kong/volcano-sdk-python/compare/v0.13.0...v0.13.1) (2026-09-24)
 
 
