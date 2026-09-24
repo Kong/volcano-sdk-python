@@ -20,12 +20,16 @@ def lease(*, fencing_token: int = 7) -> LockLease:
 
 
 class RecordingLocks:
-    def __init__(self, replacement: LockLease) -> None:
+    def __init__(self, replacement: LockLease, *, max_calls: int | None = None) -> None:
         self.replacement: LockLease = replacement
         self.calls: list[tuple[str, LockLease, int]] = []
+        self.max_calls: int | None = max_calls
 
     def renew(self, key: str, lease: LockLease, *, ttl: int) -> LockLease:
         self.calls.append((key, lease, ttl))
+        assert self.max_calls is None or len(self.calls) <= self.max_calls, (
+            "renewal exceeded the test's call bound"
+        )
         return self.replacement
 
 
@@ -210,7 +214,7 @@ def test_lock_renewer_does_not_renew_after_the_lease_expires_while_waiting(
     clock = [100.0]
     monkeypatch.setattr(guard_module, "lease_now", lambda: clock[0])
     guard = InspectedLockGuard(lease(), ttl=5, started_at=clock[0])
-    locks = RecordingLocks(lease(fencing_token=8))
+    locks = RecordingLocks(lease(fencing_token=8), max_calls=0)
     renewer = InspectedLockRenewer(locks, "build", guard, ttl=5)
     wait = ExpiringWait(clock)
     monkeypatch.setattr(renewer, "_stop", wait)
