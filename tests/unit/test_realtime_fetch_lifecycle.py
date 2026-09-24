@@ -230,3 +230,36 @@ async def test_batch_capacity_and_zero_window_preserve_delivery_order(
         assert [item.record for item in deliver.items] == [{"id": 1}, {"id": 2}]
     finally:
         await worker.abort()
+
+
+async def test_zero_batch_window_keeps_queued_followup_fetches_separate() -> None:
+    first_fetch_started = asyncio.Event()
+    release_first_fetch = asyncio.Event()
+    recording_fetch = RecordingBatchFetch()
+
+    async def fetch(
+        requests: tuple[_PostgresFetchRequest, ...],
+    ) -> tuple[dict[str, int], ...]:
+        if requests[0].row_id == 1:
+            first_fetch_started.set()
+            _ = await release_first_fetch.wait()
+        return await recording_fetch(requests)
+
+    worker = PostgresFetchWorker(
+        fetch,
+        OutcomeRecorder(),
+        queue_limit=3,
+        max_batch_size=3,
+        batch_window_seconds=0,
+    )
+    try:
+        await worker.enqueue(fetch_job(1))
+        _ = await asyncio.wait_for(first_fetch_started.wait(), timeout=1)
+        await worker.enqueue(fetch_job(2))
+        await worker.enqueue(fetch_job(3))
+        release_first_fetch.set()
+        await asyncio.wait_for(worker.close(), timeout=1)
+
+        assert recording_fetch.calls == [(1,), (2,), (3,)]
+    finally:
+        await worker.abort()
