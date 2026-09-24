@@ -58,6 +58,7 @@ for index in "${!paths[@]}"; do
     continue
   fi
   path=${paths[$index]}
+  selected_path=$path
   printf '%s\0' "$path" >> "$targets"
   patterns+=("${modules[$index]}.x*")
 done
@@ -69,6 +70,19 @@ fi
 
 # A fresh run must not inherit stale test-to-mutant mappings or verdicts.
 rm -rf -- mutants
+
+# Mutmut rejects an exact wildcard for a module with no functions. Record that
+# module explicitly instead of treating a native no-match assertion as a kill.
+if [[ -n ${MUTATION_MODULE:-} ]] && ! python -c '
+import sys
+from pathlib import Path
+from scripts.mutation_results import has_functions
+raise SystemExit(0 if has_functions(Path(sys.argv[1])) else 1)
+' "$selected_path"; then
+  python -m scripts.mutation_results "$targets" "$failed"
+  exit
+fi
+
 if ! mutmut run --max-children 1 "${patterns[@]}"; then
   printf '%s\0' 'mutation run' >> "$failed"
 fi

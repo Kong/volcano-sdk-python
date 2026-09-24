@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import cast
 
@@ -17,7 +18,11 @@ PROJECT = Path(__file__).parents[2]
 
 
 def mutation_harness(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, modules: list[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    modules: list[str],
+    *,
+    real_python: bool = False,
 ) -> None:
     """Install shell stubs for testing the native Mutmut selector."""
     for module in modules:
@@ -32,6 +37,10 @@ def mutation_harness(
     _ = (scripts / "mutation.sh").write_bytes(
         (PROJECT / "scripts/mutation.sh").read_bytes()
     )
+    if real_python:
+        _ = (scripts / "mutation_results.py").write_bytes(
+            (PROJECT / "scripts/mutation_results.py").read_bytes()
+        )
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     stubs = {
@@ -42,12 +51,17 @@ def mutation_harness(
             "cat git-paths.bin\n"
         ),
         "mutmut": "#!/bin/sh\nprintf '%s\\n' \"$@\" > mutation-args.txt\n",
-        "python": "#!/bin/sh\nexit 0\n",
     }
     for name, content in stubs.items():
         stub = bin_dir / name
         _ = stub.write_text(content, encoding="utf-8")
         stub.chmod(0o755)
+    python = bin_dir / "python"
+    if real_python:
+        python.symlink_to(sys.executable)
+    else:
+        _ = python.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        python.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
 
 
@@ -136,11 +150,18 @@ def test_mutation_matrix_covers_all_handwritten_modules(
 
     plan = run_mutation_matrix(tmp_path)
     assert plan.returncode == 0, plan.stderr
-    assert json.loads(plan.stdout) == [module_name(path) for path in modules]
+    planned: object = cast("object", json.loads(plan.stdout))
+    assert isinstance(planned, list)
+    values = cast("list[object]", planned)
+    matrix_modules: list[str] = []
+    for name in values:
+        assert isinstance(name, str)
+        matrix_modules.append(name)
+    assert matrix_modules == [module_name(path) for path in modules]
 
     selected: list[str] = []
     selected_patterns: list[str] = []
-    for module in json.loads(plan.stdout):
+    for module in matrix_modules:
         monkeypatch.setenv("MUTATION_MODULE", module)
         result = run_mutation_script(tmp_path)
         assert result.returncode == 0, result.stderr
@@ -181,6 +202,26 @@ def test_duplicate_import_name_fails_inventory(
     result = run_mutation_matrix(tmp_path)
     assert result.returncode == 1
     assert "Duplicate Python runtime module" in result.stderr
+
+
+def test_functionless_package_init_skips_native_no_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = "src/volcano_sdk/__init__.py"
+    mutation_harness(tmp_path, monkeypatch, [source], real_python=True)
+    _ = (tmp_path / source).write_text('"""Public exports."""\n', encoding="utf-8")
+    stale_metadata = tmp_path / "mutants" / f"{source}.meta"
+    stale_metadata.parent.mkdir(parents=True)
+    _ = stale_metadata.write_text('{"exit_code_by_key": {"stale": 1}}\n')
+    monkeypatch.setenv("MUTATION_MODULE", "volcano_sdk")
+    result = run_mutation_script(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / "mutation-args.txt").exists()
+    report = cast(
+        "object", json.loads((tmp_path / "reports/mutation.json").read_text())
+    )
+    assert isinstance(report, dict)
+    assert report["unmutatable_modules"] == [source]
 
 
 @pytest.mark.parametrize("module", ["volcano_sdk.missing", "-1", "not-a-module"])
