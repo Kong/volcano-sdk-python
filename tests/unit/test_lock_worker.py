@@ -261,6 +261,7 @@ def test_lock_renewer_waits_through_the_final_fractional_second(
     assert waits == [1.0, 0.5]
 
 
+@pytest.mark.order(0)
 def test_lock_renewer_passes_a_bounded_join_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

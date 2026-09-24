@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
+from state_assertions import assert_same
 from test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory
 
 from volcano_sdk import PostgresChange, VolcanoClient
-from volcano_sdk._realtime_fetch_worker import PostgresFetchJob, PostgresFetchOutcome
-from volcano_sdk.realtime import _PostgresDelivery
+from volcano_sdk._realtime_fetch_worker import (
+    PostgresFetchJob,
+    PostgresFetchOutcome,
+    PostgresFetchRequest,
+)
+from volcano_sdk.realtime import _postgres_change, _PostgresDelivery, _presence_info
 
 if TYPE_CHECKING:
     from volcano_sdk.models import JSONValue
@@ -45,6 +51,12 @@ def publication() -> dict[str, object]:
     }
 
 
+def test_postgres_wire_event_rejects_non_json_identifier() -> None:
+    malformed = {**publication(), "id": object()}
+
+    assert _postgres_change(malformed) is None
+
+
 @pytest.mark.parametrize("channel_type", ["broadcast", "presence"])
 @pytest.mark.parametrize("peer", [None, Peer("absent")])
 async def test_presence_events_do_not_populate_inactive_or_non_presence_channels(
@@ -60,6 +72,38 @@ async def test_presence_events_do_not_populate_inactive_or_non_presence_channels
     assert channel._callback_queue.empty()
 
 
+async def test_active_broadcast_channel_ignores_misrouted_presence_events() -> None:
+    client = make_client()
+    channel = client.realtime.channel("messages")
+    peer = Peer("alice")
+    try:
+        await channel.subscribe()
+        await channel._presence_join(peer)
+        assert channel._presence_state == {}
+
+        channel._presence_state[peer.client] = _presence_info(peer)
+        await channel._presence_leave(peer)
+        assert tuple(channel._presence_state) == (peer.client,)
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_presence_leave_notifies_with_the_current_roster() -> None:
+    client = make_client()
+    channel = client.realtime.channel("lobby", channel_type="presence")
+    snapshots: list[object] = []
+    _ = channel.on_presence_sync(snapshots.append)
+    try:
+        await channel.subscribe()
+        await channel._presence_join(Peer("alice"))
+        await channel._presence_leave(Peer("alice"))
+        await asyncio.wait_for(channel._callback_queue.join(), timeout=0.2)
+
+        assert snapshots[-1] == {}
+    finally:
+        await client.realtime.disconnect()
+
+
 async def test_presence_sync_without_a_subscription_has_no_work() -> None:
     realtime = make_client().realtime
     channel = realtime.channel("lobby", channel_type="presence")
@@ -68,6 +112,106 @@ async def test_presence_sync_without_a_subscription_has_no_work() -> None:
 
     assert channel.get_presence_state() == {}
     assert not channel._presence_syncing
+
+
+async def test_queued_callbacks_keep_their_delivery_identity() -> None:
+    client = make_client()
+    presence = client.realtime.channel("lobby", channel_type="presence")
+    postgres = client.realtime.channel("public:messages", channel_type="postgres")
+    _ = presence.on("join", lambda _info: None)
+    _ = postgres.on("*", lambda _change: None)
+
+    async def hold() -> None:
+        _ = await asyncio.Event().wait()
+
+    blocker = asyncio.create_task(hold())
+    presence._callback_task = blocker
+    postgres._callback_task = blocker
+    try:
+        await presence._emit("join", Peer("alice"))
+        presence_delivery = presence._callback_queue.get_nowait()
+        presence._callback_queue.task_done()
+        assert presence_delivery.delivery_epoch is presence._presence_epoch
+        assert presence_delivery.postgres_identity is None
+
+        identity = postgres._capture_postgres_delivery_identity()
+        await postgres._emit(
+            "*",
+            PostgresChange(type="INSERT", schema="public", table="messages"),
+            postgres_identity=identity,
+        )
+        postgres_delivery = postgres._callback_queue.get_nowait()
+        postgres._callback_queue.task_done()
+        assert postgres_delivery.postgres_identity is identity
+        assert postgres_delivery.delivery_epoch is None
+    finally:
+        presence._callback_task = None
+        postgres._callback_task = None
+        _ = blocker.cancel()
+        _ = await asyncio.gather(blocker, return_exceptions=True)
+
+
+async def test_postgres_delivery_queued_before_unsubscribe_is_not_dispatched() -> None:
+    client = make_client()
+    channel = client.realtime.channel("public:messages", channel_type="postgres")
+    received: list[PostgresChange] = []
+    channel.on("*", received.append)
+
+    async def hold() -> None:
+        _ = await asyncio.Event().wait()
+
+    blocker = asyncio.create_task(hold())
+    try:
+        await channel.subscribe()
+        channel._callback_task = blocker
+        change = PostgresChange(type="INSERT", schema="public", table="messages")
+        identity = channel._capture_postgres_delivery_identity()
+        await channel._deliver_postgres(
+            PostgresFetchOutcome(
+                job=PostgresFetchJob(
+                    request=None,
+                    fallback=_PostgresDelivery(change=change, identity=identity),
+                )
+            )
+        )
+        queued = channel._callback_queue.get_nowait()
+        channel._callback_queue.task_done()
+        await channel._end_postgres_epoch()
+        await channel._dispatch_delivery(queued)
+
+        assert received == []
+    finally:
+        channel._callback_task = None
+        _ = blocker.cancel()
+        _ = await asyncio.gather(blocker, return_exceptions=True)
+        await client.realtime.disconnect()
+
+
+async def test_missing_postgres_row_reports_its_identity() -> None:
+    channel = make_client().realtime.channel("public:messages", channel_type="postgres")
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+    errors: list[dict[str, object]] = []
+
+    def record(_loop: asyncio.AbstractEventLoop, context: dict[str, object]) -> None:
+        errors.append(context)
+
+    loop.set_exception_handler(record)
+    try:
+        channel._report_postgres_fetch_failure(
+            PostgresChange(type="INSERT", schema="public", table="messages"),
+            PostgresFetchRequest("main", "access", "messages", 42),
+            None,
+        )
+    finally:
+        loop.set_exception_handler(previous_handler)
+
+    assert len(errors) == 1
+    assert errors[0]["message"] == "Volcano realtime Postgres row fetch failed"
+    assert errors[0]["channel"] == channel.name
+    failure = errors[0]["exception"]
+    assert isinstance(failure, LookupError)
+    assert str(failure) == "Postgres row not found: public.messages:42"
 
 
 async def test_presence_snapshot_replays_join_and_leave_received_during_sync() -> None:
@@ -110,6 +254,73 @@ async def test_invalid_presence_snapshot_preserves_the_previous_roster(
         assert channel.get_presence_state() == original
         assert not channel._presence_syncing
         assert channel._presence_events == []
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_presence_query_replays_a_join_received_while_loading() -> None:
+    native = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    channel = client.realtime.channel("lobby", channel_type="presence")
+    try:
+        await channel.subscribe()
+        subscription = native.subscription
+        assert subscription is not None
+        subscription.presence_clients = {"alice": Peer("alice")}
+        subscription.presence_entered = asyncio.Event()
+        subscription.presence_release = asyncio.Event()
+        sync = asyncio.create_task(client.realtime._sync_presence(channel))
+        try:
+            _ = await asyncio.wait_for(
+                subscription.presence_entered.wait(), timeout=0.2
+            )
+            await channel._presence_join(Peer("bob"))
+            subscription.presence_release.set()
+            await asyncio.wait_for(sync, timeout=0.2)
+        finally:
+            subscription.presence_release.set()
+            _ = sync.cancel()
+            _ = await asyncio.gather(sync, return_exceptions=True)
+
+        assert set(channel.get_presence_state()) == {"alice", "bob"}
+        assert not channel._presence_syncing
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_cancelled_presence_query_releases_the_sync_state() -> None:
+    native = FakeCentrifugeClient()
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    channel = client.realtime.channel("lobby", channel_type="presence")
+    try:
+        await channel.subscribe()
+        subscription = native.subscription
+        assert subscription is not None
+        subscription.presence_entered = asyncio.Event()
+        subscription.presence_release = asyncio.Event()
+        sync = asyncio.create_task(client.realtime._sync_presence(channel))
+        try:
+            _ = await asyncio.wait_for(
+                subscription.presence_entered.wait(), timeout=0.2
+            )
+            assert channel._presence_syncing
+            _ = sync.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await sync
+
+            assert_same(channel._presence_syncing, expected=False)
+            assert channel._presence_events == []
+        finally:
+            subscription.presence_release.set()
+            _ = await asyncio.gather(sync, return_exceptions=True)
     finally:
         await client.realtime.disconnect()
 

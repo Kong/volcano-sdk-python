@@ -66,6 +66,17 @@ def test_killed_mutant_passes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     assert main(targets, failed) == 0
 
 
+def test_statically_invalid_mutant_is_reported_separately(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    targets, failed = fixture_report(tmp_path, 37)
+
+    assert main(targets, failed) == 0
+    report = json.loads(Path("reports/mutation.json").read_text(encoding="utf-8"))
+    assert report["outcomes"] == {"type_checked": 1}
+
+
 def test_missing_mutation_report_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

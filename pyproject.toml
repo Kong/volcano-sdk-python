@@ -52,6 +52,7 @@ dev = [
   "aws-durable-execution-sdk-python-testing>=1.2.1,<2.0.0",
   "behave>=1.3.3,<2.0.0",
   "mypy>=1.18.0",
+  "pyrefly==1.3.1",
   "openapi-python-client==0.29.0",
   "basedpyright==1.40.1",
   "pytest==9.1.1",
@@ -60,6 +61,7 @@ dev = [
   "hypothesis==6.168.0",
   "poethepoet==0.46.0",
   "pytest-asyncio==1.4.0",
+  "pytest-order==1.5.0",
   "coverage==7.16.1",
   "pytest-cov==7.1.0",
   "types-behave==1.3.0.20260408",
@@ -374,10 +376,13 @@ partial_branches = []
 
 [tool.mutmut]
 source_paths = ["src/volcano_sdk"]
+type_check_command = ["pyrefly", "check", "--output-format=json", "src/volcano_sdk/realtime.py"]
+cache_invalidation_files = ["tests/**/*.py"]
 pytest_add_cli_args_test_selection = ["tests/unit"]
-pytest_add_cli_args = ["-c", "pyproject.toml"]
+pytest_add_cli_args = ["-c", "pyproject.toml", "-x"]
 do_not_mutate = ["src/volcano_sdk/_generated/*"]
 on_dependency_change = "rerun"
+process_isolation = "forkserver"
 also_copy = [
   "features",
   "maintainers",

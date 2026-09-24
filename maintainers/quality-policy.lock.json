@@ -197,19 +197,30 @@
         "openapi-python-client.yaml",
         "README.md"
       ],
+      "cache_invalidation_files": [
+        "tests/**/*.py"
+      ],
       "do_not_mutate": [
         "src/volcano_sdk/_generated/*"
       ],
       "on_dependency_change": "rerun",
+      "process_isolation": "forkserver",
       "pytest_add_cli_args": [
         "-c",
-        "pyproject.toml"
+        "pyproject.toml",
+        "-x"
       ],
       "pytest_add_cli_args_test_selection": [
         "tests/unit"
       ],
       "source_paths": [
         "src/volcano_sdk"
+      ],
+      "type_check_command": [
+        "pyrefly",
+        "check",
+        "--output-format=json",
+        "src/volcano_sdk/realtime.py"
       ]
     },
     "mypy": {

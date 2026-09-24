@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Forked macOS workers must not query SystemConfiguration through urllib/httpx.
+export NO_PROXY='*' no_proxy='*'
+
+# Refresh mutmut's test-to-mutant map so newly added tests are selected.
+rm -rf -- mutants
+
 mkdir -p reports
 targets=reports/mutation-targets.bin
 failed=reports/mutation-failed.bin
@@ -50,7 +56,7 @@ for path in "${modules[@]}"; do
 done
 
 if [[ ${MUTATION_FULL:-0} == 1 ]]; then
-  if ! mutmut run; then
+  if ! mutmut run --max-children 1; then
     printf '%s\0' "full mutation run" >> "$failed"
   fi
 else
@@ -60,7 +66,7 @@ else
     module=${module%.py}
     patterns+=("${module//\//.}*")
   done
-  if ! mutmut run "${patterns[@]}"; then
+  if ! mutmut run --max-children 1 "${patterns[@]}"; then
     printf '%s\0' "scoped mutation run" >> "$failed"
   fi
 fi
