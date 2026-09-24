@@ -118,8 +118,12 @@ async def test_queued_callbacks_keep_their_delivery_identity() -> None:
     client = make_client()
     presence = client.realtime.channel("lobby", channel_type="presence")
     postgres = client.realtime.channel("public:messages", channel_type="postgres")
-    _ = presence.on("join", lambda _info: None)
-    _ = postgres.on("*", lambda _change: None)
+
+    def ignore_delivery(_value: object) -> None:
+        pass
+
+    _ = presence.on("join", ignore_delivery)
+    _ = postgres.on("*", ignore_delivery)
 
     async def hold() -> None:
         _ = await asyncio.Event().wait()
@@ -155,7 +159,7 @@ async def test_postgres_delivery_queued_before_unsubscribe_is_not_dispatched() -
     client = make_client()
     channel = client.realtime.channel("public:messages", channel_type="postgres")
     received: list[PostgresChange] = []
-    channel.on("*", received.append)
+    _ = channel.on("*", received.append)
 
     async def hold() -> None:
         _ = await asyncio.Event().wait()

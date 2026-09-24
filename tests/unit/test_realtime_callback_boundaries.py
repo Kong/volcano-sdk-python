@@ -81,15 +81,15 @@ async def test_connection_callbacks_keep_order_while_a_listener_is_running() -> 
         assert context.client is not None
         if context.client == "first":
             entered.set()
-            await release.wait()
+            _ = await release.wait()
         received.append(context.client)
 
-    realtime.on_connect(observe)
+    _ = realtime.on_connect(observe)
     realtime._enqueue_connection_callbacks(
         "connect", RealtimeConnectContext(client="first")
     )
     try:
-        await asyncio.wait_for(entered.wait(), timeout=0.2)
+        _ = await asyncio.wait_for(entered.wait(), timeout=0.2)
         realtime._enqueue_connection_callbacks(
             "connect", RealtimeConnectContext(client="second")
         )
@@ -204,7 +204,7 @@ async def test_stale_postgres_callback_cannot_cross_a_session_change() -> None:
     )
     channel = client.realtime.channel("public:messages", channel_type="postgres")
     received: list[object] = []
-    channel.on("*", received.append)
+    _ = channel.on("*", received.append)
     try:
         await channel.subscribe()
         delivery = _CallbackDelivery(
@@ -212,7 +212,7 @@ async def test_stale_postgres_callback_cannot_cross_a_session_change() -> None:
             PostgresChange(type="INSERT", schema="public", table="messages"),
             postgres_identity=channel._capture_postgres_delivery_identity(),
         )
-        client.auth.set_session(Session("new-access", "new-refresh", "new-user"))
+        _ = client.auth.set_session(Session("new-access", "new-refresh", "new-user"))
         await channel._dispatch_delivery(delivery)
 
         assert received == []
@@ -296,7 +296,11 @@ async def test_dispatcher_failure_reports_the_channel_and_releases_the_task(
     monkeypatch: pytest.MonkeyPatch, loop_errors: list[dict[str, object]]
 ) -> None:
     realtime = VolcanoClient(anon_key="anon").realtime
-    channel = realtime.channel("messages").on("message", lambda _value: None)
+
+    def ignore_message(_value: object) -> None:
+        pass
+
+    channel = realtime.channel("messages").on("message", ignore_message)
     failure = RuntimeError("dispatcher failed")
 
     async def fail(_delivery: _CallbackDelivery) -> None:
@@ -367,7 +371,7 @@ async def test_callback_queued_before_first_unsubscribe_cannot_run_later() -> No
     )
     channel = client.realtime.channel("messages")
     received: list[object] = []
-    channel.on("message", received.append)
+    _ = channel.on("message", received.append)
     try:
         await channel.subscribe()
         queued = _CallbackDelivery(
@@ -392,7 +396,7 @@ async def test_repeated_callback_invalidation_drops_intermediate_delivery(
         "messages", channel_type=channel_type
     )
     received: list[object] = []
-    channel.on(event, received.append)
+    _ = channel.on(event, received.append)
     channel._paused = False
     presence_only = channel_type == "presence"
     channel._discard_callbacks(presence_only=presence_only)

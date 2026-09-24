@@ -55,7 +55,11 @@ async def test_stale_presence_callbacks_cannot_change_a_resubscribed_channel() -
     )
     channel = client.realtime.channel("lobby", channel_type="presence")
     synced = asyncio.Event()
-    _ = channel.on("presence_sync", lambda _state: synced.set())
+
+    def observe_sync(_state: object) -> None:
+        synced.set()
+
+    _ = channel.on("presence_sync", observe_sync)
     try:
         await channel.subscribe()
         _ = await asyncio.wait_for(synced.wait(), timeout=2)
@@ -279,7 +283,7 @@ async def test_recovering_presence_channel_drops_queued_join_callback() -> None:
     )
     channel = client.realtime.channel("lobby", channel_type="presence")
     received: list[object] = []
-    channel.on("join", received.append)
+    _ = channel.on("join", received.append)
     try:
         await channel.subscribe()
         subscription = native.subscription
