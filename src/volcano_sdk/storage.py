@@ -9,7 +9,7 @@ from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import datetime
-from io import SEEK_END, BytesIO
+from io import SEEK_END, SEEK_SET, BytesIO
 from tempfile import TemporaryFile
 from typing import (
     TYPE_CHECKING,
@@ -63,6 +63,7 @@ _INVALID_UPLOAD_RESPONSE = "Expected a storage upload response object"
 _INVALID_STORAGE_TRANSPORT = (
     "Transport does not support the requested storage operation"
 )
+_JSON_DECODE: Callable[[str], object] = json.loads
 
 
 class BinaryReader(Protocol):
@@ -85,7 +86,7 @@ class SeekableBinaryReader(BinaryReader, Protocol):
         """Return the current byte position."""
         ...
 
-    def seek(self, offset: int, whence: int = 0, /) -> int:
+    def seek(self, offset: int, whence: int = SEEK_SET, /) -> int:
         """Move to a byte position and return it."""
         ...
 
@@ -296,20 +297,14 @@ def _project_id_from_anon_key(anon_key: str) -> str:
     if len(parts) != _JWT_PART_COUNT:
         raise ValueError(_INVALID_STORAGE_ANON_KEY)
     try:
-        encoded = parts[1].encode("ascii")
+        encoded = parts[1].encode()
         padded = encoded + (b"=" * (-len(encoded) % 4))
-        payload = cast(
-            "object",
-            json.loads(
-                base64.b64decode(padded, altchars=b"-_", validate=True).decode()
-            ),
-        )
+        decoded = base64.b64decode(padded, altchars=b"-_", validate=True).decode()
+        if not _is_string_keyed_mapping(payload := _JSON_DECODE(decoded)):
+            raise ValueError(_INVALID_STORAGE_ANON_KEY)
     except (binascii.Error, UnicodeError, json.JSONDecodeError) as error:
         raise ValueError(_INVALID_STORAGE_ANON_KEY) from error
-    claims: Mapping[str, object] = {}
-    if isinstance(payload, Mapping):
-        claims = cast("Mapping[str, object]", payload)
-    project_id = claims.get("project_id")
+    project_id = payload.get("project_id")
     if not isinstance(project_id, str) or not project_id.strip():
         raise ValueError(_INVALID_STORAGE_ANON_KEY)
     return project_id
@@ -319,14 +314,19 @@ def _encoded_storage_path(path: str) -> str:
     segments = path.split("/")
     if any(segment in {".", ".."} for segment in segments):
         raise ValueError(_INVALID_PUBLIC_URL_PATH)
-    return "/".join(quote(segment, safe="") for segment in segments)
+    return "/".join(quote(segment) for segment in segments)
+
+
+def _encoded_storage_component(value: str) -> str:
+    return quote(value).replace("/", "%2F")
 
 
 def _has_seekable_methods(source: BinaryReader) -> TypeIs[SeekableBinaryReader]:
     try:
+        if not isinstance(source, SeekableBinaryReader):
+            return False
         return all(
-            callable(getattr(source, name, None))
-            for name in ("seekable", "tell", "seek")
+            callable(method) for method in (source.seekable, source.tell, source.seek)
         )
     except (AttributeError, OSError, ValueError):
         return False
@@ -357,7 +357,7 @@ def _spool_upload_source(source: BinaryReader, target: BinaryIO) -> None:
         chunk = source.read(_UPLOAD_SPOOL_READ_SIZE)
         if chunk is None:
             raise BlockingIOError(_UPLOAD_SOURCE_UNAVAILABLE)
-        if chunk == b"":
+        if not chunk:
             return
         _ = target.write(chunk)
 
@@ -368,7 +368,7 @@ def _read_upload_part(source: BinaryReader, part_size: int) -> bytes:
         chunk = source.read(part_size - len(part))
         if chunk is None:
             raise BlockingIOError(_UPLOAD_SOURCE_UNAVAILABLE)
-        if chunk == b"":
+        if not chunk:
             break
         part.extend(chunk)
     return bytes(part)
@@ -592,11 +592,14 @@ def _upload_content_type(value: object) -> str:
     return value
 
 
+def _is_object_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, Mapping)
+
+
 def _is_string_keyed_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
-    if not isinstance(value, Mapping):
+    if not _is_object_mapping(value):
         return False
-    mapping = cast("Mapping[object, object]", value)
-    return all(isinstance(key, str) for key in mapping)
+    return all(isinstance(key, str) for key in value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -851,7 +854,6 @@ class StorageBucket:
                 content_type=content_type,
                 part_size=part_size,
             )
-            upload_succeeded = False
             try:
                 self._upload_session_parts(
                     path,
@@ -860,10 +862,9 @@ class StorageBucket:
                     total_size,
                     on_progress,
                 )
-                upload_succeeded = True
-            finally:
-                if not upload_succeeded:
-                    self._abort_failed_upload(path, session.session_id)
+            except BaseException:
+                self._abort_failed_upload(path, session.session_id)
+                raise
             return self.complete_upload_session(path, session_id=session.session_id)
 
     def _upload_session_parts(
@@ -1039,7 +1040,8 @@ class StorageBucket:
         project_id = _project_id_from_anon_key(self._client._anon_token())
         return (
             f"{self._client._api_base_url()}/public/"
-            f"{quote(project_id, safe='')}/{quote(self._name, safe='')}/"
+            f"{_encoded_storage_component(project_id)}/"
+            f"{_encoded_storage_component(self._name)}/"
             f"{_encoded_storage_path(object_path)}"
         )
 
