@@ -10,4 +10,5 @@ content_type_overrides:
   image/gif: application/octet-stream
   image/webp: application/octet-stream
   image/svg+xml: application/octet-stream
+  application/yaml: application/octet-stream
   '*/*': application/octet-stream
