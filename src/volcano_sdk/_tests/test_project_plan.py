@@ -7,8 +7,8 @@ import pytest
 from volcano_sdk._generated.models.project import Project
 
 
-@pytest.mark.parametrize("plan", ["HOBBY", "SUPERAGENT"])
-def test_project_response_accepts_public_plan_name(plan: str) -> None:
+@pytest.mark.parametrize("plan", ["HOBBY", "SUPERAGENT", "FREE", "PRO"])
+def test_project_response_accepts_rollout_plan_name(plan: str) -> None:
     project = Project.from_dict(
         {
             "id": "12345678-1234-1234-1234-123456789012",
