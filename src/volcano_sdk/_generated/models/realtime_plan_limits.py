@@ -24,7 +24,7 @@ class RealtimePlanLimits:
     """ Plan-based limits for realtime features
 
         Attributes:
-            plan (str | Unset): Stored plan key (`FREE` for HOBBY; `PRO` for SUPERAGENT) Example: FREE.
+            plan (str | Unset): Public plan name (HOBBY or SUPERAGENT). Example: HOBBY.
             max_connections (int | Unset): Maximum concurrent connections allowed Example: 100.
             messages_per_month (int | Unset): Maximum messages per month Example: 1000000.
             message_size_kb (int | Unset): Maximum message size in KB Example: 32.
