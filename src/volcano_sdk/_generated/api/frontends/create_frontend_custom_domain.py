@@ -131,7 +131,7 @@ def sync_detailed(
     body: CreateFrontendCustomDomainRequest,
 
 ) -> Response[Error | FrontendCustomDomainResponse]:
-    """ Configure frontend custom domain (PRO)
+    """ Configure frontend custom domain (SUPERAGENT)
 
      Configures one custom domain for a frontend.
     The default Volcano-generated frontend URL remains active.
@@ -172,7 +172,7 @@ def sync(
     body: CreateFrontendCustomDomainRequest,
 
 ) -> Error | FrontendCustomDomainResponse | None:
-    """ Configure frontend custom domain (PRO)
+    """ Configure frontend custom domain (SUPERAGENT)
 
      Configures one custom domain for a frontend.
     The default Volcano-generated frontend URL remains active.
@@ -208,7 +208,7 @@ async def asyncio_detailed(
     body: CreateFrontendCustomDomainRequest,
 
 ) -> Response[Error | FrontendCustomDomainResponse]:
-    """ Configure frontend custom domain (PRO)
+    """ Configure frontend custom domain (SUPERAGENT)
 
      Configures one custom domain for a frontend.
     The default Volcano-generated frontend URL remains active.
@@ -249,7 +249,7 @@ async def asyncio(
     body: CreateFrontendCustomDomainRequest,
 
 ) -> Error | FrontendCustomDomainResponse | None:
-    """ Configure frontend custom domain (PRO)
+    """ Configure frontend custom domain (SUPERAGENT)
 
      Configures one custom domain for a frontend.
     The default Volcano-generated frontend URL remains active.

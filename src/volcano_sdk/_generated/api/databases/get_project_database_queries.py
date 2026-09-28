@@ -117,8 +117,8 @@ def sync_detailed(
      Returns the database's current top queries from pg_stat_statements
     ranked by total execution time.
 
-    **PRO plan required.** This endpoint is only available to projects owned
-    by users on the PRO billing plan.
+    **SUPERAGENT plan required.** This endpoint is only available to projects owned
+    by users on the SUPERAGENT billing plan.
 
     Args:
         id (UUID):
@@ -160,8 +160,8 @@ def sync(
      Returns the database's current top queries from pg_stat_statements
     ranked by total execution time.
 
-    **PRO plan required.** This endpoint is only available to projects owned
-    by users on the PRO billing plan.
+    **SUPERAGENT plan required.** This endpoint is only available to projects owned
+    by users on the SUPERAGENT billing plan.
 
     Args:
         id (UUID):
@@ -198,8 +198,8 @@ async def asyncio_detailed(
      Returns the database's current top queries from pg_stat_statements
     ranked by total execution time.
 
-    **PRO plan required.** This endpoint is only available to projects owned
-    by users on the PRO billing plan.
+    **SUPERAGENT plan required.** This endpoint is only available to projects owned
+    by users on the SUPERAGENT billing plan.
 
     Args:
         id (UUID):
@@ -241,8 +241,8 @@ async def asyncio(
      Returns the database's current top queries from pg_stat_statements
     ranked by total execution time.
 
-    **PRO plan required.** This endpoint is only available to projects owned
-    by users on the PRO billing plan.
+    **SUPERAGENT plan required.** This endpoint is only available to projects owned
+    by users on the SUPERAGENT billing plan.
 
     Args:
         id (UUID):

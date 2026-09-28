@@ -108,10 +108,10 @@ def sync_detailed(
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to read deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a PRO-plan feature; requests for
-    `resource.type=database` from a FREE-plan project owner return 403.
+    databases. Database logs are a SUPERAGENT-plan feature; requests for
+    `resource.type=database` from a HOBBY-plan project owner return 403.
     Log history (runtime and deployment) is limited to the plan's retention
-    window (FREE: 1 day, PRO: 30 days); older time ranges are clamped to that
+    window (HOBBY: 1 day, SUPERAGENT: 30 days); older time ranges are clamped to that
     window.
 
     Args:
@@ -153,10 +153,10 @@ def sync(
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to read deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a PRO-plan feature; requests for
-    `resource.type=database` from a FREE-plan project owner return 403.
+    databases. Database logs are a SUPERAGENT-plan feature; requests for
+    `resource.type=database` from a HOBBY-plan project owner return 403.
     Log history (runtime and deployment) is limited to the plan's retention
-    window (FREE: 1 day, PRO: 30 days); older time ranges are clamped to that
+    window (HOBBY: 1 day, SUPERAGENT: 30 days); older time ranges are clamped to that
     window.
 
     Args:
@@ -193,10 +193,10 @@ async def asyncio_detailed(
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to read deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a PRO-plan feature; requests for
-    `resource.type=database` from a FREE-plan project owner return 403.
+    databases. Database logs are a SUPERAGENT-plan feature; requests for
+    `resource.type=database` from a HOBBY-plan project owner return 403.
     Log history (runtime and deployment) is limited to the plan's retention
-    window (FREE: 1 day, PRO: 30 days); older time ranges are clamped to that
+    window (HOBBY: 1 day, SUPERAGENT: 30 days); older time ranges are clamped to that
     window.
 
     Args:
@@ -238,10 +238,10 @@ async def asyncio(
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to read deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a PRO-plan feature; requests for
-    `resource.type=database` from a FREE-plan project owner return 403.
+    databases. Database logs are a SUPERAGENT-plan feature; requests for
+    `resource.type=database` from a HOBBY-plan project owner return 403.
     Log history (runtime and deployment) is limited to the plan's retention
-    window (FREE: 1 day, PRO: 30 days); older time ranges are clamped to that
+    window (HOBBY: 1 day, SUPERAGENT: 30 days); older time ranges are clamped to that
     window.
 
     Args:
