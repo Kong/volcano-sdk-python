@@ -58,9 +58,9 @@ class AuthConfig:
                 403, and `allowed_email_domains_mode` decides whether sign-in is
                 covered as well.
 
-                The allowlist is a PRO feature to configure and to enforce. A
+                The allowlist is a SUPERAGENT feature to configure and to enforce. A
                 downgrade parks it: the domains are still returned here and stop
-                being applied until the project is back on PRO.
+                being applied until the project is back on SUPERAGENT.
                  Example: ['domain1.com', 'domain2.com'].
             allowed_email_domains_mode (AuthConfigAllowedEmailDomainsMode | Unset): How far `allowed_email_domains` reaches.
                 `signup` only gates account

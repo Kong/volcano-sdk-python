@@ -78,7 +78,7 @@ def sync_detailed(
     """ Delete email template
 
      Deletes a custom template, reverting to the default. Custom email
-    templates are a PRO-plan feature: requests from a FREE-plan project owner
+    templates are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner
     are rejected with 403.
 
     Args:
@@ -116,7 +116,7 @@ def sync(
     """ Delete email template
 
      Deletes a custom template, reverting to the default. Custom email
-    templates are a PRO-plan feature: requests from a FREE-plan project owner
+    templates are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner
     are rejected with 403.
 
     Args:
@@ -149,7 +149,7 @@ async def asyncio_detailed(
     """ Delete email template
 
      Deletes a custom template, reverting to the default. Custom email
-    templates are a PRO-plan feature: requests from a FREE-plan project owner
+    templates are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner
     are rejected with 403.
 
     Args:
@@ -187,7 +187,7 @@ async def asyncio(
     """ Delete email template
 
      Deletes a custom template, reverting to the default. Custom email
-    templates are a PRO-plan feature: requests from a FREE-plan project owner
+    templates are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner
     are rejected with 403.
 
     Args:

@@ -27,7 +27,7 @@ class ProjectConfigEmailTemplates:
     """ Email templates keyed by type. Fully synced when declared - template
     types absent from a declared map revert to server defaults (custom
     bodies deleted, subject overrides cleared). Custom template bodies
-    require the PRO plan; subject-only changes are available on FREE.
+    require the SUPERAGENT plan; subject-only changes are available on HOBBY.
 
         Attributes:
             confirmation (ProjectConfigEmailTemplate | Unset):

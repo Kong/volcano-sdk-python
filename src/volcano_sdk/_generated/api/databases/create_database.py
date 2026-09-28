@@ -83,7 +83,7 @@ def sync_detailed(
     """ Create a new serverless PostgreSQL database
 
      Creates a serverless PostgreSQL database in the project.
-    Each project can hold 1 database on Free and up to 10,000 on Pro.
+    Each project can hold 1 database on Hobby and up to 10,000 on Superagent.
     Requests over the plan's cap return 403.
 
     Args:
@@ -126,7 +126,7 @@ def sync(
     """ Create a new serverless PostgreSQL database
 
      Creates a serverless PostgreSQL database in the project.
-    Each project can hold 1 database on Free and up to 10,000 on Pro.
+    Each project can hold 1 database on Hobby and up to 10,000 on Superagent.
     Requests over the plan's cap return 403.
 
     Args:
@@ -164,7 +164,7 @@ async def asyncio_detailed(
     """ Create a new serverless PostgreSQL database
 
      Creates a serverless PostgreSQL database in the project.
-    Each project can hold 1 database on Free and up to 10,000 on Pro.
+    Each project can hold 1 database on Hobby and up to 10,000 on Superagent.
     Requests over the plan's cap return 403.
 
     Args:
@@ -207,7 +207,7 @@ async def asyncio(
     """ Create a new serverless PostgreSQL database
 
      Creates a serverless PostgreSQL database in the project.
-    Each project can hold 1 database on Free and up to 10,000 on Pro.
+    Each project can hold 1 database on Hobby and up to 10,000 on Superagent.
     Requests over the plan's cap return 403.
 
     Args:
