@@ -97,8 +97,8 @@ def sync_detailed(
     """ Create email template
 
      Creates a custom email template for the project. Custom email templates
-    are a PRO-plan feature: requests from a FREE-plan project owner are
-    rejected with 403, and FREE projects always send the built-in default
+    are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner are
+    rejected with 403, and HOBBY projects always send the built-in default
     templates regardless of any previously saved custom rows.
     Every project is created with one template per type, so customizing one
     is usually a PUT; creating a type the project already has returns 409.
@@ -139,8 +139,8 @@ def sync(
     """ Create email template
 
      Creates a custom email template for the project. Custom email templates
-    are a PRO-plan feature: requests from a FREE-plan project owner are
-    rejected with 403, and FREE projects always send the built-in default
+    are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner are
+    rejected with 403, and HOBBY projects always send the built-in default
     templates regardless of any previously saved custom rows.
     Every project is created with one template per type, so customizing one
     is usually a PUT; creating a type the project already has returns 409.
@@ -176,8 +176,8 @@ async def asyncio_detailed(
     """ Create email template
 
      Creates a custom email template for the project. Custom email templates
-    are a PRO-plan feature: requests from a FREE-plan project owner are
-    rejected with 403, and FREE projects always send the built-in default
+    are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner are
+    rejected with 403, and HOBBY projects always send the built-in default
     templates regardless of any previously saved custom rows.
     Every project is created with one template per type, so customizing one
     is usually a PUT; creating a type the project already has returns 409.
@@ -218,8 +218,8 @@ async def asyncio(
     """ Create email template
 
      Creates a custom email template for the project. Custom email templates
-    are a PRO-plan feature: requests from a FREE-plan project owner are
-    rejected with 403, and FREE projects always send the built-in default
+    are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner are
+    rejected with 403, and HOBBY projects always send the built-in default
     templates regardless of any previously saved custom rows.
     Every project is created with one template per type, so customizing one
     is usually a PUT; creating a type the project already has returns 409.

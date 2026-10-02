@@ -50,9 +50,6 @@ class ProjectConfig:
             databases (list[ProjectConfigDatabase] | Unset):
             shared_variables (list[str] | Unset): Replace the complete shared function-variable list with existing names,
                 without changing variable values. Omission keeps membership unchanged; an empty list clears it.
-            frontend_shared_variables (list[str] | Unset): Replace the complete shared frontend-variable list with existing
-                names. Frontends with variable_scope shared receive this list. Omission keeps membership unchanged; an empty
-                list clears it.
             variables (list[ProjectConfigVariable] | Unset): Fully synced when declared - variables absent from this list
                 are deleted.
             buckets (list[ProjectConfigBucket] | Unset):
@@ -66,7 +63,6 @@ class ProjectConfig:
     project: ProjectConfigProject | Unset = UNSET
     databases: list[ProjectConfigDatabase] | Unset = UNSET
     shared_variables: list[str] | Unset = UNSET
-    frontend_shared_variables: list[str] | Unset = UNSET
     variables: list[ProjectConfigVariable] | Unset = UNSET
     buckets: list[ProjectConfigBucket] | Unset = UNSET
     realtime: ProjectConfigRealtime | Unset = UNSET
@@ -105,12 +101,6 @@ class ProjectConfig:
         shared_variables: list[str] | Unset = UNSET
         if not isinstance(self.shared_variables, Unset):
             shared_variables = self.shared_variables
-
-
-
-        frontend_shared_variables: list[str] | Unset = UNSET
-        if not isinstance(self.frontend_shared_variables, Unset):
-            frontend_shared_variables = self.frontend_shared_variables
 
 
 
@@ -170,8 +160,6 @@ class ProjectConfig:
             field_dict["databases"] = databases
         if shared_variables is not UNSET:
             field_dict["shared_variables"] = shared_variables
-        if frontend_shared_variables is not UNSET:
-            field_dict["frontend_shared_variables"] = frontend_shared_variables
         if variables is not UNSET:
             field_dict["variables"] = variables
         if buckets is not UNSET:
@@ -228,9 +216,6 @@ class ProjectConfig:
 
 
         shared_variables = cast(list[str], d.pop("shared_variables", UNSET))
-
-
-        frontend_shared_variables = cast(list[str], d.pop("frontend_shared_variables", UNSET))
 
 
         _variables = d.pop("variables", UNSET)
@@ -306,7 +291,6 @@ class ProjectConfig:
             project=project,
             databases=databases,
             shared_variables=shared_variables,
-            frontend_shared_variables=frontend_shared_variables,
             variables=variables,
             buckets=buckets,
             realtime=realtime,

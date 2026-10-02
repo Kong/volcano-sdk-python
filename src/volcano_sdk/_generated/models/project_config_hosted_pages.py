@@ -24,7 +24,7 @@ T = TypeVar("T", bound="ProjectConfigHostedPages")
 
 @_attrs_define
 class ProjectConfigHostedPages:
-    """ Hosted auth pages keyed by page type (PRO plan). Upsert-only: omitted
+    """ Hosted auth pages keyed by page type (SUPERAGENT plan). Upsert-only: omitted
     pages are left untouched (there is no delete for hosted pages).
 
         Attributes:

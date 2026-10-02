@@ -30,7 +30,8 @@ class ProjectConfigAuthManagedPages:
         Attributes:
             enabled (bool | Unset): Enable or disable managed auth hosted pages
             redirects (ProjectConfigAuthRedirects | Unset):
-            pages (ProjectConfigHostedPages | Unset): Hosted auth pages keyed by page type (PRO plan). Upsert-only: omitted
+            pages (ProjectConfigHostedPages | Unset): Hosted auth pages keyed by page type (SUPERAGENT plan). Upsert-only:
+                omitted
                 pages are left untouched (there is no delete for hosted pages).
             appearance (ProjectConfigAuthPageAppearance | Unset):
      """

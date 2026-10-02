@@ -92,9 +92,7 @@ def sync_detailed(
     Set `session_mode` to `cookie` to request HttpOnly refresh-token
     storage. Cookie mode is honored only for an exact, credentialed CORS
     origin on the same schemeful site as this API. Otherwise the response
-    retains the refresh token in its body. A frontend on its default
-    Volcano URL is cross-site with this API and so always gets the body
-    token.
+    retains the refresh token in its body.
 
     Args:
         body (AuthSigninBody):
@@ -132,9 +130,7 @@ def sync(
     Set `session_mode` to `cookie` to request HttpOnly refresh-token
     storage. Cookie mode is honored only for an exact, credentialed CORS
     origin on the same schemeful site as this API. Otherwise the response
-    retains the refresh token in its body. A frontend on its default
-    Volcano URL is cross-site with this API and so always gets the body
-    token.
+    retains the refresh token in its body.
 
     Args:
         body (AuthSigninBody):
@@ -167,9 +163,7 @@ async def asyncio_detailed(
     Set `session_mode` to `cookie` to request HttpOnly refresh-token
     storage. Cookie mode is honored only for an exact, credentialed CORS
     origin on the same schemeful site as this API. Otherwise the response
-    retains the refresh token in its body. A frontend on its default
-    Volcano URL is cross-site with this API and so always gets the body
-    token.
+    retains the refresh token in its body.
 
     Args:
         body (AuthSigninBody):
@@ -207,9 +201,7 @@ async def asyncio(
     Set `session_mode` to `cookie` to request HttpOnly refresh-token
     storage. Cookie mode is honored only for an exact, credentialed CORS
     origin on the same schemeful site as this API. Otherwise the response
-    retains the refresh token in its body. A frontend on its default
-    Volcano URL is cross-site with this API and so always gets the body
-    token.
+    retains the refresh token in its body.
 
     Args:
         body (AuthSigninBody):

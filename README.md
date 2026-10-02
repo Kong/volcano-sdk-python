@@ -1021,20 +1021,14 @@ uv sync --locked
 uv run --locked poe quality
 ```
 
-Live contract scenarios require an isolated fixture produced by
-`volcano-hosting/tests/sdk-contract/support/fixture.mjs`:
-
-```shell
-VOLCANO_SDK_CONTRACT_FIXTURE=/absolute/path/to/fixture.json \
-  uv run behave features/contract --junit --junit-directory reports/behave
-```
-
-The fixture must be an absolute path to a mode-`0600` JSON file.
+Hosting owns and runs the shared black-box acceptance suite during Staging Validation.
+It builds this repository's latest `main` and installs the wheel in a fresh environment.
+See [Hosting's testing guide](https://github.com/Kong/volcano-hosting/blob/main/docs/internal/guides/sdk-contract-testing.md).
 
 ## Release to PyPI
 
 Release Please creates a version and changelog PR from releasable commits.
-After its required checks pass, the existing auto-merge policy merges the PR.
+A maintainer manually merges the version PR after its required checks pass.
 The Volcano GitHub App creates the stable GitHub release, which automatically
 starts `publish.yml`. The workflow validates the tag, main ancestry, and package
 identity; runs CI; builds and smoke-tests the wheel and source distribution;

@@ -8,7 +8,6 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..types import UNSET, Unset
 from uuid import UUID
 
 
@@ -27,16 +26,11 @@ class ResolveFunctionResponse:
             name (str): DNS-safe function name
             function_id (UUID): Canonical function ID used for invocation routing
             cache_ttl_seconds (int): Suggested SDK cache TTL for this name-to-ID mapping
-            invoke_url (str | Unset): Canonical HTTPS endpoint for invoking this function. Use it as-is: it does not share a
-                domain with the API, so a host derived from the API URL will not reach the function. Omitted when the deployment
-                serves no public invocation domain, as in local development; invoke through POST /functions/{functionId}/invoke
-                instead.
      """
 
     name: str
     function_id: UUID
     cache_ttl_seconds: int
-    invoke_url: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -50,8 +44,6 @@ class ResolveFunctionResponse:
 
         cache_ttl_seconds = self.cache_ttl_seconds
 
-        invoke_url = self.invoke_url
-
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -60,8 +52,6 @@ class ResolveFunctionResponse:
             "function_id": function_id,
             "cache_ttl_seconds": cache_ttl_seconds,
         })
-        if invoke_url is not UNSET:
-            field_dict["invoke_url"] = invoke_url
 
         return field_dict
 
@@ -79,13 +69,10 @@ class ResolveFunctionResponse:
 
         cache_ttl_seconds = d.pop("cache_ttl_seconds")
 
-        invoke_url = d.pop("invoke_url", UNSET)
-
         resolve_function_response = cls(
             name=name,
             function_id=function_id,
             cache_ttl_seconds=cache_ttl_seconds,
-            invoke_url=invoke_url,
         )
 
 

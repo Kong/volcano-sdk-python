@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.5](https://github.com/Kong/volcano-sdk-python/compare/v0.13.4...v0.13.5) (2026-09-28)
+
+
+### Bug Fixes
+
+* **api:** accept public project plan names ([#375](https://github.com/Kong/volcano-sdk-python/issues/375)) ([33b6c88](https://github.com/Kong/volcano-sdk-python/commit/33b6c88d2ea4679ef45078c0126e19051529bf91))
+
 ## [0.13.4](https://github.com/Kong/volcano-sdk-python/compare/v0.13.3...v0.13.4) (2026-09-24)
 
 

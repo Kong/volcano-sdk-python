@@ -42,7 +42,7 @@ class Project:
             selected_regions (list[str]): Effective region set for this project (normalized and deduplicated)
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
-            plan (ProjectPlan | Unset): Platform plan applied to the project when available
+            plan (ProjectPlan | Unset): Public plan name; FREE and PRO are accepted from older Hosting responses.
             aws_application_name (str | Unset):
             last_invoked_at (datetime.datetime | Unset): Most recent activity timestamp across project resources
             logo_url (str | Unset): Relative API path that serves the project logo when one has been
