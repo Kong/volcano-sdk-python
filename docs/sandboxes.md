@@ -106,9 +106,7 @@ Grant expiry must be a timezone-aware `datetime`:
 ```python
 from datetime import UTC, datetime, timedelta
 
-client.sandboxes.grant(
-    session.id, auth_user_id, datetime.now(UTC) + timedelta(hours=1)
-)
+client.sandboxes.grant(session.id, auth_user_id, datetime.now(UTC) + timedelta(hours=1))
 ```
 
 Management operations use the service key. Handles returned by `create()` retain
