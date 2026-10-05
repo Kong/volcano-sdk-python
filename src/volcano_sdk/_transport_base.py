@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 
-from ._generated.client import AuthenticatedClient
+from ._generated.client import AuthenticatedClient, Client
 from ._transport_types import URL_TRAILING_SLASHES
 
 
@@ -31,4 +31,10 @@ class TransportBase:
             token=authorization,
             timeout=httpx.Timeout(self._timeout),
             httpx_args=httpx_args,
+        )
+
+    def _public_client(self) -> Client:
+        return Client(
+            base_url=self._api_url,
+            httpx_args={"transport": self._httpx_transport},
         )
