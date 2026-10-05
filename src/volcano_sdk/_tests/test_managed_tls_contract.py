@@ -217,6 +217,7 @@ def test_pending_domain_decodes_the_certificate_validation_record(
         CERTIFICATE_VALIDATION
     ]
     assert pending.routing_target_hostname == ROUTING_TARGET
+    assert pending.to_dict()["routing_target_hostname"] == ROUTING_TARGET
 
 
 def test_create_conflict_carries_the_callers_ownership_record() -> None:
@@ -306,6 +307,7 @@ def test_failed_domain_decodes_its_failure_reason(
     assert failed.domain_status == "failed"
     assert failed.verification_status == failure_fields["verification_status"]
     assert failed.failure_reason == failure_reason
+    assert failed.to_dict().get("failure_reason", UNSET) == failure_reason
 
 
 @DOMAIN_DECODERS
@@ -358,7 +360,7 @@ def test_project_config_tls_decodes_each_mode(
     assert domain.to_dict() == wire_domain
 
 
-def test_project_config_domain_without_tls_keeps_the_stored_certificate() -> None:
+def test_project_config_domain_without_tls_omits_tls_on_the_wire() -> None:
     domain = ProjectConfigCustomDomain.from_dict({"domain": "app.example.com"})
 
     assert domain.tls is UNSET
