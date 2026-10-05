@@ -7,6 +7,7 @@ from volcano_sdk._generated.models import (
     FrontendCustomDomainResponse,
     FrontendCustomDomainTLSConfig,
     FrontendDomainRoutingRecord,
+    FrontendDomainVerificationRecord,
     ManagedProjectConfigFrontendCustomDomainTLSConfig,
     ProjectConfigCustomDomain,
     ProjectFrontendCustomDomain,
@@ -17,23 +18,55 @@ BYOC_MATERIAL = {
     "certificate_pem": "certificate",
     "private_key_pem": "private-key",
 }
+ROUTING_RECORD = {
+    "record_type": "CNAME",
+    "zone_apex_record_type": "ALIAS",
+    "name": "app.example.com",
+    "value": "frontend.frontends.volcano.dev",
+}
+VALIDATION_RECORD = {
+    "name": "_token.app.example.com",
+    "type": "CNAME",
+    "value": "_validation.volcano.dev",
+}
+MANAGED_PENDING = {
+    "domain": "app.example.com",
+    "tls_mode": "managed",
+    "domain_status": "pending_verification",
+    "verification_status": "pending",
+    "verification_records": [VALIDATION_RECORD],
+    "required_routing_record": ROUTING_RECORD,
+    "effective_urls": ["https://frontend.frontends.volcano.dev/"],
+    "created_at": "2026-09-02T12:00:00Z",
+    "updated_at": "2026-09-02T12:00:00Z",
+}
 
 
 @pytest.mark.parametrize(
-    "wire_tls",
-    [{"mode": "managed"}, {"mode": "byoc", **BYOC_MATERIAL}],
+    ("tls", "wire_tls"),
+    [
+        (FrontendCustomDomainTLSConfig(mode="managed"), {"mode": "managed"}),
+        (
+            FrontendCustomDomainTLSConfig(
+                mode="byoc",
+                certificate_pem="certificate",
+                private_key_pem="private-key",
+            ),
+            {"mode": "byoc", **BYOC_MATERIAL},
+        ),
+    ],
     ids=["managed", "byoc"],
 )
-def test_create_request_round_trips_the_selected_tls_mode(
+def test_create_request_encodes_the_selected_tls_mode(
+    tls: FrontendCustomDomainTLSConfig,
     wire_tls: dict[str, str],
 ) -> None:
     wire_request = {"domain": "app.example.com", "tls": wire_tls}
 
-    request = CreateFrontendCustomDomainRequest.from_dict(wire_request)
+    request = CreateFrontendCustomDomainRequest(domain="app.example.com", tls=tls)
 
-    assert isinstance(request.tls, FrontendCustomDomainTLSConfig)
-    assert request.tls.mode == wire_tls["mode"]
     assert request.to_dict() == wire_request
+    assert CreateFrontendCustomDomainRequest.from_dict(wire_request) == request
 
 
 @pytest.mark.parametrize(
@@ -41,6 +74,8 @@ def test_create_request_round_trips_the_selected_tls_mode(
     [
         FrontendCustomDomainResponse,
         ProjectFrontendCustomDomain,
+        FrontendDomainVerificationRecord,
+        FrontendDomainRoutingRecord,
         ManagedProjectConfigFrontendCustomDomainTLSConfig,
     ],
 )
@@ -50,64 +85,60 @@ def test_material_free_models_do_not_declare_certificate_or_key_fields(
     assert not [
         name
         for name in fields_dict(model)
-        if any(marker in name for marker in ("certificate", "private_key", "pem"))
+        if any(marker in name for marker in ("cert", "key", "pem"))
     ]
 
 
 def test_managed_tls_response_decodes_lifecycle_and_dns_records() -> None:
-    response = FrontendCustomDomainResponse.from_dict(
-        {
-            "domain": "app.example.com",
-            "tls_mode": "managed",
-            "domain_status": "pending_verification",
-            "verification_status": "pending",
-            "verification_records": [
-                {
-                    "name": "_token.app.example.com",
-                    "type": "CNAME",
-                    "value": "_validation.volcano.dev",
-                }
-            ],
-            "required_routing_record": {
-                "record_type": "CNAME",
-                "zone_apex_record_type": "ALIAS",
-                "name": "app.example.com",
-                "value": "frontend.frontends.volcano.dev",
-            },
-            "effective_urls": ["https://frontend.frontends.volcano.dev/"],
-            "created_at": "2026-09-02T12:00:00Z",
-            "updated_at": "2026-09-02T12:00:00Z",
-        }
-    )
+    response = FrontendCustomDomainResponse.from_dict(MANAGED_PENDING)
+
     assert response.tls_mode == "managed"
     assert response.domain_status == "pending_verification"
     assert response.verification_status == "pending"
     assert response.failure_reason is UNSET
     assert isinstance(response.verification_records, list)
-    assert response.verification_records[0].to_dict() == {
-        "name": "_token.app.example.com",
-        "type": "CNAME",
-        "value": "_validation.volcano.dev",
-    }
+    assert [record.to_dict() for record in response.verification_records] == [
+        VALIDATION_RECORD
+    ]
     assert isinstance(response.required_routing_record, FrontendDomainRoutingRecord)
-    assert response.required_routing_record.to_dict() == {
-        "record_type": "CNAME",
-        "zone_apex_record_type": "ALIAS",
-        "name": "app.example.com",
-        "value": "frontend.frontends.volcano.dev",
-    }
+    assert response.required_routing_record.to_dict() == ROUTING_RECORD
 
-    failed = FrontendCustomDomainResponse.from_dict(
+
+@pytest.mark.parametrize(
+    ("model", "scope"),
+    [
+        (FrontendCustomDomainResponse, {}),
+        (
+            ProjectFrontendCustomDomain,
+            {
+                "frontend": {
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "name": "web",
+                }
+            },
+        ),
+    ],
+    ids=["frontend", "project-feed"],
+)
+def test_failed_managed_domain_reports_its_failure_reason(
+    model: type[FrontendCustomDomainResponse | ProjectFrontendCustomDomain],
+    scope: dict[str, dict[str, str]],
+) -> None:
+    failed = model.from_dict(
         {
-            **response.to_dict(),
+            **MANAGED_PENDING,
+            **scope,
             "domain_status": "failed",
             "verification_status": "failed",
             "failure_reason": "ownership",
         }
     )
+
     assert failed.domain_status == "failed"
     assert failed.verification_status == "failed"
     assert failed.failure_reason == "ownership"
+    assert isinstance(failed.required_routing_record, FrontendDomainRoutingRecord)
+    assert failed.required_routing_record.to_dict() == ROUTING_RECORD
 
 
 @pytest.mark.parametrize(
@@ -120,7 +151,7 @@ def test_managed_tls_response_decodes_lifecycle_and_dns_records() -> None:
             BYOCProjectConfigFrontendCustomDomainTLSConfig,
         ),
     ],
-    ids=["managed", "byoc-export", "byoc-rotation"],
+    ids=["managed", "byoc-export", "byoc-apply"],
 )
 def test_project_config_tls_decodes_each_mode(
     wire_tls: dict[str, str],
