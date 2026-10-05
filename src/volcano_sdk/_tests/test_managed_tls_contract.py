@@ -1,3 +1,4 @@
+import pytest
 from attrs import fields_dict
 
 from volcano_sdk._generated.models import (
@@ -8,6 +9,7 @@ from volcano_sdk._generated.models import (
     FrontendDomainRoutingRecord,
     ManagedProjectConfigFrontendCustomDomainTLSConfig,
     ProjectConfigCustomDomain,
+    ProjectFrontendCustomDomain,
 )
 
 
@@ -43,9 +45,16 @@ def test_byoc_tls_request_carries_certificate_material() -> None:
     }
 
 
-def test_managed_tls_response_exposes_provider_neutral_lifecycle() -> None:
-    assert "managed_tls_certificate" not in fields_dict(FrontendCustomDomainResponse)
+@pytest.mark.parametrize(
+    "model", [FrontendCustomDomainResponse, ProjectFrontendCustomDomain]
+)
+def test_domain_responses_do_not_expose_certificate_internals(
+    model: type[FrontendCustomDomainResponse | ProjectFrontendCustomDomain],
+) -> None:
+    assert not [name for name in fields_dict(model) if "certificate" in name]
 
+
+def test_managed_tls_response_exposes_provider_neutral_lifecycle() -> None:
     response = FrontendCustomDomainResponse.from_dict(
         {
             "domain": "app.example.com",
