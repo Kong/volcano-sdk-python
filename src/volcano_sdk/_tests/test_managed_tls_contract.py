@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -6,7 +7,10 @@ import httpx
 import pytest
 from attrs import AttrsInstance, fields_dict
 
-from volcano_sdk._generated.api.frontends import create_frontend_custom_domain
+from volcano_sdk._generated.api.frontends import (
+    create_frontend_custom_domain,
+    get_frontend_custom_domain,
+)
 from volcano_sdk._generated.client import AuthenticatedClient
 from volcano_sdk._generated.models import (
     BYOCProjectConfigFrontendCustomDomainTLSConfig,
@@ -42,17 +46,8 @@ CERTIFICATE_VALIDATION = {
 }
 ROUTING_TARGET = "my-frontend.frontends.volcano.run"
 CREATED_AT = datetime(2026, 9, 2, 12, tzinfo=UTC)
-RESPONSE_MODELS = pytest.mark.parametrize(
-    ("model", "feed_fields"),
-    [
-        (FrontendCustomDomainResponse, {}),
-        (
-            ProjectFrontendCustomDomain,
-            {"frontend": {"id": str(FRONTEND_ID), "name": "my-frontend"}},
-        ),
-    ],
-    ids=["frontend-domain", "project-feed"],
-)
+DOMAIN_PATH = f"/projects/{PROJECT_ID}/frontends/{FRONTEND_ID}/domain"
+DomainEntry = FrontendCustomDomainResponse | ProjectFrontendCustomDomain
 
 
 def domain_payload() -> dict[str, object]:
@@ -68,20 +63,28 @@ def domain_payload() -> dict[str, object]:
     }
 
 
-def create_managed_domain(
+def mock_client(
     status: int, payload: dict[str, object]
-) -> Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse | None:
+) -> tuple[AuthenticatedClient, list[httpx.Request]]:
     sent: list[httpx.Request] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
         sent.append(request)
         return httpx.Response(status, json=payload)
 
-    with AuthenticatedClient(
+    client = AuthenticatedClient(
         base_url="https://api.example.com",
         token="access-token",
         httpx_args={"transport": httpx.MockTransport(respond)},
-    ) as client:
+    )
+    return client, sent
+
+
+def create_managed_domain(
+    status: int, payload: dict[str, object]
+) -> Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse | None:
+    client, sent = mock_client(status, payload)
+    with client:
         result = create_frontend_custom_domain.sync_detailed(
             PROJECT_ID,
             FRONTEND_ID,
@@ -95,19 +98,40 @@ def create_managed_domain(
     assert [
         (request.method, request.url.path, request.headers["Authorization"])
         for request in sent
-    ] == [
-        (
-            "POST",
-            f"/projects/{PROJECT_ID}/frontends/{FRONTEND_ID}/domain",
-            "Bearer access-token",
-        )
-    ]
+    ] == [("POST", DOMAIN_PATH, "Bearer access-token")]
     assert json.loads(sent[0].content) == {
         "domain": "app.example.com",
         "tls": {"mode": "managed"},
     }
     assert result.status_code == status
     return result.parsed
+
+
+def poll_domain(payload: dict[str, object]) -> DomainEntry:
+    client, sent = mock_client(200, payload)
+    with client:
+        result = get_frontend_custom_domain.sync_detailed(
+            PROJECT_ID, FRONTEND_ID, client=client
+        )
+
+    assert [(request.method, request.url.path) for request in sent] == [
+        ("GET", DOMAIN_PATH)
+    ]
+    assert isinstance(result.parsed, FrontendCustomDomainResponse)
+    return result.parsed
+
+
+def decode_project_feed_entry(payload: dict[str, object]) -> DomainEntry:
+    return ProjectFrontendCustomDomain.from_dict(
+        {**payload, "frontend": {"id": str(FRONTEND_ID), "name": "my-frontend"}}
+    )
+
+
+DOMAIN_DECODERS = pytest.mark.parametrize(
+    "decode",
+    [poll_domain, decode_project_feed_entry],
+    ids=["domain-status", "project-feed"],
+)
 
 
 @pytest.mark.parametrize(
@@ -180,17 +204,12 @@ def test_create_operation_decodes_the_ownership_challenge(status: int) -> None:
     assert created.created_at == CREATED_AT
 
 
-@RESPONSE_MODELS
+@DOMAIN_DECODERS
 def test_pending_domain_decodes_the_certificate_validation_record(
-    model: type[FrontendCustomDomainResponse | ProjectFrontendCustomDomain],
-    feed_fields: dict[str, dict[str, str]],
+    decode: Callable[[dict[str, object]], DomainEntry],
 ) -> None:
-    pending = model.from_dict(
-        {
-            **domain_payload(),
-            **feed_fields,
-            "verification_records": [CERTIFICATE_VALIDATION],
-        }
+    pending = decode(
+        {**domain_payload(), "verification_records": [CERTIFICATE_VALIDATION]}
     )
 
     assert isinstance(pending.verification_records, list)
@@ -275,21 +294,13 @@ def test_other_create_errors_keep_the_plain_error_shape(status: int) -> None:
         "byoc",
     ],
 )
-@RESPONSE_MODELS
+@DOMAIN_DECODERS
 def test_failed_domain_decodes_its_failure_reason(
-    model: type[FrontendCustomDomainResponse | ProjectFrontendCustomDomain],
-    feed_fields: dict[str, dict[str, str]],
+    decode: Callable[[dict[str, object]], DomainEntry],
     failure_fields: dict[str, str],
     failure_reason: str | Unset,
 ) -> None:
-    failed = model.from_dict(
-        {
-            **domain_payload(),
-            **feed_fields,
-            **failure_fields,
-            "domain_status": "failed",
-        }
-    )
+    failed = decode({**domain_payload(), **failure_fields, "domain_status": "failed"})
 
     assert failed.tls_mode == failure_fields["tls_mode"]
     assert failed.domain_status == "failed"
@@ -297,10 +308,9 @@ def test_failed_domain_decodes_its_failure_reason(
     assert failed.failure_reason == failure_reason
 
 
-@RESPONSE_MODELS
+@DOMAIN_DECODERS
 def test_deprecated_routing_record_from_older_servers_round_trips(
-    model: type[FrontendCustomDomainResponse | ProjectFrontendCustomDomain],
-    feed_fields: dict[str, dict[str, str]],
+    decode: Callable[[dict[str, object]], DomainEntry],
 ) -> None:
     legacy_record = {
         "record_type": "CNAME",
@@ -313,9 +323,7 @@ def test_deprecated_routing_record_from_older_servers_round_trips(
         if key != "routing_target_hostname"
     }
 
-    response = model.from_dict(
-        {**legacy, **feed_fields, "required_routing_record": legacy_record}
-    )
+    response = decode({**legacy, "required_routing_record": legacy_record})
 
     assert response.routing_target_hostname is UNSET
     assert isinstance(response.required_routing_record, FrontendDomainRoutingRecord)
@@ -348,3 +356,10 @@ def test_project_config_tls_decodes_each_mode(
 
     assert isinstance(domain.tls, variant)
     assert domain.to_dict() == wire_domain
+
+
+def test_project_config_domain_without_tls_keeps_the_stored_certificate() -> None:
+    domain = ProjectConfigCustomDomain.from_dict({"domain": "app.example.com"})
+
+    assert domain.tls is UNSET
+    assert domain.to_dict() == {"domain": "app.example.com"}
