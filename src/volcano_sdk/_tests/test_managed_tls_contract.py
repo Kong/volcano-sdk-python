@@ -49,8 +49,8 @@ MANAGED_PENDING = {
         (
             FrontendCustomDomainTLSConfig(
                 mode="byoc",
-                certificate_pem="certificate",
-                private_key_pem="private-key",
+                certificate_pem=BYOC_MATERIAL["certificate_pem"],
+                private_key_pem=BYOC_MATERIAL["private_key_pem"],
             ),
             {"mode": "byoc", **BYOC_MATERIAL},
         ),
@@ -105,7 +105,7 @@ def test_managed_tls_response_decodes_lifecycle_and_dns_records() -> None:
 
 
 @pytest.mark.parametrize(
-    ("model", "scope"),
+    ("model", "feed_fields"),
     [
         (FrontendCustomDomainResponse, {}),
         (
@@ -118,16 +118,16 @@ def test_managed_tls_response_decodes_lifecycle_and_dns_records() -> None:
             },
         ),
     ],
-    ids=["frontend", "project-feed"],
+    ids=["frontend-domain", "project-feed"],
 )
 def test_failed_managed_domain_reports_its_failure_reason(
     model: type[FrontendCustomDomainResponse | ProjectFrontendCustomDomain],
-    scope: dict[str, dict[str, str]],
+    feed_fields: dict[str, dict[str, str]],
 ) -> None:
     failed = model.from_dict(
         {
             **MANAGED_PENDING,
-            **scope,
+            **feed_fields,
             "domain_status": "failed",
             "verification_status": "failed",
             "failure_reason": "ownership",
