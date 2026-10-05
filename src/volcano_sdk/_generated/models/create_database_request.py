@@ -12,8 +12,6 @@ from ..models.create_database_request_database_type import check_create_database
 from ..models.create_database_request_database_type import CreateDatabaseRequestDatabaseType
 from ..models.create_database_request_pg_version import check_create_database_request_pg_version
 from ..models.create_database_request_pg_version import CreateDatabaseRequestPgVersion
-from ..models.create_database_request_region import check_create_database_request_region
-from ..models.create_database_request_region import CreateDatabaseRequestRegion
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -36,7 +34,11 @@ class CreateDatabaseRequest:
 
         Attributes:
             name (str): Database name (must be unique within project) Example: my_database.
-            region (CreateDatabaseRequestRegion): Region for database hosting Example: aws-us-east-1.
+            region (str): Region for database hosting. The accepted values are the regions this
+                environment runs in, so read them from `GET /databases/regions` rather
+                than hardcoding a list. A region the environment does not offer is
+                rejected with 400.
+                 Example: aws-us-east-1.
             pg_version (CreateDatabaseRequestPgVersion): PostgreSQL major version Example: 16.
             database_type (CreateDatabaseRequestDatabaseType | Unset): Compute size tier (optional, defaults to volcano-db-
                 xs).
@@ -45,7 +47,7 @@ class CreateDatabaseRequest:
      """
 
     name: str
-    region: CreateDatabaseRequestRegion
+    region: str
     pg_version: CreateDatabaseRequestPgVersion
     database_type: CreateDatabaseRequestDatabaseType | Unset = 'volcano-db-xs'
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -57,7 +59,7 @@ class CreateDatabaseRequest:
     def to_dict(self) -> dict[str, Any]:
         name = self.name
 
-        region: str = self.region
+        region = self.region
 
         pg_version: str = self.pg_version
 
@@ -86,10 +88,7 @@ class CreateDatabaseRequest:
         d = dict(src_dict)
         name = d.pop("name")
 
-        region = check_create_database_request_region(d.pop("region"))
-
-
-
+        region = d.pop("region")
 
         pg_version = check_create_database_request_pg_version(d.pop("pg_version"))
 

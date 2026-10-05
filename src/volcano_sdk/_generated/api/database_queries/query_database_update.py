@@ -15,7 +15,7 @@ from typing import cast
 
 
 
-def _get_kwargs(
+def request_kwargs(
     database_name: str,
     *,
     body: DatabaseUpdateRequest,
@@ -91,7 +91,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[DatabaseQueryResult | Error]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[DatabaseQueryResult | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -132,7 +132,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         database_name=database_name,
 body=body,
 
@@ -142,7 +142,7 @@ body=body,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
     database_name: str,
@@ -215,7 +215,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         database_name=database_name,
 body=body,
 
@@ -225,7 +225,7 @@ body=body,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
     database_name: str,

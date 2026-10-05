@@ -1,7 +1,7 @@
 """Postgres connection helpers for Volcano functions."""
 
 import re
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlencode
 
 _FULL_ACCESS_APP_NAME = "volcano_full_access"
 _USER_ACCESS_APP_NAME = "volcano_user_access"
@@ -20,14 +20,31 @@ def database_connection_string(
     *,
     user_id: str | None = None,
 ) -> str:
-    """Select full or user-scoped database access for a Volcano function."""
+    """Select full or user-scoped database access for a Volcano function.
+
+    Returns
+    -------
+    str
+        The connection URL with application_name replaced by the selected
+        access mode. Other query parameters and credentials are preserved.
+
+    Raises
+    ------
+    ValueError
+        The URL is empty, lacks a postgres/postgresql scheme, or contains
+        invalid percent escapes.
+
+    """
     if not base_connection_string:
         raise ValueError(_REQUIRED_ERROR)
 
     target, query = _connection_parts(base_connection_string)
     parameters = _query_parameters(query)
-    application_name = quote(_database_application_name(user_id), safe="")
-    parameters.append(f"application_name={application_name}")
+    parameters.append(
+        urlencode(
+            {"application_name": _database_application_name(user_id)}, quote_via=quote
+        )
+    )
     return f"{target}?{'&'.join(parameters)}"
 
 
@@ -36,31 +53,24 @@ def _connection_parts(value: str) -> tuple[str, str]:
     if prefix is None or _INVALID_PERCENT_ENCODING.search(value):
         raise ValueError(_INVALID_ERROR)
 
-    authority_end = value.find("/", prefix.end())
-    possible_userinfo_end = value.find("@", prefix.end())
-    userinfo_end = (
-        possible_userinfo_end
-        if possible_userinfo_end != -1
-        and (authority_end == -1 or possible_userinfo_end < authority_end)
-        else -1
-    )
-    query_start = value.find("?", max(prefix.end(), userinfo_end + 1))
+    before_at, at_separator, _ = value[prefix.end() :].partition("@")
+    query_search_start = prefix.end()
+    if at_separator and "/" not in before_at:
+        query_search_start += len(before_at) + 1
+    query_start = value.find("?", query_search_start)
     if query_start == -1:
         return value, ""
     return value[:query_start], value[query_start + 1 :]
 
 
 def _query_parameters(query: str) -> list[str]:
-    if not query:
-        return []
     parameters = [
         parameter
         for parameter in query.split("&")
         if unquote(parameter.partition("=")[0]) != "application_name"
     ]
-    while parameters and not parameters[-1]:
-        parameters.pop()
-    return parameters
+    serialized = "&".join(parameters).rstrip("&")
+    return serialized.split("&") if serialized else []
 
 
 def _database_application_name(user_id: str | None) -> str:

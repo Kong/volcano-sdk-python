@@ -15,8 +15,8 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    connection_id: UUID,
+def request_kwargs(
+    connection_id: UUID | str,
 
 ) -> dict[str, Any]:
     
@@ -84,7 +84,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | GitInstallationsResponse]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | GitInstallationsResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -94,7 +94,7 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    connection_id: UUID,
+    connection_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
@@ -117,7 +117,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         connection_id=connection_id,
 
     )
@@ -126,10 +126,10 @@ def sync_detailed(
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    connection_id: UUID,
+    connection_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
@@ -159,7 +159,7 @@ client=client,
     ).parsed
 
 async def asyncio_detailed(
-    connection_id: UUID,
+    connection_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
@@ -182,7 +182,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         connection_id=connection_id,
 
     )
@@ -191,10 +191,10 @@ async def asyncio_detailed(
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    connection_id: UUID,
+    connection_id: UUID | str,
     *,
     client: AuthenticatedClient,
 

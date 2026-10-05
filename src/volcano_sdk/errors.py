@@ -16,9 +16,9 @@ class VolcanoError(Exception):
     ) -> None:
         """Create an error from an API or transport failure."""
         super().__init__(message)
-        self.status = status
-        self.code = code
-        self.retry_after = retry_after
+        self.status: int | None = status
+        self.code: str | None = code
+        self.retry_after: int | None = retry_after
 
 
 class AuthenticationError(VolcanoError):

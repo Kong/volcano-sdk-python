@@ -15,8 +15,8 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    id: UUID,
+def request_kwargs(
+    id: UUID | str,
     page_type: HostedRenderablePageType,
 
 ) -> dict[str, Any]:
@@ -55,7 +55,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | str]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | str]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -65,15 +65,17 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    id: UUID,
+    id: UUID | str,
     page_type: HostedRenderablePageType,
     *,
     client: AuthenticatedClient | Client,
 
 ) -> Response[Any | str]:
-    """ Render managed reset-password page
+    """ Render a managed auth page
 
-     Public HTML endpoint for the managed reset-password page.
+     Public HTML endpoint for signup, forgot-password, device approval,
+    verify-email, and reset-password pages. Login uses the path without a
+    page type.
     Requires `Accept: text/html`.
     Returns 404 when managed hosted pages are disabled for the project.
 
@@ -90,7 +92,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 page_type=page_type,
 
@@ -100,18 +102,20 @@ page_type=page_type,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    id: UUID,
+    id: UUID | str,
     page_type: HostedRenderablePageType,
     *,
     client: AuthenticatedClient | Client,
 
 ) -> Any | str | None:
-    """ Render managed reset-password page
+    """ Render a managed auth page
 
-     Public HTML endpoint for the managed reset-password page.
+     Public HTML endpoint for signup, forgot-password, device approval,
+    verify-email, and reset-password pages. Login uses the path without a
+    page type.
     Requires `Accept: text/html`.
     Returns 404 when managed hosted pages are disabled for the project.
 
@@ -136,15 +140,17 @@ client=client,
     ).parsed
 
 async def asyncio_detailed(
-    id: UUID,
+    id: UUID | str,
     page_type: HostedRenderablePageType,
     *,
     client: AuthenticatedClient | Client,
 
 ) -> Response[Any | str]:
-    """ Render managed reset-password page
+    """ Render a managed auth page
 
-     Public HTML endpoint for the managed reset-password page.
+     Public HTML endpoint for signup, forgot-password, device approval,
+    verify-email, and reset-password pages. Login uses the path without a
+    page type.
     Requires `Accept: text/html`.
     Returns 404 when managed hosted pages are disabled for the project.
 
@@ -161,7 +167,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 page_type=page_type,
 
@@ -171,18 +177,20 @@ page_type=page_type,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    id: UUID,
+    id: UUID | str,
     page_type: HostedRenderablePageType,
     *,
     client: AuthenticatedClient | Client,
 
 ) -> Any | str | None:
-    """ Render managed reset-password page
+    """ Render a managed auth page
 
-     Public HTML endpoint for the managed reset-password page.
+     Public HTML endpoint for signup, forgot-password, device approval,
+    verify-email, and reset-password pages. Login uses the path without a
+    page type.
     Requires `Accept: text/html`.
     Returns 404 when managed hosted pages are disabled for the project.
 

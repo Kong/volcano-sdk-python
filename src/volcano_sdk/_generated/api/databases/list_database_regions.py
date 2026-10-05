@@ -13,7 +13,7 @@ from typing import cast
 
 
 
-def _get_kwargs(
+def request_kwargs(
     
 ) -> dict[str, Any]:
     
@@ -51,7 +51,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[list[ListDatabaseRegionsResponse200Item]]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[list[ListDatabaseRegionsResponse200Item]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -68,6 +68,8 @@ def sync_detailed(
     """ List platform-supported regions for database provisioning
 
      Returns the regions enabled for database provisioning in this platform environment.
+    These are the same regions offered for function deployment, and the only values
+    the `region` field of a database accepts.
     This is a public endpoint that doesn't require authentication.
 
     Raises:
@@ -79,7 +81,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         
     )
 
@@ -87,7 +89,7 @@ def sync_detailed(
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
     *,
@@ -97,6 +99,8 @@ def sync(
     """ List platform-supported regions for database provisioning
 
      Returns the regions enabled for database provisioning in this platform environment.
+    These are the same regions offered for function deployment, and the only values
+    the `region` field of a database accepts.
     This is a public endpoint that doesn't require authentication.
 
     Raises:
@@ -121,6 +125,8 @@ async def asyncio_detailed(
     """ List platform-supported regions for database provisioning
 
      Returns the regions enabled for database provisioning in this platform environment.
+    These are the same regions offered for function deployment, and the only values
+    the `region` field of a database accepts.
     This is a public endpoint that doesn't require authentication.
 
     Raises:
@@ -132,7 +138,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         
     )
 
@@ -140,7 +146,7 @@ async def asyncio_detailed(
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
     *,
@@ -150,6 +156,8 @@ async def asyncio(
     """ List platform-supported regions for database provisioning
 
      Returns the regions enabled for database provisioning in this platform environment.
+    These are the same regions offered for function deployment, and the only values
+    the `region` field of a database accepts.
     This is a public endpoint that doesn't require authentication.
 
     Raises:

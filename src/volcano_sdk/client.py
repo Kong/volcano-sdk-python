@@ -4,11 +4,21 @@ from __future__ import annotations
 
 import threading
 from collections import deque
-from typing import TYPE_CHECKING
+from dataclasses import replace
+from itertools import count
+from typing import TYPE_CHECKING, Unpack
+from uuid import UUID
 
+from ._auth_requests import AuthRequests
+from ._client_context import ClientContext
+from ._client_session import BootstrapCredentials, CallbackOutcome, bootstrap_session
+from ._session import validate_refresh_identity
+from ._session_operations import SessionOperations
 from ._transport import GeneratedTransport, Transport
-from .auth import Auth
+from .auth import Auth, AuthContext
 from .database import Database
+from .durable import Durable
+from .errors import AuthenticationError
 from .functions import Functions
 from .locks import Locks
 from .logs import Logs
@@ -16,35 +26,19 @@ from .models import (
     AuthChangeEvent,
     AuthStateCallback,
     AuthSubscription,
+    JSONValue,
     Session,
 )
 from .realtime import CentrifugeFactory, Realtime
 from .storage import Storage
 
 if TYPE_CHECKING:
-    from types import TracebackType
+    from _thread import LockType
+    from collections.abc import Callable, Mapping
 
 _NO_ACTIVE_SESSION = "No active session"
 _NO_SERVICE_KEY = "No service key configured"
-
-
-class _CallbackOutcome:
-    """Capture a callback failure without unwinding dispatcher ownership."""
-
-    def __init__(self) -> None:
-        self.error: BaseException | None = None
-
-    def __enter__(self) -> None:
-        return None
-
-    def __exit__(
-        self,
-        _error_type: type[BaseException] | None,
-        error: BaseException | None,
-        _traceback: TracebackType | None,
-    ) -> bool:
-        self.error = error
-        return error is not None
+_PROFILE_USER_MISMATCH = "Profile user does not match the active session"
 
 
 class VolcanoClient:
@@ -59,16 +53,19 @@ class VolcanoClient:
         timeout: float = 60.0,
         _transport: Transport | None = None,
         _realtime_client_factory: CentrifugeFactory | None = None,
+        **credentials: Unpack[BootstrapCredentials],
     ) -> None:
         """Create a client for a Volcano project."""
-        self._api_url = api_url.rstrip("/")
-        self._anon_key = anon_key
-        self._service_key = service_key
-        self._session_lock = threading.Lock()
-        self._session_generation = 0
-        self._current_session: Session | None = None
+        self._api_url: str = api_url.rstrip("/")
+        self._anon_key: str = anon_key
+        self._service_key: str | None = service_key
+        self._session_lock: LockType = threading.Lock()
+        self._generation_ids: count[int] = count()
+        self._session_generation: int = next(self._generation_ids)
+        self._session_lineage: SessionOperations = SessionOperations()
+        self._current_session: Session | None = bootstrap_session(credentials)
         self._auth_callbacks: dict[int, AuthStateCallback] = {}
-        self._next_auth_callback_id = 0
+        self._auth_callback_ids: count[int] = count()
         self._auth_notifications: deque[
             tuple[
                 tuple[int, ...],
@@ -76,34 +73,76 @@ class VolcanoClient:
                 Session | None,
             ]
         ] = deque()
-        self._dispatching_auth_notifications = False
+        self._dispatching_auth_notifications: bool = False
         self._transport: Transport = (
             _transport
             if _transport is not None
             else GeneratedTransport(api_url=self._api_url, timeout=timeout)
         )
-        self.auth = Auth(self)
-        self.functions = Functions(self)
-        self.logs = Logs(self)
-        self.storage = Storage(self)
-        self.locks = Locks(self)
+
+        auth_context = self._auth_context()
+        self._auth_requests: AuthRequests = AuthRequests(auth_context)
+        self.auth: Auth = Auth(auth_context, _requests=self._auth_requests)
+        self._facades: ClientContext = self._facade_context()
+        self.functions: Functions = Functions(self._facades)
+        self.durable: Durable = Durable(self._facades)
+        self.logs: Logs = Logs(self._facades)
+        self.storage: Storage = Storage(self._facades)
+        self.locks: Locks = Locks(self._facades)
         if _realtime_client_factory is None:
-            self.realtime = Realtime(self, api_url=self._api_url)
+            self.realtime: Realtime = Realtime(self._facades, api_url=self._api_url)
         else:
             self.realtime = Realtime(
-                self,
+                self._facades,
                 api_url=self._api_url,
                 client_factory=_realtime_client_factory,
             )
 
+    def _auth_context(self) -> AuthContext:
+        def capture_auth_session_binding() -> tuple[
+            int, SessionOperations, Session | None
+        ]:
+            return self._capture_session_binding()
+
+        return AuthContext(
+            transport=lambda: self._transport,
+            current_session=lambda: self.current_session,
+            anon_token=self._anon_token,
+            api_base_url=self._api_base_url,
+            set_session=self._set_session,
+            capture_session=self._capture_session,
+            capture_session_binding=capture_auth_session_binding,
+            update_session_user_if_current=self._update_session_user_if_current,
+            set_session_if_current=self._set_session_if_current,
+            clear_session_if_current=self._clear_session_if_current,
+            subscribe_auth_state_change=self._subscribe_auth_state_change,
+        )
+
+    def _facade_context(self) -> ClientContext:
+        return ClientContext(
+            _get_transport=lambda: self._transport,
+            _get_auth=lambda: self._auth_requests,
+            _get_anon_token=self._anon_token,
+            _get_session_token=self._session_token,
+            _get_function_token=self._function_token,
+            _get_service_token=self._service_token,
+            _get_api_base_url=self._api_base_url,
+            _get_capture_session_binding=self._capture_session_binding,
+        )
+
     @property
     def current_session(self) -> Session | None:
-        """Return the authenticated session, if one exists."""
+        """The authenticated session, if one exists."""
         return self._capture_session()[1]
 
     def database(self, name: str) -> Database:
-        """Create a query facade for a project database."""
-        return Database(self, name)
+        """Create a query facade for a project database.
+
+        Returns:
+            A query facade bound to the named database.
+
+        """
+        return Database(self._facades, name)
 
     def _anon_token(self) -> str:
         return self._anon_key
@@ -134,11 +173,14 @@ class VolcanoClient:
         self,
         session: Session,
         *,
-        event: AuthChangeEvent = "SIGNED_IN",
+        event: AuthChangeEvent | None,
     ) -> None:
         with self._session_lock:
             self._current_session = session
-            self._session_generation += 1
+            self._session_generation = next(self._generation_ids)
+            self._session_lineage = SessionOperations()
+            if event is None:
+                return
             callback_ids = tuple(self._auth_callbacks)
             dispatch = self._enqueue_auth_state_change(callback_ids, event, session)
         if dispatch:
@@ -148,48 +190,102 @@ class VolcanoClient:
         with self._session_lock:
             return self._session_generation, self._current_session
 
+    def _capture_session_binding(self) -> tuple[int, SessionOperations, Session | None]:
+        with self._session_lock:
+            return (
+                self._session_generation,
+                self._session_lineage,
+                self._current_session,
+            )
+
+    def _update_session_user_if_current(
+        self, user: Mapping[str, JSONValue], generation: int
+    ) -> bool:
+        with self._session_lock:
+            current = self._current_session
+            if generation != self._session_generation or current is None:
+                return False
+            user_id = str(user["id"]) if current.user_id is None else current.user_id
+            try:
+                incoming_user_id = UUID(str(user["id"]))
+                expected_user_id = UUID(user_id)
+            except ValueError:
+                raise AuthenticationError(_PROFILE_USER_MISMATCH) from None
+            if incoming_user_id != expected_user_id:
+                raise AuthenticationError(_PROFILE_USER_MISMATCH)
+            # Profile updates do not replace credentials or invalidate other requests.
+            self._current_session = replace(
+                current, user_id=user_id, user={**user, "id": user_id}
+            )
+        return True
+
     def _set_session_if_current(
         self,
         session: Session,
         generation: int,
         *,
-        event: AuthChangeEvent = "SIGNED_IN",
+        event: AuthChangeEvent,
+        notifications: list[Callable[[], None]] | None = None,
     ) -> bool:
         with self._session_lock:
             if generation != self._session_generation:
                 return False
+            if event == "TOKEN_REFRESHED":
+                validate_refresh_identity(self._current_session, session)
             self._current_session = session
-            self._session_generation += 1
+            self._session_generation = next(self._generation_ids)
+            if event != "TOKEN_REFRESHED":
+                self._session_lineage = SessionOperations(session)
             callback_ids = tuple(self._auth_callbacks)
             dispatch = self._enqueue_auth_state_change(callback_ids, event, session)
         if dispatch:
-            self._drain_auth_state_changes()
+            self._dispatch_or_defer(notifications)
         return True
 
     def _clear_session_if_current(
         self,
         generation: int,
         *,
-        event: AuthChangeEvent = "SIGNED_OUT",
+        lineage: SessionOperations | None = None,
+        event: AuthChangeEvent,
+        notifications: list[Callable[[], None]] | None = None,
     ) -> bool:
         with self._session_lock:
-            if generation != self._session_generation:
+            if not self._owns_session_binding(generation, lineage):
                 return False
+            if self._current_session is None:
+                return True
             self._current_session = None
-            self._session_generation += 1
+            self._session_lineage.clear_local_credentials()
+            self._session_generation = next(self._generation_ids)
             callback_ids = tuple(self._auth_callbacks)
             dispatch = self._enqueue_auth_state_change(callback_ids, event, None)
         if dispatch:
-            self._drain_auth_state_changes()
+            self._dispatch_or_defer(notifications)
         return True
+
+    def _owns_session_binding(
+        self, generation: int, lineage: SessionOperations | None
+    ) -> bool:
+        # Call only while holding the session lock used for the state change.
+        if lineage is not None:
+            return lineage == self._session_lineage
+        return generation == self._session_generation
+
+    def _dispatch_or_defer(
+        self, notifications: list[Callable[[], None]] | None
+    ) -> None:
+        if notifications is None:
+            self._drain_auth_state_changes()
+        else:
+            notifications.append(self._drain_auth_state_changes)
 
     def _subscribe_auth_state_change(
         self,
         callback: AuthStateCallback,
     ) -> AuthSubscription:
         with self._session_lock:
-            callback_id = self._next_auth_callback_id
-            self._next_auth_callback_id += 1
+            callback_id = next(self._auth_callback_ids)
             self._auth_callbacks[callback_id] = callback
             current = self._current_session
             dispatch = self._enqueue_auth_state_change(
@@ -205,7 +301,7 @@ class VolcanoClient:
 
     def _unsubscribe_auth_state_change(self, callback_id: int) -> None:
         with self._session_lock:
-            self._auth_callbacks.pop(callback_id, None)
+            _ = self._auth_callbacks.pop(callback_id, None)
 
     def _enqueue_auth_state_change(
         self,
@@ -213,13 +309,12 @@ class VolcanoClient:
         event: AuthChangeEvent,
         session: Session | None,
     ) -> bool:
-        if not callback_ids:
-            return False
-        self._auth_notifications.append((callback_ids, event, session))
-        if self._dispatching_auth_notifications:
-            return False
-        self._dispatching_auth_notifications = True
-        return True
+        dispatch = bool(callback_ids) and not self._dispatching_auth_notifications
+        if callback_ids:
+            self._auth_notifications.append((callback_ids, event, session))
+        if dispatch:
+            self._dispatching_auth_notifications = True
+        return dispatch
 
     def _drain_auth_state_changes(self) -> None:
         failure: BaseException | None = None
@@ -251,7 +346,7 @@ class VolcanoClient:
                 callback = self._auth_callbacks.get(callback_id)
             if callback is None:
                 continue
-            outcome = _CallbackOutcome()
+            outcome = CallbackOutcome()
             with outcome:
                 callback(event, session)
             if outcome.error is None or isinstance(outcome.error, Exception):

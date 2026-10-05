@@ -18,8 +18,8 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    id: UUID,
+def request_kwargs(
+    id: UUID | str,
     *,
     body: ProjectConfig,
     dry_run: bool | Unset = False,
@@ -96,13 +96,20 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_422
 
+    if response.status_code == 503:
+        response_503 = Error.from_dict(response.json())
+
+
+
+        return response_503
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | ProjectConfigApplyResult | ProjectConfigValidationErrorResponse]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | ProjectConfigApplyResult | ProjectConfigValidationErrorResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -112,7 +119,7 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: ProjectConfig,
@@ -158,7 +165,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 body=body,
 dry_run=dry_run,
@@ -169,10 +176,10 @@ dry_run=dry_run,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: ProjectConfig,
@@ -227,7 +234,7 @@ dry_run=dry_run,
     ).parsed
 
 async def asyncio_detailed(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: ProjectConfig,
@@ -273,7 +280,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 body=body,
 dry_run=dry_run,
@@ -284,10 +291,10 @@ dry_run=dry_run,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: ProjectConfig,

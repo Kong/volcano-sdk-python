@@ -26,12 +26,14 @@ class GitRepository:
             full_name (str):
             default_branch (str):
             private (bool):
+            is_empty (bool): Whether the repository has no commits and can receive an initial source export.
      """
 
     id: int
     full_name: str
     default_branch: str
     private: bool
+    is_empty: bool
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -47,6 +49,8 @@ class GitRepository:
 
         private = self.private
 
+        is_empty = self.is_empty
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -55,6 +59,7 @@ class GitRepository:
             "full_name": full_name,
             "default_branch": default_branch,
             "private": private,
+            "is_empty": is_empty,
         })
 
         return field_dict
@@ -72,11 +77,14 @@ class GitRepository:
 
         private = d.pop("private")
 
+        is_empty = d.pop("is_empty")
+
         git_repository = cls(
             id=id,
             full_name=full_name,
             default_branch=default_branch,
             private=private,
+            is_empty=is_empty,
         )
 
 

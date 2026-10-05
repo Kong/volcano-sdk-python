@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling==1.32.4"]
 build-backend = "hatchling.build"
 
 [project]
-name = "volcano-sdk"
-version = "0.1.0"
+name = "volcano-sdk-python"
+version = "0.13.5"
 description = "Official Python SDK for Volcano"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,98 +16,324 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
   "attrs>=26.1.0",
   "centrifuge-python>=0.6.0,<0.7.0",
   "httpx>=0.28.1,<0.29.0",
-  "python-dateutil>=2.9.0.post0,<3.0.0",
-  "typing-extensions>=4.15.0",
+  "typing-extensions>=4.12.2",
 ]
 
+[project.optional-dependencies]
+# The runtime the authoring module wraps. Not a base dependency: it is large,
+# and a deployed durable function gets it from the build, so a project using the
+# rest of the SDK installs without it. Take the extra to run a durable handler
+# in your own tests, or to pin the version the build would otherwise choose.
+durable = ["aws-durable-execution-sdk-python>=2.0.0,<3.0.0"]
+
+[project.urls]
+Homepage = "https://volcano.dev"
+Repository = "https://github.com/Kong/volcano-sdk-python"
+Changelog = "https://github.com/Kong/volcano-sdk-python/releases"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/volcano_sdk"]
+exclude = ["/src/volcano_sdk/_tests"]
+
 [dependency-groups]
+build = ["hatchling==1.32.4"]
 dev = [
-  "behave>=1.3.3,<2.0.0",
-  "build>=1.5.0,<2.0.0",
+  # The durable extra, so the authoring module's tests run here, plus the local
+  # runner they check replay against. Neither is a base dependency: the SDK has
+  # to install for a project that uses none of it.
+  "volcano-sdk-python[durable]",
+  "aws-durable-execution-sdk-python-testing>=1.2.1,<2.0.0",
   "mypy>=1.18.0",
+  "pyrefly==1.3.1",
   "openapi-python-client==0.29.0",
-  "pyright>=1.1.405",
-  "pytest>=8.3.0",
-  "ruff>=0.9.0",
-  "types-python-dateutil>=2.9.0.20250822",
+  "basedpyright==1.40.1",
+  "pytest==9.1.1",
+  "ruff==0.16.4",
+  "pip-audit==2.10.1",
+  "hypothesis==6.168.0",
+  "poethepoet==0.46.0",
+  "pytest-asyncio==1.4.0",
+  "pytest-order==1.5.0",
+  "coverage==7.16.1",
+  "pytest-cov==7.1.0",
+  "pytest-socket==0.8.1",
+  "tox==4.62.0",
+  "mutmut==3.8.0",
+]
+
+[tool.uv]
+required-version = "==0.12.17"
+build-constraint-dependencies = [
+  { requirement = "hatchling==1.32.4", hashes = [
+    "sha256:c4468f73144c054d2aab4ef0f0378c43b9878bf07f8ffd6b79690e970d375f07",
+    "sha256:08ecf7548fb48205e7f213d70c71e67b8271b7242093dc3f1da578b42c734a2c",
+  ] },
+  { requirement = "packaging==26.3", hashes = [
+    "sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79",
+    "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+  ] },
+  { requirement = "pathspec==1.1.1", hashes = [
+    "sha256:17db5ecd524104a120e173814c90367a96a98d07c45b2e10c2f3919fff91bf5a",
+    "sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189",
+  ] },
+  { requirement = "pluggy==1.6.0", hashes = [
+    "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3",
+    "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746",
+  ] },
+  { requirement = "tomlkit==0.15.1", hashes = [
+    "sha256:e25bbf38843005246210a12982776f27f99cb9be67160e14434d0c0d21ee1e97",
+    "sha256:177a05aece5a8ca5266fd3c448abb47b8d352f09d477d3ca8332db4d89b24304",
+  ] },
+  { requirement = "trove-classifiers==2026.9.21.13", hashes = [
+    "sha256:0a9ebc8d4e2f3e8a22848c5258033035bec17a3012ac3fea16dbaa764489eb71",
+    "sha256:8b1ff4f9c191b1040b71c37f1e445ab99732911e3cd91de52838453a854d7a17",
+  ] },
 ]
 
 [tool.mypy]
-files = ["src", "tests/unit", "scripts"]
+files = ["src", "tests", "scripts", "typings", "conftest.py"]
 python_version = "3.11"
 strict = true
+strict_equality_for_none = true
+strict_bytes = true
+disallow_any_unimported = true
+disallow_any_decorated = true
+disallow_any_explicit = true
+warn_unreachable = true
+warn_unused_ignores = true
+enable_error_code = [
+  "deprecated",
+  "exhaustive-match",
+  "explicit-override",
+  "ignore-without-code",
+  "mutable-override",
+  "possibly-undefined",
+  "redundant-expr",
+  "redundant-self",
+  "truthy-bool",
+  "truthy-iterable",
+  "unimported-reveal",
+  "unused-awaitable",
+]
+explicit_package_bases = true
+mypy_path = [
+  "$MYPY_CONFIG_FILE_DIR/src",
+  "$MYPY_CONFIG_FILE_DIR/typings",
+]
 exclude = ["src/volcano_sdk/_generated/"]
 
-[[tool.mypy.overrides]]
-module = ["behave.*"]
-ignore_missing_imports = true
-
-[tool.pyright]
-include = ["src", "tests/unit", "scripts"]
+[tool.basedpyright]
+stubPath = "typings"
+include = ["src", "tests", "scripts", "typings", "conftest.py"]
+extraPaths = [".", "src"]
 exclude = ["src/volcano_sdk/_generated"]
 pythonVersion = "3.11"
 venvPath = "."
 venv = ".venv"
-typeCheckingMode = "strict"
-# Package-level collaborators intentionally share private implementation details;
-# Ruff still enforces private access everywhere else.
-reportPrivateUsage = false
+typeCheckingMode = "all"
 
 [tool.ruff]
+required-version = "==0.16.4"
 target-version = "py311"
+output-prefer-rule-codes = true
 extend-exclude = ["src/volcano_sdk/_generated"]
 
 [tool.ruff.lint]
+preview = true
 select = ["ALL"]
 ignore = [
   # The repository license covers source files without per-file headers.
-  "CPY001",
+  "missing-copyright-notice",
   # Ruff format uses the opposite convention or supersedes these rules.
-  "COM812",
-  "COM819",
-  "D203",
-  "D206",
-  "D213",
-  "D300",
-  "E111",
-  "E114",
-  "E117",
-  "ISC001",
-  "ISC002",
-  "Q000",
-  "Q001",
-  "Q002",
-  "Q003",
-  "W191",
+  "missing-trailing-comma",
+  "prohibited-trailing-comma",
+  "incorrect-blank-line-before-class",
+  "docstring-tab-indentation",
+  "multi-line-summary-second-line",
+  "triple-single-quotes",
+  "indentation-with-invalid-multiple",
+  "indentation-with-invalid-multiple-comment",
+  "over-indented",
+  "single-line-implicit-string-concatenation",
+  "multi-line-implicit-string-concatenation",
+  "bad-quotes-inline-string",
+  "bad-quotes-multiline-string",
+  "bad-quotes-docstring",
+  "avoidable-escaped-quote",
+  "tab-indentation",
 ]
 
+[tool.ruff.lint.mccabe]
+max-complexity = 5
+
 [tool.ruff.lint.per-file-ignores]
-"features/**/*.py" = ["ANN401", "D", "INP001", "S101"]
-"scripts/*.py" = ["T201"]
-"src/volcano_sdk/_transport.py" = ["ANN401"]
-"src/volcano_sdk/auth.py" = ["SLF001"]
-"src/volcano_sdk/database.py" = ["SLF001"]
-"src/volcano_sdk/functions.py" = ["SLF001"]
-"src/volcano_sdk/logs.py" = ["SLF001"]
-"src/volcano_sdk/locks.py" = ["SLF001"]
-"src/volcano_sdk/realtime.py" = ["ANN401", "SLF001"]
-"src/volcano_sdk/storage.py" = ["SLF001"]
-"tests/**/*.py" = [
-  "ANN401",
+"conftest.py" = ["D"]
+"scripts/*.py" = ["print"]
+"{tests,src/volcano_sdk/_tests}/**/*.py" = [
   "D",
-  "INP001",
-  "PLR2004",
-  "S101",
-  "S105",
-  "S106",
-  "SLF001",
+  "implicit-namespace-package",
+  "magic-value-comparison",
+  "assert",
+  "hardcoded-password-string",
+  "hardcoded-password-func-arg",
 ]
 
 [tool.pytest.ini_options]
+minversion = "9.1.1"
+addopts = "--disable-socket --allow-unix-socket --import-mode=importlib"
+testpaths = ["tests/unit", "src/volcano_sdk/_tests"]
+pythonpath = ["."]
+strict = true
+empty_parameter_set_mark = "fail_at_collect"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
+asyncio_debug = true
 filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source_dirs = ["src/volcano_sdk"]
+omit = ["src/volcano_sdk/_generated/*", "src/volcano_sdk/_tests/*"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+include_namespace_packages = true
+# Keep declaration-only exclusions; coverage-ignore comments have no effect.
+exclude_lines = [
+  '^\s*(((async )?def .*?)?[\])]+(\s*->.*?)?:\s*)?\.\.\.\s*(#|$)',
+  'if (typing\.)?TYPE_CHECKING:',
+]
+partial_branches = []
+
+[tool.mutmut]
+source_paths = ["src/volcano_sdk"]
+type_check_command = [
+  "pyrefly", "check", "--output-format=json",
+  "--project-excludes", "src/volcano_sdk/_generated/**",
+  "--project-excludes", "src/volcano_sdk/_tests/**",
+  "src/volcano_sdk",
+]
+cache_invalidation_files = ["tests/**/*.py", "src/volcano_sdk/_tests/**/*.py", "conftest.py"]
+pytest_add_cli_args_test_selection = ["tests/unit", "src/volcano_sdk/_tests"]
+pytest_add_cli_args = ["-c", "pyproject.toml", "-x"]
+do_not_mutate = ["src/volcano_sdk/_generated/*", "src/volcano_sdk/_tests/*"]
+on_dependency_change = "rerun"
+process_isolation = "forkserver"
+also_copy = [
+  "conftest.py",
+  "maintainers",
+  "tests/fixtures",
+  "typings",
+  "scripts",
+  "openapi",
+  "openapi-python-client.yaml",
+  "README.md",
+]
+
+[tool.poe.tasks]
+quality = ["checks", "mutation"]
+checks = ["policy", "audit", "generated", "lint", "format-check", "types", "test", "coverage", "package-check", "package-extras"]
+policy = "bash scripts/check_quality_policy.sh"
+build = "uv build --no-sources --require-hashes"
+audit = "bash scripts/audit_dependencies.sh"
+generated = "python -m scripts.check_openapi"
+lint = "ruff check --config pyproject.toml ."
+format-check = "ruff format --check --config pyproject.toml ."
+types = ["mypy", "basedpyright"]
+mypy = "mypy --config-file pyproject.toml"
+basedpyright = "basedpyright --project pyproject.toml"
+mutation = "bash scripts/mutation.sh"
+
+[tool.poe.tasks.test]
+interpreter = "bash"
+shell = """
+set -euo pipefail
+report_dir="$(mktemp -d)"
+trap 'rm -rf "$report_dir"' EXIT
+test_status=0
+pytest -c pyproject.toml -q --junitxml="$report_dir/unit.xml" || test_status=$?
+mkdir -p reports
+if test -s "$report_dir/unit.xml"; then
+  mv "$report_dir/unit.xml" reports/unit.xml
+else
+  echo 'pytest did not write a JUnit report' >&2
+  if [[ $test_status -eq 0 ]]; then test_status=1; fi
+fi
+exit "$test_status"
+"""
+
+[tool.poe.tasks.coverage]
+interpreter = "bash"
+shell = """
+set -euo pipefail
+report_dir="$(mktemp -d)"
+trap 'rm -rf "$report_dir"' EXIT
+test_status=0
+uv run --locked --isolated --python 3.12.14 pytest -c pyproject.toml -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:"$report_dir/coverage.json" --junitxml="$report_dir/unit.xml" || test_status=$?
+mkdir -p reports
+if test -s "$report_dir/coverage.json"; then
+  mv "$report_dir/coverage.json" reports/coverage.json
+else
+  echo 'pytest-cov did not write a coverage report' >&2
+  if [[ $test_status -eq 0 ]]; then test_status=1; fi
+fi
+if test -s "$report_dir/unit.xml"; then
+  mv "$report_dir/unit.xml" reports/coverage-unit.xml
+else
+  echo 'pytest did not write a JUnit report' >&2
+  if [[ $test_status -eq 0 ]]; then test_status=1; fi
+fi
+exit "$test_status"
+"""
+
+
+[tool.poe.tasks.package-check]
+# Keep artifacts private to this run and remove them even when validation fails.
+interpreter = "bash"
+shell = """
+set -euo pipefail
+package_dir="$(mktemp -d)"
+trap 'rm -rf "$package_dir"' EXIT
+poe build --out-dir "$package_dir"
+bash scripts/check_package.sh "" "$package_dir"
+"""
+
+[tool.poe.tasks.package-extras]
+cmd = "tox run -c pyproject.toml --recreate -e package-base,package-min-typing,package-durable,package-types"
+
+[tool.tox]
+env_list = ["package-base", "package-min-typing", "package-durable", "package-types"]
+
+[tool.tox.env_run_base]
+package = "wheel"
+commands = [["python", "-I", "tests/package/optional_dependency.py", "base"]]
+
+[tool.tox.env.package-min-typing]
+deps = ["typing-extensions==4.12.2"]
+constrain_package_deps = true
+commands = [
+  ["python", "-I", "-c", "from importlib.metadata import version; assert version('typing-extensions') == '4.12.2'"],
+  ["python", "-I", "tests/package/optional_dependency.py", "base"],
+]
+
+[tool.tox.env.package-durable]
+extras = ["durable"]
+commands = [["python", "-I", "tests/package/optional_dependency.py", "durable"]]
+
+[tool.tox.env.package-types]
+extras = ["durable"]
+deps = ["basedpyright==1.40.1"]
+change_dir = "{env_tmp_dir}"
+commands = [
+  ["basedpyright", "--project", "{env_tmp_dir}", "--verifytypes", "volcano_sdk", "--warnings"],
+]

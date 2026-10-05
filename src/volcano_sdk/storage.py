@@ -2,18 +2,36 @@
 
 from __future__ import annotations
 
-import base64
-import binascii
-import json
-from collections.abc import Callable, Generator, Mapping, Sequence
-from contextlib import contextmanager, suppress
+from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime
-from io import SEEK_END, BytesIO
-from tempfile import TemporaryFile
-from typing import Any, BinaryIO, Protocol, cast
-from urllib.parse import quote
+from typing import (
+    TYPE_CHECKING,
+    Protocol,
+    runtime_checkable,
+)
 
+from ._client_context import ClientContextSource, facade_context
+from ._storage_values import (
+    BinaryReader,
+    SeekableBinaryReader,
+    encoded_storage_component,
+    encoded_storage_path,
+    is_string_keyed_mapping,
+    project_id_from_anon_key,
+    read_upload_part,
+    resumable_upload_source,
+    simple_upload_bytes,
+    storage_mapping,
+    storage_object,
+    storage_page,
+    storage_path,
+    storage_paths,
+    storage_visibility,
+    upload_content_type,
+    upload_part,
+    upload_session,
+    upload_session_status,
+)
 from ._transport import (
     StorageUploadPartRequest,
     StorageUploadSessionReference,
@@ -23,270 +41,81 @@ from ._transport import (
     invoke,
     response_payload,
 )
-from .models import (
-    JSONValue,
-    StorageObject,
-    StoragePage,
-    UploadPart,
-    UploadSession,
-    UploadSessionState,
-    UploadSessionStatus,
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from ._auth_requests import AuthRequests
+    from ._session_operations import SessionOperations
+    from .models import (
+        Session,
+        StorageObject,
+        StoragePage,
+        UploadPart,
+        UploadSession,
+        UploadSessionStatus,
+    )
+
+
+_HTTP_PARTIAL_CONTENT = 206
+
+_INVALID_UPLOAD_RESPONSE = "Expected a storage upload response object"
+
+_INVALID_STORAGE_TRANSPORT = (
+    "Transport does not support the requested storage operation"
 )
 
-_INVALID_STORAGE_PAGE = "Expected a complete storage page"
-_INVALID_STORAGE_PATH = "Storage path must be a non-empty string"
-_INVALID_STORAGE_PATHS = "Storage paths must be non-empty strings"
-_INVALID_STORAGE_VISIBILITY = "is_public must be a boolean"
-_INVALID_STORAGE_ANON_KEY = "Anon key must contain a project ID"
-_INVALID_PUBLIC_URL_PATH = "Public URL paths cannot contain dot segments"
-_JWT_PART_COUNT = 3
-_HTTP_PARTIAL_CONTENT = 206
-_UPLOAD_SPOOL_READ_SIZE = 1_048_576
-_UPLOAD_SOURCE_UNAVAILABLE = "Upload source is temporarily unavailable"
-_INVALID_SIMPLE_UPLOAD = "Upload data must be bytes or a readable binary stream"
 
-
-def _optional_datetime(value: object) -> datetime | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        return datetime.fromisoformat(value)
-    raise TypeError(_INVALID_STORAGE_PAGE)
-
-
-def _storage_object(payload: object) -> StorageObject:
-    if not isinstance(payload, Mapping):
-        raise TypeError(_INVALID_STORAGE_PAGE)
-    values = cast("Mapping[str, object]", payload)
-    raw_metadata = values.get("metadata")
-    if raw_metadata is not None and not isinstance(raw_metadata, Mapping):
-        raise TypeError(_INVALID_STORAGE_PAGE)
-    size = values["size"]
-    is_public = values["is_public"]
-    if type(size) is not int or not isinstance(is_public, bool):
-        raise TypeError(_INVALID_STORAGE_PAGE)
-    return StorageObject(
-        id=str(values["id"]),
-        bucket_id=str(values["bucket_id"]),
-        name=str(values["name"]),
-        size=size,
-        mime_type=str(values["mime_type"]),
-        is_public=is_public,
-        owner_id=None if values.get("owner_id") is None else str(values["owner_id"]),
-        etag=None if values.get("etag") is None else str(values["etag"]),
-        metadata=cast("Mapping[str, JSONValue] | None", raw_metadata),
-        created_at=_optional_datetime(values.get("created_at")),
-        updated_at=_optional_datetime(values.get("updated_at")),
-        public_url=(
-            None if values.get("public_url") is None else str(values["public_url"])
-        ),
-    )
-
-
-def _storage_page(payload: object) -> StoragePage:
-    if not isinstance(payload, Mapping):
-        raise TypeError(_INVALID_STORAGE_PAGE)
-    values = cast("Mapping[str, object]", payload)
-    raw_objects = values.get("objects", [])
-    if not isinstance(raw_objects, list):
-        raise TypeError(_INVALID_STORAGE_PAGE)
-    objects = cast("list[object]", raw_objects)
-    next_cursor = values.get("next_cursor")
-    return StoragePage(
-        objects=tuple(_storage_object(item) for item in objects),
-        next_cursor=(
-            None if next_cursor is None or next_cursor == "" else str(next_cursor)
-        ),
-    )
-
-
-def _upload_session(payload: object) -> UploadSession:
-    values = cast("Mapping[str, object]", payload)
-    raw_expires_at = values["expires_at"]
-    expires_at = (
-        datetime.fromisoformat(raw_expires_at)
-        if isinstance(raw_expires_at, str)
-        else cast("datetime", raw_expires_at)
-    )
-    return UploadSession(
-        session_id=cast("str", values["session_id"]),
-        part_size=cast("int", values["part_size"]),
-        total_parts=cast("int", values["total_parts"]),
-        expires_at=expires_at,
-    )
-
-
-def _upload_part(payload: object) -> UploadPart:
-    values = cast("Mapping[str, object]", payload)
-    return UploadPart(
-        part_number=cast("int", values["part_number"]),
-        etag=cast("str", values["etag"]),
-        size=cast("int", values["size"]),
-    )
-
-
-def _upload_session_status(payload: object) -> UploadSessionStatus:
-    values = cast("Mapping[str, object]", payload)
-    raw_parts = cast("list[object]", values.get("parts", []))
-    return UploadSessionStatus(
-        session_id=cast("str", values["session_id"]),
-        status=cast("UploadSessionState", values["status"]),
-        path=cast("str", values["path"]),
-        content_type=cast("str", values["content_type"]),
-        total_size=cast("int", values["total_size"]),
-        part_size=cast("int", values["part_size"]),
-        total_parts=cast("int", values["total_parts"]),
-        parts_uploaded=cast("int", values["parts_uploaded"]),
-        bytes_uploaded=cast("int", values["bytes_uploaded"]),
-        parts=tuple(_upload_part(part) for part in raw_parts),
-        expires_at=cast("datetime", _optional_datetime(values["expires_at"])),
-        created_at=cast("datetime", _optional_datetime(values["created_at"])),
-    )
-
-
-def _storage_paths(paths: object) -> tuple[str, ...]:
-    if isinstance(paths, str):
-        raw_paths: tuple[object, ...] = (paths,)
-    elif isinstance(paths, Sequence):
-        raw_paths = tuple(cast("Sequence[object]", paths))
-    else:
-        raise TypeError(_INVALID_STORAGE_PATHS)
-    if not raw_paths or any(
-        not isinstance(path, str) or not path for path in raw_paths
-    ):
-        raise ValueError(_INVALID_STORAGE_PATHS)
-    return cast("tuple[str, ...]", raw_paths)
-
-
-def _storage_path(path: object) -> str:
-    if not isinstance(path, str):
-        raise TypeError(_INVALID_STORAGE_PATH)
-    if not path:
-        raise ValueError(_INVALID_STORAGE_PATH)
-    return path
-
-
-def _storage_visibility(value: object) -> bool:
-    if not isinstance(value, bool):
-        raise TypeError(_INVALID_STORAGE_VISIBILITY)
-    return value
-
-
-def _project_id_from_anon_key(anon_key: str) -> str:
-    parts = anon_key.split(".")
-    if len(parts) != _JWT_PART_COUNT:
-        raise ValueError(_INVALID_STORAGE_ANON_KEY)
-    try:
-        encoded = parts[1].encode("ascii")
-        padded = encoded + (b"=" * (-len(encoded) % 4))
-        payload = json.loads(
-            base64.b64decode(padded, altchars=b"-_", validate=True).decode(),
-        )
-    except (binascii.Error, UnicodeError, json.JSONDecodeError) as error:
-        raise ValueError(_INVALID_STORAGE_ANON_KEY) from error
-    claims: Mapping[str, object] = {}
-    if isinstance(payload, Mapping):
-        claims = cast("Mapping[str, object]", payload)
-    project_id = claims.get("project_id")
-    if not isinstance(project_id, str) or not project_id.strip():
-        raise ValueError(_INVALID_STORAGE_ANON_KEY)
-    return project_id
-
-
-def _encoded_storage_path(path: str) -> str:
-    segments = path.split("/")
-    if any(segment in {".", ".."} for segment in segments):
-        raise ValueError(_INVALID_PUBLIC_URL_PATH)
-    return "/".join(quote(segment, safe="") for segment in segments)
-
-
-def _remaining_upload_bytes(source: BinaryIO) -> int | None:
-    try:
-        if not source.seekable():
-            return None
-        position = source.tell()
-    except (AttributeError, OSError, ValueError):
-        return None
-    try:
-        try:
-            source.seek(0, SEEK_END)
-            remaining = max(0, source.tell() - position)
-        except (OSError, ValueError):
-            remaining = None
-    finally:
-        source.seek(position)
-    return remaining
-
-
-def _spool_upload_source(source: BinaryIO, target: BinaryIO) -> None:
-    while True:
-        chunk = cast("bytes | None", source.read(_UPLOAD_SPOOL_READ_SIZE))
-        if chunk is None:
-            raise BlockingIOError(_UPLOAD_SOURCE_UNAVAILABLE)
-        if chunk == b"":
-            return
-        target.write(chunk)
-
-
-def _read_upload_part(source: BinaryIO, part_size: int) -> bytes:
-    part = bytearray()
-    while len(part) < part_size:
-        chunk = cast("bytes | None", source.read(part_size - len(part)))
-        if chunk is None:
-            raise BlockingIOError(_UPLOAD_SOURCE_UNAVAILABLE)
-        if chunk == b"":
-            break
-        part.extend(chunk)
-    return bytes(part)
-
-
-def _simple_upload_bytes(data: object) -> bytes:
-    if isinstance(data, bytes):
-        return data
-    read = getattr(data, "read", None)
-    if not callable(read):
-        raise TypeError(_INVALID_SIMPLE_UPLOAD)
-    value = read()
-    if value is None:
-        raise BlockingIOError(_UPLOAD_SOURCE_UNAVAILABLE)
-    if not isinstance(value, bytes):
-        raise TypeError(_INVALID_SIMPLE_UPLOAD)
-    return value
-
-
-@contextmanager
-def _resumable_upload_source(
-    data: bytes | BinaryIO,
-) -> Generator[tuple[BinaryIO, int], None, None]:
-    if isinstance(data, bytes):
-        with BytesIO(data) as source:
-            yield source, len(data)
-        return
-    remaining = _remaining_upload_bytes(data)
-    if remaining is not None:
-        yield data, remaining
-        return
-    with TemporaryFile(mode="w+b") as source:
-        _spool_upload_source(data, source)
-        total_size = source.tell()
-        source.seek(0)
-        yield source, total_size
+__all__ = [
+    "BinaryReader",
+    "SeekableBinaryReader",
+    "Storage",
+    "StorageAbortUploadTransport",
+    "StorageBucket",
+    "StorageCompleteUploadTransport",
+    "StorageContext",
+    "StorageCopyTransport",
+    "StorageDeleteTransport",
+    "StorageListTransport",
+    "StorageMoveTransport",
+    "StorageUploadPartTransport",
+    "StorageUploadSessionTransport",
+    "StorageUploadStatusTransport",
+    "StorageVisibilityTransport",
+]
 
 
 class StorageContext(Protocol):
     """Client capabilities required by object storage."""
 
-    _transport: Transport
+    def transport(self) -> Transport:
+        """Return the active typed transport."""
+        ...
 
-    def _anon_token(self) -> str: ...
+    def auth(self) -> AuthRequests:
+        """Return the shared session request coordinator."""
+        ...
 
-    def _api_base_url(self) -> str: ...
+    def anon_token(self) -> str:
+        """Return the configured anonymous credential."""
+        ...
 
-    def _session_token(self) -> str: ...
+    def api_base_url(self) -> str:
+        """Return the API base URL."""
+        ...
+
+    def session_token(self) -> str:
+        """Return the active session credential."""
+        ...
+
+    def capture_session_binding(
+        self,
+    ) -> tuple[int, SessionOperations, Session | None]:
+        """Capture session ownership and credentials together."""
+        ...
 
 
+@runtime_checkable
 class StorageListTransport(Protocol):
     """Transport capability required to list storage objects."""
 
@@ -303,6 +132,7 @@ class StorageListTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageDeleteTransport(Protocol):
     """Transport capability required to delete storage objects."""
 
@@ -317,6 +147,7 @@ class StorageDeleteTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageMoveTransport(Protocol):
     """Transport capability required to move a storage object."""
 
@@ -332,6 +163,7 @@ class StorageMoveTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageCopyTransport(Protocol):
     """Transport capability required to copy a storage object."""
 
@@ -347,6 +179,7 @@ class StorageCopyTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageVisibilityTransport(Protocol):
     """Transport capability required to update object visibility."""
 
@@ -362,6 +195,7 @@ class StorageVisibilityTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageUploadSessionTransport(Protocol):
     """Transport capability required to create resumable upload sessions."""
 
@@ -376,6 +210,7 @@ class StorageUploadSessionTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageUploadPartTransport(Protocol):
     """Transport capability required to upload resumable storage parts."""
 
@@ -390,6 +225,7 @@ class StorageUploadPartTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageCompleteUploadTransport(Protocol):
     """Transport capability required to complete resumable storage uploads."""
 
@@ -404,6 +240,7 @@ class StorageCompleteUploadTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageUploadStatusTransport(Protocol):
     """Transport capability required to inspect resumable storage uploads."""
 
@@ -418,6 +255,7 @@ class StorageUploadStatusTransport(Protocol):
         ...
 
 
+@runtime_checkable
 class StorageAbortUploadTransport(Protocol):
     """Transport capability required to abort resumable storage uploads."""
 
@@ -436,36 +274,69 @@ class StorageAbortUploadTransport(Protocol):
 class StorageBucket:
     """Operations scoped to one storage bucket."""
 
-    _client: StorageContext
+    _client: StorageContext | ClientContextSource
     _name: str
 
-    def upload(self, path: str, data: bytes | BinaryIO) -> dict[str, Any]:
-        """Upload bytes or the remaining contents of a binary stream."""
-        response = invoke(
-            self._client._transport.upload_storage_object,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            path=path,
-            data=_simple_upload_bytes(data),
+    def upload(
+        self,
+        path: str,
+        data: bytes | BinaryReader,
+        *,
+        content_type: str | None = None,
+    ) -> dict[str, object]:
+        """Upload bytes or the remaining contents of a binary stream.
+
+        Returns:
+            Server response fields describing the uploaded object.
+
+        Raises:
+            TypeError: The upload response is not an object.
+
+        """
+        client = facade_context(self._client)
+        mime_type = upload_content_type(content_type)
+        binding = client.capture_session_binding()
+        _ = client.session_token()
+        content = simple_upload_bytes(data)
+        response = client.auth().request(
+            lambda token: invoke(
+                client.transport().upload_storage_object,
+                authorization=token,
+                bucket_name=self._name,
+                path=path,
+                data=content,
+                content_type=mime_type,
+            ),
+            binding=binding,
         )
         payload = response_payload(response, 201)
+        if not is_string_keyed_mapping(payload):
+            raise TypeError(_INVALID_UPLOAD_RESPONSE)
         return dict(payload)
 
     def download(self, path: str, *, byte_range: str | None = None) -> bytes:
-        """Download bytes from a path in this bucket."""
-        response = invoke(
-            self._client._transport.download_storage_object,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            path=path,
-            byte_range=byte_range,
+        """Download bytes from a path in this bucket.
+
+        Returns:
+            Downloaded bytes, without text decoding.
+
+        """
+        client = facade_context(self._client)
+        response = client.auth().request(
+            lambda token: invoke(
+                client.transport().download_storage_object,
+                authorization=token,
+                bucket_name=self._name,
+                path=path,
+                byte_range=byte_range,
+            )
         )
         expected_status = (
             _HTTP_PARTIAL_CONTENT
             if byte_range is not None and response.status_code == _HTTP_PARTIAL_CONTENT
             else 200
         )
-        response_payload(response, expected_status)
+        _ = response_payload(response, expected_status)
         return bytes(response.content)
 
     def create_upload_session(
@@ -476,20 +347,33 @@ class StorageBucket:
         content_type: str = "application/octet-stream",
         part_size: int | None = None,
     ) -> UploadSession:
-        """Create server state for a resumable upload."""
-        transport = cast("StorageUploadSessionTransport", self._client._transport)
-        response = invoke(
-            transport.create_upload_session,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            request=StorageUploadSessionRequest(
-                path=_storage_path(path),
-                content_type=content_type,
-                total_size=total_size,
-                part_size=part_size,
-            ),
+        """Create server state for a resumable upload.
+
+        Returns:
+            Session ID, server-selected part size and count, and expiry.
+
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
+        """
+        client = facade_context(self._client)
+        transport = client.transport()
+        if not isinstance(transport, StorageUploadSessionTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
+        response = client.auth().request(
+            lambda token: invoke(
+                transport.create_upload_session,
+                authorization=token,
+                bucket_name=self._name,
+                request=StorageUploadSessionRequest(
+                    path=storage_path(path),
+                    content_type=content_type,
+                    total_size=total_size,
+                    part_size=part_size,
+                ),
+            )
         )
-        return _upload_session(response_payload(response, 201))
+        return upload_session(response_payload(response, 201))
 
     def upload_part(
         self,
@@ -499,20 +383,33 @@ class StorageBucket:
         part_number: int,
         data: bytes,
     ) -> UploadPart:
-        """Upload one part of a resumable upload session."""
-        transport = cast("StorageUploadPartTransport", self._client._transport)
-        response = invoke(
-            transport.upload_part,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            request=StorageUploadPartRequest(
-                path=_storage_path(path),
-                session_id=session_id,
-                part_number=part_number,
-                data=data,
-            ),
+        """Upload one part of a resumable upload session.
+
+        Returns:
+            The accepted part number, ETag, and byte count.
+
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
+        """
+        client = facade_context(self._client)
+        transport = client.transport()
+        if not isinstance(transport, StorageUploadPartTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
+        response = client.auth().request(
+            lambda token: invoke(
+                transport.upload_part,
+                authorization=token,
+                bucket_name=self._name,
+                request=StorageUploadPartRequest(
+                    path=storage_path(path),
+                    session_id=session_id,
+                    part_number=part_number,
+                    data=data,
+                ),
+            )
         )
-        return _upload_part(response_payload(response, 200))
+        return upload_part(response_payload(response, 200))
 
     def complete_upload_session(
         self,
@@ -520,19 +417,32 @@ class StorageBucket:
         *,
         session_id: str,
     ) -> StorageObject:
-        """Complete a resumable upload and return the stored object."""
-        transport = cast("StorageCompleteUploadTransport", self._client._transport)
-        response = invoke(
-            transport.complete_upload_session,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            request=StorageUploadSessionReference(
-                path=_storage_path(path),
-                session_id=session_id,
-            ),
+        """Complete a resumable upload and return the stored object.
+
+        Returns:
+            Metadata for the object assembled from the uploaded parts.
+
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
+        """
+        client = facade_context(self._client)
+        transport = client.transport()
+        if not isinstance(transport, StorageCompleteUploadTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
+        response = client.auth().request(
+            lambda token: invoke(
+                transport.complete_upload_session,
+                authorization=token,
+                bucket_name=self._name,
+                request=StorageUploadSessionReference(
+                    path=storage_path(path),
+                    session_id=session_id,
+                ),
+            )
         )
-        payload = cast("Mapping[str, object]", response_payload(response, 200))
-        return _storage_object(payload["object"])
+        payload = storage_mapping(response_payload(response, 200))
+        return storage_object(payload["object"])
 
     def get_upload_session(
         self,
@@ -540,18 +450,31 @@ class StorageBucket:
         *,
         session_id: str,
     ) -> UploadSessionStatus:
-        """Get resumable upload progress and uploaded part metadata."""
-        transport = cast("StorageUploadStatusTransport", self._client._transport)
-        response = invoke(
-            transport.get_upload_session,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            request=StorageUploadSessionReference(
-                path=_storage_path(path),
-                session_id=session_id,
-            ),
+        """Get resumable upload progress and uploaded part metadata.
+
+        Returns:
+            Session state, byte and part counts, uploaded parts, and timestamps.
+
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
+        """
+        client = facade_context(self._client)
+        transport = client.transport()
+        if not isinstance(transport, StorageUploadStatusTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
+        response = client.auth().request(
+            lambda token: invoke(
+                transport.get_upload_session,
+                authorization=token,
+                bucket_name=self._name,
+                request=StorageUploadSessionReference(
+                    path=storage_path(path),
+                    session_id=session_id,
+                ),
+            )
         )
-        return _upload_session_status(response_payload(response, 200))
+        return upload_session_status(response_payload(response, 200))
 
     def abort_upload_session(
         self,
@@ -559,39 +482,54 @@ class StorageBucket:
         *,
         session_id: str,
     ) -> None:
-        """Abort a resumable upload and discard its uploaded parts."""
-        transport = cast("StorageAbortUploadTransport", self._client._transport)
-        response = invoke(
-            transport.abort_upload_session,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            request=StorageUploadSessionReference(
-                path=_storage_path(path),
-                session_id=session_id,
-            ),
+        """Abort a resumable upload and discard its uploaded parts.
+
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
+        """
+        client = facade_context(self._client)
+        transport = client.transport()
+        if not isinstance(transport, StorageAbortUploadTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
+        response = client.auth().request(
+            lambda token: invoke(
+                transport.abort_upload_session,
+                authorization=token,
+                bucket_name=self._name,
+                request=StorageUploadSessionReference(
+                    path=storage_path(path),
+                    session_id=session_id,
+                ),
+            )
         )
-        response_payload(response, 200)
+        _ = response_payload(response, 200)
 
     def upload_resumable(
         self,
         path: str,
-        data: bytes | BinaryIO,
+        data: bytes | BinaryReader,
         *,
         content_type: str = "application/octet-stream",
         part_size: int | None = None,
         on_progress: Callable[[int, int], None] | None = None,
     ) -> StorageObject:
-        """Upload bytes or a binary stream through a resumable session."""
-        path = _storage_path(path)
-        self._client._session_token()
-        with _resumable_upload_source(data) as (source, total_size):
+        """Upload bytes or a binary stream through a resumable session.
+
+        Returns:
+            Metadata for the completed object.
+
+        """
+        client = facade_context(self._client)
+        path = storage_path(path)
+        _ = client.session_token()
+        with resumable_upload_source(data) as (source, total_size):
             session = self.create_upload_session(
                 path,
                 total_size=total_size,
                 content_type=content_type,
                 part_size=part_size,
             )
-            upload_succeeded = False
             try:
                 self._upload_session_parts(
                     path,
@@ -600,24 +538,23 @@ class StorageBucket:
                     total_size,
                     on_progress,
                 )
-                upload_succeeded = True
-            finally:
-                if not upload_succeeded:
-                    self._abort_failed_upload(path, session.session_id)
+            except BaseException:
+                self._abort_failed_upload(path, session.session_id)
+                raise
             return self.complete_upload_session(path, session_id=session.session_id)
 
     def _upload_session_parts(
         self,
         path: str,
-        source: BinaryIO,
+        source: BinaryReader,
         session: UploadSession,
         total_size: int,
         on_progress: Callable[[int, int], None] | None,
     ) -> None:
         uploaded = 0
         for part_index in range(session.total_parts):
-            part = _read_upload_part(source, session.part_size)
-            self.upload_part(
+            part = read_upload_part(source, session.part_size)
+            _ = self.upload_part(
                 path,
                 session_id=session.session_id,
                 part_number=part_index + 1,
@@ -638,91 +575,172 @@ class StorageBucket:
         limit: int | None = None,
         cursor: str | None = None,
     ) -> StoragePage:
-        """List objects under a prefix and return the next-page cursor."""
-        transport = cast("StorageListTransport", self._client._transport)
-        response = invoke(
-            transport.list_storage_objects,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            prefix=prefix,
-            limit=limit,
-            cursor=cursor,
+        """List objects under a prefix and return the next-page cursor.
+
+        Returns:
+            An immutable object page whose next_cursor is None on the last page.
+
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
+        """
+        client = facade_context(self._client)
+        transport = client.transport()
+        if not isinstance(transport, StorageListTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
+        response = client.auth().request(
+            lambda token: invoke(
+                transport.list_storage_objects,
+                authorization=token,
+                bucket_name=self._name,
+                prefix=prefix,
+                limit=limit,
+                cursor=cursor,
+            )
         )
-        return _storage_page(response_payload(response, 200))
+        return storage_page(response_payload(response, 200))
 
     def remove(self, paths: str | Sequence[str]) -> tuple[str, ...]:
-        """Delete one or more object paths and return their immutable snapshot."""
-        path_list = _storage_paths(paths)
-        transport = cast("StorageDeleteTransport", self._client._transport)
-        authorization = self._client._session_token()
+        """Delete one or more object paths and return their immutable snapshot.
+
+        Returns:
+            The deleted paths as a tuple, in the supplied order.
+
+        """
+        client = facade_context(self._client)
+        path_list = storage_paths(paths)
+        binding = client.capture_session_binding()
         for path in path_list:
-            response = invoke(
-                transport.delete_storage_object,
-                authorization=authorization,
-                bucket_name=self._name,
-                path=path,
-            )
-            response_payload(response, 200)
+            self._remove_path(path, binding)
         return path_list
 
-    def move(self, from_path: str, to_path: str) -> StorageObject:
-        """Move or rename an object within this bucket."""
-        source, destination = _storage_paths((from_path, to_path))
-        transport = cast("StorageMoveTransport", self._client._transport)
-        response = invoke(
-            transport.move_storage_object,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            from_path=source,
-            to_path=destination,
+    def _remove_path(
+        self, path: str, binding: tuple[int, SessionOperations, Session | None]
+    ) -> None:
+        client = facade_context(self._client)
+        transport = client.transport()
+        if not isinstance(transport, StorageDeleteTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
+        response = client.auth().request(
+            lambda token: invoke(
+                transport.delete_storage_object,
+                authorization=token,
+                bucket_name=self._name,
+                path=path,
+            ),
+            binding=binding,
         )
-        return _storage_object(response_payload(response, 200))
+        _ = response_payload(response, 200)
+
+    def move(self, from_path: str, to_path: str) -> StorageObject:
+        """Move or rename an object within this bucket.
+
+        Returns:
+            Metadata for the object at its destination path.
+
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
+        """
+        client = facade_context(self._client)
+        source, destination = storage_paths((from_path, to_path))
+        transport = client.transport()
+        if not isinstance(transport, StorageMoveTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
+        response = client.auth().request(
+            lambda token: invoke(
+                transport.move_storage_object,
+                authorization=token,
+                bucket_name=self._name,
+                from_path=source,
+                to_path=destination,
+            )
+        )
+        return storage_object(response_payload(response, 200))
 
     def copy(self, from_path: str, to_path: str) -> StorageObject:
-        """Copy an object to another path within this bucket."""
-        source, destination = _storage_paths((from_path, to_path))
-        transport = cast("StorageCopyTransport", self._client._transport)
-        response = invoke(
-            transport.copy_storage_object,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            from_path=source,
-            to_path=destination,
+        """Copy an object to another path within this bucket.
+
+        Returns:
+            Metadata for the new copy at its destination path.
+
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
+        """
+        client = facade_context(self._client)
+        source, destination = storage_paths((from_path, to_path))
+        transport = client.transport()
+        if not isinstance(transport, StorageCopyTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
+        response = client.auth().request(
+            lambda token: invoke(
+                transport.copy_storage_object,
+                authorization=token,
+                bucket_name=self._name,
+                from_path=source,
+                to_path=destination,
+            )
         )
-        return _storage_object(response_payload(response, 201))
+        return storage_object(response_payload(response, 201))
 
     def update_visibility(self, path: str, *, is_public: bool) -> StorageObject:
-        """Set an object's public visibility and return its server state."""
-        object_path = _storage_paths(path)[0]
-        visibility = _storage_visibility(is_public)
-        transport = cast("StorageVisibilityTransport", self._client._transport)
-        response = invoke(
-            transport.update_storage_object_visibility,
-            authorization=self._client._session_token(),
-            bucket_name=self._name,
-            path=object_path,
-            is_public=visibility,
+        """Set an object's public visibility and return its server state.
+
+        Returns:
+            Object metadata reflecting the updated visibility.
+
+        Raises:
+            TypeError: The transport does not support this storage operation.
+
+        """
+        client = facade_context(self._client)
+        object_path = storage_paths(path)[0]
+        visibility = storage_visibility(is_public)
+        transport = client.transport()
+        if not isinstance(transport, StorageVisibilityTransport):
+            raise TypeError(_INVALID_STORAGE_TRANSPORT)
+        response = client.auth().request(
+            lambda token: invoke(
+                transport.update_storage_object_visibility,
+                authorization=token,
+                bucket_name=self._name,
+                path=object_path,
+                is_public=visibility,
+            )
         )
-        return _storage_object(response_payload(response, 200))
+        return storage_object(response_payload(response, 200))
 
     def get_public_url(self, path: str) -> str:
-        """Construct this object's public URL without making a request."""
-        object_path = _storage_path(path)
-        project_id = _project_id_from_anon_key(self._client._anon_token())
+        """Construct this object's public URL without making a request.
+
+        Returns:
+            The encoded public URL; this does not check existence or visibility.
+
+        """
+        client = facade_context(self._client)
+        object_path = storage_path(path)
+        project_id = project_id_from_anon_key(client.anon_token())
         return (
-            f"{self._client._api_base_url()}/public/"
-            f"{quote(project_id, safe='')}/{quote(self._name, safe='')}/"
-            f"{_encoded_storage_path(object_path)}"
+            f"{client.api_base_url()}/public/"
+            f"{encoded_storage_component(project_id)}/"
+            f"{encoded_storage_component(self._name)}/"
+            f"{encoded_storage_path(object_path)}"
         )
 
 
 class Storage:
     """Entry point for project object storage."""
 
-    def __init__(self, client: StorageContext) -> None:
+    def __init__(self, client: StorageContext | ClientContextSource) -> None:
         """Create a storage facade backed by a client."""
-        self._client = client
+        self._client: StorageContext = facade_context(client)
 
     def from_(self, bucket: str) -> StorageBucket:
-        """Create a facade scoped to a bucket."""
+        """Create a facade scoped to a bucket.
+
+        Returns:
+            A storage facade bound to the supplied bucket name.
+
+        """
         return StorageBucket(self._client, bucket)

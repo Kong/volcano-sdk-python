@@ -9,14 +9,15 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.database import Database
+from ...models.error import Error
 from ...models.update_database_type_request import UpdateDatabaseTypeRequest
 from typing import cast
 from uuid import UUID
 
 
 
-def _get_kwargs(
-    id: UUID,
+def request_kwargs(
+    id: UUID | str,
     database_name: str,
     *,
     body: UpdateDatabaseTypeRequest,
@@ -43,7 +44,7 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Database | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Database | Error | None:
     if response.status_code == 200:
         response_200 = Database.from_dict(response.json())
 
@@ -59,13 +60,27 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         response_404 = cast(Any, None)
         return response_404
 
+    if response.status_code == 409:
+        response_409 = Error.from_dict(response.json())
+
+
+
+        return response_409
+
+    if response.status_code == 503:
+        response_503 = Error.from_dict(response.json())
+
+
+
+        return response_503
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Database]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Database | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -75,13 +90,13 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    id: UUID,
+    id: UUID | str,
     database_name: str,
     *,
     client: AuthenticatedClient,
     body: UpdateDatabaseTypeRequest,
 
-) -> Response[Any | Database]:
+) -> Response[Any | Database | Error]:
     """ Update database size
 
      Change the size tier of a database. This may briefly interrupt active connections.
@@ -104,11 +119,11 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | Database]
+        Response[Any | Database | Error]
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 database_name=database_name,
 body=body,
@@ -119,16 +134,16 @@ body=body,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    id: UUID,
+    id: UUID | str,
     database_name: str,
     *,
     client: AuthenticatedClient,
     body: UpdateDatabaseTypeRequest,
 
-) -> Any | Database | None:
+) -> Any | Database | Error | None:
     """ Update database size
 
      Change the size tier of a database. This may briefly interrupt active connections.
@@ -151,7 +166,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | Database
+        Any | Database | Error
      """
 
 
@@ -164,13 +179,13 @@ body=body,
     ).parsed
 
 async def asyncio_detailed(
-    id: UUID,
+    id: UUID | str,
     database_name: str,
     *,
     client: AuthenticatedClient,
     body: UpdateDatabaseTypeRequest,
 
-) -> Response[Any | Database]:
+) -> Response[Any | Database | Error]:
     """ Update database size
 
      Change the size tier of a database. This may briefly interrupt active connections.
@@ -193,11 +208,11 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | Database]
+        Response[Any | Database | Error]
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 database_name=database_name,
 body=body,
@@ -208,16 +223,16 @@ body=body,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    id: UUID,
+    id: UUID | str,
     database_name: str,
     *,
     client: AuthenticatedClient,
     body: UpdateDatabaseTypeRequest,
 
-) -> Any | Database | None:
+) -> Any | Database | Error | None:
     """ Update database size
 
      Change the size tier of a database. This may briefly interrupt active connections.
@@ -240,7 +255,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | Database
+        Any | Database | Error
      """
 
 

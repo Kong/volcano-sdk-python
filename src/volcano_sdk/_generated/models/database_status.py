@@ -1,8 +1,8 @@
 from typing import Literal
 
-DatabaseStatus = Literal['active', 'deleting', 'failed', 'provisioning']
+DatabaseStatus = Literal['active', 'deleting', 'failed', 'provisioning', 'restoring']
 
-DATABASE_STATUS_VALUES: set[DatabaseStatus] = { 'active', 'deleting', 'failed', 'provisioning',  }
+DATABASE_STATUS_VALUES: set[DatabaseStatus] = { 'active', 'deleting', 'failed', 'provisioning', 'restoring',  }
 
 def check_database_status(value: str) -> DatabaseStatus:
     if value in DATABASE_STATUS_VALUES:

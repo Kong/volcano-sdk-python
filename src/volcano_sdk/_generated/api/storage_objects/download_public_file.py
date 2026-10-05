@@ -9,13 +9,15 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.error import Error
+from ...types import File, FileTypes
+from io import BytesIO
 from typing import cast
 from uuid import UUID
 
 
 
-def _get_kwargs(
-    project_id: UUID,
+def request_kwargs(
+    project_id: UUID | str,
     bucket_name: str,
     path: str,
 
@@ -36,7 +38,16 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Error | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Error | File | None:
+    if response.status_code == 200:
+        response_200 = File(
+             payload = BytesIO(response.content)
+        )
+
+
+
+        return response_200
+
     if response.status_code == 206:
         response_206 = cast(Any, None)
         return response_206
@@ -58,7 +69,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error | File]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -68,13 +79,13 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    project_id: UUID,
+    project_id: UUID | str,
     bucket_name: str,
     path: str,
     *,
     client: AuthenticatedClient | Client,
 
-) -> Response[Any | Error]:
+) -> Response[Any | Error | File]:
     """ Download a public file (no authentication required)
 
      Download a file that has been marked as public. This endpoint requires NO authentication.
@@ -111,11 +122,11 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | Error]
+        Response[Any | Error | File]
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         project_id=project_id,
 bucket_name=bucket_name,
 path=path,
@@ -126,16 +137,16 @@ path=path,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    project_id: UUID,
+    project_id: UUID | str,
     bucket_name: str,
     path: str,
     *,
     client: AuthenticatedClient | Client,
 
-) -> Any | Error | None:
+) -> Any | Error | File | None:
     """ Download a public file (no authentication required)
 
      Download a file that has been marked as public. This endpoint requires NO authentication.
@@ -172,7 +183,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | Error
+        Any | Error | File
      """
 
 
@@ -185,13 +196,13 @@ client=client,
     ).parsed
 
 async def asyncio_detailed(
-    project_id: UUID,
+    project_id: UUID | str,
     bucket_name: str,
     path: str,
     *,
     client: AuthenticatedClient | Client,
 
-) -> Response[Any | Error]:
+) -> Response[Any | Error | File]:
     """ Download a public file (no authentication required)
 
      Download a file that has been marked as public. This endpoint requires NO authentication.
@@ -228,11 +239,11 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | Error]
+        Response[Any | Error | File]
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         project_id=project_id,
 bucket_name=bucket_name,
 path=path,
@@ -243,16 +254,16 @@ path=path,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    project_id: UUID,
+    project_id: UUID | str,
     bucket_name: str,
     path: str,
     *,
     client: AuthenticatedClient | Client,
 
-) -> Any | Error | None:
+) -> Any | Error | File | None:
     """ Download a public file (no authentication required)
 
      Download a file that has been marked as public. This endpoint requires NO authentication.
@@ -289,7 +300,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | Error
+        Any | Error | File
      """
 
 

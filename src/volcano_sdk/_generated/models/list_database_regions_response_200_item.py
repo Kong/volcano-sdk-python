@@ -24,7 +24,7 @@ class ListDatabaseRegionsResponse200Item:
     """ 
         Attributes:
             id (str | Unset): Region identifier for API usage Example: aws-us-east-1.
-            name (str | Unset): Human-readable region name Example: AWS US East 1 (N. Virginia).
+            name (str | Unset): Human-readable region location Example: US East (N. Virginia).
      """
 
     id: str | Unset = UNSET

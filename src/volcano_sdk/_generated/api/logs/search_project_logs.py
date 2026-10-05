@@ -16,8 +16,8 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    id: UUID,
+def request_kwargs(
+    id: UUID | str,
     *,
     body: LogSearchRequest,
 
@@ -85,7 +85,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | LogSearchResponse]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | LogSearchResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -95,7 +95,7 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: LogSearchRequest,
@@ -108,10 +108,10 @@ def sync_detailed(
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to read deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a PRO-plan feature; requests for
-    `resource.type=database` from a FREE-plan project owner return 403.
+    databases. Database logs are a SUPERAGENT-plan feature; requests for
+    `resource.type=database` from a HOBBY-plan project owner return 403.
     Log history (runtime and deployment) is limited to the plan's retention
-    window (FREE: 1 day, PRO: 30 days); older time ranges are clamped to that
+    window (HOBBY: 1 day, SUPERAGENT: 30 days); older time ranges are clamped to that
     window.
 
     Args:
@@ -127,7 +127,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 body=body,
 
@@ -137,10 +137,10 @@ body=body,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: LogSearchRequest,
@@ -153,10 +153,10 @@ def sync(
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to read deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a PRO-plan feature; requests for
-    `resource.type=database` from a FREE-plan project owner return 403.
+    databases. Database logs are a SUPERAGENT-plan feature; requests for
+    `resource.type=database` from a HOBBY-plan project owner return 403.
     Log history (runtime and deployment) is limited to the plan's retention
-    window (FREE: 1 day, PRO: 30 days); older time ranges are clamped to that
+    window (HOBBY: 1 day, SUPERAGENT: 30 days); older time ranges are clamped to that
     window.
 
     Args:
@@ -180,7 +180,7 @@ body=body,
     ).parsed
 
 async def asyncio_detailed(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: LogSearchRequest,
@@ -193,10 +193,10 @@ async def asyncio_detailed(
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to read deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a PRO-plan feature; requests for
-    `resource.type=database` from a FREE-plan project owner return 403.
+    databases. Database logs are a SUPERAGENT-plan feature; requests for
+    `resource.type=database` from a HOBBY-plan project owner return 403.
     Log history (runtime and deployment) is limited to the plan's retention
-    window (FREE: 1 day, PRO: 30 days); older time ranges are clamped to that
+    window (HOBBY: 1 day, SUPERAGENT: 30 days); older time ranges are clamped to that
     window.
 
     Args:
@@ -212,7 +212,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 body=body,
 
@@ -222,10 +222,10 @@ body=body,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: LogSearchRequest,
@@ -238,10 +238,10 @@ async def asyncio(
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to read deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a PRO-plan feature; requests for
-    `resource.type=database` from a FREE-plan project owner return 403.
+    databases. Database logs are a SUPERAGENT-plan feature; requests for
+    `resource.type=database` from a HOBBY-plan project owner return 403.
     Log history (runtime and deployment) is limited to the plan's retention
-    window (FREE: 1 day, PRO: 30 days); older time ranges are clamped to that
+    window (HOBBY: 1 day, SUPERAGENT: 30 days); older time ranges are clamped to that
     window.
 
     Args:

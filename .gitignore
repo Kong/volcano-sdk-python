@@ -4,8 +4,10 @@ __pycache__/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+.tox/
 .venv/
 build/
 dist/
 *.egg-info/
 reports/
+mutants/

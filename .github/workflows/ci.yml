@@ -1,33 +1,146 @@
 name: CI
 
 on:
+  workflow_call:
   pull_request:
+  merge_group:
+    branches:
+      - main
   push:
     branches:
       - main
 
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
+    name: test (${{ matrix.python-version }})
+    env:
+      UV_PYTHON: ${{ matrix.python-patch }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11", "3.14"]
+        include:
+          - python-version: "3.11"
+            python-patch: "3.11.16"
+          - python-version: "3.12"
+            python-patch: "3.12.14"
+          - python-version: "3.13"
+            python-patch: "3.13.15"
+          - python-version: "3.14"
+            python-patch: "3.14.7"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          python-version: ${{ matrix.python-version }}
-      - uses: astral-sh/setup-uv@v6
-      - run: uv sync --frozen
-      - run: uv run python scripts/check_openapi.py
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
-      - run: uv run mypy
-      - run: uv run pyright
-      - run: uv run pytest tests/unit -q
-      - name: Check contract feature bindings
+          persist-credentials: false
+      - run: bash .github/scripts/actionlint.sh
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python-patch }}
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.12.17"
+      - run: uv sync --locked
+      - name: Run SDK quality checks
+        run: uv run --locked poe checks
+      - name: Preserve runtime coverage
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-for-python-${{ matrix.python-version }}
+          path: reports/coverage.json
+          if-no-files-found: error
+      - name: Preserve test failures and property seeds
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: property-failures-python-${{ matrix.python-version }}
+          path: |
+            reports/unit.xml
+            reports/coverage-unit.xml
+            reports/hypothesis/seed.txt
+          if-no-files-found: ignore
+
+  mutation-plan:
+    name: Mutation inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      modules: ${{ steps.plan.outputs.modules }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Inventory every handwritten runtime module
+        id: plan
         run: |
-          chmod 600 tests/fixtures/sdk-contract-dry-run.json
-          VOLCANO_SDK_CONTRACT_FIXTURE="$PWD/tests/fixtures/sdk-contract-dry-run.json" \
-            uv run behave features/contract --dry-run --no-snippets
-      - run: uv run python -m build
+          modules=$(bash scripts/mutation.sh --matrix)
+          echo "modules=$modules" >> "$GITHUB_OUTPUT"
+
+  mutation-module:
+    name: Mutation module (${{ matrix.module }})
+    needs: mutation-plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJSON(needs.mutation-plan.outputs.modules) }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12.14"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.12.17"
+      - run: uv sync --locked
+      - name: Mutate assigned runtime modules
+        env:
+          MUTATION_MODULE: ${{ matrix.module }}
+        run: uv run --locked poe mutation
+      - name: Preserve mutation outcomes
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-outcomes-${{ matrix.module }}
+          path: reports/mutation.json
+          if-no-files-found: error
+
+  mutation:
+    name: Mutation Gate
+    if: ${{ always() }}
+    needs: [mutation-plan, mutation-module]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every mutation module to succeed
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: jq -e 'length == 2 and all(. == "success")' <<< "$RESULTS"
+
+  quality:
+    name: Quality Gate
+    if: ${{ always() }}
+    needs: [test, mutation]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every mandatory job to succeed
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: jq -e 'length == 2 and all(. == "success")' <<< "$RESULTS"

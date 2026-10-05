@@ -3,19 +3,46 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Protocol, cast
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
-from ._transport import TransportResponse, invoke, response_payload
+from ._client_context import ClientContextSource, facade_context
+from ._json_values import freeze_json
+from ._log_response import (
+    activity_total,
+    is_json_value,
+    response_data,
+    response_values,
+    search_metadata,
+)
+from ._transport import Transport, TransportResponse, invoke, response_payload
 from .models import JSONValue, LogActivityResponse, LogSearchResponse
 
 if TYPE_CHECKING:
-    from .client import VolcanoClient
+    from ._auth_requests import AuthRequests
 
 _INVALID_PROJECT_ID = "project_id must be a non-empty string"
 _INVALID_LOG_REQUEST = "Log request must be a mapping"
-_INVALID_LOG_RESPONSE = "Expected a complete log response"
+_INVALID_LOG_TRANSPORT = "Transport does not support project logs"
 
 
+def _is_log_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, Mapping)
+
+
+class LogsContext(Protocol):
+    """Client capabilities required by project log reads."""
+
+    def transport(self) -> Transport:
+        """Return the active typed transport."""
+        ...
+
+    def auth(self) -> AuthRequests:
+        """Return the shared session request coordinator."""
+        ...
+
+
+@runtime_checkable
 class LogsTransport(Protocol):
     """Transport operations required by the logs facade."""
 
@@ -43,23 +70,38 @@ class LogsTransport(Protocol):
 class Logs:
     """Search retained project logs and activity."""
 
-    def __init__(self, client: VolcanoClient) -> None:
+    def __init__(self, client: LogsContext | ClientContextSource) -> None:
         """Bind log reads to a Volcano client."""
-        self._client = client
+        self._client: LogsContext = facade_context(client)
+
+    def _logs_transport(self) -> LogsTransport:
+        transport = self._client.transport()
+        if not isinstance(transport, LogsTransport):
+            raise TypeError(_INVALID_LOG_TRANSPORT)
+        return transport
 
     def search(
         self,
         project_id: str,
         request: Mapping[str, JSONValue],
     ) -> LogSearchResponse:
-        """Search retained logs for one project resource type."""
+        """Search retained logs for one project resource type.
+
+        Returns
+        -------
+        LogSearchResponse
+            Matching log entries with the page limit and continuation cursor.
+
+        """
         project_id, request = _log_request(project_id, request)
-        transport = cast("LogsTransport", self._client._transport)
-        response = invoke(
-            transport.search_project_logs,
-            authorization=self._client._session_token(),
-            project_id=project_id,
-            request=request,
+        transport = self._logs_transport()
+        response = self._client.auth().request(
+            lambda token: invoke(
+                transport.search_project_logs,
+                authorization=token,
+                project_id=project_id,
+                request=request,
+            )
         )
         return _search_response(response_payload(response, 200))
 
@@ -68,14 +110,23 @@ class Logs:
         project_id: str,
         request: Mapping[str, JSONValue],
     ) -> LogActivityResponse:
-        """Get bucketed activity for one project resource type."""
+        """Get bucketed activity for one project resource type.
+
+        Returns
+        -------
+        LogActivityResponse
+            Activity buckets and the total count reported by the server.
+
+        """
         project_id, request = _log_request(project_id, request)
-        transport = cast("LogsTransport", self._client._transport)
-        response = invoke(
-            transport.get_project_log_activity,
-            authorization=self._client._session_token(),
-            project_id=project_id,
-            request=request,
+        transport = self._logs_transport()
+        response = self._client.auth().request(
+            lambda token: invoke(
+                transport.get_project_log_activity,
+                authorization=token,
+                project_id=project_id,
+                request=request,
+            )
         )
         return _activity_response(response_payload(response, 200))
 
@@ -86,41 +137,21 @@ def _log_request(
 ) -> tuple[str, Mapping[str, JSONValue]]:
     if not isinstance(project_id, str) or not project_id.strip():
         raise ValueError(_INVALID_PROJECT_ID)
-    if not isinstance(request, Mapping):
+    if not _is_log_mapping(request):
         raise TypeError(_INVALID_LOG_REQUEST)
-    return project_id, cast("Mapping[str, JSONValue]", request)
-
-
-def _response_values(payload: object) -> Mapping[str, object]:
-    if not isinstance(payload, Mapping):
-        raise TypeError(_INVALID_LOG_RESPONSE)
-    return cast("Mapping[str, object]", payload)
-
-
-def _response_data(values: Mapping[str, object]) -> tuple[Mapping[str, JSONValue], ...]:
-    raw_data = values.get("data")
-    if not isinstance(raw_data, list):
-        raise TypeError(_INVALID_LOG_RESPONSE)
-    data = cast("list[object]", raw_data)
-    if any(not isinstance(item, Mapping) for item in data):
-        raise TypeError(_INVALID_LOG_RESPONSE)
-    return tuple(cast("Mapping[str, JSONValue]", item) for item in data)
+    snapshot: dict[str, JSONValue] = {}
+    for key, value in request.items():
+        if not isinstance(key, str) or not is_json_value(value):
+            raise TypeError(_INVALID_LOG_REQUEST)
+        snapshot[key] = freeze_json(value)
+    return project_id, MappingProxyType(snapshot)
 
 
 def _search_response(payload: object) -> LogSearchResponse:
-    values = _response_values(payload)
-    limit = values.get("limit")
-    has_more = values.get("has_more")
-    next_cursor = values.get("next_cursor")
-    if (
-        not isinstance(limit, int)
-        or isinstance(limit, bool)
-        or not isinstance(has_more, bool)
-        or (next_cursor is not None and not isinstance(next_cursor, str))
-    ):
-        raise TypeError(_INVALID_LOG_RESPONSE)
+    values = response_values(payload)
+    limit, has_more, next_cursor = search_metadata(values)
     return LogSearchResponse(
-        data=_response_data(values),
+        data=response_data(values),
         limit=limit,
         has_more=has_more,
         next_cursor=next_cursor,
@@ -128,8 +159,5 @@ def _search_response(payload: object) -> LogSearchResponse:
 
 
 def _activity_response(payload: object) -> LogActivityResponse:
-    values = _response_values(payload)
-    total = values.get("total")
-    if not isinstance(total, int) or isinstance(total, bool):
-        raise TypeError(_INVALID_LOG_RESPONSE)
-    return LogActivityResponse(data=_response_data(values), total=total)
+    values = response_values(payload)
+    return LogActivityResponse(data=response_data(values), total=activity_total(values))

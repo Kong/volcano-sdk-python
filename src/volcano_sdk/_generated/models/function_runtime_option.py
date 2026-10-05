@@ -28,12 +28,15 @@ class FunctionRuntimeOption:
             name (str): Runtime identifier accepted by function APIs. Example: nodejs24.x.
             language (str): Runtime language family used by the CLI to choose defaults from source files. Example: nodejs.
             default (bool): Whether this runtime is the CLI default for its language.
+            durable_capable (bool): Whether a durable function can be authored on this runtime. Only runtimes with a durable
+                authoring API report true, and a durable deploy naming any other runtime is rejected.
             deployment (FunctionRuntimeDeployment):
      """
 
     name: str
     language: str
     default: bool
+    durable_capable: bool
     deployment: FunctionRuntimeDeployment
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -49,6 +52,8 @@ class FunctionRuntimeOption:
 
         default = self.default
 
+        durable_capable = self.durable_capable
+
         deployment = self.deployment.to_dict()
 
 
@@ -58,6 +63,7 @@ class FunctionRuntimeOption:
             "name": name,
             "language": language,
             "default": default,
+            "durable_capable": durable_capable,
             "deployment": deployment,
         })
 
@@ -75,6 +81,8 @@ class FunctionRuntimeOption:
 
         default = d.pop("default")
 
+        durable_capable = d.pop("durable_capable")
+
         deployment = FunctionRuntimeDeployment.from_dict(d.pop("deployment"))
 
 
@@ -84,6 +92,7 @@ class FunctionRuntimeOption:
             name=name,
             language=language,
             default=default,
+            durable_capable=durable_capable,
             deployment=deployment,
         )
 

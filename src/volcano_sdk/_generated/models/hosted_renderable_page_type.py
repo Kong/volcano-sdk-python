@@ -1,8 +1,8 @@
 from typing import Literal
 
-HostedRenderablePageType = Literal['reset-password']
+HostedRenderablePageType = Literal['device', 'forgot-password', 'reset-password', 'signup', 'verify-email']
 
-HOSTED_RENDERABLE_PAGE_TYPE_VALUES: set[HostedRenderablePageType] = { 'reset-password',  }
+HOSTED_RENDERABLE_PAGE_TYPE_VALUES: set[HostedRenderablePageType] = { 'device', 'forgot-password', 'reset-password', 'signup', 'verify-email',  }
 
 def check_hosted_renderable_page_type(value: str) -> HostedRenderablePageType:
     if value in HOSTED_RENDERABLE_PAGE_TYPE_VALUES:

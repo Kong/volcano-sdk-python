@@ -1,7 +1,23 @@
 # Volcano Python SDK
 
-This private proof of concept validates Volcano's Python SDK contract. It is not
-published to PyPI and is not ready for production use.
+Use the Volcano Python SDK to access authentication, databases, storage,
+functions, locks, logs, and realtime events. Requires Python 3.11 or later.
+
+Start with the [Python quickstart](https://github.com/Kong/volcano-sdk-python/blob/main/docs/README.md).
+See the [functions guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/functions.md) for invocation identity and response handling.
+
+See [Authentication](https://github.com/Kong/volcano-sdk-python/blob/main/docs/authentication.md) for account, session, email, and OAuth workflows.
+
+## Install
+
+```shell
+python -m pip install volcano-sdk-python
+```
+
+The [PyPI distribution](https://pypi.org/project/volcano-sdk-python/) is named
+`volcano-sdk-python`; import it as `volcano_sdk`.
+The installed package includes inline type information for mypy and other
+PEP 561-compatible type checkers.
 
 ## Try the contract facade
 
@@ -19,13 +35,15 @@ client = VolcanoClient(
 
 sign_up = client.auth.sign_up(
     email="new-user@example.com",
-    password="secret",
+    password="correct-horse-battery-staple",
     metadata={"display_name": "New User"},
 )
 if sign_up.confirmation_required:
     print(sign_up.message)
 
-session = client.auth.sign_in(email="user@example.com", password="secret")
+session = client.auth.sign_in(
+    email="user@example.com", password="correct-horse-battery-staple"
+)
 current_session = client.auth.get_session()
 assert current_session == session
 
@@ -33,7 +51,7 @@ user = client.auth.get_user()
 assert user.id == session.user_id
 
 updated_user = client.auth.update_user(
-    password="new-secret",
+    password="new-correct-horse-battery-staple",
     metadata={"display_name": "Grace", "avatar": None},
 )
 assert updated_user.id == session.user_id
@@ -44,14 +62,44 @@ function = client.functions.invoke(
 )
 print(function.status, function.version, function.data)
 
-logs = client.logs.search(
+execution = client.durable.start(
+    "order-pipeline",
+    {"order_id": 4417},
+    execution_name="order-4417",
+)
+print(execution.id, execution.status)
+
+owner_client = VolcanoClient(
+    api_url="https://api.volcano.dev",
+    anon_key="your-anon-key",
+    access_token="your-platform-user-token",
+)
+execution = owner_client.durable.get(
+    "00000000-0000-4000-8000-000000000001", "order-pipeline", execution.id
+)
+print(execution.is_terminal, execution.result)
+
+executions = owner_client.durable.list(
+    "00000000-0000-4000-8000-000000000001", "order-pipeline", status="running"
+)
+print(executions.total, executions.has_more)
+
+owner_client.durable.stop(
+    "00000000-0000-4000-8000-000000000001", "order-pipeline", execution.id
+)
+
+# Project logs use a control-plane project token, not this end-user session.
+logs_client = VolcanoClient(
+    anon_key="ak_your_anon_key", access_token="vpat_your_project_token"
+)
+logs = logs_client.logs.search(
     "00000000-0000-4000-8000-000000000001",
     {"resource": {"type": "function"}, "limit": 100},
 )
 for event in logs.data:
     print(event["timestamp"], event["body"])
 
-activity = client.logs.activity(
+activity = logs_client.logs.activity(
     "00000000-0000-4000-8000-000000000001",
     {"resource": {"type": "function"}, "bucket_count": 24},
 )
@@ -60,7 +108,7 @@ print(activity.total)
 rows = client.database("main").from_("items").select("*").eq("slug", "a").execute()
 
 bucket = client.storage.from_("assets")
-bucket.upload("a.txt", b"hello")
+bucket.upload("a.txt", b"hello", content_type="text/plain; charset=utf-8")
 with open("avatar.png", "rb") as avatar:
     bucket.upload("avatars/me.png", avatar)
 downloaded = bucket.download("a.txt")
@@ -120,7 +168,17 @@ lease = client.locks.acquire("build", ttl=30)
 lease = client.locks.renew("build", lease, ttl=30)
 client.locks.release("build", lease)
 client.locks.force_release("stale-build")
+
+with client.locks.with_lock("deploy", ttl=30) as guard:
+    print(guard.lease.fencing_token)
 ```
+
+Function invocation returns `data=None` for an empty HTTP 204 response, retaining
+the status, headers, and version.
+
+Simple uploads accept an optional `content_type` for the multipart file part.
+Omit it or pass `None` to retain `application/octet-stream`. Explicit values must
+be non-blank printable ASCII; MIME parameters such as `charset=utf-8` are allowed.
 
 Storage removals run in input order. A failed request raises after any earlier
 paths have already been deleted. Visibility updates return the server-confirmed
@@ -137,11 +195,24 @@ original error. `on_progress` runs after each successful part with cumulative
 uploaded bytes and the total size.
 `upload_part()` returns immutable part metadata and can safely retry the same
 part number to replace that part.
+Acquisition accepts caller-owned UUID `token` and `request_id` values and retries
+an ambiguous transport failure or HTTP 503 once with the same request and credential.
+Retain those IDs to recover an uncertain acquisition. Other lock methods accept
+`request_id`; block-scoped helpers forward initial IDs only to acquisition.
+See the [lock guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/locks.md)
+for examples and fencing requirements.
+
 `locks.get()` returns immutable lock availability, expiry, and fencing-token
 state without acquiring the lock.
 Lock acquisition and renewal require an integer TTL from 5 seconds through 90 days.
 `locks.renew()` returns a new immutable lease and leaves the previous value
 unchanged.
+`locks.with_lock()` renews the lease on a background thread, stops renewal
+before releasing the latest lease, and yields a `LockGuard`. Read
+`guard.lease` for the latest fencing token. Check `guard.lost` or call
+`guard.wait_lost(timeout=...)` when work must stop promptly after ownership is
+lost. If the context body succeeds, a renewal failure is raised after release;
+an exception from the body takes precedence.
 `locks.force_release()` drops any current lease without an ownership token.
 Use it only for administrative recovery behind fencing-token enforcement.
 `get_upload_session()` returns immutable progress and uploaded-part metadata for
@@ -152,15 +223,176 @@ object.
 uploaded parts.
 
 `functions.invoke()` resolves a DNS-safe function name and sends a JSON object.
-It uses the active user session when present, then a configured service key,
-then the anonymous key. The immutable result includes the response body, status,
-headers, and `X-Volcano-Version`. A function's own non-2xx response is returned
-when the version header proves it ran; platform failures raise typed SDK errors.
+The request goes to the function's own domain rather than to `api_url`, so an
+egress rule that allows only the API host will block it; the resolved endpoint
+is cached for the lifetime the platform gives it. Deployments with no public
+function domain invoke through the API host instead.
+It uses the current session token, including a supplied `access_token`, then a configured service key,
+then the anonymous key. An anonymous key can invoke a public function without a
+user session; the function receives no user identity. The immutable result
+includes the response body, status, headers, and `X-Volcano-Version`. The body
+can be a JSON object, array, scalar, or text; an empty body returns `None`.
+JSON arrays become immutable tuples. Invalid JSON is returned as text. A
+function's own non-2xx response is returned when Volcano confirms it ran;
+non-success platform HTTP responses raise typed SDK errors.
+
+Function resolution and invocation recover from a platform HTTP 401 before dispatch:
+the SDK refreshes the captured session and retries the rejected request once.
+Concurrent calls share successful recovery. Replacing or signing out that session
+prevents replay under another identity. The call preserves its original payload values.
+A function's own response, HTTP 403, or a network failure never triggers this retry.
+Anonymous and service keys do not refresh.
+
+`durable.start()` begins an execution of a deployed durable function and returns
+a handle rather than a result: an execution can run for up to 366 days, so its
+result is read back with `durable.get()`. It takes the credential `functions.invoke()`
+takes, and is the only durable operation an application credential may perform.
+An `execution_name` makes the start idempotent — starting again under the same
+name returns the execution that already exists rather than beginning a second
+one, and is charged once.
+
+`durable.get()`, `durable.list()` and `durable.stop()` are owner-scoped and need
+the project owner's platform user token, because an execution is addressed by
+its id alone and an anonymous key is held by everyone who loads the page.
+Auth-user sessions from `sign_in()`, anonymous keys, service keys, and project
+access tokens are not accepted. Poll them from a trusted backend.
+`get()` carries `result` once the execution has succeeded and `error` when it
+failed; `result_expired` separates a result the platform has discarded from a
+function that returned nothing. `is_terminal` reports whether the execution has
+stopped changing, and counts `unknown` — the status the platform writes for an
+outcome it could not determine — as finished. `stop()` is accepted rather than
+awaited: what it returns is the execution read back after asking, often still
+`running`, so poll `get()` to see it reach `stopped`. Repeating a stop is safe.
+
+## Write a durable function
+
+`volcano_sdk.durable_authoring` is what the durable function itself is written
+against. It needs a durable-capable runtime — `python3.13` or `python3.14` — and
+`volcano-sdk-python` in the function's `requirements.txt`. Nothing else: the runtime
+that does the checkpointing is installed by Volcano when it builds a function
+deployed as durable.
+
+Importing this module never requires that runtime, so a standard function or a
+script that imports it still installs and runs; the handler fails only when it
+is actually invoked somewhere durable execution does not exist.
+
+```python
+from volcano_sdk.durable_authoring import durable
+
+
+@durable
+def handler(event, ctx):
+    charge = ctx.step("charge", lambda scope: charge_card(event["order_id"]))
+
+    ctx.wait("settle", "30s")
+
+    packed = ctx.map(
+        event["items"],
+        lambda item, item_ctx, index: item_ctx.step("pack-item", lambda s: pack(item)),
+        "pack",
+    )
+
+    return {"charged": charge["id"], "packed": packed.results}
+```
+
+Use the function name for its source directory and manifest entry:
+
+```text
+volcano/functions/order-pipeline/
+├── main.py
+└── requirements.txt
+```
+
+```text
+# volcano/functions/order-pipeline/requirements.txt
+volcano-sdk-python
+```
+
+```yaml
+# volcano-config.yaml
+version: 1
+project:
+  name: my-app
+functions:
+  - name: order-pipeline
+    kind: durable
+```
+
+The decorator defines handler behavior. The manifest declaration makes the function discoverable by `volcano durable deploy`.
+
+Every context operation is checkpointed: what finished is recorded, and a
+resumed execution replays that recorded outcome instead of doing the work again.
+That is the one rule the handler has to respect — the code between operations
+runs again on every resume, so it has to reach the same operations in the same
+order. Keep decisions that must not change inside a `step`, and do not branch on
+the clock or a random value.
+
+| Operation | What it does |
+|---|---|
+| `ctx.step(name, fn, retry=..., at_most_once=...)` | Runs one atomic operation and records its result. `retry=False` fails on the first error; `RetryOptions` sets attempts and backoff. |
+| `ctx.wait(name, duration)` | Suspends the execution. `"30s"`, `"2h"`, `"1m30s"`, a whole number of seconds, or `{"hours": 2}`. |
+| `ctx.wait_until(check, options, name=None)` | Polls your own state until `options.until` holds, suspending between checks. `options.initial_state` is required. |
+| `ctx.map(items, fn, name=None, options=None)` | Runs the same work over every item, each in its own child context. |
+| `ctx.parallel(branches, name=None, options=None)` | Runs independent branches at the same time. |
+| `ctx.child(name, fn)` | Groups operations under one recorded context. |
+| `ctx.log` | The execution's logger, suppressed while an operation is replayed. |
+
+`ctx.log` and a step's `scope.log` expose `debug`, `info`, `warning`, `error`,
+and `exception`. They accept a message, formatting arguments, and an optional
+`extra` mapping. Messages are suppressed during replay.
+
+`ctx.map` and `ctx.parallel` both return a batch result: `items` (the items that
+finished, each with `index`, `status`, `result`, `error`), `results`, `errors`,
+`succeeded`, `failed`, `completed`, `completion_reason`, and `throw_if_failed()`.
+`options.min_succeeded` ends the batch while other items are still running, and
+those are not in the result — whether the platform can reproduce an in-flight
+item when the execution resumes is not guaranteed, so a handler that branched on
+one would take a different path on the replay. `completion_reason` is how to tell
+why the batch ended.
+
+`@durable` accepts typed handlers. The decorated function is the platform
+entrypoint: its arguments and result are invocation envelopes, typed as `object`,
+rather than the handler's application input and result.
+
+Durable operations are synchronous here — there is no `await`, and a step's own
+function is handed a scope carrying `log` and `attempt`. A wait is held by the
+platform rather than by your code, so an execution suspended for an hour costs
+nothing while it waits. Running the handler anywhere durable execution does not
+exist raises `DurableRuntimeMissingError` rather than an import error from an
+unfamiliar package.
+
+Run the same handler through the local durable engine:
+
+```bash
+volcano start
+volcano durable deploy --all
+volcano durable start order-pipeline --input '{"order_id":"order-9"}'
+```
+
+Local waits resolve immediately by default while preserving checkpoint and replay
+behavior. Set `LOCAL_DURABLE_REAL_TIME=true` before `volcano start` when wait
+timing must match the deployed function. Local executions persist across
+`volcano stop` and `volcano start`. Volcano does not expose externally completed
+callbacks; use `ctx.wait_until` to poll application state instead.
 
 `logs.search()` returns an immutable page of retained runtime or deployment log
 events. Pass `next_cursor` back as `cursor` to continue a search. `logs.activity()`
 returns immutable time buckets using the same resource selector and query syntax.
-Both methods require an active user session.
+Both methods require a platform user token or a project access token.
+A `read_only` project token is sufficient; end-user sessions cannot read project logs.
+See the [logs guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/logs.md).
+
+Database selects, inserts, updates, deletes, log reads, and authenticated storage
+requests (including upload sessions and parts) refresh the captured
+session after an HTTP 401 and retry the same request once. Concurrent requests reuse a successful
+refresh for that session.
+Replacing or signing out the session before replay, or while replay is in flight,
+raises `SessionChangedError`. Requests do not wait for auth callbacks running on
+another thread. A later callback-driven session change does not invalidate a
+completed request.
+A failed refresh preserves the original request error. HTTP 403 responses and
+network failures do not trigger this retry. Mutations are replayed only after an
+explicit authentication rejection, never after an ambiguous transport failure.
 
 Database builders are immutable, so you can safely reuse a base query. Chain `neq()`, `gt()`,
 `gte()`, `lt()`, and `lte()` for comparison filters:
@@ -228,23 +460,49 @@ Pass a user ID to enforce that user's Row-Level Security policies. Omit
 The helper preserves libpq connection syntax, including hostless and multi-host
 targets, and leaves unrelated query values unchanged.
 
-`sign_up()` returns an immutable acknowledgement and never creates or replaces a session. The
-response is identical for new and existing email addresses. Call `sign_in()` separately after the
-account is ready to establish a session.
+`sign_up()` returns an immutable acknowledgement without changing the session by default.
+The signup acknowledgement is identical for new and existing email addresses. Pass
+`sign_in_when_allowed=True` to follow it with `sign_in()` only when confirmation is not required:
+
+```python
+result = client.auth.sign_up(
+    email="new-user@example.com",
+    password="correct-horse-battery-staple",
+    sign_in_when_allowed=True,
+)
+session = result.session  # None when no follow-up sign-in ran.
+```
+
+A successful follow-up stores the session and emits the normal sign-in event. A failed
+follow-up raises its usual typed error; it does not undo the successful signup.
 
 `get_session()` reads immutable local state. It does not refresh or validate the token.
 
+Sessions returned by authentication retain the user payload in `session.user`,
+including metadata. The snapshot is deeply immutable and available without a
+request. It is cached data, not proof of authentication; use `auth.get_user()`
+to fetch the server-validated profile. Existing three-field `Session` construction
+still works, with `user=None`. An adopted snapshot must have the same user ID.
+Successful `get_user()`, `update_user()`, `convert_anonymous()`, and
+`confirm_email_change()` calls update that local snapshot. Automatic HTTP 401 recovery
+can rotate credentials and emit `TOKEN_REFRESHED`; the profile update itself does not. Previously returned sessions remain immutable.
+Profile identity checks compare UUID values; the session retains its original
+user ID spelling, including in the cached snapshot.
+
 `get_user()` sends the active access token to Volcano and returns an immutable, server-validated
 profile with the complete public AuthUser fields. Profile timestamps are timezone-aware `datetime`
-values, and nested user and application metadata are immutable. The request does not replace the
-session or cache the profile. If another authentication operation replaces the session while the
-request is in flight, `get_user()` raises `SessionChangedError` instead of returning a profile for
-stale credentials.
+values, and nested user and application metadata are immutable. The request updates the cached
+profile without changing credentials unless HTTP 401 recovery requires a refresh.
+Successful recovery rotates credentials and emits `TOKEN_REFRESHED`. If another authentication operation replaces the session
+while the request is in flight, `get_user()` raises `SessionChangedError` instead of returning a
+profile for stale credentials.
 
 `update_user()` updates the current user's password, metadata, or both. Metadata is a shallow patch:
 omitted keys remain unchanged, and setting a key to `None` removes it. The method returns the same
-immutable profile type as `get_user()` and does not replace the active session. It also rejects a
-response if another authentication operation replaces the session while the update is in flight.
+immutable profile type as `get_user()` and updates the cached profile without changing credentials unless HTTP 401 recovery requires a refresh.
+Successful recovery rotates credentials and emits `TOKEN_REFRESHED`.
+It also rejects a response if another authentication operation replaces the session while the
+update is in flight.
 
 Request a password reset email without creating or changing a session:
 
@@ -330,7 +588,9 @@ hosted_url = client.auth.get_hosted_auth_url(
 ```
 
 Store `hosted_state` in the user's signed server-side session before redirecting to `hosted_url`.
-After parsing the returned fragment into a `Session`, validate and adopt it atomically:
+In the callback, atomically fetch and delete the stored state before validation,
+even if validation or adoption fails. Reject a missing or already-consumed state.
+After parsing the returned fragment into a `Session`, validate and adopt it:
 
 ```python
 session = client.auth.adopt_hosted_auth_session(
@@ -359,8 +619,9 @@ authorization_url = client.auth.sign_in_with_oauth(
 ```
 
 Store `oauth_state` in the user's signed server-side session, then redirect the user to the returned
-URL. In the callback, pass the returned and stored states to the SDK so it rejects login CSRF before
-exchanging the one-time code:
+URL. In the callback, atomically fetch and delete the stored nonce as `stored_oauth_state`;
+reject a missing or already-consumed nonce. Pass the returned and consumed states to
+the SDK so it rejects login CSRF before exchanging the one-time code:
 
 ```python
 session = client.auth.exchange_oauth_code(
@@ -454,9 +715,11 @@ Revoke one session by ID:
 client.auth.delete_session(session_id="00000000-0000-4000-8000-000000000099")
 ```
 
-The request uses the current access token. Deleting that token's own session clears local
-credentials, including when the request outcome is uncertain; deleting another session preserves
-them. If another authentication operation replaces the session before deletion finishes, the method
+The request uses the current access token. When its JWT contains a readable UUID `session_id`,
+deleting that session clears local credentials even if the request outcome is uncertain.
+Without that identifier, the SDK cannot recognize self-deletion. Deleting another session does not
+itself clear local state. HTTP 401 recovery can rotate credentials and emit `TOKEN_REFRESHED`;
+a server-rejected refresh clears the captured session before the operation raises. If another authentication operation replaces the session before deletion finishes, the method
 raises `SessionChangedError` instead of clearing the replacement or acknowledging a stale result.
 
 Create an anonymous account and make its tokens the current session:
@@ -468,12 +731,12 @@ session = client.auth.sign_in_anonymously(metadata={"device": "mobile"})
 Anonymous sign-ins must be enabled for the project. Convert the account before signing out if the
 user needs to recover it later.
 
-Attach email credentials without changing the anonymous user's ID or current session:
+Attach email credentials while preserving the anonymous user's ID:
 
 ```python
 user = client.auth.convert_anonymous(
     email="user@example.com",
-    password="secure-password",
+    password="a-long-example-password-2026",
     metadata={"display_name": "Ada"},
 )
 ```
@@ -485,13 +748,24 @@ Set a new password with the recovery token from that email:
 ```python
 client.auth.reset_password(
     token="recovery-token",
-    new_password="new-secret",
+    new_password="new-correct-horse-battery-staple",
 )
 ```
 
 Success returns `None`. The reset revokes the recovered account's existing sessions and does not
 sign it in. The client keeps any unrelated local session unchanged; sign in with the new password
 when the reset flow completes.
+
+To start with only a supplied user access token, pass `access_token` to
+`VolcanoClient`. Construction makes no request and leaves `refresh_token`,
+`user_id`, and `user` as `None` until supplied or validated by the server.
+`get_user()` validates and caches the profile without changing credentials unless HTTP 401 recovery requires a refresh.
+Successful recovery rotates credentials and emits `TOKEN_REFRESHED`.
+Without a refresh token, `refresh_session()` raises `AuthenticationError` and
+`sign_out()` clears local state and revokes the server session when the access JWT
+contains a readable UUID `session_id`.
+Supplied credentials require both a refresh token and an access JWT with a readable UUID
+`session_id` to enable refresh. See the [token bootstrap example](https://github.com/Kong/volcano-sdk-python/blob/main/docs/README.md#use-a-supplied-access-token).
 
 Copy a complete native session into another client's memory:
 
@@ -501,8 +775,12 @@ if session is not None:
     fresh.auth.set_session(session)
 ```
 
-`set_session()` copies the session without making a request or persisting credentials. It raises
-`ValueError` when the session type or any credential field is incomplete.
+`set_session()` copies the session without making a request, persisting credentials, or notifying
+auth-state subscribers. It raises `ValueError` when the session type or any credential field is
+incomplete.
+
+Password sign-in raises `SessionChangedError` if local session state changes while the request is
+in flight. The late response does not replace the newer state or emit a sign-in notification.
 
 Refresh the session with its current refresh token:
 
@@ -512,7 +790,8 @@ assert client.auth.get_session() is refreshed
 ```
 
 On success, `refresh_session()` replaces the in-memory session and returns the immutable new
-snapshot. An authentication failure clears the session that initiated the request. Server and
+snapshot. An authentication rejection from the refresh endpoint clears the captured session.
+Missing refresh credentials, failed session-continuity checks, server errors, and
 transport failures preserve it, and a late response never replaces a newer session. The SDK does
 not persist sessions.
 
@@ -534,8 +813,8 @@ subscription.unsubscribe()
 Registration queues `INITIAL_SESSION`. It normally arrives before registration returns, but an
 existing notification dispatch may deliver it afterward. Successful session creation, refresh, and
 local clearing emit `SIGNED_IN`, `TOKEN_REFRESHED`, and `SIGNED_OUT`. Callbacks are delivered locally
-in transition order after the state lock is released, and callback failures cannot interrupt auth
-operations. Unsubscribing prevents queued and future delivery; a callback already selected for
+in transition order after the state lock is released. Ordinary callback `Exception` failures are
+isolated; exceptions such as `KeyboardInterrupt` propagate after the session transition has committed. Unsubscribing prevents queued and future delivery; a callback already selected for
 delivery may finish after `unsubscribe()` returns. The SDK does not broadcast between processes or
 persist sessions.
 
@@ -546,9 +825,15 @@ client.auth.sign_out()
 assert client.auth.get_session() is None
 ```
 
+Sign-out uses the refresh token directly when the SDK received both credentials together from
+sign-in or a validated refresh. Supplied credentials use the access-token session when its JWT
+contains a readable UUID `session_id`; on HTTP 401, the SDK can refresh once and revoke that
+same session without adopting the renewed credentials. Without that identifier, sign-out uses
+the supplied refresh token, or only clears local state if no refresh token is available.
 Calling `sign_out()` without a session succeeds without a request. A revocation failure is raised
-after the captured local session is cleared. A newer session established while sign-out is in
-flight remains current.
+after the captured local session is cleared. Sign-out waits for an already-running refresh and uses its validated credentials.
+Later refresh attempts raise `SessionChangedError` without a request. Concurrent sign-out calls
+share one result. A separate sign-in or adoption remains current.
 
 Realtime is async. Channels wrap `centrifuge-python`; the underlying client and
 subscription objects are not part of the public API.
@@ -578,6 +863,31 @@ assert not client.realtime.is_connected
 stop_connect()
 ```
 
+`await channel.subscribe()` returns after the server acknowledges the subscription.
+Presence channels also wait for the initial roster refresh. If subscription fails
+or the call is cancelled, the attempt is stopped and a later call can retry.
+Other channels and shutdown operations can proceed while acknowledgement is pending.
+Calling subscribe on an active channel returns immediately.
+Pausing, removal, and disconnect invalidate earlier queued subscribe calls;
+disconnect also cancels the active readiness wait. Call subscribe again to restart.
+
+Broadcast channels use Centrifuge's native stream recovery when server history
+is available. `await channel.unsubscribe()` pauses delivery while retaining the
+in-memory recovery position; a later `await channel.subscribe()` resumes the
+same subscription and requests missed publications. Removing the channel or
+disconnecting the realtime client discards that position. Recovery is not
+persisted across processes and never crosses an auth session lineage.
+Explicitly pausing discards incoming messages and callbacks queued before the pause,
+including presence joins, leaves, and snapshots. Pausing frees their queue capacity
+so recovered messages can be delivered after resubscription.
+A callback already running may finish; handlers remain registered for resubscription.
+If unsubscribe or removal is cancelled, cancellation propagates after the native
+unsubscribe finishes under its request timeout. This keeps replies valid and
+prevents a subsequent operation from overtaking the stop.
+Automatic reconnects preserve queued messages on broadcast and presence channels,
+using the existing recovery position to request missed messages. Presence rosters
+are refreshed after reconnecting.
+
 Presence channels expose server-managed user metadata and join/leave events:
 
 ```python
@@ -599,14 +909,26 @@ stop_sync()
 `remove_channel()` unsubscribes and forgets one channel. `remove_all_channels()`
 does the same for every managed channel without disconnecting the shared
 realtime transport, so later calls to `channel()` return fresh facades.
+Removal and `disconnect()` stop SDK delivery and transport work without cancelling
+or waiting for a running application callback. Queued delivery is discarded;
+callbacks already running may finish and may call realtime methods themselves.
+Callbacks run in order on each channel, including across disconnect and resubscribe.
+A slow callback delays subsequent delivery on that channel. Application code owns
+any work it starts and should await that work separately when shutting down.
 Connection callbacks receive immutable contexts, may be synchronous or async,
 and run outside the transport event processor. Each registration returns an
 idempotent function that stops future delivery.
+Access-token refreshes preserve a realtime connection only while the auth
+session lineage remains current. After signing in again or changing users,
+call `disconnect()` before subscribing channels for the new session; the SDK
+refuses to rebind an existing connection across that identity boundary.
 Presence state and client metadata are immutable snapshots. Volcano derives
 the remote identity and metadata from the authenticated user; `track()` stores
 optional local state in `tracked_state` but does not replace that server-managed
 identity. Presence is resynchronized after reconnects. Query failures are
 reported through `realtime.on_error()` and clear the current snapshot.
+Unsubscribing or removing a presence channel discards an in-progress roster
+refresh without interrupting other channels on the shared connection.
 
 Postgres channels deliver immutable, RLS-scoped row changes and filter
 callbacks by event, schema, and table:
@@ -616,6 +938,9 @@ client.realtime.set_database_name("app")
 changes = client.realtime.channel(
     "public:messages",
     channel_type="postgres",
+    auto_fetch=True,
+    fetch_batch_window_ms=20,
+    fetch_max_batch_size=50,
 )
 stop_changes = changes.on_postgres_changes(
     "INSERT",
@@ -627,43 +952,96 @@ await changes.subscribe()
 stop_changes()
 ```
 
-Pass `None` to `set_database_name()` to clear the database binding.
-When the server sends only a lightweight notification, `record` is `None` and
-the change retains its `id` and `mode` for fallback handling. Lightweight
-deletes preserve `old_record`, or provide `{"id": change.id}` when no old row
-was included.
+Binding a database automatically fetches the matching row for lightweight
+`INSERT` and `UPDATE` notifications in public or custom schemas. The fetch uses the
+realtime connection's RLS-scoped access token. Compatible row lookups are
+batched while callback delivery preserves publication order.
+If the row is absent or the query fails, the callback receives the lightweight
+notification with its `id` and `mode` intact. Custom-schema row lookups preserve
+the schema from the notification. Lightweight deletes never query the database; they
+preserve `old_record`, or provide `{"id": change.id}` when no old row was
+included. Tune a channel's batching with `fetch_batch_window_ms` and
+`fetch_max_batch_size`; the defaults are 20 milliseconds and 50 rows. Set
+`auto_fetch=False` on a Postgres channel to keep lightweight notifications
+without querying their rows. Pass `None` to `set_database_name()` to disable
+row fetching for every channel.
+
+## Dependencies
+
+Installing `volcano-sdk-python` pulls in three packages, plus their own transitive
+dependencies:
+
+| Package                                                            | Why                                        |
+| ------------------------------------------------------------------ | ------------------------------------------ |
+| [`httpx`](https://pypi.org/project/httpx/)                         | The HTTP client every request goes through |
+| [`attrs`](https://pypi.org/project/attrs/)                         | The generated client's models              |
+| [`centrifuge-python`](https://pypi.org/project/centrifuge-python/) | The realtime protocol client               |
+
+A durable function you deploy needs one more, and you do not install it:
+Volcano adds it when it builds the function.
+
+| Package                                                                                          | Why                                                                   |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| [`aws-durable-execution-sdk-python`](https://pypi.org/project/aws-durable-execution-sdk-python/) | Checkpointing. `volcano_sdk.durable_authoring` is written on top of it |
+
+The `durable` extra installs it if you want it yourself — to run a durable
+handler in your own tests, or to pin a version, since the build leaves a
+function that pins the runtime exactly as it is. A function's `requirements.txt`
+does not need it otherwise.
 
 ## Compatibility
 
-The POC supports Python 3.11 and 3.14. Its public facade is intentionally
-independent of generated httpx types. Compatibility is verified against the
-bundled Volcano API contract from hosting commit
-`cb12eb4636252cb658f13850dad930fa73a5dc4c`; `openapi/openapi.yaml` has SHA-256
-`95e5c102830db382064180afca4c62ad8b11faabf58148f9d21236046b930090`.
+CI tests the SDK on every Python version from 3.11 through 3.14.
+Its public facade is intentionally
+independent of generated httpx types. The bundled `openapi/openapi.yaml` matches
+the public bundle from [Hosting #991](https://github.com/Kong/volcano-hosting/pull/991)
+at commit `ef03f689e`.
+Its SHA-256 is `076d97809c95f50567d8b100f4188c1fe2b74e73a388e335c79850e66edfc0e4`.
+
+Generated operations are internal. Transport adapters use `sync_detailed()` or
+`asyncio_detailed()` to inspect HTTP status before interpreting the parsed body.
+The generated parsed-body-only shortcuts are not public SDK APIs.
 
 The realtime wrapper includes a narrow compatibility adapter for Volcano's
 project-prefixed publication channels. It still delegates connection,
 subscription, publish, and disconnect behavior to `centrifuge-python` 0.6.
+Its [interim compatibility policy](./maintainers/realtime-compatibility.md) records
+the dependency bounds, review deadline, removal criteria, and required checks.
 
 ## Develop locally
 
-```shell
-uv sync --frozen
-uv run python scripts/check_openapi.py
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy
-uv run pyright
-uv run pytest tests/unit -q
-uv run python -m build
-```
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for cross-language coordination and the full verification workflow.
 
-Live contract scenarios require an isolated fixture produced by
-`volcano-hosting/tests/sdk-contract/support/fixture.mjs`:
+Generation fails on unsupported responses instead of omitting them. The generator
+configuration maps image and wildcard binary responses to raw-byte parsing while
+preserving the OpenAPI media types and response headers.
 
 ```shell
-VOLCANO_SDK_CONTRACT_FIXTURE=/absolute/path/to/fixture.json \
-  uv run behave features/contract --junit --junit-directory reports/behave
+uv sync --locked
+uv run --locked poe quality
 ```
 
-The fixture must be an absolute path to a mode-`0600` JSON file.
+Hosting owns and runs the shared black-box acceptance suite during Staging Validation.
+It builds this repository's latest `main` and installs the wheel in a fresh environment.
+See [Hosting's testing guide](https://github.com/Kong/volcano-hosting/blob/main/docs/internal/guides/sdk-contract-testing.md).
+
+## Release to PyPI
+
+Release Please creates a version and changelog PR from releasable commits.
+A maintainer manually merges the version PR after its required checks pass.
+The Volcano GitHub App creates the stable GitHub release, which automatically
+starts `publish.yml`. The workflow validates the tag, main ancestry, and package
+identity; runs CI; builds and smoke-tests the wheel and source distribution;
+then publishes them to PyPI and adds the version link to the GitHub release.
+
+PyPI trusted publishing must match `Kong/volcano-sdk-python`, workflow
+`publish.yml`, environment `pypi`, and project `volcano-sdk-python`. Only the
+isolated upload job can request an OIDC token; it receives checked artifacts
+and does not check out or execute SDK source. No PyPI API token is required.
+Release runs queue without canceling pending versions.
+
+For a transient failure, rerun the failed jobs on the release workflow. PyPI
+versions cannot be overwritten: if an upload partially succeeded, inspect the
+existing files before recovery. Earlier releases built as `volcano-sdk` are
+not published by this workflow. The Release Please component remains
+`volcano-sdk` to preserve its release branch and history.

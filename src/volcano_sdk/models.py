@@ -6,17 +6,10 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import Literal, TypeAlias
 
-JSONValue: TypeAlias = (
-    str
-    | int
-    | float
-    | bool
-    | list["JSONValue"]
-    | tuple["JSONValue", ...]
-    | dict[str, "JSONValue"]
-    | Mapping[str, "JSONValue"]
-    | None
-)
+from ._json_values import JSONValue as _JSONValue
+from ._json_values import freeze_json
+
+JSONValue: TypeAlias = _JSONValue
 OAuthProviderName: TypeAlias = Literal["apple", "github", "google", "microsoft"]
 AuthChangeEvent: TypeAlias = Literal[
     "INITIAL_SESSION",
@@ -31,16 +24,21 @@ UploadSessionState: TypeAlias = Literal[
     "completed",
     "aborted",
 ]
-
-
-def _freeze_json(value: JSONValue) -> JSONValue:
-    if isinstance(value, Mapping):
-        return MappingProxyType(
-            {key: _freeze_json(item) for key, item in value.items()}
-        )
-    if isinstance(value, (list, tuple)):
-        return tuple(_freeze_json(item) for item in value)
-    return value
+# "unknown" is terminal and the platform writes it itself, for an execution
+# whose outcome it could not find out. Code that switches on status has to
+# handle it, or it treats a finished execution as one still running.
+DurableExecutionStatus: TypeAlias = Literal[
+    "pending",
+    "running",
+    "succeeded",
+    "failed",
+    "timed_out",
+    "stopped",
+    "unknown",
+]
+DURABLE_TERMINAL_STATUSES: frozenset[DurableExecutionStatus] = frozenset(
+    {"succeeded", "failed", "timed_out", "stopped", "unknown"}
+)
 
 
 def _freeze_metadata(
@@ -48,7 +46,7 @@ def _freeze_metadata(
 ) -> Mapping[str, JSONValue] | None:
     if value is None:
         return None
-    return MappingProxyType({key: _freeze_json(item) for key, item in value.items()})
+    return MappingProxyType({key: freeze_json(item) for key, item in value.items()})
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,11 +82,16 @@ class User:
 
 @dataclass(frozen=True, slots=True)
 class Session:
-    """Authenticated user session."""
+    """Local credentials with optional refresh credentials and user identity."""
 
     access_token: str
-    refresh_token: str
-    user_id: str
+    refresh_token: str | None = None
+    user_id: str | None = None
+    user: Mapping[str, JSONValue] | None = field(default=None, repr=False, hash=False)
+
+    def __post_init__(self) -> None:
+        """Own a local user snapshot without treating it as server validation."""
+        object.__setattr__(self, "user", _freeze_metadata(self.user))
 
 
 AuthStateCallback: TypeAlias = Callable[[AuthChangeEvent, Session | None], None]
@@ -159,10 +162,11 @@ class OAuthProviderTokenStatus:
 
 @dataclass(frozen=True, slots=True)
 class SignUpResult:
-    """Session-less acknowledgement returned after sign-up."""
+    """Sign-up acknowledgement with an optional follow-up sign-in session."""
 
     confirmation_required: bool
     message: str
+    session: Session | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,14 +200,14 @@ class LockState:
 class FunctionResponse:
     """Response returned by an invoked function."""
 
-    data: Mapping[str, JSONValue] = field(hash=False)
+    data: JSONValue = field(hash=False)
     status: int
     headers: Mapping[str, str] = field(hash=False)
     version: str | None
 
     def __post_init__(self) -> None:
         """Defensively freeze response data and headers."""
-        object.__setattr__(self, "data", _freeze_json(self.data))
+        object.__setattr__(self, "data", freeze_json(self.data))
         object.__setattr__(
             self,
             "headers",
@@ -225,7 +229,7 @@ class LogSearchResponse:
         object.__setattr__(
             self,
             "data",
-            tuple(_freeze_json(event) for event in self.data),
+            tuple(freeze_json(event) for event in self.data),
         )
 
 
@@ -241,7 +245,7 @@ class LogActivityResponse:
         object.__setattr__(
             self,
             "data",
-            tuple(_freeze_json(bucket) for bucket in self.data),
+            tuple(freeze_json(bucket) for bucket in self.data),
         )
 
 
@@ -322,3 +326,61 @@ class StoragePage:
     def __post_init__(self) -> None:
         """Defensively snapshot the objects in this page."""
         object.__setattr__(self, "objects", tuple(self.objects))
+
+
+@dataclass(frozen=True, slots=True)
+class DurableExecutionFailure:
+    """Why a failed or timed-out execution ended.
+
+    A value read off an execution, not an exception. Named for that: every
+    `*Error` this package exports subclasses `VolcanoError`, so a reader who
+    wrote `except DurableExecutionError:` on the wire schema's name would get a
+    `TypeError` about catching a class that is not an exception.
+    """
+
+    type: str | None = None
+    message: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DurableExecution:
+    """A durable execution, as the platform last observed it."""
+
+    id: str
+    function_id: str
+    name: str
+    status: DurableExecutionStatus
+    region: str
+    created_at: datetime
+    # Whatever the function returned. Absent while the execution is still
+    # running, and absent once the result stops being retained -- which is not
+    # the same as a function that returned nothing, so read result_expired
+    # before concluding anything from a missing result.
+    result: JSONValue = field(default=None, repr=False, hash=False)
+    result_expired: bool | None = None
+    error: DurableExecutionFailure | None = None
+    completed_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        """Defensively freeze the function's own result."""
+        object.__setattr__(self, "result", freeze_json(self.result))
+
+    @property
+    def is_terminal(self) -> bool:
+        """Report whether the execution has stopped changing."""
+        return self.status in DURABLE_TERMINAL_STATUSES
+
+
+@dataclass(frozen=True, slots=True)
+class DurableExecutionPage:
+    """One page of a durable function's executions, most recent first."""
+
+    executions: tuple[DurableExecution, ...]
+    page: int
+    limit: int
+    total: int
+    has_more: bool
+
+    def __post_init__(self) -> None:
+        """Defensively snapshot the executions in this page."""
+        object.__setattr__(self, "executions", tuple(self.executions))

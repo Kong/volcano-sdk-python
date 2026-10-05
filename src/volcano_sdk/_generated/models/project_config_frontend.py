@@ -30,8 +30,8 @@ class ProjectConfigFrontend:
 
         Attributes:
             name (str):
-            custom_domain (ProjectConfigCustomDomain | Unset): Custom domain with managed or BYOC TLS (PRO plan). `tls` is
-                required
+            custom_domain (ProjectConfigCustomDomain | Unset): Custom domain with managed or BYOC TLS (SUPERAGENT plan).
+                `tls` is required
                 when the domain is first created and optional afterwards. BYOC TLS
                 material is write-only and omitted from config export.
      """

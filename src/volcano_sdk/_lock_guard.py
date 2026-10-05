@@ -9,22 +9,31 @@ from typing import TYPE_CHECKING
 from ._lock_renewer import renewal_delay as _calculate_renewal_delay
 
 if TYPE_CHECKING:
+    from _thread import LockType
+
     from .models import LockLease
 
 MAX_LOCK_LIFETIME_SECONDS = 7_776_000
 LOSS_POLL_INTERVAL_SECONDS = 1.0
-SUSPEND_AWARE_CLOCK_ID = getattr(time, "CLOCK_BOOTTIME", None)
 _LEASE_EXPIRED = "lock lease expired before renewal completed"
 _NO_SAFE_RENEWAL_WINDOW = "lock renewal returned no safe lease window"
 
 
-class _FallbackClock:
+def suspend_aware_clock_id(value: object) -> int | None:
+    return value if isinstance(value, int) else None
+
+
+_clock_id_value: object = getattr(time, "CLOCK_BOOTTIME", None)
+SUSPEND_AWARE_CLOCK_ID = suspend_aware_clock_id(_clock_id_value)
+
+
+class FallbackClock:
     """Combine monotonic progress with suspend-aware wall time."""
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._monotonic = time.monotonic()
-        self._value = time.time()
+        self._lock: LockType = threading.Lock()
+        self._monotonic: float = time.monotonic()
+        self._value: float = time.time()
 
     def __call__(self) -> float:
         with self._lock:
@@ -35,14 +44,14 @@ class _FallbackClock:
             return self._value
 
 
-_FALLBACK_CLOCK = _FallbackClock()
+_FALLBACK_CLOCK = FallbackClock()
 
 
-def _lease_now() -> float:
-    clock_gettime = getattr(time, "clock_gettime", None)
+def lease_now() -> float:
+    clock_gettime: object = getattr(time, "clock_gettime", None)
     if clock_gettime is None or SUSPEND_AWARE_CLOCK_ID is None:
         return _FALLBACK_CLOCK()
-    return float(clock_gettime(SUSPEND_AWARE_CLOCK_ID))
+    return float(time.clock_gettime(SUSPEND_AWARE_CLOCK_ID))
 
 
 class LockGuard:
@@ -54,35 +63,47 @@ class LockGuard:
         *,
         ttl: int,
         started_at: float,
+        lease_started_at: float | None = None,
     ) -> None:
         """Track one acquired lease against its local monotonic deadline."""
-        self._state_lock = threading.Lock()
-        self._lease = lease
-        self._ttl = ttl
-        self._absolute_deadline = started_at + MAX_LOCK_LIFETIME_SECONDS
-        self._lease_deadline = min(started_at + ttl, self._absolute_deadline)
+        self._state_lock: LockType = threading.Lock()
+        self._lease: LockLease = lease
+        self._ttl: int = ttl
+        self._absolute_deadline: float = started_at + MAX_LOCK_LIFETIME_SECONDS
+        # A successful retry renews the TTL, not the maximum ownership lifetime.
+        lease_started_at = started_at if lease_started_at is None else lease_started_at
+        self._lease_deadline: float = min(
+            lease_started_at + ttl, self._absolute_deadline
+        )
         self._failure: Exception | None = None
-        self._lost = threading.Event()
+        self._lost: threading.Event = threading.Event()
 
     @property
     def lease(self) -> LockLease:
-        """Return the latest successfully renewed immutable lease."""
+        """The latest successfully renewed immutable lease."""
         with self._state_lock:
             return self._lease
 
     @property
     def lost(self) -> bool:
-        """Return whether renewal failed or the latest lease expired."""
+        """Whether renewal failed, the lease expired, or the guard closed."""
         with self._state_lock:
-            self._expire_if_needed_locked(_lease_now())
+            self._expire_if_needed_locked(lease_now())
             return self._lost.is_set()
 
     def wait_lost(self, timeout: float | None = None) -> bool:
-        """Wait until ownership is lost or the timeout expires."""
-        timeout_deadline = None if timeout is None else _lease_now() + timeout
+        """Wait until ownership is lost or the timeout expires.
+
+        Returns
+        -------
+        bool
+            True when the guard reports lost ownership, False on timeout.
+
+        """
+        timeout_deadline = None if timeout is None else lease_now() + timeout
         while True:
             with self._state_lock:
-                now = _lease_now()
+                now = lease_now()
                 self._expire_if_needed_locked(now)
                 if self._lost.is_set():
                     return True
@@ -91,15 +112,15 @@ class LockGuard:
                     self._remaining_seconds_locked(now),
                 )
             if timeout_deadline is not None:
-                timeout_remaining = timeout_deadline - _lease_now()
+                timeout_remaining = timeout_deadline - lease_now()
                 if timeout_remaining <= 0:
                     return False
                 wait = min(wait, timeout_remaining)
-            self._lost.wait(wait)
+            _ = self._lost.wait(wait)
 
     def replace_lease(self, lease: LockLease, *, started_at: float) -> bool:
         with self._state_lock:
-            now = _lease_now()
+            now = lease_now()
             self._expire_if_needed_locked(now)
             if self._lost.is_set():
                 return False
@@ -116,18 +137,18 @@ class LockGuard:
 
     def mark_lost(self, failure: Exception) -> None:
         with self._state_lock:
-            self._expire_if_needed_locked(_lease_now())
+            self._expire_if_needed_locked(lease_now())
             self._mark_lost_locked(failure)
 
     def _remaining_seconds(self) -> float:
         with self._state_lock:
-            now = _lease_now()
+            now = lease_now()
             self._expire_if_needed_locked(now)
             return self._remaining_seconds_locked(now)
 
     def renewal_delay(self) -> float:
         with self._state_lock:
-            now = _lease_now()
+            now = lease_now()
             self._expire_if_needed_locked(now)
             if self._lost.is_set():
                 return 0.0
@@ -138,8 +159,13 @@ class LockGuard:
 
     def _renewal_failure(self) -> Exception | None:
         with self._state_lock:
-            self._expire_if_needed_locked(_lease_now())
+            self._expire_if_needed_locked(lease_now())
             return self._failure
+
+    def _close(self) -> None:
+        with self._state_lock:
+            self._expire_if_needed_locked(lease_now())
+            self._lost.set()
 
     def _mark_lost_locked(self, failure: Exception) -> None:
         if self._failure is None:
@@ -152,3 +178,13 @@ class LockGuard:
     def _expire_if_needed_locked(self, now: float) -> None:
         if self._failure is None and self._remaining_seconds_locked(now) == 0:
             self._mark_lost_locked(TimeoutError(_LEASE_EXPIRED))
+
+
+class ManagedLockGuard(LockGuard):
+    """Lifecycle controls reserved for the lock context manager."""
+
+    def renewal_failure(self) -> Exception | None:
+        return self._renewal_failure()
+
+    def close(self) -> None:
+        self._close()

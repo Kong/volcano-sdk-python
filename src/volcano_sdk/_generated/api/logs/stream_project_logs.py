@@ -16,8 +16,8 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    id: UUID,
+def request_kwargs(
+    id: UUID | str,
     *,
     body: LogStreamRequest,
     last_event_id_query: str | Unset = UNSET,
@@ -101,7 +101,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | str]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | str]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -111,7 +111,7 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: LogStreamRequest,
@@ -125,12 +125,12 @@ def sync_detailed(
     resource selector plus `q`, `start_time`, and `limit`,
     including runtime logs and function/frontend deployment logs selected
     with `resource.deployments`. Deployment logs are not supported for
-    databases. Database logs are a PRO-plan feature; `resource.type=database`
-    from a FREE-plan project owner returns 403. The `q` field uses the same
+    databases. Database logs are a SUPERAGENT-plan feature; `resource.type=database`
+    from a HOBBY-plan project owner returns 403. The `q` field uses the same
     syntax as search and activity requests. Do not send `cursor` or
     `end_time`; use `/logs/search` for range backfills.
     Explicit historical `start_time` values are limited to the plan's
-    retention window (FREE: 1 day, PRO: 30 days). Resume with
+    retention window (HOBBY: 1 day, SUPERAGENT: 30 days). Resume with
     `Last-Event-ID` or the `last_event_id` query parameter. The cursor is
     bound to the request body: the resource selector and every filter must
     match the original request when reconnecting, otherwise the request is
@@ -157,7 +157,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 body=body,
 last_event_id_query=last_event_id_query,
@@ -169,10 +169,10 @@ last_event_id_header=last_event_id_header,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: LogStreamRequest,
@@ -186,12 +186,12 @@ def sync(
     resource selector plus `q`, `start_time`, and `limit`,
     including runtime logs and function/frontend deployment logs selected
     with `resource.deployments`. Deployment logs are not supported for
-    databases. Database logs are a PRO-plan feature; `resource.type=database`
-    from a FREE-plan project owner returns 403. The `q` field uses the same
+    databases. Database logs are a SUPERAGENT-plan feature; `resource.type=database`
+    from a HOBBY-plan project owner returns 403. The `q` field uses the same
     syntax as search and activity requests. Do not send `cursor` or
     `end_time`; use `/logs/search` for range backfills.
     Explicit historical `start_time` values are limited to the plan's
-    retention window (FREE: 1 day, PRO: 30 days). Resume with
+    retention window (HOBBY: 1 day, SUPERAGENT: 30 days). Resume with
     `Last-Event-ID` or the `last_event_id` query parameter. The cursor is
     bound to the request body: the resource selector and every filter must
     match the original request when reconnecting, otherwise the request is
@@ -228,7 +228,7 @@ last_event_id_header=last_event_id_header,
     ).parsed
 
 async def asyncio_detailed(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: LogStreamRequest,
@@ -242,12 +242,12 @@ async def asyncio_detailed(
     resource selector plus `q`, `start_time`, and `limit`,
     including runtime logs and function/frontend deployment logs selected
     with `resource.deployments`. Deployment logs are not supported for
-    databases. Database logs are a PRO-plan feature; `resource.type=database`
-    from a FREE-plan project owner returns 403. The `q` field uses the same
+    databases. Database logs are a SUPERAGENT-plan feature; `resource.type=database`
+    from a HOBBY-plan project owner returns 403. The `q` field uses the same
     syntax as search and activity requests. Do not send `cursor` or
     `end_time`; use `/logs/search` for range backfills.
     Explicit historical `start_time` values are limited to the plan's
-    retention window (FREE: 1 day, PRO: 30 days). Resume with
+    retention window (HOBBY: 1 day, SUPERAGENT: 30 days). Resume with
     `Last-Event-ID` or the `last_event_id` query parameter. The cursor is
     bound to the request body: the resource selector and every filter must
     match the original request when reconnecting, otherwise the request is
@@ -274,7 +274,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 body=body,
 last_event_id_query=last_event_id_query,
@@ -286,10 +286,10 @@ last_event_id_header=last_event_id_header,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: LogStreamRequest,
@@ -303,12 +303,12 @@ async def asyncio(
     resource selector plus `q`, `start_time`, and `limit`,
     including runtime logs and function/frontend deployment logs selected
     with `resource.deployments`. Deployment logs are not supported for
-    databases. Database logs are a PRO-plan feature; `resource.type=database`
-    from a FREE-plan project owner returns 403. The `q` field uses the same
+    databases. Database logs are a SUPERAGENT-plan feature; `resource.type=database`
+    from a HOBBY-plan project owner returns 403. The `q` field uses the same
     syntax as search and activity requests. Do not send `cursor` or
     `end_time`; use `/logs/search` for range backfills.
     Explicit historical `start_time` values are limited to the plan's
-    retention window (FREE: 1 day, PRO: 30 days). Resume with
+    retention window (HOBBY: 1 day, SUPERAGENT: 30 days). Resume with
     `Last-Event-ID` or the `last_event_id` query parameter. The cursor is
     bound to the request body: the resource selector and every filter must
     match the original request when reconnecting, otherwise the request is

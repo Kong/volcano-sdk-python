@@ -16,8 +16,8 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    id: UUID,
+def request_kwargs(
+    id: UUID | str,
     *,
     body: CreateFrontendBody,
 
@@ -113,7 +113,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | Frontend]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | Frontend]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -123,7 +123,7 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: CreateFrontendBody,
@@ -152,8 +152,8 @@ def sync_detailed(
     22.x or 24.x. The Node.js runtime is inferred from
     `package.json` `engines.node`; if omitted, Volcano uses Node.js 22.x.
     The selected Node.js family must also satisfy the installed Next.js package's
-    `engines.node` constraint. Volcano tests Next 15.5.24 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
-    16.3.3 (`>=20.9.0`).
+    `engines.node` constraint. Volcano tests Next 15.5.25 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
+    16.3.5 (`>=20.9.0`).
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.
@@ -174,7 +174,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 body=body,
 
@@ -184,10 +184,10 @@ body=body,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: CreateFrontendBody,
@@ -216,8 +216,8 @@ def sync(
     22.x or 24.x. The Node.js runtime is inferred from
     `package.json` `engines.node`; if omitted, Volcano uses Node.js 22.x.
     The selected Node.js family must also satisfy the installed Next.js package's
-    `engines.node` constraint. Volcano tests Next 15.5.24 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
-    16.3.3 (`>=20.9.0`).
+    `engines.node` constraint. Volcano tests Next 15.5.25 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
+    16.3.5 (`>=20.9.0`).
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.
@@ -246,7 +246,7 @@ body=body,
     ).parsed
 
 async def asyncio_detailed(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: CreateFrontendBody,
@@ -275,8 +275,8 @@ async def asyncio_detailed(
     22.x or 24.x. The Node.js runtime is inferred from
     `package.json` `engines.node`; if omitted, Volcano uses Node.js 22.x.
     The selected Node.js family must also satisfy the installed Next.js package's
-    `engines.node` constraint. Volcano tests Next 15.5.24 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
-    16.3.3 (`>=20.9.0`).
+    `engines.node` constraint. Volcano tests Next 15.5.25 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
+    16.3.5 (`>=20.9.0`).
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.
@@ -297,7 +297,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 body=body,
 
@@ -307,10 +307,10 @@ body=body,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: CreateFrontendBody,
@@ -339,8 +339,8 @@ async def asyncio(
     22.x or 24.x. The Node.js runtime is inferred from
     `package.json` `engines.node`; if omitted, Volcano uses Node.js 22.x.
     The selected Node.js family must also satisfy the installed Next.js package's
-    `engines.node` constraint. Volcano tests Next 15.5.24 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
-    16.3.3 (`>=20.9.0`).
+    `engines.node` constraint. Volcano tests Next 15.5.25 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
+    16.3.5 (`>=20.9.0`).
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.

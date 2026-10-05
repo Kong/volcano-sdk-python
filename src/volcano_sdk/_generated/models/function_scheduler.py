@@ -8,6 +8,8 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.function_kind import check_function_kind
+from ..models.function_kind import FunctionKind
 from ..models.function_scheduler_schedule_kind import check_function_scheduler_schedule_kind
 from ..models.function_scheduler_schedule_kind import FunctionSchedulerScheduleKind
 from ..types import UNSET, Unset
@@ -33,6 +35,11 @@ class FunctionScheduler:
             id (UUID | Unset):
             project_id (UUID | Unset):
             function_id (UUID | Unset):
+            function_kind (FunctionKind | Unset): Which kind of function this is. `standard` runs once per invocation.
+                `durable` checkpoints its progress and resumes from the last completed
+                step, and is invoked asynchronously through its own executions
+                collection. A function's kind is fixed when it is created and cannot be
+                changed afterwards. Omitting this field means `standard`.
             name (str | Unset):
             enabled (bool | Unset):
             schedule_kind (FunctionSchedulerScheduleKind | Unset):
@@ -53,6 +60,7 @@ class FunctionScheduler:
     id: UUID | Unset = UNSET
     project_id: UUID | Unset = UNSET
     function_id: UUID | Unset = UNSET
+    function_kind: FunctionKind | Unset = UNSET
     name: str | Unset = UNSET
     enabled: bool | Unset = UNSET
     schedule_kind: FunctionSchedulerScheduleKind | Unset = UNSET
@@ -86,6 +94,11 @@ class FunctionScheduler:
         function_id: str | Unset = UNSET
         if not isinstance(self.function_id, Unset):
             function_id = str(self.function_id)
+
+        function_kind: str | Unset = UNSET
+        if not isinstance(self.function_kind, Unset):
+            function_kind = self.function_kind
+
 
         name = self.name
 
@@ -145,6 +158,8 @@ class FunctionScheduler:
             field_dict["project_id"] = project_id
         if function_id is not UNSET:
             field_dict["function_id"] = function_id
+        if function_kind is not UNSET:
+            field_dict["function_kind"] = function_kind
         if name is not UNSET:
             field_dict["name"] = name
         if enabled is not UNSET:
@@ -208,6 +223,16 @@ class FunctionScheduler:
             function_id = UNSET
         else:
             function_id = UUID(_function_id)
+
+
+
+
+        _function_kind = d.pop("function_kind", UNSET)
+        function_kind: FunctionKind | Unset
+        if isinstance(_function_kind,  Unset):
+            function_kind = UNSET
+        else:
+            function_kind = check_function_kind(_function_kind)
 
 
 
@@ -301,6 +326,7 @@ class FunctionScheduler:
             id=id,
             project_id=project_id,
             function_id=function_id,
+            function_kind=function_kind,
             name=name,
             enabled=enabled,
             schedule_kind=schedule_kind,

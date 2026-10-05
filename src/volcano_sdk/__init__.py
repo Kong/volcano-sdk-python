@@ -1,5 +1,6 @@
 """Public Volcano SDK facade."""
 
+from ._lock_guard import LockGuard
 from .client import VolcanoClient
 from .connection_string import database_connection_string
 from .errors import (
@@ -18,6 +19,10 @@ from .models import (
     AuthSession,
     AuthStateCallback,
     AuthSubscription,
+    DurableExecution,
+    DurableExecutionFailure,
+    DurableExecutionPage,
+    DurableExecutionStatus,
     EmailChangeResult,
     FunctionResponse,
     LinkedOAuthProvider,
@@ -53,9 +58,14 @@ __all__ = [
     "AuthSubscription",
     "AuthenticationError",
     "ConflictError",
+    "DurableExecution",
+    "DurableExecutionFailure",
+    "DurableExecutionPage",
+    "DurableExecutionStatus",
     "EmailChangeResult",
     "FunctionResponse",
     "LinkedOAuthProvider",
+    "LockGuard",
     "LockLease",
     "LockState",
     "LogActivityResponse",

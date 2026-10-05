@@ -17,7 +17,7 @@ from typing import cast
 
 
 
-def _get_kwargs(
+def request_kwargs(
     provider: CallOAuthProviderAPIProvider,
     *,
     body: CallOAuthProviderAPIBody,
@@ -66,6 +66,20 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_401
 
+    if response.status_code == 404:
+        response_404 = Error.from_dict(response.json())
+
+
+
+        return response_404
+
+    if response.status_code == 500:
+        response_500 = Error.from_dict(response.json())
+
+
+
+        return response_500
+
     if response.status_code == 502:
         response_502 = Error.from_dict(response.json())
 
@@ -79,7 +93,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[CallOAuthProviderAPIResponse200 | Error]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[CallOAuthProviderAPIResponse200 | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -112,6 +126,12 @@ def sync_detailed(
     - Microsoft Graph profile: `/me`
 
     The response wraps the provider's raw JSON value with request metadata.
+    An empty provider body is represented as `data: null`; the envelope
+    preserves the provider's HTTP status in `status_code`, including errors.
+    Provider response bodies are limited to 8 MiB after decompression.
+    Transport failures, invalid JSON (including invalid UTF-8), and oversized
+    bodies return `502`. Provider redirects to another origin are blocked and
+    return `400`.
 
     Args:
         provider (CallOAuthProviderAPIProvider):
@@ -126,7 +146,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         provider=provider,
 body=body,
 
@@ -136,7 +156,7 @@ body=body,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
     provider: CallOAuthProviderAPIProvider,
@@ -162,6 +182,12 @@ def sync(
     - Microsoft Graph profile: `/me`
 
     The response wraps the provider's raw JSON value with request metadata.
+    An empty provider body is represented as `data: null`; the envelope
+    preserves the provider's HTTP status in `status_code`, including errors.
+    Provider response bodies are limited to 8 MiB after decompression.
+    Transport failures, invalid JSON (including invalid UTF-8), and oversized
+    bodies return `502`. Provider redirects to another origin are blocked and
+    return `400`.
 
     Args:
         provider (CallOAuthProviderAPIProvider):
@@ -207,6 +233,12 @@ async def asyncio_detailed(
     - Microsoft Graph profile: `/me`
 
     The response wraps the provider's raw JSON value with request metadata.
+    An empty provider body is represented as `data: null`; the envelope
+    preserves the provider's HTTP status in `status_code`, including errors.
+    Provider response bodies are limited to 8 MiB after decompression.
+    Transport failures, invalid JSON (including invalid UTF-8), and oversized
+    bodies return `502`. Provider redirects to another origin are blocked and
+    return `400`.
 
     Args:
         provider (CallOAuthProviderAPIProvider):
@@ -221,7 +253,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         provider=provider,
 body=body,
 
@@ -231,7 +263,7 @@ body=body,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
     provider: CallOAuthProviderAPIProvider,
@@ -257,6 +289,12 @@ async def asyncio(
     - Microsoft Graph profile: `/me`
 
     The response wraps the provider's raw JSON value with request metadata.
+    An empty provider body is represented as `data: null`; the envelope
+    preserves the provider's HTTP status in `status_code`, including errors.
+    Provider response bodies are limited to 8 MiB after decompression.
+    Transport failures, invalid JSON (including invalid UTF-8), and oversized
+    bodies return `502`. Provider redirects to another origin are blocked and
+    return `400`.
 
     Args:
         provider (CallOAuthProviderAPIProvider):

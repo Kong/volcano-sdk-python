@@ -8,16 +8,17 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.error import Error
 from ...models.function_scheduler import FunctionScheduler
 from typing import cast
 from uuid import UUID
 
 
 
-def _get_kwargs(
-    id: UUID,
-    function_id: UUID,
-    scheduler_id: UUID,
+def request_kwargs(
+    id: UUID | str,
+    function_id: UUID | str,
+    scheduler_id: UUID | str,
 
 ) -> dict[str, Any]:
     
@@ -36,7 +37,7 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> FunctionScheduler | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Error | FunctionScheduler | None:
     if response.status_code == 200:
         response_200 = FunctionScheduler.from_dict(response.json())
 
@@ -44,13 +45,20 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_200
 
+    if response.status_code == 404:
+        response_404 = Error.from_dict(response.json())
+
+
+
+        return response_404
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[FunctionScheduler]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | FunctionScheduler]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -60,13 +68,13 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    id: UUID,
-    function_id: UUID,
-    scheduler_id: UUID,
+    id: UUID | str,
+    function_id: UUID | str,
+    scheduler_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
-) -> Response[FunctionScheduler]:
+) -> Response[Error | FunctionScheduler]:
     """ Get a function scheduler
 
     Args:
@@ -79,11 +87,11 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[FunctionScheduler]
+        Response[Error | FunctionScheduler]
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 function_id=function_id,
 scheduler_id=scheduler_id,
@@ -94,16 +102,16 @@ scheduler_id=scheduler_id,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    id: UUID,
-    function_id: UUID,
-    scheduler_id: UUID,
+    id: UUID | str,
+    function_id: UUID | str,
+    scheduler_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
-) -> FunctionScheduler | None:
+) -> Error | FunctionScheduler | None:
     """ Get a function scheduler
 
     Args:
@@ -116,7 +124,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        FunctionScheduler
+        Error | FunctionScheduler
      """
 
 
@@ -129,13 +137,13 @@ client=client,
     ).parsed
 
 async def asyncio_detailed(
-    id: UUID,
-    function_id: UUID,
-    scheduler_id: UUID,
+    id: UUID | str,
+    function_id: UUID | str,
+    scheduler_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
-) -> Response[FunctionScheduler]:
+) -> Response[Error | FunctionScheduler]:
     """ Get a function scheduler
 
     Args:
@@ -148,11 +156,11 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[FunctionScheduler]
+        Response[Error | FunctionScheduler]
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 function_id=function_id,
 scheduler_id=scheduler_id,
@@ -163,16 +171,16 @@ scheduler_id=scheduler_id,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    id: UUID,
-    function_id: UUID,
-    scheduler_id: UUID,
+    id: UUID | str,
+    function_id: UUID | str,
+    scheduler_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
-) -> FunctionScheduler | None:
+) -> Error | FunctionScheduler | None:
     """ Get a function scheduler
 
     Args:
@@ -185,7 +193,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        FunctionScheduler
+        Error | FunctionScheduler
      """
 
 

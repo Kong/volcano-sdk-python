@@ -16,8 +16,8 @@ from uuid import UUID
 
 
 
-def _get_kwargs(
-    id: UUID,
+def request_kwargs(
+    id: UUID | str,
     *,
     body: CreateEmailTemplateRequest,
 
@@ -78,7 +78,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[EmailTemplate | Error]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[EmailTemplate | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -88,7 +88,7 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: CreateEmailTemplateRequest,
@@ -97,8 +97,8 @@ def sync_detailed(
     """ Create email template
 
      Creates a custom email template for the project. Custom email templates
-    are a PRO-plan feature: requests from a FREE-plan project owner are
-    rejected with 403, and FREE projects always send the built-in default
+    are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner are
+    rejected with 403, and HOBBY projects always send the built-in default
     templates regardless of any previously saved custom rows.
     Every project is created with one template per type, so customizing one
     is usually a PUT; creating a type the project already has returns 409.
@@ -117,7 +117,7 @@ def sync_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 body=body,
 
@@ -127,10 +127,10 @@ body=body,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 def sync(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: CreateEmailTemplateRequest,
@@ -139,8 +139,8 @@ def sync(
     """ Create email template
 
      Creates a custom email template for the project. Custom email templates
-    are a PRO-plan feature: requests from a FREE-plan project owner are
-    rejected with 403, and FREE projects always send the built-in default
+    are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner are
+    rejected with 403, and HOBBY projects always send the built-in default
     templates regardless of any previously saved custom rows.
     Every project is created with one template per type, so customizing one
     is usually a PUT; creating a type the project already has returns 409.
@@ -167,7 +167,7 @@ body=body,
     ).parsed
 
 async def asyncio_detailed(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: CreateEmailTemplateRequest,
@@ -176,8 +176,8 @@ async def asyncio_detailed(
     """ Create email template
 
      Creates a custom email template for the project. Custom email templates
-    are a PRO-plan feature: requests from a FREE-plan project owner are
-    rejected with 403, and FREE projects always send the built-in default
+    are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner are
+    rejected with 403, and HOBBY projects always send the built-in default
     templates regardless of any previously saved custom rows.
     Every project is created with one template per type, so customizing one
     is usually a PUT; creating a type the project already has returns 409.
@@ -196,7 +196,7 @@ async def asyncio_detailed(
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 body=body,
 
@@ -206,10 +206,10 @@ body=body,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
 async def asyncio(
-    id: UUID,
+    id: UUID | str,
     *,
     client: AuthenticatedClient,
     body: CreateEmailTemplateRequest,
@@ -218,8 +218,8 @@ async def asyncio(
     """ Create email template
 
      Creates a custom email template for the project. Custom email templates
-    are a PRO-plan feature: requests from a FREE-plan project owner are
-    rejected with 403, and FREE projects always send the built-in default
+    are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner are
+    rejected with 403, and HOBBY projects always send the built-in default
     templates regardless of any previously saved custom rows.
     Every project is created with one template per type, so customizing one
     is usually a PUT; creating a type the project already has returns 409.

@@ -48,6 +48,8 @@ class ProjectConfig:
             version (ProjectConfigVersion): Manifest schema version. Must be 1.
             project (ProjectConfigProject | Unset): Project-level settings. `name` renames the project.
             databases (list[ProjectConfigDatabase] | Unset):
+            shared_variables (list[str] | Unset): Replace the complete shared function-variable list with existing names,
+                without changing variable values. Omission keeps membership unchanged; an empty list clears it.
             variables (list[ProjectConfigVariable] | Unset): Fully synced when declared - variables absent from this list
                 are deleted.
             buckets (list[ProjectConfigBucket] | Unset):
@@ -60,6 +62,7 @@ class ProjectConfig:
     version: ProjectConfigVersion
     project: ProjectConfigProject | Unset = UNSET
     databases: list[ProjectConfigDatabase] | Unset = UNSET
+    shared_variables: list[str] | Unset = UNSET
     variables: list[ProjectConfigVariable] | Unset = UNSET
     buckets: list[ProjectConfigBucket] | Unset = UNSET
     realtime: ProjectConfigRealtime | Unset = UNSET
@@ -92,6 +95,12 @@ class ProjectConfig:
             for databases_item_data in self.databases:
                 databases_item = databases_item_data.to_dict()
                 databases.append(databases_item)
+
+
+
+        shared_variables: list[str] | Unset = UNSET
+        if not isinstance(self.shared_variables, Unset):
+            shared_variables = self.shared_variables
 
 
 
@@ -149,6 +158,8 @@ class ProjectConfig:
             field_dict["project"] = project
         if databases is not UNSET:
             field_dict["databases"] = databases
+        if shared_variables is not UNSET:
+            field_dict["shared_variables"] = shared_variables
         if variables is not UNSET:
             field_dict["variables"] = variables
         if buckets is not UNSET:
@@ -202,6 +213,9 @@ class ProjectConfig:
 
 
                 databases.append(databases_item)
+
+
+        shared_variables = cast(list[str], d.pop("shared_variables", UNSET))
 
 
         _variables = d.pop("variables", UNSET)
@@ -276,6 +290,7 @@ class ProjectConfig:
             version=version,
             project=project,
             databases=databases,
+            shared_variables=shared_variables,
             variables=variables,
             buckets=buckets,
             realtime=realtime,

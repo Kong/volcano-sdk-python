@@ -49,6 +49,19 @@ from .auth_o_auth_authorize_provider import AuthOAuthAuthorizeProvider
 from .auth_o_auth_authorize_response_mode import AuthOAuthAuthorizeResponseMode
 from .auth_o_auth_callback_provider import AuthOAuthCallbackProvider
 from .auth_o_auth_exchange_body import AuthOAuthExchangeBody
+from .auth_page_appearance_defaults import AuthPageAppearanceDefaults
+from .auth_page_appearance_options import AuthPageAppearanceOptions
+from .auth_page_appearance_response import AuthPageAppearanceResponse
+from .auth_page_appearance_response_layouts import AuthPageAppearanceResponseLayouts
+from .auth_page_appearance_response_parked import AuthPageAppearanceResponseParked
+from .auth_page_density import AuthPageDensity
+from .auth_page_font import AuthPageFont
+from .auth_page_layout import AuthPageLayout
+from .auth_page_radius import AuthPageRadius
+from .auth_page_scale import AuthPageScale
+from .auth_page_theme import AuthPageTheme
+from .auth_page_theme_colors import AuthPageThemeColors
+from .auth_page_theme_version import AuthPageThemeVersion
 from .auth_password_policy import AuthPasswordPolicy
 from .auth_platform_exchange_body import AuthPlatformExchangeBody
 from .auth_refresh_body import AuthRefreshBody
@@ -99,11 +112,15 @@ from .configure_auth_methods_body_oauth_providers_item import ConfigureAuthMetho
 from .connect_project_git_request import ConnectProjectGitRequest
 from .create_anon_key_body import CreateAnonKeyBody
 from .create_anon_key_body_permissions_item import CreateAnonKeyBodyPermissionsItem
+from .create_database_backup_request import CreateDatabaseBackupRequest
 from .create_database_branch_request import CreateDatabaseBranchRequest
 from .create_database_request import CreateDatabaseRequest
 from .create_database_request_database_type import CreateDatabaseRequestDatabaseType
 from .create_database_request_pg_version import CreateDatabaseRequestPgVersion
-from .create_database_request_region import CreateDatabaseRequestRegion
+from .create_database_restore_request import CreateDatabaseRestoreRequest
+from .create_durable_function_body import CreateDurableFunctionBody
+from .create_durable_function_body_runtime import CreateDurableFunctionBodyRuntime
+from .create_durable_function_body_variable_scope import CreateDurableFunctionBodyVariableScope
 from .create_email_template_request import CreateEmailTemplateRequest
 from .create_email_template_request_template_type import CreateEmailTemplateRequestTemplateType
 from .create_frontend_body import CreateFrontendBody
@@ -111,6 +128,7 @@ from .create_frontend_body_framework import CreateFrontendBodyFramework
 from .create_frontend_custom_domain_request import CreateFrontendCustomDomainRequest
 from .create_function_body import CreateFunctionBody
 from .create_function_body_runtime import CreateFunctionBodyRuntime
+from .create_function_body_variable_scope import CreateFunctionBodyVariableScope
 from .create_function_scheduler_request import CreateFunctionSchedulerRequest
 from .create_function_scheduler_request_payload import CreateFunctionSchedulerRequestPayload
 from .create_functions_batch_body import CreateFunctionsBatchBody
@@ -125,6 +143,12 @@ from .create_upload_session_request import CreateUploadSessionRequest
 from .create_upload_session_response import CreateUploadSessionResponse
 from .create_variable_request import CreateVariableRequest
 from .database import Database
+from .database_backup import DatabaseBackup
+from .database_backup_list import DatabaseBackupList
+from .database_backup_schedule import DatabaseBackupSchedule
+from .database_backup_schedule_entry import DatabaseBackupScheduleEntry
+from .database_backup_schedule_entry_frequency import DatabaseBackupScheduleEntryFrequency
+from .database_backup_source import DatabaseBackupSource
 from .database_branch import DatabaseBranch
 from .database_branch_list import DatabaseBranchList
 from .database_branch_status import DatabaseBranchStatus
@@ -141,12 +165,18 @@ from .database_query_performance_item import DatabaseQueryPerformanceItem
 from .database_query_performance_response import DatabaseQueryPerformanceResponse
 from .database_query_result import DatabaseQueryResult
 from .database_query_result_data_item import DatabaseQueryResultDataItem
+from .database_restore import DatabaseRestore
+from .database_restore_kind import DatabaseRestoreKind
+from .database_restore_list import DatabaseRestoreList
+from .database_restore_status import DatabaseRestoreStatus
+from .database_restore_window import DatabaseRestoreWindow
 from .database_select_request import DatabaseSelectRequest
 from .database_stats import DatabaseStats
 from .database_stats_granularity import DatabaseStatsGranularity
 from .database_status import DatabaseStatus
 from .database_update_request import DatabaseUpdateRequest
 from .database_update_request_values import DatabaseUpdateRequestValues
+from .delete_database_backup_response_200 import DeleteDatabaseBackupResponse200
 from .delete_database_branch_response_202 import DeleteDatabaseBranchResponse202
 from .delete_database_response_202 import DeleteDatabaseResponse202
 from .delete_email_template_type import DeleteEmailTemplateType
@@ -158,9 +188,16 @@ from .deployment_progress import DeploymentProgress
 from .deployment_progress_current_phase import DeploymentProgressCurrentPhase
 from .deployment_reference import DeploymentReference
 from .device_authorization_response import DeviceAuthorizationResponse
+from .durable_execution import DurableExecution
+from .durable_execution_error import DurableExecutionError
+from .durable_execution_status import DurableExecutionStatus
+from .durable_function import DurableFunction
+from .durable_function_config import DurableFunctionConfig
+from .durable_function_status import DurableFunctionStatus
 from .email_template import EmailTemplate
 from .email_template_template_type import EmailTemplateTemplateType
 from .error import Error
+from .export_project_source_request import ExportProjectSourceRequest
 from .frontend import Frontend
 from .frontend_custom_domain_response import FrontendCustomDomainResponse
 from .frontend_custom_domain_response_domain_status import FrontendCustomDomainResponseDomainStatus
@@ -187,9 +224,13 @@ from .function_deployment import FunctionDeployment
 from .function_deployment_deploy_source import FunctionDeploymentDeploySource
 from .function_deployment_operation import FunctionDeploymentOperation
 from .function_deployment_status import FunctionDeploymentStatus
+from .function_http_auth_mode import FunctionHTTPAuthMode
+from .function_invocation_mode import FunctionInvocationMode
 from .function_invocation_request import FunctionInvocationRequest
 from .function_invocation_request_payload import FunctionInvocationRequestPayload
 from .function_invocation_response import FunctionInvocationResponse
+from .function_kind import FunctionKind
+from .function_openapi_spec_type_0 import FunctionOpenapiSpecType0
 from .function_region import FunctionRegion
 from .function_runtime_deployment import FunctionRuntimeDeployment
 from .function_runtime_option import FunctionRuntimeOption
@@ -234,6 +275,7 @@ from .list_auth_users_status import ListAuthUsersStatus
 from .list_available_o_auth_providers_response_200 import ListAvailableOAuthProvidersResponse200
 from .list_available_o_auth_providers_response_200_providers_item import ListAvailableOAuthProvidersResponse200ProvidersItem
 from .list_database_regions_response_200_item import ListDatabaseRegionsResponse200Item
+from .list_databases_status import ListDatabasesStatus
 from .list_deployments_operation import ListDeploymentsOperation
 from .list_deployments_order import ListDeploymentsOrder
 from .list_deployments_resource_type import ListDeploymentsResourceType
@@ -242,6 +284,7 @@ from .list_email_templates_response_200 import ListEmailTemplatesResponse200
 from .list_o_auth_configs_response_200 import ListOAuthConfigsResponse200
 from .list_postgres_versions_response_200_item import ListPostgresVersionsResponse200Item
 from .list_project_deployments_resource_type import ListProjectDeploymentsResourceType
+from .list_projects_include_item import ListProjectsIncludeItem
 from .list_storage_objects_admin_response_200 import ListStorageObjectsAdminResponse200
 from .list_user_sessions_response_200 import ListUserSessionsResponse200
 from .list_user_sessions_sort import ListUserSessionsSort
@@ -281,6 +324,8 @@ from .o_auth_config_provider import OAuthConfigProvider
 from .o_auth_error_response import OAuthErrorResponse
 from .paginated_auth_users import PaginatedAuthUsers
 from .paginated_databases import PaginatedDatabases
+from .paginated_durable_executions import PaginatedDurableExecutions
+from .paginated_durable_functions import PaginatedDurableFunctions
 from .paginated_frontend_deployments import PaginatedFrontendDeployments
 from .paginated_frontends import PaginatedFrontends
 from .paginated_function_deployments import PaginatedFunctionDeployments
@@ -293,6 +338,8 @@ from .paginated_service_keys import PaginatedServiceKeys
 from .paginated_storage_buckets import PaginatedStorageBuckets
 from .paginated_variables import PaginatedVariables
 from .platform_exchange_response import PlatformExchangeResponse
+from .preview_auth_page_request import PreviewAuthPageRequest
+from .preview_auth_page_response import PreviewAuthPageResponse
 from .project import Project
 from .project_config import ProjectConfig
 from .project_config_apply_result import ProjectConfigApplyResult
@@ -307,6 +354,8 @@ from .project_config_auth_email_password_provider import ProjectConfigAuthEmailP
 from .project_config_auth_email_smtp import ProjectConfigAuthEmailSMTP
 from .project_config_auth_email_verification import ProjectConfigAuthEmailVerification
 from .project_config_auth_managed_pages import ProjectConfigAuthManagedPages
+from .project_config_auth_page_appearance import ProjectConfigAuthPageAppearance
+from .project_config_auth_page_layouts import ProjectConfigAuthPageLayouts
 from .project_config_auth_password import ProjectConfigAuthPassword
 from .project_config_auth_password_reset import ProjectConfigAuthPasswordReset
 from .project_config_auth_providers import ProjectConfigAuthProviders
@@ -327,6 +376,8 @@ from .project_config_email_template import ProjectConfigEmailTemplate
 from .project_config_email_templates import ProjectConfigEmailTemplates
 from .project_config_frontend import ProjectConfigFrontend
 from .project_config_function import ProjectConfigFunction
+from .project_config_function_openapi_spec_type_0 import ProjectConfigFunctionOpenapiSpecType0
+from .project_config_function_variable_scope import ProjectConfigFunctionVariableScope
 from .project_config_hosted_page import ProjectConfigHostedPage
 from .project_config_hosted_pages import ProjectConfigHostedPages
 from .project_config_missing_resource import ProjectConfigMissingResource
@@ -353,6 +404,7 @@ from .project_deployment_summary import ProjectDeploymentSummary
 from .project_frontend_custom_domain import ProjectFrontendCustomDomain
 from .project_frontend_custom_domain_frontend import ProjectFrontendCustomDomainFrontend
 from .project_git_connection import ProjectGitConnection
+from .project_git_connection_summary import ProjectGitConnectionSummary
 from .project_git_deploy_settings import ProjectGitDeploySettings
 from .project_health_category import ProjectHealthCategory
 from .project_health_check import ProjectHealthCheck
@@ -363,6 +415,7 @@ from .project_health_resource_type import ProjectHealthResourceType
 from .project_health_response import ProjectHealthResponse
 from .project_health_scope import ProjectHealthScope
 from .project_health_status import ProjectHealthStatus
+from .project_health_summary import ProjectHealthSummary
 from .project_import_action import ProjectImportAction
 from .project_import_action_code import ProjectImportActionCode
 from .project_import_destination import ProjectImportDestination
@@ -398,6 +451,11 @@ from .project_metrics_unit import ProjectMetricsUnit
 from .project_metrics_value import ProjectMetricsValue
 from .project_metrics_window import ProjectMetricsWindow
 from .project_plan import ProjectPlan
+from .project_source_export import ProjectSourceExport
+from .project_source_export_omission import ProjectSourceExportOmission
+from .project_source_export_skip import ProjectSourceExportSkip
+from .project_source_export_state import ProjectSourceExportState
+from .project_source_export_state_mode import ProjectSourceExportStateMode
 from .project_status import ProjectStatus
 from .project_usage_response import ProjectUsageResponse
 from .realtime_config import RealtimeConfig
@@ -406,6 +464,7 @@ from .realtime_stats import RealtimeStats
 from .refresh_o_auth_provider_token_provider import RefreshOAuthProviderTokenProvider
 from .refresh_o_auth_provider_token_response_200 import RefreshOAuthProviderTokenResponse200
 from .render_default_managed_auth_page_action import RenderDefaultManagedAuthPageAction
+from .replace_shared_variables_body import ReplaceSharedVariablesBody
 from .reset_database_password_response_200 import ResetDatabasePasswordResponse200
 from .resolve_function_response import ResolveFunctionResponse
 from .resource_reference import ResourceReference
@@ -435,12 +494,15 @@ from .unban_user_response_status import UnbanUserResponseStatus
 from .update_auth_config_request import UpdateAuthConfigRequest
 from .update_auth_config_request_allowed_email_domains_mode import UpdateAuthConfigRequestAllowedEmailDomainsMode
 from .update_auth_hosted_page_request import UpdateAuthHostedPageRequest
+from .update_auth_page_layout_request import UpdateAuthPageLayoutRequest
+from .update_auth_page_theme_request import UpdateAuthPageThemeRequest
 from .update_database_branch_request import UpdateDatabaseBranchRequest
 from .update_database_type_request import UpdateDatabaseTypeRequest
 from .update_database_type_request_database_type import UpdateDatabaseTypeRequestDatabaseType
 from .update_email_template_request import UpdateEmailTemplateRequest
 from .update_email_template_type import UpdateEmailTemplateType
 from .update_function_request import UpdateFunctionRequest
+from .update_function_request_openapi_spec_type_0 import UpdateFunctionRequestOpenapiSpecType0
 from .update_function_scheduler_request import UpdateFunctionSchedulerRequest
 from .update_function_scheduler_request_payload import UpdateFunctionSchedulerRequestPayload
 from .update_o_auth_config_provider import UpdateOAuthConfigProvider
@@ -511,6 +573,19 @@ __all__ = (
     "AuthOAuthAuthorizeResponseMode",
     "AuthOAuthCallbackProvider",
     "AuthOAuthExchangeBody",
+    "AuthPageAppearanceDefaults",
+    "AuthPageAppearanceOptions",
+    "AuthPageAppearanceResponse",
+    "AuthPageAppearanceResponseLayouts",
+    "AuthPageAppearanceResponseParked",
+    "AuthPageDensity",
+    "AuthPageFont",
+    "AuthPageLayout",
+    "AuthPageRadius",
+    "AuthPageScale",
+    "AuthPageTheme",
+    "AuthPageThemeColors",
+    "AuthPageThemeVersion",
     "AuthPasswordPolicy",
     "AuthPlatformExchangeBody",
     "AuthRefreshBody",
@@ -561,11 +636,15 @@ __all__ = (
     "ConnectProjectGitRequest",
     "CreateAnonKeyBody",
     "CreateAnonKeyBodyPermissionsItem",
+    "CreateDatabaseBackupRequest",
     "CreateDatabaseBranchRequest",
     "CreateDatabaseRequest",
     "CreateDatabaseRequestDatabaseType",
     "CreateDatabaseRequestPgVersion",
-    "CreateDatabaseRequestRegion",
+    "CreateDatabaseRestoreRequest",
+    "CreateDurableFunctionBody",
+    "CreateDurableFunctionBodyRuntime",
+    "CreateDurableFunctionBodyVariableScope",
     "CreateEmailTemplateRequest",
     "CreateEmailTemplateRequestTemplateType",
     "CreateFrontendBody",
@@ -573,6 +652,7 @@ __all__ = (
     "CreateFrontendCustomDomainRequest",
     "CreateFunctionBody",
     "CreateFunctionBodyRuntime",
+    "CreateFunctionBodyVariableScope",
     "CreateFunctionsBatchBody",
     "CreateFunctionSchedulerRequest",
     "CreateFunctionSchedulerRequestPayload",
@@ -587,6 +667,12 @@ __all__ = (
     "CreateUploadSessionResponse",
     "CreateVariableRequest",
     "Database",
+    "DatabaseBackup",
+    "DatabaseBackupList",
+    "DatabaseBackupSchedule",
+    "DatabaseBackupScheduleEntry",
+    "DatabaseBackupScheduleEntryFrequency",
+    "DatabaseBackupSource",
     "DatabaseBranch",
     "DatabaseBranchList",
     "DatabaseBranchStatus",
@@ -603,12 +689,18 @@ __all__ = (
     "DatabaseQueryPerformanceResponse",
     "DatabaseQueryResult",
     "DatabaseQueryResultDataItem",
+    "DatabaseRestore",
+    "DatabaseRestoreKind",
+    "DatabaseRestoreList",
+    "DatabaseRestoreStatus",
+    "DatabaseRestoreWindow",
     "DatabaseSelectRequest",
     "DatabaseStats",
     "DatabaseStatsGranularity",
     "DatabaseStatus",
     "DatabaseUpdateRequest",
     "DatabaseUpdateRequestValues",
+    "DeleteDatabaseBackupResponse200",
     "DeleteDatabaseBranchResponse202",
     "DeleteDatabaseResponse202",
     "DeleteEmailTemplateType",
@@ -620,9 +712,16 @@ __all__ = (
     "DeploymentProgressCurrentPhase",
     "DeploymentReference",
     "DeviceAuthorizationResponse",
+    "DurableExecution",
+    "DurableExecutionError",
+    "DurableExecutionStatus",
+    "DurableFunction",
+    "DurableFunctionConfig",
+    "DurableFunctionStatus",
     "EmailTemplate",
     "EmailTemplateTemplateType",
     "Error",
+    "ExportProjectSourceRequest",
     "Frontend",
     "FrontendCustomDomainResponse",
     "FrontendCustomDomainResponseDomainStatus",
@@ -649,9 +748,13 @@ __all__ = (
     "FunctionDeploymentDeploySource",
     "FunctionDeploymentOperation",
     "FunctionDeploymentStatus",
+    "FunctionHTTPAuthMode",
+    "FunctionInvocationMode",
     "FunctionInvocationRequest",
     "FunctionInvocationRequestPayload",
     "FunctionInvocationResponse",
+    "FunctionKind",
+    "FunctionOpenapiSpecType0",
     "FunctionRegion",
     "FunctionRuntimeDeployment",
     "FunctionRuntimeOption",
@@ -696,6 +799,7 @@ __all__ = (
     "ListAvailableOAuthProvidersResponse200",
     "ListAvailableOAuthProvidersResponse200ProvidersItem",
     "ListDatabaseRegionsResponse200Item",
+    "ListDatabasesStatus",
     "ListDeploymentsOperation",
     "ListDeploymentsOrder",
     "ListDeploymentsResourceType",
@@ -704,6 +808,7 @@ __all__ = (
     "ListOAuthConfigsResponse200",
     "ListPostgresVersionsResponse200Item",
     "ListProjectDeploymentsResourceType",
+    "ListProjectsIncludeItem",
     "ListStorageObjectsAdminResponse200",
     "ListUserSessionsResponse200",
     "ListUserSessionsSort",
@@ -743,6 +848,8 @@ __all__ = (
     "OAuthErrorResponse",
     "PaginatedAuthUsers",
     "PaginatedDatabases",
+    "PaginatedDurableExecutions",
+    "PaginatedDurableFunctions",
     "PaginatedFrontendDeployments",
     "PaginatedFrontends",
     "PaginatedFunctionDeployments",
@@ -755,6 +862,8 @@ __all__ = (
     "PaginatedStorageBuckets",
     "PaginatedVariables",
     "PlatformExchangeResponse",
+    "PreviewAuthPageRequest",
+    "PreviewAuthPageResponse",
     "Project",
     "ProjectConfig",
     "ProjectConfigApplyResult",
@@ -769,6 +878,8 @@ __all__ = (
     "ProjectConfigAuthEmailSMTP",
     "ProjectConfigAuthEmailVerification",
     "ProjectConfigAuthManagedPages",
+    "ProjectConfigAuthPageAppearance",
+    "ProjectConfigAuthPageLayouts",
     "ProjectConfigAuthPassword",
     "ProjectConfigAuthPasswordReset",
     "ProjectConfigAuthProviders",
@@ -789,6 +900,8 @@ __all__ = (
     "ProjectConfigEmailTemplates",
     "ProjectConfigFrontend",
     "ProjectConfigFunction",
+    "ProjectConfigFunctionOpenapiSpecType0",
+    "ProjectConfigFunctionVariableScope",
     "ProjectConfigHostedPage",
     "ProjectConfigHostedPages",
     "ProjectConfigMissingResource",
@@ -815,6 +928,7 @@ __all__ = (
     "ProjectFrontendCustomDomain",
     "ProjectFrontendCustomDomainFrontend",
     "ProjectGitConnection",
+    "ProjectGitConnectionSummary",
     "ProjectGitDeploySettings",
     "ProjectHealthCategory",
     "ProjectHealthCheck",
@@ -825,6 +939,7 @@ __all__ = (
     "ProjectHealthResponse",
     "ProjectHealthScope",
     "ProjectHealthStatus",
+    "ProjectHealthSummary",
     "ProjectImportAction",
     "ProjectImportActionCode",
     "ProjectImportDestination",
@@ -860,6 +975,11 @@ __all__ = (
     "ProjectMetricsValue",
     "ProjectMetricsWindow",
     "ProjectPlan",
+    "ProjectSourceExport",
+    "ProjectSourceExportOmission",
+    "ProjectSourceExportSkip",
+    "ProjectSourceExportState",
+    "ProjectSourceExportStateMode",
     "ProjectStatus",
     "ProjectUsageResponse",
     "RealtimeConfig",
@@ -868,6 +988,7 @@ __all__ = (
     "RefreshOAuthProviderTokenProvider",
     "RefreshOAuthProviderTokenResponse200",
     "RenderDefaultManagedAuthPageAction",
+    "ReplaceSharedVariablesBody",
     "ResetDatabasePasswordResponse200",
     "ResolveFunctionResponse",
     "ResourceReference",
@@ -897,12 +1018,15 @@ __all__ = (
     "UpdateAuthConfigRequest",
     "UpdateAuthConfigRequestAllowedEmailDomainsMode",
     "UpdateAuthHostedPageRequest",
+    "UpdateAuthPageLayoutRequest",
+    "UpdateAuthPageThemeRequest",
     "UpdateDatabaseBranchRequest",
     "UpdateDatabaseTypeRequest",
     "UpdateDatabaseTypeRequestDatabaseType",
     "UpdateEmailTemplateRequest",
     "UpdateEmailTemplateType",
     "UpdateFunctionRequest",
+    "UpdateFunctionRequestOpenapiSpecType0",
     "UpdateFunctionSchedulerRequest",
     "UpdateFunctionSchedulerRequestPayload",
     "UpdateOAuthConfigProvider",

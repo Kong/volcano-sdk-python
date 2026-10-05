@@ -8,14 +8,16 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.error import Error
+from typing import cast
 from uuid import UUID
 
 
 
-def _get_kwargs(
-    id: UUID,
-    function_id: UUID,
-    scheduler_id: UUID,
+def request_kwargs(
+    id: UUID | str,
+    function_id: UUID | str,
+    scheduler_id: UUID | str,
 
 ) -> dict[str, Any]:
     
@@ -34,9 +36,17 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Error | None:
     if response.status_code == 204:
-        return None
+        response_204 = cast(Any, None)
+        return response_204
+
+    if response.status_code == 404:
+        response_404 = Error.from_dict(response.json())
+
+
+
+        return response_404
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -44,7 +54,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -54,13 +64,13 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    id: UUID,
-    function_id: UUID,
-    scheduler_id: UUID,
+    id: UUID | str,
+    function_id: UUID | str,
+    scheduler_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
-) -> Response[Any]:
+) -> Response[Any | Error]:
     """ Delete a function scheduler
 
     Args:
@@ -73,11 +83,11 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        Response[Any | Error]
      """
 
 
-    kwargs = _get_kwargs(
+    kwargs = request_kwargs(
         id=id,
 function_id=function_id,
 scheduler_id=scheduler_id,
@@ -88,17 +98,16 @@ scheduler_id=scheduler_id,
         **kwargs,
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
-
-async def asyncio_detailed(
-    id: UUID,
-    function_id: UUID,
-    scheduler_id: UUID,
+def sync(
+    id: UUID | str,
+    function_id: UUID | str,
+    scheduler_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
-) -> Response[Any]:
+) -> Any | Error | None:
     """ Delete a function scheduler
 
     Args:
@@ -111,11 +120,43 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        Any | Error
      """
 
 
-    kwargs = _get_kwargs(
+    return sync_detailed(
+        id=id,
+function_id=function_id,
+scheduler_id=scheduler_id,
+client=client,
+
+    ).parsed
+
+async def asyncio_detailed(
+    id: UUID | str,
+    function_id: UUID | str,
+    scheduler_id: UUID | str,
+    *,
+    client: AuthenticatedClient,
+
+) -> Response[Any | Error]:
+    """ Delete a function scheduler
+
+    Args:
+        id (UUID):
+        function_id (UUID):
+        scheduler_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[Any | Error]
+     """
+
+
+    kwargs = request_kwargs(
         id=id,
 function_id=function_id,
 scheduler_id=scheduler_id,
@@ -126,5 +167,36 @@ scheduler_id=scheduler_id,
         **kwargs
     )
 
-    return _build_response(client=client, response=response)
+    return build_response(client=client, response=response)
 
+async def asyncio(
+    id: UUID | str,
+    function_id: UUID | str,
+    scheduler_id: UUID | str,
+    *,
+    client: AuthenticatedClient,
+
+) -> Any | Error | None:
+    """ Delete a function scheduler
+
+    Args:
+        id (UUID):
+        function_id (UUID):
+        scheduler_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Any | Error
+     """
+
+
+    return (await asyncio_detailed(
+        id=id,
+function_id=function_id,
+scheduler_id=scheduler_id,
+client=client,
+
+    )).parsed

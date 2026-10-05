@@ -3,3 +3,11 @@ project_name_override: volcano-sdk-generated
 literal_enums: true
 use_path_prefixes_for_title_model_names: false
 post_hooks: []
+# Parse binary bodies without changing their wire Content-Type.
+content_type_overrides:
+  image/png: application/octet-stream
+  image/jpeg: application/octet-stream
+  image/gif: application/octet-stream
+  image/webp: application/octet-stream
+  image/svg+xml: application/octet-stream
+  '*/*': application/octet-stream
