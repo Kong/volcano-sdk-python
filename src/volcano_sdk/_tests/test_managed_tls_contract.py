@@ -11,41 +11,45 @@ from volcano_sdk._generated.models import (
     ProjectConfigCustomDomain,
     ProjectFrontendCustomDomain,
 )
+from volcano_sdk._generated.types import UNSET
+
+BYOC_MATERIAL = {
+    "certificate_pem": "certificate",
+    "private_key_pem": "private-key",
+}
 
 
 @pytest.mark.parametrize(
-    ("tls", "wire_tls"),
-    [
-        (FrontendCustomDomainTLSConfig(mode="managed"), {"mode": "managed"}),
-        (
-            FrontendCustomDomainTLSConfig(
-                mode="byoc",
-                certificate_pem="certificate",
-                private_key_pem="private-key",
-            ),
-            {
-                "mode": "byoc",
-                "certificate_pem": "certificate",
-                "private_key_pem": "private-key",
-            },
-        ),
-    ],
+    "wire_tls",
+    [{"mode": "managed"}, {"mode": "byoc", **BYOC_MATERIAL}],
     ids=["managed", "byoc"],
 )
-def test_create_request_encodes_the_selected_tls_mode(
-    tls: FrontendCustomDomainTLSConfig,
+def test_create_request_round_trips_the_selected_tls_mode(
     wire_tls: dict[str, str],
 ) -> None:
-    request = CreateFrontendCustomDomainRequest(domain="app.example.com", tls=tls)
+    wire_request = {"domain": "app.example.com", "tls": wire_tls}
 
-    assert request.to_dict() == {"domain": "app.example.com", "tls": wire_tls}
+    request = CreateFrontendCustomDomainRequest.from_dict(wire_request)
+
+    assert isinstance(request.tls, FrontendCustomDomainTLSConfig)
+    assert request.tls.mode == wire_tls["mode"]
+    assert request.to_dict() == wire_request
 
 
 @pytest.mark.parametrize(
-    "model", [FrontendCustomDomainResponse, ProjectFrontendCustomDomain]
+    "model",
+    [
+        FrontendCustomDomainResponse,
+        ProjectFrontendCustomDomain,
+        ManagedProjectConfigFrontendCustomDomainTLSConfig,
+    ],
 )
-def test_domain_responses_do_not_declare_certificate_or_key_fields(
-    model: type[FrontendCustomDomainResponse | ProjectFrontendCustomDomain],
+def test_material_free_models_do_not_declare_certificate_or_key_fields(
+    model: type[
+        FrontendCustomDomainResponse
+        | ProjectFrontendCustomDomain
+        | ManagedProjectConfigFrontendCustomDomainTLSConfig
+    ],
 ) -> None:
     assert not [
         name
@@ -54,7 +58,7 @@ def test_domain_responses_do_not_declare_certificate_or_key_fields(
     ]
 
 
-def test_managed_tls_response_exposes_provider_neutral_lifecycle() -> None:
+def test_managed_tls_response_decodes_lifecycle_and_dns_records() -> None:
     response = FrontendCustomDomainResponse.from_dict(
         {
             "domain": "app.example.com",
@@ -82,6 +86,7 @@ def test_managed_tls_response_exposes_provider_neutral_lifecycle() -> None:
     assert response.tls_mode == "managed"
     assert response.domain_status == "pending_verification"
     assert response.verification_status == "pending"
+    assert response.failure_reason is UNSET
     assert isinstance(response.verification_records, list)
     assert response.verification_records[0].to_dict() == {
         "name": "_token.app.example.com",
@@ -109,27 +114,28 @@ def test_managed_tls_response_exposes_provider_neutral_lifecycle() -> None:
     assert failed.failure_reason == "ownership"
 
 
-def test_project_config_tls_decodes_each_mode_without_certificate_material() -> None:
-    assert {
-        "certificate_pem",
-        "private_key_pem",
-        "certificate_chain_pem",
-    }.isdisjoint(fields_dict(ManagedProjectConfigFrontendCustomDomainTLSConfig))
+@pytest.mark.parametrize(
+    ("wire_tls", "variant"),
+    [
+        ({"mode": "managed"}, ManagedProjectConfigFrontendCustomDomainTLSConfig),
+        ({"mode": "byoc"}, BYOCProjectConfigFrontendCustomDomainTLSConfig),
+        (
+            {"mode": "byoc", **BYOC_MATERIAL},
+            BYOCProjectConfigFrontendCustomDomainTLSConfig,
+        ),
+    ],
+    ids=["managed", "byoc-export", "byoc-rotation"],
+)
+def test_project_config_tls_decodes_each_mode(
+    wire_tls: dict[str, str],
+    variant: type[
+        ManagedProjectConfigFrontendCustomDomainTLSConfig
+        | BYOCProjectConfigFrontendCustomDomainTLSConfig
+    ],
+) -> None:
+    wire_domain = {"domain": "app.example.com", "tls": wire_tls}
 
-    managed = ProjectConfigCustomDomain.from_dict(
-        {"domain": "app.example.com", "tls": {"mode": "managed"}}
-    )
-    exported_byoc = ProjectConfigCustomDomain.from_dict(
-        {"domain": "app.example.com", "tls": {"mode": "byoc"}}
-    )
+    domain = ProjectConfigCustomDomain.from_dict(wire_domain)
 
-    assert isinstance(managed.tls, ManagedProjectConfigFrontendCustomDomainTLSConfig)
-    assert managed.to_dict() == {
-        "domain": "app.example.com",
-        "tls": {"mode": "managed"},
-    }
-    assert isinstance(exported_byoc.tls, BYOCProjectConfigFrontendCustomDomainTLSConfig)
-    assert exported_byoc.to_dict() == {
-        "domain": "app.example.com",
-        "tls": {"mode": "byoc"},
-    }
+    assert isinstance(domain.tls, variant)
+    assert domain.to_dict() == wire_domain
