@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         User,
     )
     from volcano_sdk.realtime import Channel, Realtime
+    from volcano_sdk.sandboxes import Sandboxes
     from volcano_sdk.storage import StorageBucket
 
 # Each deliberate invalid call must retain its native mypy diagnostic.
@@ -25,6 +26,14 @@ if TYPE_CHECKING:
 
 def non_session_adoption(auth: Auth) -> None:
     _ = auth.set_session(object())  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+
+
+def one_shot_max_duration(sandboxes: Sandboxes) -> None:
+    sandboxes.exec("project", "run", region="r", max_duration_seconds=300)  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
+
+
+def one_shot_idle_timeout(sandboxes: Sandboxes) -> None:
+    sandboxes.exec("project", "run", region="r", idle_timeout_seconds=60)  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
 
 
 def non_string_content_type(bucket: StorageBucket, source: BinaryIO) -> None:

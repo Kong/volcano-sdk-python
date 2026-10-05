@@ -171,7 +171,15 @@ class VolcanoClient:
         if not isinstance(transport, SandboxTransport):
             message = "Transport does not support Sandbox operations"
             raise TypeError(message)
+        if request.operation == "list_sandbox_presets":
+            return invoke(
+                transport.sandbox_request, authorization=None, request=request
+            )
+        return self._sandbox_authenticated_request(transport, request)
 
+    def _sandbox_authenticated_request(
+        self, transport: SandboxTransport, request: SandboxRequest
+    ) -> TransportResponse:
         def dispatch(token: str) -> TransportResponse:
             return invoke(
                 transport.sandbox_request,

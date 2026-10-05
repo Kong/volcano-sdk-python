@@ -189,7 +189,7 @@ class SandboxTransport(Protocol):
     """Internal transport implemented using generated operations."""
 
     def sandbox_request(
-        self, *, authorization: str, request: SandboxRequest
+        self, *, authorization: str | None, request: SandboxRequest
     ) -> TransportResponse:
         """Dispatch once without replaying uncertain side effects."""
         ...

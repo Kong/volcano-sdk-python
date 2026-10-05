@@ -132,7 +132,7 @@ class SandboxHTTPTransport(TransportBase):
     """Dispatch generated Sandbox operations without automatic replay."""
 
     def sandbox_request(
-        self, *, authorization: str, request: SandboxRequest
+        self, *, authorization: str | None, request: SandboxRequest
     ) -> TransportResponse:
         """Return the raw HTTP result for facade validation.
 
@@ -140,7 +140,12 @@ class SandboxHTTPTransport(TransportBase):
             The status, headers, and decoded response body.
 
         """
-        with self._client(authorization).with_timeout(
+        base_client = (
+            self._public_client()
+            if authorization is None
+            else self._client(authorization)
+        )
+        with base_client.with_timeout(
             httpx.Timeout(max(self._timeout, request.timeout))
         ) as client:
             response = generated_request(

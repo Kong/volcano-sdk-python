@@ -26,8 +26,13 @@ class SandboxCommandOptions(TypedDict, total=False):
     request_id: str
 
 
-class SandboxExecOptions(SandboxCreateOptions, SandboxCommandOptions):
+class SandboxExecOptions(SandboxCommandOptions):
     """One-shot execution selector and command options."""
+
+    region: str
+    preset: NotRequired[str]
+    sandbox_id: NotRequired[str]
+    memory_mb: NotRequired[int]
 
 
 @dataclass(frozen=True)

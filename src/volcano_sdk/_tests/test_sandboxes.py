@@ -275,8 +275,19 @@ def test_sandbox_context_requests_cleanup_and_checks_identity() -> None:
     assert session.state == "terminated"
 
 
-def test_sandbox_catalog() -> None:
+@pytest.mark.parametrize("credential", ["anonymous", "user", "service"])
+def test_sandbox_catalog(credential: str) -> None:
     server = SandboxHTTP()
+    client = VolcanoClient(
+        anon_key="anon",
+        service_key="service" if credential == "service" else None,
+        _transport=GeneratedTransport(
+            api_url="https://sandbox.test",
+            httpx_transport=httpx.MockTransport(server.handle),
+        ),
+    )
+    if credential == "user":
+        _ = client.auth.set_session(Session("user-access", "refresh", "user"))
     server.reply(
         {
             "data": [
@@ -284,7 +295,8 @@ def test_sandbox_catalog() -> None:
             ]
         }
     )
-    (preset,) = server.client.sandboxes.presets()
+    (preset,) = client.sandboxes.presets()
+    assert "Authorization" not in server.requests[0].headers
     assert (preset.id, preset.memory_mb, preset.regions) == (
         "python3.12",
         2048,
@@ -446,8 +458,6 @@ def test_sandbox_management_keeps_service_credentials_after_sign_in() -> None:
     _ = server.client.sandboxes.exec(
         PROJECT, "run", region="aws-us-east-1", preset="python3.12"
     )
-    server.reply({"data": []})
-    _ = server.client.sandboxes.presets()
     assert {request.headers["Authorization"] for request in server.requests} == {
         "Bearer service"
     }
