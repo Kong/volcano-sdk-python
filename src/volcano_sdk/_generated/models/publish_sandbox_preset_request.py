@@ -26,7 +26,7 @@ T = TypeVar("T", bound="PublishSandboxPresetRequest")
 
 @_attrs_define
 class PublishSandboxPresetRequest:
-    """ 
+    """
         Attributes:
             id (UUID):
             preset (PublishSandboxPresetRequestPreset):
@@ -97,4 +97,3 @@ class PublishSandboxPresetRequest:
         )
 
         return publish_sandbox_preset_request
-

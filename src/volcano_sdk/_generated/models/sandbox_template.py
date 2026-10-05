@@ -26,7 +26,7 @@ T = TypeVar("T", bound="SandboxTemplate")
 
 @_attrs_define
 class SandboxTemplate:
-    """ 
+    """
         Attributes:
             id (UUID):
             project_id (UUID):
@@ -123,4 +123,3 @@ class SandboxTemplate:
         )
 
         return sandbox_template
-

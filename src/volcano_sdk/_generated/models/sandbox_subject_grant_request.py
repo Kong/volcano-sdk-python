@@ -22,7 +22,7 @@ T = TypeVar("T", bound="SandboxSubjectGrantRequest")
 
 @_attrs_define
 class SandboxSubjectGrantRequest:
-    """ 
+    """
         Attributes:
             expires_at (datetime.datetime):
      """
@@ -60,4 +60,3 @@ class SandboxSubjectGrantRequest:
         )
 
         return sandbox_subject_grant_request
-

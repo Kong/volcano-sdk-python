@@ -21,7 +21,7 @@ T = TypeVar("T", bound="SandboxAccessRequest")
 
 @_attrs_define
 class SandboxAccessRequest:
-    """ 
+    """
         Attributes:
             port (int):
             expires_in_seconds (int | Unset):  Default: 300.
@@ -65,4 +65,3 @@ class SandboxAccessRequest:
         )
 
         return sandbox_access_request
-

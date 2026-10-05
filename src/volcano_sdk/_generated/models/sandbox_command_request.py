@@ -24,7 +24,7 @@ T = TypeVar("T", bound="SandboxCommandRequest")
 
 @_attrs_define
 class SandboxCommandRequest:
-    """ 
+    """
         Attributes:
             command (str):
             timeout_seconds (int | Unset):  Default: 60.
@@ -89,4 +89,3 @@ class SandboxCommandRequest:
         )
 
         return sandbox_command_request
-

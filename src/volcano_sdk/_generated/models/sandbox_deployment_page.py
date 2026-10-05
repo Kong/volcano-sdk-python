@@ -24,7 +24,7 @@ T = TypeVar("T", bound="SandboxDeploymentPage")
 
 @_attrs_define
 class SandboxDeploymentPage:
-    """ 
+    """
         Attributes:
             data (list[SandboxDeployment]):
             pagination (SandboxPagination):
@@ -87,4 +87,3 @@ class SandboxDeploymentPage:
         )
 
         return sandbox_deployment_page
-

@@ -21,7 +21,7 @@ T = TypeVar("T", bound="SandboxPagination")
 
 @_attrs_define
 class SandboxPagination:
-    """ 
+    """
         Attributes:
             limit (int):
             has_more (bool):
@@ -73,4 +73,3 @@ class SandboxPagination:
         )
 
         return sandbox_pagination
-

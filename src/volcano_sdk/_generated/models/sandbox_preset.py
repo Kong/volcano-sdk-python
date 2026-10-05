@@ -23,7 +23,7 @@ T = TypeVar("T", bound="SandboxPreset")
 
 @_attrs_define
 class SandboxPreset:
-    """ 
+    """
         Attributes:
             id (str):
             runtime (str):
@@ -96,4 +96,3 @@ class SandboxPreset:
         )
 
         return sandbox_preset
-

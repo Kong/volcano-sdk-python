@@ -22,7 +22,7 @@ T = TypeVar("T", bound="SandboxAccess")
 
 @_attrs_define
 class SandboxAccess:
-    """ 
+    """
         Attributes:
             url (str):
             token (str):
@@ -76,4 +76,3 @@ class SandboxAccess:
         )
 
         return sandbox_access
-

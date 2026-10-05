@@ -20,7 +20,7 @@ T = TypeVar("T", bound="UpdateSandboxTemplateRequest")
 
 @_attrs_define
 class UpdateSandboxTemplateRequest:
-    """ 
+    """
         Attributes:
             name (str):
      """
@@ -55,4 +55,3 @@ class UpdateSandboxTemplateRequest:
         )
 
         return update_sandbox_template_request
-

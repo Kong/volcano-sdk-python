@@ -19,11 +19,11 @@ def request_kwargs(
     session_id: UUID | str,
 
 ) -> dict[str, Any]:
-    
 
-    
 
-    
+
+
+
 
     _kwargs: dict[str, Any] = {
         "method": "get",

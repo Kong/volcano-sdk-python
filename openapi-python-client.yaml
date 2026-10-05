@@ -2,7 +2,10 @@ package_name_override: _generated
 project_name_override: volcano-sdk-generated
 literal_enums: true
 use_path_prefixes_for_title_model_names: false
-post_hooks: []
+# Normalize the new Sandbox source family without reformatting legacy API output.
+# W291/W293 unsafe fixes only remove whitespace in generated docstrings.
+post_hooks:
+  - ruff check --isolated --no-cache --preview --select W291,W293,W391 --fix --unsafe-fixes api/sandboxes models/*sandbox*.py
 # Parse binary bodies without changing their wire Content-Type.
 content_type_overrides:
   application/yaml: application/octet-stream

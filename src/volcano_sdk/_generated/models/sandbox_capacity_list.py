@@ -23,7 +23,7 @@ T = TypeVar("T", bound="SandboxCapacityList")
 
 @_attrs_define
 class SandboxCapacityList:
-    """ 
+    """
         Attributes:
             data (list[SandboxCapacity]):
      """
@@ -73,4 +73,3 @@ class SandboxCapacityList:
         )
 
         return sandbox_capacity_list
-

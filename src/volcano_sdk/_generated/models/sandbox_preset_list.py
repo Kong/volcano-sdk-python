@@ -23,7 +23,7 @@ T = TypeVar("T", bound="SandboxPresetList")
 
 @_attrs_define
 class SandboxPresetList:
-    """ 
+    """
         Attributes:
             data (list[SandboxPreset]):
      """
@@ -73,4 +73,3 @@ class SandboxPresetList:
         )
 
         return sandbox_preset_list
-

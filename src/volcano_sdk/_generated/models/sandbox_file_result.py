@@ -20,7 +20,7 @@ T = TypeVar("T", bound="SandboxFileResult")
 
 @_attrs_define
 class SandboxFileResult:
-    """ 
+    """
         Attributes:
             data (str):
      """
@@ -55,4 +55,3 @@ class SandboxFileResult:
         )
 
         return sandbox_file_result
-

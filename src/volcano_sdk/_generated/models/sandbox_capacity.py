@@ -20,7 +20,7 @@ T = TypeVar("T", bound="SandboxCapacity")
 
 @_attrs_define
 class SandboxCapacity:
-    """ 
+    """
         Attributes:
             region (str):
             allocated_memory_mb (int):
@@ -63,4 +63,3 @@ class SandboxCapacity:
         )
 
         return sandbox_capacity
-

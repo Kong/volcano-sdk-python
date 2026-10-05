@@ -19,11 +19,11 @@ def request_kwargs(
     subject_id: UUID | str,
 
 ) -> dict[str, Any]:
-    
 
-    
 
-    
+
+
+
 
     _kwargs: dict[str, Any] = {
         "method": "delete",

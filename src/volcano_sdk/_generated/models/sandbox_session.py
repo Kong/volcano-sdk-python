@@ -28,7 +28,7 @@ T = TypeVar("T", bound="SandboxSession")
 
 @_attrs_define
 class SandboxSession:
-    """ 
+    """
         Attributes:
             id (UUID):
             project_id (UUID):
@@ -167,4 +167,3 @@ class SandboxSession:
         )
 
         return sandbox_session
-

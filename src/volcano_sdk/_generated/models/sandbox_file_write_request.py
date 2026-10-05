@@ -20,7 +20,7 @@ T = TypeVar("T", bound="SandboxFileWriteRequest")
 
 @_attrs_define
 class SandboxFileWriteRequest:
-    """ 
+    """
         Attributes:
             path (str):
             data (str):
@@ -63,4 +63,3 @@ class SandboxFileWriteRequest:
         )
 
         return sandbox_file_write_request
-

@@ -21,7 +21,7 @@ T = TypeVar("T", bound="SandboxExecutionResult")
 
 @_attrs_define
 class SandboxExecutionResult:
-    """ 
+    """
         Attributes:
             stdout (str):
             stderr (str):
@@ -123,4 +123,3 @@ class SandboxExecutionResult:
         )
 
         return sandbox_execution_result
-

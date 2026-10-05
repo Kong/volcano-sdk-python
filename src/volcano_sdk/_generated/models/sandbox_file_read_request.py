@@ -20,7 +20,7 @@ T = TypeVar("T", bound="SandboxFileReadRequest")
 
 @_attrs_define
 class SandboxFileReadRequest:
-    """ 
+    """
         Attributes:
             path (str):
      """
@@ -55,4 +55,3 @@ class SandboxFileReadRequest:
         )
 
         return sandbox_file_read_request
-

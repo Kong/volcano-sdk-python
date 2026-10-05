@@ -20,7 +20,7 @@ T = TypeVar("T", bound="SandboxCommandResult")
 
 @_attrs_define
 class SandboxCommandResult:
-    """ 
+    """
         Attributes:
             stdout (str):
             stderr (str):
@@ -95,4 +95,3 @@ class SandboxCommandResult:
         )
 
         return sandbox_command_result
-

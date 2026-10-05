@@ -23,7 +23,7 @@ T = TypeVar("T", bound="SandboxDeployment")
 
 @_attrs_define
 class SandboxDeployment:
-    """ 
+    """
         Attributes:
             id (UUID):
             status (str):
@@ -91,4 +91,3 @@ class SandboxDeployment:
         )
 
         return sandbox_deployment
-

@@ -24,7 +24,7 @@ T = TypeVar("T", bound="CreateSandboxTemplateRequest")
 
 @_attrs_define
 class CreateSandboxTemplateRequest:
-    """ 
+    """
         Attributes:
             name (str):
             preset (str): Preset ID from the available Sandbox preset catalog.
@@ -87,4 +87,3 @@ class CreateSandboxTemplateRequest:
         )
 
         return create_sandbox_template_request
-

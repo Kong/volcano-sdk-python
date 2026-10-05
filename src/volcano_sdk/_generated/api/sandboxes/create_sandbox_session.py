@@ -27,16 +27,16 @@ def request_kwargs(
 
 
 
-    
 
-    
+
+
 
     _kwargs: dict[str, Any] = {
         "method": "post",
         "url": "/projects/{id}/sandbox-sessions".format(id=quote(str(id), safe=""),),
     }
 
-    
+
     _kwargs["json"] = body
 
     headers["Content-Type"] = "application/json"
