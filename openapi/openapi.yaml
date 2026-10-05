@@ -4800,6 +4800,7 @@ paths:
         Configures one custom domain for a frontend.
         The default Volcano-generated frontend URL remains active.
         Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
+        Managed TLS returns the DNS records currently required for setup. Volcano may require a tenant-specific TXT ownership challenge before returning the certificate authority's validation record. After ownership verification succeeds, Volcano permanently assigns the hostname to the account. A required but unverified ownership reservation expires after 72 hours.
       operationId: createFrontendCustomDomain
       security:
         - UserToken: []
@@ -13421,10 +13422,11 @@ components:
       properties:
         domain:
           type: string
+          maxLength: 253
           description: Fully-qualified domain name (hostname only, no scheme/path)
           example: app.example.com
         tls:
-          $ref: '#/components/schemas/CreateFrontendCustomDomainTLSConfig'
+          $ref: '#/components/schemas/FrontendCustomDomainTLSConfig'
       required:
         - domain
         - tls
@@ -15255,6 +15257,9 @@ components:
             - pending
             - verified
             - failed
+        failure_reason:
+          type: string
+          description: Safe failure category returned for failed managed TLS provisioning. One of provider, certificate, ownership, or internal. Ownership means another account has already verified the hostname.
         verification_records:
           type: array
           items:
@@ -15279,122 +15284,60 @@ components:
         - effective_urls
         - created_at
         - updated_at
-    CreateFrontendCustomDomainTLSConfig:
-      oneOf:
-        - $ref: '#/components/schemas/ManagedFrontendCustomDomainTLSConfig'
-        - $ref: '#/components/schemas/BYOCFrontendCustomDomainTLSConfig'
-      discriminator:
-        propertyName: mode
-        mapping:
-          managed: '#/components/schemas/ManagedFrontendCustomDomainTLSConfig'
-          byoc: '#/components/schemas/BYOCFrontendCustomDomainTLSConfig'
-    ManagedFrontendCustomDomainTLSConfig:
-      type: object
-      description: Volcano issues and renews the certificate. Do not send certificate material.
-      additionalProperties: false
-      properties:
-        mode:
-          type: string
-          enum:
-            - managed
-      required:
-        - mode
-    BYOCFrontendCustomDomainTLSConfig:
-      type: object
-      description: Use certificate material that you manage.
-      additionalProperties: false
-      properties:
-        mode:
-          type: string
-          enum:
-            - byoc
-        certificate_pem:
-          type: string
-          description: Required. PEM-encoded certificate.
-        private_key_pem:
-          type: string
-          description: Required. PEM-encoded private key.
-        certificate_chain_pem:
-          type: string
-          description: Optional PEM-encoded certificate chain.
-      required:
-        - mode
-        - certificate_pem
-        - private_key_pem
     FrontendCustomDomainTLSConfig:
       type: object
-      deprecated: true
-      description: Deprecated compatibility model. Use BYOCFrontendCustomDomainTLSConfig.
-      properties:
-        mode:
-          type: string
-          enum:
-            - byoc
-          default: byoc
-        certificate_pem:
-          type: string
-        private_key_pem:
-          type: string
-        certificate_chain_pem:
-          type: string
-      required:
-        - mode
-        - certificate_pem
-        - private_key_pem
-    ProjectConfigFrontendCustomDomainTLSConfig:
-      oneOf:
-        - $ref: '#/components/schemas/ManagedProjectConfigFrontendCustomDomainTLSConfig'
-        - $ref: '#/components/schemas/BYOCProjectConfigFrontendCustomDomainTLSConfig'
-      discriminator:
-        propertyName: mode
-        mapping:
-          managed: '#/components/schemas/ManagedProjectConfigFrontendCustomDomainTLSConfig'
-          byoc: '#/components/schemas/BYOCProjectConfigFrontendCustomDomainTLSConfig'
-    ManagedProjectConfigFrontendCustomDomainTLSConfig:
-      type: object
-      additionalProperties: false
-      properties:
-        mode:
-          type: string
-          enum:
-            - managed
-      required:
-        - mode
-    BYOCProjectConfigFrontendCustomDomainTLSConfig:
-      type: object
+      description: Set mode to managed for Volcano-issued TLS, or byoc with certificate_pem and private_key_pem.
       additionalProperties: false
       not:
         anyOf:
-          - required:
-              - certificate_pem
-            not:
-              required:
-                - private_key_pem
-          - required:
-              - private_key_pem
-            not:
-              required:
-                - certificate_pem
-          - required:
-              - certificate_chain_pem
-            not:
-              required:
-                - certificate_pem
-                - private_key_pem
+          - allOf:
+              - properties:
+                  mode:
+                    enum:
+                      - managed
+                required:
+                  - mode
+              - anyOf:
+                  - required:
+                      - certificate_pem
+                  - required:
+                      - private_key_pem
+                  - required:
+                      - certificate_chain_pem
+          - allOf:
+              - properties:
+                  mode:
+                    enum:
+                      - byoc
+                required:
+                  - mode
+              - anyOf:
+                  - not:
+                      required:
+                        - certificate_pem
+                  - not:
+                      required:
+                        - private_key_pem
       properties:
         mode:
           type: string
           enum:
+            - managed
             - byoc
         certificate_pem:
           type: string
-          description: PEM-encoded certificate for BYOC create or rotation. Omitted from exports.
+          maxLength: 65536
+          x-go-type-skip-optional-pointer: true
+          description: Required. PEM-encoded certificate.
         private_key_pem:
           type: string
-          description: PEM-encoded private key for BYOC create or rotation. Omitted from exports.
+          maxLength: 65536
+          x-go-type-skip-optional-pointer: true
+          description: Required. PEM-encoded private key.
         certificate_chain_pem:
           type: string
-          description: Optional PEM-encoded certificate chain for BYOC. Omitted from exports.
+          maxLength: 65536
+          description: Optional PEM-encoded certificate chain.
       required:
         - mode
     FrontendDeployment:
@@ -15509,6 +15452,7 @@ components:
         - value
     FrontendDomainVerificationRecord:
       type: object
+      description: The DNS records currently required for managed TLS. Volcano may require a tenant-specific TXT ownership record before returning a CNAME that authorizes certificate issuance and renewal. Clients must follow the records returned for the current lifecycle state instead of assuming a fixed sequence.
       additionalProperties: false
       properties:
         name:
@@ -17481,6 +17425,7 @@ components:
       properties:
         domain:
           type: string
+          maxLength: 253
           description: Fully-qualified domain name (hostname only, no scheme/path)
         tls:
           $ref: '#/components/schemas/ProjectConfigFrontendCustomDomainTLSConfig'
@@ -19326,6 +19271,65 @@ components:
           $ref: '#/components/schemas/AuthPageTheme'
         layouts:
           $ref: '#/components/schemas/ProjectConfigAuthPageLayouts'
+    ManagedProjectConfigFrontendCustomDomainTLSConfig:
+      type: object
+      additionalProperties: false
+      properties:
+        mode:
+          type: string
+          enum:
+            - managed
+      required:
+        - mode
+    BYOCProjectConfigFrontendCustomDomainTLSConfig:
+      type: object
+      additionalProperties: false
+      not:
+        anyOf:
+          - required:
+              - certificate_pem
+            not:
+              required:
+                - private_key_pem
+          - required:
+              - private_key_pem
+            not:
+              required:
+                - certificate_pem
+          - required:
+              - certificate_chain_pem
+            not:
+              required:
+                - certificate_pem
+                - private_key_pem
+      properties:
+        mode:
+          type: string
+          enum:
+            - byoc
+        certificate_pem:
+          type: string
+          maxLength: 65536
+          description: PEM-encoded certificate for BYOC create or rotation. Omitted from exports.
+        private_key_pem:
+          type: string
+          maxLength: 65536
+          description: PEM-encoded private key for BYOC create or rotation. Omitted from exports.
+        certificate_chain_pem:
+          type: string
+          maxLength: 65536
+          description: Optional PEM-encoded certificate chain for BYOC. Omitted from exports.
+      required:
+        - mode
+    ProjectConfigFrontendCustomDomainTLSConfig:
+      oneOf:
+        - $ref: '#/components/schemas/ManagedProjectConfigFrontendCustomDomainTLSConfig'
+        - $ref: '#/components/schemas/BYOCProjectConfigFrontendCustomDomainTLSConfig'
+      discriminator:
+        propertyName: mode
+        mapping:
+          managed: '#/components/schemas/ManagedProjectConfigFrontendCustomDomainTLSConfig'
+          byoc: '#/components/schemas/BYOCProjectConfigFrontendCustomDomainTLSConfig'
     DatabaseQueryPerformanceDatabase:
       type: object
       properties:

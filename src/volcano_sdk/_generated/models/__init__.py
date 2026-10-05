@@ -96,8 +96,6 @@ from .ban_user_response_status import BanUserResponseStatus
 from .batch_function_deploy_failure import BatchFunctionDeployFailure
 from .batch_function_deploy_failure_operation import BatchFunctionDeployFailureOperation
 from .batch_function_deploy_response import BatchFunctionDeployResponse
-from .byoc_frontend_custom_domain_tls_config import BYOCFrontendCustomDomainTLSConfig
-from .byoc_frontend_custom_domain_tls_config_mode import BYOCFrontendCustomDomainTLSConfigMode
 from .byoc_project_config_frontend_custom_domain_tls_config import BYOCProjectConfigFrontendCustomDomainTLSConfig
 from .byoc_project_config_frontend_custom_domain_tls_config_mode import BYOCProjectConfigFrontendCustomDomainTLSConfigMode
 from .call_o_auth_provider_api_body import CallOAuthProviderAPIBody
@@ -314,8 +312,6 @@ from .log_search_event import LogSearchEvent
 from .log_search_request import LogSearchRequest
 from .log_search_response import LogSearchResponse
 from .log_stream_request import LogStreamRequest
-from .managed_frontend_custom_domain_tls_config import ManagedFrontendCustomDomainTLSConfig
-from .managed_frontend_custom_domain_tls_config_mode import ManagedFrontendCustomDomainTLSConfigMode
 from .managed_project_config_frontend_custom_domain_tls_config import ManagedProjectConfigFrontendCustomDomainTLSConfig
 from .managed_project_config_frontend_custom_domain_tls_config_mode import ManagedProjectConfigFrontendCustomDomainTLSConfigMode
 from .metric_usage_data import MetricUsageData
@@ -620,8 +616,6 @@ __all__ = (
     "BatchFunctionDeployFailure",
     "BatchFunctionDeployFailureOperation",
     "BatchFunctionDeployResponse",
-    "BYOCFrontendCustomDomainTLSConfig",
-    "BYOCFrontendCustomDomainTLSConfigMode",
     "BYOCProjectConfigFrontendCustomDomainTLSConfig",
     "BYOCProjectConfigFrontendCustomDomainTLSConfigMode",
     "CallOAuthProviderAPIBody",
@@ -838,8 +832,6 @@ __all__ = (
     "LogSearchRequest",
     "LogSearchResponse",
     "LogStreamRequest",
-    "ManagedFrontendCustomDomainTLSConfig",
-    "ManagedFrontendCustomDomainTLSConfigMode",
     "ManagedProjectConfigFrontendCustomDomainTLSConfig",
     "ManagedProjectConfigFrontendCustomDomainTLSConfigMode",
     "MetricUsageData",

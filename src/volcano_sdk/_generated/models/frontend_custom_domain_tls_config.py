@@ -24,20 +24,19 @@ T = TypeVar("T", bound="FrontendCustomDomainTLSConfig")
 
 @_attrs_define
 class FrontendCustomDomainTLSConfig:
-    """ Deprecated compatibility model. Use BYOCFrontendCustomDomainTLSConfig.
+    """ Set mode to managed for Volcano-issued TLS, or byoc with certificate_pem and private_key_pem.
 
         Attributes:
-            mode (FrontendCustomDomainTLSConfigMode):  Default: 'byoc'.
-            certificate_pem (str):
-            private_key_pem (str):
-            certificate_chain_pem (str | Unset):
+            mode (FrontendCustomDomainTLSConfigMode):
+            certificate_pem (str | Unset): Required. PEM-encoded certificate.
+            private_key_pem (str | Unset): Required. PEM-encoded private key.
+            certificate_chain_pem (str | Unset): Optional PEM-encoded certificate chain.
      """
 
-    certificate_pem: str
-    private_key_pem: str
-    mode: FrontendCustomDomainTLSConfigMode = 'byoc'
+    mode: FrontendCustomDomainTLSConfigMode
+    certificate_pem: str | Unset = UNSET
+    private_key_pem: str | Unset = UNSET
     certificate_chain_pem: str | Unset = UNSET
-    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
 
@@ -54,12 +53,14 @@ class FrontendCustomDomainTLSConfig:
 
 
         field_dict: dict[str, Any] = {}
-        field_dict.update(self.additional_properties)
+
         field_dict.update({
             "mode": mode,
-            "certificate_pem": certificate_pem,
-            "private_key_pem": private_key_pem,
         })
+        if certificate_pem is not UNSET:
+            field_dict["certificate_pem"] = certificate_pem
+        if private_key_pem is not UNSET:
+            field_dict["private_key_pem"] = private_key_pem
         if certificate_chain_pem is not UNSET:
             field_dict["certificate_chain_pem"] = certificate_chain_pem
 
@@ -75,9 +76,9 @@ class FrontendCustomDomainTLSConfig:
 
 
 
-        certificate_pem = d.pop("certificate_pem")
+        certificate_pem = d.pop("certificate_pem", UNSET)
 
-        private_key_pem = d.pop("private_key_pem")
+        private_key_pem = d.pop("private_key_pem", UNSET)
 
         certificate_chain_pem = d.pop("certificate_chain_pem", UNSET)
 
@@ -88,22 +89,5 @@ class FrontendCustomDomainTLSConfig:
             certificate_chain_pem=certificate_chain_pem,
         )
 
-
-        frontend_custom_domain_tls_config.additional_properties = d
         return frontend_custom_domain_tls_config
 
-    @property
-    def additional_keys(self) -> list[str]:
-        return list(self.additional_properties.keys())
-
-    def __getitem__(self, key: str) -> Any:
-        return self.additional_properties[key]
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        self.additional_properties[key] = value
-
-    def __delitem__(self, key: str) -> None:
-        del self.additional_properties[key]
-
-    def __contains__(self, key: str) -> bool:
-        return key in self.additional_properties

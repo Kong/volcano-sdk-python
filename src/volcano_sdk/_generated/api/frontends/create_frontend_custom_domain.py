@@ -136,6 +136,10 @@ def sync_detailed(
      Configures one custom domain for a frontend.
     The default Volcano-generated frontend URL remains active.
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
+    Managed TLS returns the DNS records currently required for setup. Volcano may require a tenant-
+    specific TXT ownership challenge before returning the certificate authority's validation record.
+    After ownership verification succeeds, Volcano permanently assigns the hostname to the account. A
+    required but unverified ownership reservation expires after 72 hours.
 
     Args:
         id (UUID):
@@ -177,6 +181,10 @@ def sync(
      Configures one custom domain for a frontend.
     The default Volcano-generated frontend URL remains active.
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
+    Managed TLS returns the DNS records currently required for setup. Volcano may require a tenant-
+    specific TXT ownership challenge before returning the certificate authority's validation record.
+    After ownership verification succeeds, Volcano permanently assigns the hostname to the account. A
+    required but unverified ownership reservation expires after 72 hours.
 
     Args:
         id (UUID):
@@ -213,6 +221,10 @@ async def asyncio_detailed(
      Configures one custom domain for a frontend.
     The default Volcano-generated frontend URL remains active.
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
+    Managed TLS returns the DNS records currently required for setup. Volcano may require a tenant-
+    specific TXT ownership challenge before returning the certificate authority's validation record.
+    After ownership verification succeeds, Volcano permanently assigns the hostname to the account. A
+    required but unverified ownership reservation expires after 72 hours.
 
     Args:
         id (UUID):
@@ -254,6 +266,10 @@ async def asyncio(
      Configures one custom domain for a frontend.
     The default Volcano-generated frontend URL remains active.
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
+    Managed TLS returns the DNS records currently required for setup. Volcano may require a tenant-
+    specific TXT ownership challenge before returning the certificate authority's validation record.
+    After ownership verification succeeds, Volcano permanently assigns the hostname to the account. A
+    required but unverified ownership reservation expires after 72 hours.
 
     Args:
         id (UUID):

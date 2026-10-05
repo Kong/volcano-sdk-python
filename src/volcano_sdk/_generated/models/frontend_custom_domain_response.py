@@ -41,6 +41,9 @@ class FrontendCustomDomainResponse:
             effective_urls (list[str]):
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
+            failure_reason (str | Unset): Safe failure category returned for failed managed TLS provisioning. One of
+                provider, certificate, ownership, or internal. Ownership means another account has already verified the
+                hostname.
             verification_records (list[FrontendDomainVerificationRecord] | Unset):
             required_routing_record (FrontendDomainRoutingRecord | Unset):
      """
@@ -52,6 +55,7 @@ class FrontendCustomDomainResponse:
     effective_urls: list[str]
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    failure_reason: str | Unset = UNSET
     verification_records: list[FrontendDomainVerificationRecord] | Unset = UNSET
     required_routing_record: FrontendDomainRoutingRecord | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -79,6 +83,8 @@ class FrontendCustomDomainResponse:
 
         updated_at = self.updated_at.isoformat()
 
+        failure_reason = self.failure_reason
+
         verification_records: list[dict[str, Any]] | Unset = UNSET
         if not isinstance(self.verification_records, Unset):
             verification_records = []
@@ -104,6 +110,8 @@ class FrontendCustomDomainResponse:
             "created_at": created_at,
             "updated_at": updated_at,
         })
+        if failure_reason is not UNSET:
+            field_dict["failure_reason"] = failure_reason
         if verification_records is not UNSET:
             field_dict["verification_records"] = verification_records
         if required_routing_record is not UNSET:
@@ -148,6 +156,8 @@ class FrontendCustomDomainResponse:
 
 
 
+        failure_reason = d.pop("failure_reason", UNSET)
+
         _verification_records = d.pop("verification_records", UNSET)
         verification_records: list[FrontendDomainVerificationRecord] | Unset = UNSET
         if _verification_records is not UNSET:
@@ -178,6 +188,7 @@ class FrontendCustomDomainResponse:
             effective_urls=effective_urls,
             created_at=created_at,
             updated_at=updated_at,
+            failure_reason=failure_reason,
             verification_records=verification_records,
             required_routing_record=required_routing_record,
         )

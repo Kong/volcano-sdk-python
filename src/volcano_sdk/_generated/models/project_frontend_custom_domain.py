@@ -44,6 +44,9 @@ class ProjectFrontendCustomDomain:
             updated_at (datetime.datetime):
             frontend (ProjectFrontendCustomDomainFrontend): The frontend this custom domain is attached to. Inlined to
                 avoid a second fetch from the project-scoped feed.
+            failure_reason (str | Unset): Safe failure category returned for failed managed TLS provisioning. One of
+                provider, certificate, ownership, or internal. Ownership means another account has already verified the
+                hostname.
             verification_records (list[FrontendDomainVerificationRecord] | Unset):
             required_routing_record (FrontendDomainRoutingRecord | Unset):
      """
@@ -56,6 +59,7 @@ class ProjectFrontendCustomDomain:
     created_at: datetime.datetime
     updated_at: datetime.datetime
     frontend: ProjectFrontendCustomDomainFrontend
+    failure_reason: str | Unset = UNSET
     verification_records: list[FrontendDomainVerificationRecord] | Unset = UNSET
     required_routing_record: FrontendDomainRoutingRecord | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -86,6 +90,8 @@ class ProjectFrontendCustomDomain:
 
         frontend = self.frontend.to_dict()
 
+        failure_reason = self.failure_reason
+
         verification_records: list[dict[str, Any]] | Unset = UNSET
         if not isinstance(self.verification_records, Unset):
             verification_records = []
@@ -112,6 +118,8 @@ class ProjectFrontendCustomDomain:
             "updated_at": updated_at,
             "frontend": frontend,
         })
+        if failure_reason is not UNSET:
+            field_dict["failure_reason"] = failure_reason
         if verification_records is not UNSET:
             field_dict["verification_records"] = verification_records
         if required_routing_record is not UNSET:
@@ -162,6 +170,8 @@ class ProjectFrontendCustomDomain:
 
 
 
+        failure_reason = d.pop("failure_reason", UNSET)
+
         _verification_records = d.pop("verification_records", UNSET)
         verification_records: list[FrontendDomainVerificationRecord] | Unset = UNSET
         if _verification_records is not UNSET:
@@ -193,6 +203,7 @@ class ProjectFrontendCustomDomain:
             created_at=created_at,
             updated_at=updated_at,
             frontend=frontend,
+            failure_reason=failure_reason,
             verification_records=verification_records,
             required_routing_record=required_routing_record,
         )

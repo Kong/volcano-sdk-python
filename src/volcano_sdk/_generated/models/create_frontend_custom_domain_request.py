@@ -11,8 +11,7 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
-  from ..models.byoc_frontend_custom_domain_tls_config import BYOCFrontendCustomDomainTLSConfig
-  from ..models.managed_frontend_custom_domain_tls_config import ManagedFrontendCustomDomainTLSConfig
+  from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig
 
 
 
@@ -27,27 +26,22 @@ class CreateFrontendCustomDomainRequest:
     """ 
         Attributes:
             domain (str): Fully-qualified domain name (hostname only, no scheme/path) Example: app.example.com.
-            tls (BYOCFrontendCustomDomainTLSConfig | ManagedFrontendCustomDomainTLSConfig):
+            tls (FrontendCustomDomainTLSConfig): Set mode to managed for Volcano-issued TLS, or byoc with certificate_pem
+                and private_key_pem.
      """
 
     domain: str
-    tls: BYOCFrontendCustomDomainTLSConfig | ManagedFrontendCustomDomainTLSConfig
+    tls: FrontendCustomDomainTLSConfig
 
 
 
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.byoc_frontend_custom_domain_tls_config import BYOCFrontendCustomDomainTLSConfig
-        from ..models.managed_frontend_custom_domain_tls_config import ManagedFrontendCustomDomainTLSConfig
+        from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig
         domain = self.domain
 
-        tls: dict[str, Any]
-        if isinstance(self.tls, ManagedFrontendCustomDomainTLSConfig):
-            tls = self.tls.to_dict()
-        else:
-            tls = self.tls.to_dict()
-
+        tls = self.tls.to_dict()
 
 
         field_dict: dict[str, Any] = {}
@@ -63,31 +57,13 @@ class CreateFrontendCustomDomainRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.byoc_frontend_custom_domain_tls_config import BYOCFrontendCustomDomainTLSConfig
-        from ..models.managed_frontend_custom_domain_tls_config import ManagedFrontendCustomDomainTLSConfig
+        from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig
         d = dict(src_dict)
         domain = d.pop("domain")
 
-        def _parse_tls(data: object) -> BYOCFrontendCustomDomainTLSConfig | ManagedFrontendCustomDomainTLSConfig:
-            try:
-                if not isinstance(data, dict):
-                    raise TypeError()
-                componentsschemas_create_frontend_custom_domain_tls_config_type_0 = ManagedFrontendCustomDomainTLSConfig.from_dict(data)
+        tls = FrontendCustomDomainTLSConfig.from_dict(d.pop("tls"))
 
 
-
-                return componentsschemas_create_frontend_custom_domain_tls_config_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            if not isinstance(data, dict):
-                raise TypeError()
-            componentsschemas_create_frontend_custom_domain_tls_config_type_1 = BYOCFrontendCustomDomainTLSConfig.from_dict(data)
-
-
-
-            return componentsschemas_create_frontend_custom_domain_tls_config_type_1
-
-        tls = _parse_tls(d.pop("tls"))
 
 
         create_frontend_custom_domain_request = cls(
