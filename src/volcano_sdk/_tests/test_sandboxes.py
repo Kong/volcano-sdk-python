@@ -115,7 +115,7 @@ def test_sandbox_selectors_and_mutation_identity() -> None:
         "max_duration_seconds": 300,
         "idle_timeout_seconds": 30,
     }
-    assert first.extensions["timeout"]["read"] >= 180
+    assert first.extensions["timeout"]["read"] == 60
 
 
 def test_sandbox_one_shot_and_session_execution() -> None:
@@ -304,6 +304,61 @@ def test_sandbox_catalog(credential: str) -> None:
     )
 
 
+@pytest.mark.parametrize(("timeout", "expected"), [(3, 3), (240, 240)])
+def test_sandbox_catalog_preserves_endpoint_and_effective_timeout(
+    timeout: int, expected: int
+) -> None:
+    server = SandboxHTTP()
+    client = VolcanoClient(
+        anon_key="anon",
+        _transport=GeneratedTransport(
+            api_url="https://catalog.example.test/",
+            timeout=timeout,
+            httpx_transport=httpx.MockTransport(server.handle),
+        ),
+    )
+    server.reply({"data": []})
+    assert client.sandboxes.presets() == ()
+    (request,) = server.requests
+    assert str(request.url) == "https://catalog.example.test/sandboxes/presets"
+    assert request.extensions["timeout"] == dict.fromkeys(
+        ("connect", "read", "write", "pool"), expected
+    )
+
+
+@pytest.mark.parametrize(("timeout", "execution_timeout"), [(3, 150), (240, 240)])
+def test_sandbox_only_execution_extends_the_configured_timeout(
+    timeout: int, execution_timeout: int
+) -> None:
+    server = SandboxHTTP()
+    client = VolcanoClient(
+        anon_key="anon",
+        service_key="service",
+        _transport=GeneratedTransport(
+            api_url="https://sandbox.test",
+            timeout=timeout,
+            httpx_transport=httpx.MockTransport(server.handle),
+        ),
+    )
+    server.reply(session_body(), 201)
+    _ = client.sandboxes.create(PROJECT, region="aws-us-east-1", preset="python3.12")
+    assert server.requests[-1].extensions["timeout"]["read"] == timeout
+    server.reply(session_body())
+    session = client.sandboxes.get(SESSION)
+    assert server.requests[-1].extensions["timeout"]["read"] == timeout
+    server.reply(
+        command_body()
+        | {"session_id": SESSION, "region": "aws-us-east-1", "duration_ms": 1}
+    )
+    _ = client.sandboxes.exec(
+        PROJECT, "run", region="aws-us-east-1", preset="python3.12", timeout_seconds=30
+    )
+    assert server.requests[-1].extensions["timeout"]["read"] == execution_timeout
+    server.reply(command_body())
+    _ = session.exec("run", timeout_seconds=30)
+    assert server.requests[-1].extensions["timeout"]["read"] == execution_timeout
+
+
 def fail_inside_session(session: SandboxSession) -> None:
     with session as owned:
         assert owned is session
@@ -458,6 +513,7 @@ def test_sandbox_management_keeps_service_credentials_after_sign_in() -> None:
     _ = server.client.sandboxes.exec(
         PROJECT, "run", region="aws-us-east-1", preset="python3.12"
     )
+    assert server.requests[-1].extensions["timeout"]["read"] == 180
     assert {request.headers["Authorization"] for request in server.requests} == {
         "Bearer service"
     }

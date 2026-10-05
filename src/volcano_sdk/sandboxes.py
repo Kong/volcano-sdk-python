@@ -102,6 +102,7 @@ class Sandboxes:
                     identifier(project_id),
                     body=body,
                     request_id=request_id(options),
+                    timeout=float(options.get("timeout_seconds", 60)) + 120,
                 )
             )
         )

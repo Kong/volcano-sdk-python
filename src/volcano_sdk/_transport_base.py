@@ -36,6 +36,5 @@ class TransportBase:
     def _public_client(self) -> Client:
         return Client(
             base_url=self._api_url,
-            timeout=httpx.Timeout(self._timeout),
             httpx_args={"transport": self._httpx_transport},
         )

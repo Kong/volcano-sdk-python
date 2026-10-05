@@ -71,7 +71,7 @@ class SandboxRequest:
     subject_id: str = ""
     body: Mapping[str, JSONValue] = field(default_factory=dict[str, JSONValue])
     request_id: str = ""
-    timeout: float = 180.0
+    timeout: float | None = None
 
 
 _OPERATIONS: dict[str, Callable[[SandboxRequest], dict[str, object]]] = {
@@ -145,9 +145,10 @@ class SandboxHTTPTransport(TransportBase):
             if authorization is None
             else self._client(authorization)
         )
-        with base_client.with_timeout(
-            httpx.Timeout(max(self._timeout, request.timeout))
-        ) as client:
+        timeout = self._timeout
+        if request.timeout is not None:
+            timeout = max(timeout, request.timeout)
+        with base_client.with_timeout(httpx.Timeout(timeout)) as client:
             response = generated_request(
                 client, _OPERATIONS[request.operation](request)
             )
