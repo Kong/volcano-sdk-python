@@ -55,9 +55,9 @@ with client.sandboxes.create(
         time.sleep(1)
     else:
         raise TimeoutError("Sandbox did not become ready")
-    session.files.write("/tmp/input.bin", bytes(range(256)))
-    assert session.files.read("/tmp/input.bin") == bytes(range(256))
-    result = session.exec("wc -c /tmp/input.bin")
+    session.files.write("/workspace/input.bin", bytes(range(256)))
+    assert session.files.read("/workspace/input.bin") == bytes(range(256))
+    result = session.exec("wc -c /workspace/input.bin")
     print(result.stdout)
 ```
 
