@@ -1,5 +1,5 @@
 import pytest
-from attrs import fields_dict
+from attrs import AttrsInstance, fields_dict
 
 from volcano_sdk._generated.models import (
     BYOCProjectConfigFrontendCustomDomainTLSConfig,
@@ -45,11 +45,7 @@ def test_create_request_round_trips_the_selected_tls_mode(
     ],
 )
 def test_material_free_models_do_not_declare_certificate_or_key_fields(
-    model: type[
-        FrontendCustomDomainResponse
-        | ProjectFrontendCustomDomain
-        | ManagedProjectConfigFrontendCustomDomainTLSConfig
-    ],
+    model: type[AttrsInstance],
 ) -> None:
     assert not [
         name
