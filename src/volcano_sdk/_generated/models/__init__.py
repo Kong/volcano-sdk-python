@@ -199,6 +199,7 @@ from .email_template_template_type import EmailTemplateTemplateType
 from .error import Error
 from .export_project_source_request import ExportProjectSourceRequest
 from .frontend import Frontend
+from .frontend_custom_domain_conflict_error import FrontendCustomDomainConflictError
 from .frontend_custom_domain_response import FrontendCustomDomainResponse
 from .frontend_custom_domain_response_domain_status import FrontendCustomDomainResponseDomainStatus
 from .frontend_custom_domain_response_tls_mode import FrontendCustomDomainResponseTlsMode
@@ -212,7 +213,6 @@ from .frontend_deployment_operation import FrontendDeploymentOperation
 from .frontend_deployment_status import FrontendDeploymentStatus
 from .frontend_domain_routing_record import FrontendDomainRoutingRecord
 from .frontend_domain_routing_record_record_type import FrontendDomainRoutingRecordRecordType
-from .frontend_domain_routing_record_zone_apex_record_type import FrontendDomainRoutingRecordZoneApexRecordType
 from .frontend_domain_verification_record import FrontendDomainVerificationRecord
 from .frontend_framework import FrontendFramework
 from .frontend_status import FrontendStatus
@@ -750,6 +750,7 @@ __all__ = (
     "Error",
     "ExportProjectSourceRequest",
     "Frontend",
+    "FrontendCustomDomainConflictError",
     "FrontendCustomDomainResponse",
     "FrontendCustomDomainResponseDomainStatus",
     "FrontendCustomDomainResponseTlsMode",
@@ -763,7 +764,6 @@ __all__ = (
     "FrontendDeploymentStatus",
     "FrontendDomainRoutingRecord",
     "FrontendDomainRoutingRecordRecordType",
-    "FrontendDomainRoutingRecordZoneApexRecordType",
     "FrontendDomainVerificationRecord",
     "FrontendFramework",
     "FrontendStatus",

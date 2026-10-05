@@ -24,13 +24,17 @@ T = TypeVar("T", bound="FrontendCustomDomainTLSConfig")
 
 @_attrs_define
 class FrontendCustomDomainTLSConfig:
-    """ Set mode to managed for Volcano-issued TLS, or byoc with certificate_pem and private_key_pem.
+    """ TLS for a new custom domain. With `mode: managed`, Volcano issues and renews the certificate; omit every PEM field.
+    With `mode: byoc`, send both `certificate_pem` and `private_key_pem`, plus an optional `certificate_chain_pem`.
 
         Attributes:
-            mode (FrontendCustomDomainTLSConfigMode):
-            certificate_pem (str | Unset): Required. PEM-encoded certificate.
-            private_key_pem (str | Unset): Required. PEM-encoded private key.
-            certificate_chain_pem (str | Unset): Optional PEM-encoded certificate chain.
+            mode (FrontendCustomDomainTLSConfigMode): managed for a Volcano-issued certificate; byoc to supply your own.
+            certificate_pem (str | Unset): PEM-encoded certificate. Required when mode is byoc; not allowed when mode is
+                managed.
+            private_key_pem (str | Unset): PEM-encoded private key. Required when mode is byoc; not allowed when mode is
+                managed.
+            certificate_chain_pem (str | Unset): Optional PEM-encoded certificate chain when mode is byoc; not allowed when
+                mode is managed.
      """
 
     mode: FrontendCustomDomainTLSConfigMode

@@ -23,7 +23,8 @@ T = TypeVar("T", bound="ManagedProjectConfigFrontendCustomDomainTLSConfig")
 
 @_attrs_define
 class ManagedProjectConfigFrontendCustomDomainTLSConfig:
-    """ 
+    """ Volcano issues and renews the certificate. Certificate fields are not allowed.
+
         Attributes:
             mode (ManagedProjectConfigFrontendCustomDomainTLSConfigMode):
      """

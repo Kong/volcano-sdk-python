@@ -25,9 +25,11 @@ T = TypeVar("T", bound="CreateFrontendCustomDomainRequest")
 class CreateFrontendCustomDomainRequest:
     """ 
         Attributes:
-            domain (str): Fully-qualified domain name (hostname only, no scheme/path) Example: app.example.com.
-            tls (FrontendCustomDomainTLSConfig): Set mode to managed for Volcano-issued TLS, or byoc with certificate_pem
-                and private_key_pem.
+            domain (str): Fully-qualified domain name (hostname only, no scheme/path). Managed TLS (`tls.mode: managed`)
+                accepts at most 219 characters; BYOC accepts 253. Example: app.example.com.
+            tls (FrontendCustomDomainTLSConfig): TLS for a new custom domain. With `mode: managed`, Volcano issues and
+                renews the certificate; omit every PEM field. With `mode: byoc`, send both `certificate_pem` and
+                `private_key_pem`, plus an optional `certificate_chain_pem`.
      """
 
     domain: str

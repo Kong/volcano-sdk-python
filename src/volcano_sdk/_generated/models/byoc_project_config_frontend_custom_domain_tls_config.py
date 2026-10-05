@@ -24,12 +24,18 @@ T = TypeVar("T", bound="BYOCProjectConfigFrontendCustomDomainTLSConfig")
 
 @_attrs_define
 class BYOCProjectConfigFrontendCustomDomainTLSConfig:
-    """ 
+    """ Your own certificate. Send `certificate_pem` and `private_key_pem` together, with an optional
+    `certificate_chain_pem`, to create the domain or rotate its certificate. For an existing BYOC domain, `mode: byoc`
+    without certificate fields keeps the stored certificate; exports render only the mode.
+
         Attributes:
             mode (BYOCProjectConfigFrontendCustomDomainTLSConfigMode):
-            certificate_pem (str | Unset): PEM-encoded certificate for BYOC create or rotation. Omitted from exports.
-            private_key_pem (str | Unset): PEM-encoded private key for BYOC create or rotation. Omitted from exports.
-            certificate_chain_pem (str | Unset): Optional PEM-encoded certificate chain for BYOC. Omitted from exports.
+            certificate_pem (str | Unset): PEM-encoded certificate for create or rotation. Requires private_key_pem. Omitted
+                from exports.
+            private_key_pem (str | Unset): PEM-encoded private key for create or rotation. Requires certificate_pem. Omitted
+                from exports.
+            certificate_chain_pem (str | Unset): Optional PEM-encoded certificate chain. Requires certificate_pem and
+                private_key_pem. Omitted from exports.
      """
 
     mode: BYOCProjectConfigFrontendCustomDomainTLSConfigMode

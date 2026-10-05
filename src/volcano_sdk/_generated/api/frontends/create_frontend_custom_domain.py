@@ -10,6 +10,7 @@ from ... import errors
 
 from ...models.create_frontend_custom_domain_request import CreateFrontendCustomDomainRequest
 from ...models.error import Error
+from ...models.frontend_custom_domain_conflict_error import FrontendCustomDomainConflictError
 from ...models.frontend_custom_domain_response import FrontendCustomDomainResponse
 from typing import cast
 from uuid import UUID
@@ -44,7 +45,7 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Error | FrontendCustomDomainResponse | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse | None:
     if response.status_code == 200:
         response_200 = FrontendCustomDomainResponse.from_dict(response.json())
 
@@ -88,7 +89,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return response_404
 
     if response.status_code == 409:
-        response_409 = Error.from_dict(response.json())
+        response_409 = FrontendCustomDomainConflictError.from_dict(response.json())
 
 
 
@@ -114,7 +115,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | FrontendCustomDomainResponse]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -130,7 +131,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: CreateFrontendCustomDomainRequest,
 
-) -> Response[Error | FrontendCustomDomainResponse]:
+) -> Response[Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse]:
     """ Configure frontend custom domain (SUPERAGENT)
 
      Configures one custom domain for a frontend.
@@ -138,8 +139,14 @@ def sync_detailed(
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
     Managed TLS returns the DNS records currently required for setup. Volcano may require a tenant-
     specific TXT ownership challenge before returning the certificate authority's validation record.
-    After ownership verification succeeds, Volcano permanently assigns the hostname to the account. A
-    required but unverified ownership reservation expires after 72 hours.
+    After ownership verification succeeds, Volcano permanently assigns the hostname to the account,
+    including after the domain is deleted. A required but unverified ownership reservation expires after
+    72 hours.
+    An unverified reservation does not block an account that proves ownership. When another account
+    holds one, a managed TLS request gets `409` with `code: ownership_verification_required` and the
+    caller's own `required_record`; after publishing it, the same request takes over the reservation. A
+    BYOC request with a publicly trusted certificate and key for the hostname also takes it over; other
+    BYOC requests get a `409` without `code`. Verified hostnames and BYOC domains are never taken over.
 
     Args:
         id (UUID):
@@ -151,7 +158,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Error | FrontendCustomDomainResponse]
+        Response[Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse]
      """
 
 
@@ -175,7 +182,7 @@ def sync(
     client: AuthenticatedClient,
     body: CreateFrontendCustomDomainRequest,
 
-) -> Error | FrontendCustomDomainResponse | None:
+) -> Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse | None:
     """ Configure frontend custom domain (SUPERAGENT)
 
      Configures one custom domain for a frontend.
@@ -183,8 +190,14 @@ def sync(
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
     Managed TLS returns the DNS records currently required for setup. Volcano may require a tenant-
     specific TXT ownership challenge before returning the certificate authority's validation record.
-    After ownership verification succeeds, Volcano permanently assigns the hostname to the account. A
-    required but unverified ownership reservation expires after 72 hours.
+    After ownership verification succeeds, Volcano permanently assigns the hostname to the account,
+    including after the domain is deleted. A required but unverified ownership reservation expires after
+    72 hours.
+    An unverified reservation does not block an account that proves ownership. When another account
+    holds one, a managed TLS request gets `409` with `code: ownership_verification_required` and the
+    caller's own `required_record`; after publishing it, the same request takes over the reservation. A
+    BYOC request with a publicly trusted certificate and key for the hostname also takes it over; other
+    BYOC requests get a `409` without `code`. Verified hostnames and BYOC domains are never taken over.
 
     Args:
         id (UUID):
@@ -196,7 +209,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Error | FrontendCustomDomainResponse
+        Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse
      """
 
 
@@ -215,7 +228,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: CreateFrontendCustomDomainRequest,
 
-) -> Response[Error | FrontendCustomDomainResponse]:
+) -> Response[Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse]:
     """ Configure frontend custom domain (SUPERAGENT)
 
      Configures one custom domain for a frontend.
@@ -223,8 +236,14 @@ async def asyncio_detailed(
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
     Managed TLS returns the DNS records currently required for setup. Volcano may require a tenant-
     specific TXT ownership challenge before returning the certificate authority's validation record.
-    After ownership verification succeeds, Volcano permanently assigns the hostname to the account. A
-    required but unverified ownership reservation expires after 72 hours.
+    After ownership verification succeeds, Volcano permanently assigns the hostname to the account,
+    including after the domain is deleted. A required but unverified ownership reservation expires after
+    72 hours.
+    An unverified reservation does not block an account that proves ownership. When another account
+    holds one, a managed TLS request gets `409` with `code: ownership_verification_required` and the
+    caller's own `required_record`; after publishing it, the same request takes over the reservation. A
+    BYOC request with a publicly trusted certificate and key for the hostname also takes it over; other
+    BYOC requests get a `409` without `code`. Verified hostnames and BYOC domains are never taken over.
 
     Args:
         id (UUID):
@@ -236,7 +255,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Error | FrontendCustomDomainResponse]
+        Response[Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse]
      """
 
 
@@ -260,7 +279,7 @@ async def asyncio(
     client: AuthenticatedClient,
     body: CreateFrontendCustomDomainRequest,
 
-) -> Error | FrontendCustomDomainResponse | None:
+) -> Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse | None:
     """ Configure frontend custom domain (SUPERAGENT)
 
      Configures one custom domain for a frontend.
@@ -268,8 +287,14 @@ async def asyncio(
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
     Managed TLS returns the DNS records currently required for setup. Volcano may require a tenant-
     specific TXT ownership challenge before returning the certificate authority's validation record.
-    After ownership verification succeeds, Volcano permanently assigns the hostname to the account. A
-    required but unverified ownership reservation expires after 72 hours.
+    After ownership verification succeeds, Volcano permanently assigns the hostname to the account,
+    including after the domain is deleted. A required but unverified ownership reservation expires after
+    72 hours.
+    An unverified reservation does not block an account that proves ownership. When another account
+    holds one, a managed TLS request gets `409` with `code: ownership_verification_required` and the
+    caller's own `required_record`; after publishing it, the same request takes over the reservation. A
+    BYOC request with a publicly trusted certificate and key for the hostname also takes it over; other
+    BYOC requests get a `409` without `code`. Verified hostnames and BYOC domains are never taken over.
 
     Args:
         id (UUID):
@@ -281,7 +306,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Error | FrontendCustomDomainResponse
+        Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse
      """
 
 

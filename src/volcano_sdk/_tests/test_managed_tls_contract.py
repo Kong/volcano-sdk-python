@@ -1,9 +1,17 @@
+import json
+from uuid import UUID
+
+import httpx
 import pytest
 from attrs import AttrsInstance, fields_dict
 
+from volcano_sdk._generated.api.frontends import create_frontend_custom_domain
+from volcano_sdk._generated.client import AuthenticatedClient
 from volcano_sdk._generated.models import (
     BYOCProjectConfigFrontendCustomDomainTLSConfig,
     CreateFrontendCustomDomainRequest,
+    Error,
+    FrontendCustomDomainConflictError,
     FrontendCustomDomainResponse,
     FrontendCustomDomainTLSConfig,
     FrontendDomainRoutingRecord,
@@ -14,32 +22,67 @@ from volcano_sdk._generated.models import (
 )
 from volcano_sdk._generated.types import UNSET
 
+PROJECT_ID = UUID("00000000-0000-4000-8000-000000000001")
+FRONTEND_ID = UUID("00000000-0000-4000-8000-000000000002")
 BYOC_MATERIAL = {
     "certificate_pem": "certificate",
     "private_key_pem": "private-key",
 }
-ROUTING_RECORD = {
-    "record_type": "CNAME",
-    "zone_apex_record_type": "ALIAS",
-    "name": "app.example.com",
-    "value": "frontend.frontends.volcano.dev",
+OWNERSHIP_RECORD = {
+    "name": "_volcano-ownership.app.example.com",
+    "type": "TXT",
+    "value": "volcano-ownership=token",
 }
 VALIDATION_RECORD = {
     "name": "_token.app.example.com",
     "type": "CNAME",
     "value": "_validation.volcano.dev",
 }
-MANAGED_PENDING = {
-    "domain": "app.example.com",
-    "tls_mode": "managed",
-    "domain_status": "pending_verification",
-    "verification_status": "pending",
-    "verification_records": [VALIDATION_RECORD],
-    "required_routing_record": ROUTING_RECORD,
-    "effective_urls": ["https://frontend.frontends.volcano.dev/"],
-    "created_at": "2026-09-02T12:00:00Z",
-    "updated_at": "2026-09-02T12:00:00Z",
-}
+ROUTING_TARGET = "frontend.frontends.volcano.dev"
+
+
+def managed_pending() -> dict[str, object]:
+    return {
+        "domain": "app.example.com",
+        "tls_mode": "managed",
+        "domain_status": "pending_verification",
+        "verification_status": "pending",
+        "verification_records": [dict(VALIDATION_RECORD)],
+        "routing_target_hostname": ROUTING_TARGET,
+        "effective_urls": [f"https://{ROUTING_TARGET}/"],
+        "created_at": "2026-09-02T12:00:00+00:00",
+        "updated_at": "2026-09-02T12:00:00+00:00",
+    }
+
+
+def create_managed_domain(
+    status: int, payload: dict[str, object]
+) -> Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse | None:
+    sent: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(status, json=payload)
+
+    with AuthenticatedClient(
+        base_url="https://api.example.com",
+        token="access-token",
+        httpx_args={"transport": httpx.MockTransport(respond)},
+    ) as client:
+        result = create_frontend_custom_domain.sync_detailed(
+            PROJECT_ID,
+            FRONTEND_ID,
+            client=client,
+            body=CreateFrontendCustomDomainRequest(
+                domain="app.example.com",
+                tls=FrontendCustomDomainTLSConfig(mode="managed"),
+            ),
+        )
+
+    assert [json.loads(request.content) for request in sent] == [
+        {"domain": "app.example.com", "tls": {"mode": "managed"}}
+    ]
+    return result.parsed
 
 
 @pytest.mark.parametrize(
@@ -74,6 +117,7 @@ def test_create_request_encodes_the_selected_tls_mode(
     [
         FrontendCustomDomainResponse,
         ProjectFrontendCustomDomain,
+        FrontendCustomDomainConflictError,
         FrontendDomainVerificationRecord,
         FrontendDomainRoutingRecord,
         ManagedProjectConfigFrontendCustomDomainTLSConfig,
@@ -89,19 +133,42 @@ def test_material_free_models_do_not_declare_certificate_or_key_fields(
     ]
 
 
-def test_managed_tls_response_decodes_lifecycle_and_dns_records() -> None:
-    response = FrontendCustomDomainResponse.from_dict(MANAGED_PENDING)
+def test_create_operation_decodes_the_managed_lifecycle_and_routing_target() -> None:
+    created = create_managed_domain(201, managed_pending())
 
-    assert response.tls_mode == "managed"
-    assert response.domain_status == "pending_verification"
-    assert response.verification_status == "pending"
-    assert response.failure_reason is UNSET
-    assert isinstance(response.verification_records, list)
-    assert [record.to_dict() for record in response.verification_records] == [
-        VALIDATION_RECORD
-    ]
-    assert isinstance(response.required_routing_record, FrontendDomainRoutingRecord)
-    assert response.required_routing_record.to_dict() == ROUTING_RECORD
+    assert isinstance(created, FrontendCustomDomainResponse)
+    assert created.tls_mode == "managed"
+    assert created.domain_status == "pending_verification"
+    assert created.verification_status == "pending"
+    assert created.failure_reason is UNSET
+    assert created.required_routing_record is UNSET
+    assert created.routing_target_hostname == ROUTING_TARGET
+    assert created.to_dict() == managed_pending()
+
+
+def test_create_conflict_carries_the_callers_ownership_record() -> None:
+    conflict = create_managed_domain(
+        409,
+        {
+            "error": "hostname is reserved by another account",
+            "code": "ownership_verification_required",
+            "required_record": dict(OWNERSHIP_RECORD),
+        },
+    )
+
+    assert isinstance(conflict, FrontendCustomDomainConflictError)
+    assert conflict.code == "ownership_verification_required"
+    assert isinstance(conflict.required_record, FrontendDomainVerificationRecord)
+    assert conflict.required_record.to_dict() == OWNERSHIP_RECORD
+
+
+def test_other_create_conflicts_omit_the_ownership_fields() -> None:
+    conflict = create_managed_domain(409, {"error": "custom domain already in use"})
+
+    assert isinstance(conflict, FrontendCustomDomainConflictError)
+    assert conflict.error == "custom domain already in use"
+    assert conflict.code is UNSET
+    assert conflict.required_record is UNSET
 
 
 @pytest.mark.parametrize(
@@ -110,12 +177,7 @@ def test_managed_tls_response_decodes_lifecycle_and_dns_records() -> None:
         (FrontendCustomDomainResponse, {}),
         (
             ProjectFrontendCustomDomain,
-            {
-                "frontend": {
-                    "id": "00000000-0000-4000-8000-000000000001",
-                    "name": "web",
-                }
-            },
+            {"frontend": {"id": str(FRONTEND_ID), "name": "web"}},
         ),
     ],
     ids=["frontend-domain", "project-feed"],
@@ -126,7 +188,7 @@ def test_failed_managed_domain_reports_its_failure_reason(
 ) -> None:
     failed = model.from_dict(
         {
-            **MANAGED_PENDING,
+            **managed_pending(),
             **feed_fields,
             "domain_status": "failed",
             "verification_status": "failed",
@@ -137,8 +199,28 @@ def test_failed_managed_domain_reports_its_failure_reason(
     assert failed.domain_status == "failed"
     assert failed.verification_status == "failed"
     assert failed.failure_reason == "ownership"
-    assert isinstance(failed.required_routing_record, FrontendDomainRoutingRecord)
-    assert failed.required_routing_record.to_dict() == ROUTING_RECORD
+    assert failed.routing_target_hostname == ROUTING_TARGET
+
+
+def test_deprecated_routing_record_from_older_servers_still_decodes() -> None:
+    legacy_record = {
+        "record_type": "CNAME",
+        "name": "app.example.com",
+        "value": ROUTING_TARGET,
+    }
+    legacy = {
+        key: value
+        for key, value in managed_pending().items()
+        if key != "routing_target_hostname"
+    }
+
+    response = FrontendCustomDomainResponse.from_dict(
+        {**legacy, "required_routing_record": legacy_record}
+    )
+
+    assert response.routing_target_hostname is UNSET
+    assert isinstance(response.required_routing_record, FrontendDomainRoutingRecord)
+    assert response.required_routing_record.to_dict() == legacy_record
 
 
 @pytest.mark.parametrize(
