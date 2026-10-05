@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Unpack, cast
+from typing import TYPE_CHECKING, Unpack, cast
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 from ._sandbox import (
     SandboxRequests,
     command_body,
     command_result,
+    grant_expiry,
     identifier,
     integer,
     record,
@@ -30,7 +34,7 @@ class Sandboxes:
 
     def __init__(self, requests: SandboxRequests) -> None:
         """Bind the client's Sandbox request scope."""
-        self.requests: SandboxRequests = requests
+        self._requests: SandboxRequests = requests
 
     def presets(self) -> tuple[SandboxPreset, ...]:
         """List the published preset catalog.
@@ -42,7 +46,7 @@ class Sandboxes:
             TypeError: If the supplied value violates the Sandbox contract.
 
         """
-        payload = record(self.requests.send(SandboxRequest("list_sandbox_presets")))
+        payload = record(self._requests.send(SandboxRequest("list_sandbox_presets")))
         rows = payload.get("data")
         if not isinstance(rows, list):
             message = "Invalid Sandbox preset catalog"
@@ -58,11 +62,12 @@ class Sandboxes:
             The validated response or request value.
 
         """
+        requests = self._requests.management()
         body = selector(options)
         for key in ("max_duration_seconds", "idle_timeout_seconds"):
             if key in options:
                 body[key] = integer(options.get(key))
-        response = self.requests.send(
+        response = requests.send(
             SandboxRequest(
                 "create_sandbox_session",
                 identifier(project_id),
@@ -71,7 +76,7 @@ class Sandboxes:
             ),
             201,
         )
-        return SandboxSession(self.requests, response)
+        return SandboxSession(requests, response)
 
     def get(self, session_id: str) -> SandboxSession:
         """Fetch a session visible to the current credential.
@@ -80,10 +85,10 @@ class Sandboxes:
             The validated response or request value.
 
         """
-        response = self.requests.send(
+        response = self._requests.send(
             SandboxRequest("get_sandbox_session", identifier(session_id))
         )
-        return SandboxSession(self.requests, response)
+        return SandboxSession(self._requests, response)
 
     def exec(
         self, project_id: str, command: str, **options: Unpack[SandboxExecOptions]
@@ -96,7 +101,7 @@ class Sandboxes:
         """
         body = selector(options) | command_body(command, options)
         result = record(
-            self.requests.send(
+            self._requests.send(
                 SandboxRequest(
                     "execute_sandbox",
                     identifier(project_id),
@@ -119,21 +124,21 @@ class Sandboxes:
             duration_ms=integer(result.get("duration_ms")),
         )
 
-    def grant(self, session_id: str, auth_user_id: str, expires_at: str) -> None:
+    def grant(self, session_id: str, auth_user_id: str, expires_at: datetime) -> None:
         """Grant one project auth user access until the specified expiry."""
-        _ = self.requests.send(
+        _ = self._requests.send(
             SandboxRequest(
                 "grant_sandbox_session",
                 identifier(session_id),
                 identifier(auth_user_id),
-                {"expires_at": expires_at},
+                {"expires_at": grant_expiry(expires_at)},
             ),
             204,
         )
 
     def revoke(self, session_id: str, auth_user_id: str) -> None:
         """Revoke one user's session access."""
-        _ = self.requests.send(
+        _ = self._requests.send(
             SandboxRequest(
                 "revoke_sandbox_session",
                 identifier(session_id),

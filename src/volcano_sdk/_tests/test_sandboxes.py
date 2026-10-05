@@ -4,6 +4,7 @@ import base64
 import binascii
 import json
 from collections import deque
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -18,6 +19,7 @@ from volcano_sdk import (
     SandboxCommandResult,
     Sandboxes,
     SandboxSession,
+    ServerError,
     Session,
     SessionChangedError,
     TransportError,
@@ -26,6 +28,7 @@ from volcano_sdk import (
 )
 from volcano_sdk._transport import GeneratedTransport
 
+from .fixtures.invalid_arguments import assign_sandbox_state, non_datetime_sandbox_grant
 from .session_fixtures import access_token
 from .transport_fixtures import RejectingTransport
 
@@ -192,16 +195,20 @@ def test_sandbox_lifecycle_files_access_and_grants() -> None:
         {
             "url": "https://sandbox.test/access",
             "token": "secret",
-            "expires_at": "tomorrow",
+            "expires_at": "2026-09-25T00:00:00Z",
         }
     )
     access = session.access(8080)
     assert access.token == "secret"
+    assert access.expires_at == datetime(2026, 9, 25, tzinfo=UTC)
     assert "secret" not in repr(access)
     server.reply(status=204)
-    server.client.sandboxes.grant(SESSION, SUBJECT, "2026-09-25T00:00:00Z")
+    server.client.sandboxes.grant(SESSION, SUBJECT, datetime(2026, 9, 25, tzinfo=UTC))
     assert server.requests[-1].method == "PUT"
     assert server.requests[-1].url.path.endswith(f"/grants/{SUBJECT}")
+    assert json.loads(server.requests[-1].content) == {
+        "expires_at": "2026-09-25T00:00:00+00:00"
+    }
     server.reply(status=204)
     server.client.sandboxes.revoke(SESSION, SUBJECT)
     assert server.requests[-1].method == "DELETE"
@@ -396,18 +403,29 @@ def test_sandbox_rejects_invalid_command_response(field: str, value: object) -> 
 
 
 @pytest.mark.parametrize(
-    ("field", "value"), [("state", "invalid"), ("expires_at", None)]
+    ("field", "value", "message"),
+    [
+        ("state", "invalid", "Invalid Sandbox state"),
+        ("expires_at", None, "Invalid Sandbox text field"),
+        ("expires_at", "tomorrow", "Invalid Sandbox timestamp"),
+        (
+            "expires_at",
+            "2026-09-25T00:00:00",
+            "Sandbox timestamps must include an offset",
+        ),
+    ],
 )
 def test_sandbox_refresh_preserves_state_on_invalid_response(
-    field: str, value: object
+    field: str, value: object, message: str
 ) -> None:
     server = SandboxHTTP()
     server.reply(session_body())
     session = server.client.sandboxes.get(SESSION)
     server.reply(session_body("terminated") | {field: value})
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match=f"^{message}$"):
         _ = session.refresh()
     assert session.state == "running"
+    assert session.expires_at == datetime(2026, 9, 25, tzinfo=UTC)
 
 
 def test_sandbox_create_preserves_server_lifecycle_defaults() -> None:
@@ -503,7 +521,7 @@ def test_sandbox_management_keeps_service_credentials_after_sign_in() -> None:
         server.reply(session_body(), 202)
         _ = operation()
     server.reply(None, 204)
-    server.client.sandboxes.grant(SESSION, SUBJECT, "2026-09-25T00:00:00Z")
+    server.client.sandboxes.grant(SESSION, SUBJECT, datetime(2026, 9, 25, tzinfo=UTC))
     server.reply(None, 204)
     server.client.sandboxes.revoke(SESSION, SUBJECT)
     server.reply(
@@ -565,7 +583,11 @@ def test_sandbox_granted_operations_keep_user_credentials() -> None:
     server.reply({"data": "aGVsbG8="})
     assert handle.files.read("/workspace/file") == b"hello"
     server.reply(
-        {"url": "https://access.test", "token": "secret", "expires_at": "tomorrow"}
+        {
+            "url": "https://access.test",
+            "token": "secret",
+            "expires_at": "2026-09-25T00:00:00Z",
+        }
     )
     _ = handle.access(8080)
     assert {request.headers["Authorization"] for request in server.requests} == {
@@ -627,3 +649,139 @@ def test_sandbox_rejects_a_user_switch_before_dispatch() -> None:
     with pytest.raises(SessionChangedError):
         _ = client.sandboxes.get(SESSION)
     assert server.requests == []
+
+
+@pytest.mark.parametrize("initial_state", ["terminating", "terminated"])
+def test_sandbox_cleanup_skips_requested_or_completed_termination(
+    initial_state: str,
+) -> None:
+    server = SandboxHTTP()
+    server.reply(session_body(initial_state))
+    with server.client.sandboxes.get(SESSION):
+        pass
+    assert len(server.requests) == 1
+
+
+def test_sandbox_cleanup_skips_explicit_termination() -> None:
+    server = SandboxHTTP()
+    server.reply(session_body())
+    with server.client.sandboxes.get(SESSION) as session:
+        server.reply(session_body("terminating"), 202)
+        _ = session.terminate()
+    assert [request.method for request in server.requests] == ["GET", "DELETE"]
+
+
+def test_sandbox_cleanup_accepts_an_already_removed_session() -> None:
+    server = SandboxHTTP()
+    server.reply(session_body())
+    session = server.client.sandboxes.get(SESSION)
+    server.reply({"error": "Session unavailable"}, 404)
+    with session:
+        pass
+    server.reply({"error": "Session unavailable"}, 404)
+    with pytest.raises(ValueError, match="body failed") as caught:
+        fail_inside_session(session)
+    assert not hasattr(caught.value, "__notes__")
+
+
+def test_sandbox_metadata_is_read_only_and_expires_at_is_aware() -> None:
+    server = SandboxHTTP()
+    server.reply(session_body())
+    session = server.client.sandboxes.get(SESSION)
+    assert (session.id, session.project_id, session.region) == (
+        SESSION,
+        PROJECT,
+        "aws-us-east-1",
+    )
+    assert session.expires_at == datetime(2026, 9, 25, tzinfo=UTC)
+    with pytest.raises(AttributeError):
+        assign_sandbox_state(session)
+    for attribute in ("id", "project_id", "region", "expires_at", "files"):
+        with pytest.raises(AttributeError):
+            setattr(session, attribute, "changed")
+    assert not hasattr(session, "requests")
+    assert not hasattr(session.files, "requests")
+    assert not hasattr(session.files, "session_id")
+    assert not hasattr(server.client.sandboxes, "requests")
+    server.reply(
+        session_body("suspended") | {"expires_at": "2026-10-06T15:30:00+02:00"}
+    )
+    assert session.refresh() is session
+    assert session.state == "suspended"
+    assert session.expires_at == datetime.fromisoformat("2026-10-06T15:30:00+02:00")
+    server.reply(session_body("terminating"), 202)
+    with session:
+        pass
+    assert server.requests[-1].method == "DELETE"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "tomorrow",
+        "2026-10-06T12:00:00",
+        datetime(2026, 10, 6, tzinfo=UTC).replace(tzinfo=None),
+    ],
+)
+def test_sandbox_grants_require_an_aware_datetime(value: object) -> None:
+    server = SandboxHTTP()
+    with pytest.raises(
+        ValidationError, match=r"^Sandbox grant expiry must be an aware datetime$"
+    ):
+        non_datetime_sandbox_grant(server.client.sandboxes, value)
+    assert not server.requests
+
+
+def test_created_sandbox_handle_keeps_management_credentials() -> None:
+    server = SandboxHTTP()
+    _ = server.client.auth.set_session(Session("first-user", "refresh", "first"))
+    server.reply(session_body(), 201)
+    handle = server.client.sandboxes.create(
+        PROJECT, region="us-east-1", preset="python3.12"
+    )
+    _ = server.client.auth.set_session(Session("second-user", "refresh", "second"))
+    server.reply(session_body())
+    _ = handle.refresh()
+    server.reply(command_body())
+    _ = handle.exec("run")
+    server.reply(None, 204)
+    handle.files.write("/workspace/file", b"hello")
+    server.reply({"data": "aGVsbG8="})
+    assert handle.files.read("/workspace/file") == b"hello"
+    server.reply(
+        {
+            "url": "https://access.test",
+            "token": "secret",
+            "expires_at": "2026-09-25T00:00:00Z",
+        }
+    )
+    _ = handle.access(8080)
+    server.reply(session_body("terminating"), 202)
+    with handle:
+        pass
+    assert {request.headers["Authorization"] for request in server.requests} == {
+        "Bearer service"
+    }
+    server.reply(session_body())
+    _ = server.client.sandboxes.get(SESSION)
+    assert server.requests[-1].headers["Authorization"] == "Bearer second-user"
+
+
+def test_one_shot_timeout_is_an_api_failure_with_unknown_retry_outcome() -> None:
+    server = SandboxHTTP()
+    server.reply({"error": "execution timed out"}, 504)
+    with pytest.raises(ServerError) as failure:
+        _ = server.client.sandboxes.exec(
+            PROJECT, "run", region="us-east-1", preset="python3.12", request_id=KEY
+        )
+    assert failure.value.status == 504
+    server.reply({"error": "outcome unknown"}, 409)
+    with pytest.raises(ConflictError) as retry_failure:
+        _ = server.client.sandboxes.exec(
+            PROJECT, "run", region="us-east-1", preset="python3.12", request_id=KEY
+        )
+    assert retry_failure.value.status == 409
+    assert [request.headers["Idempotency-Key"] for request in server.requests] == [
+        KEY,
+        KEY,
+    ]

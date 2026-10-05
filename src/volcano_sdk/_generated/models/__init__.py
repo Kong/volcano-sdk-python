@@ -133,7 +133,6 @@ from .create_o_auth_config_request_provider import CreateOAuthConfigRequestProvi
 from .create_project_request import CreateProjectRequest
 from .create_sandbox_template_request import CreateSandboxTemplateRequest
 from .create_sandbox_template_request_memory_mb import CreateSandboxTemplateRequestMemoryMb
-from .create_sandbox_template_request_preset import CreateSandboxTemplateRequestPreset
 from .create_service_key_body import CreateServiceKeyBody
 from .create_storage_bucket_request import CreateStorageBucketRequest
 from .create_storage_policy_request import CreateStoragePolicyRequest
@@ -680,7 +679,6 @@ __all__ = (
     "CreateProjectRequest",
     "CreateSandboxTemplateRequest",
     "CreateSandboxTemplateRequestMemoryMb",
-    "CreateSandboxTemplateRequestPreset",
     "CreateServiceKeyBody",
     "CreateStorageBucketRequest",
     "CreateStoragePolicyRequest",

@@ -72,6 +72,7 @@ class SandboxRequest:
     body: Mapping[str, JSONValue] = field(default_factory=dict[str, JSONValue])
     request_id: str = ""
     timeout: float | None = None
+    service_only: bool = False
 
 
 _OPERATIONS: dict[str, Callable[[SandboxRequest], dict[str, object]]] = {

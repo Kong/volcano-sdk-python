@@ -3,7 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import NotRequired, TypedDict
+from typing import TYPE_CHECKING, Literal, NotRequired, TypeAlias, TypedDict
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+SandboxState: TypeAlias = Literal[
+    "starting",
+    "running",
+    "suspending",
+    "suspended",
+    "resuming",
+    "terminating",
+    "terminated",
+    "unknown",
+]
 
 
 class SandboxCreateOptions(TypedDict):
@@ -62,7 +76,7 @@ class SandboxAccess:
 
     url: str
     token: str = field(repr=False)
-    expires_at: str
+    expires_at: datetime
 
 
 @dataclass(frozen=True)

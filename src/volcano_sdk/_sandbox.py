@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import replace
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from uuid import UUID, uuid4
 
@@ -12,7 +14,7 @@ from .errors import ValidationError
 if TYPE_CHECKING:
     from ._transport_sandbox import SandboxRequest
     from .models import JSONValue
-from .sandbox_models import SandboxCommandResult
+from .sandbox_models import SandboxCommandResult, SandboxState
 
 _STATES = frozenset(
     {
@@ -109,7 +111,7 @@ def flag(value: object) -> bool:
     return value
 
 
-def state(value: object) -> str:
+def state(value: object) -> SandboxState:
     """Validate a lifecycle state.
 
     Returns:
@@ -123,7 +125,44 @@ def state(value: object) -> str:
     if result not in _STATES:
         message = "Invalid Sandbox state"
         raise TypeError(message)
+    return cast("SandboxState", result)
+
+
+def timestamp(value: object) -> datetime:
+    """Parse an aware timestamp from the Sandbox API.
+
+    Returns:
+        The aware response timestamp.
+
+    Raises:
+        TypeError: If the response timestamp is invalid or lacks an offset.
+
+    """
+    try:
+        result = datetime.fromisoformat(text(value))
+    except ValueError as error:
+        message = "Invalid Sandbox timestamp"
+        raise TypeError(message) from error
+    if result.utcoffset() is None:
+        message = "Sandbox timestamps must include an offset"
+        raise TypeError(message)
     return result
+
+
+def grant_expiry(value: object) -> str:
+    """Serialize an aware grant expiry.
+
+    Returns:
+        The expiry with its timezone offset.
+
+    Raises:
+        ValidationError: If the expiry is not an aware datetime.
+
+    """
+    if not isinstance(value, datetime) or value.utcoffset() is None:
+        message = "Sandbox grant expiry must be an aware datetime"
+        raise ValidationError(message)
+    return value.isoformat()
 
 
 def command_result(value: object) -> SandboxCommandResult:
@@ -198,9 +237,24 @@ class SandboxTransport(Protocol):
 class SandboxRequests:
     """Bind current credentials without falling back to an anonymous key."""
 
-    def __init__(self, dispatch: Callable[[SandboxRequest], TransportResponse]) -> None:
+    def __init__(
+        self,
+        dispatch: Callable[[SandboxRequest], TransportResponse],
+        *,
+        service_only: bool = False,
+    ) -> None:
         """Bind credential-aware dispatch."""
-        self.dispatch: Callable[[SandboxRequest], TransportResponse] = dispatch
+        self._dispatch: Callable[[SandboxRequest], TransportResponse] = dispatch
+        self._service_only: bool = service_only
+
+    def management(self) -> SandboxRequests:
+        """Bind an owned handle to management credentials.
+
+        Returns:
+            A request context that never substitutes a project user.
+
+        """
+        return SandboxRequests(self._dispatch, service_only=True)
 
     def send(self, request: SandboxRequest, status: int = 200) -> object:
         """Dispatch through normal typed error handling.
@@ -209,7 +263,7 @@ class SandboxRequests:
             The validated response or request value.
 
         """
-        response = self.dispatch(request)
+        response = self._dispatch(replace(request, service_only=self._service_only))
         return response_payload(response, status)
 
 

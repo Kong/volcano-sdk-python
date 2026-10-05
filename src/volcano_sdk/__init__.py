@@ -87,6 +87,7 @@ __all__ = [
     "SandboxExecutionResult",
     "SandboxPreset",
     "SandboxSession",
+    "SandboxState",
     "Sandboxes",
     "ServerError",
     "Session",
@@ -115,6 +116,7 @@ from .sandbox_models import (
     SandboxExecOptions,
     SandboxExecutionResult,
     SandboxPreset,
+    SandboxState,
 )
 from .sandbox_session import SandboxSession
 from .sandboxes import Sandboxes

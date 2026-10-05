@@ -188,13 +188,18 @@ class VolcanoClient:
             )
 
         binding = self._capture_session_binding()
-        if binding[2] is not None and request.operation in {
-            "get_sandbox_session",
-            "execute_sandbox_session",
-            "read_sandbox_session_file",
-            "write_sandbox_session_file",
-            "create_sandbox_session_access",
-        }:
+        if (
+            not request.service_only
+            and binding[2] is not None
+            and request.operation
+            in {
+                "get_sandbox_session",
+                "execute_sandbox_session",
+                "read_sandbox_session_file",
+                "write_sandbox_session_file",
+                "create_sandbox_session_access",
+            }
+        ):
             return self._auth_requests.request(dispatch, binding=binding)
         if self._service_key is None:
             raise AuthenticationError(_NO_SERVICE_KEY, status=401)

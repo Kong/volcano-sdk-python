@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import base64
+from contextlib import suppress
 from typing import TYPE_CHECKING, Self, Unpack
 
 if TYPE_CHECKING:
+    from datetime import datetime
     from types import TracebackType
 
 from ._sandbox import (
@@ -17,10 +19,16 @@ from ._sandbox import (
     request_id,
     state,
     text,
+    timestamp,
 )
 from ._transport_sandbox import SandboxRequest
-from .errors import ValidationError
-from .sandbox_models import SandboxAccess, SandboxCommandOptions, SandboxCommandResult
+from .errors import NotFoundError, ValidationError
+from .sandbox_models import (
+    SandboxAccess,
+    SandboxCommandOptions,
+    SandboxCommandResult,
+    SandboxState,
+)
 
 _FILE_LIMIT = 8 * 1024 * 1024
 
@@ -30,8 +38,8 @@ class SandboxFiles:
 
     def __init__(self, requests: SandboxRequests, session_id: str) -> None:
         """Bind files to a validated session identity."""
-        self.requests: SandboxRequests = requests
-        self.session_id: str = session_id
+        self._requests: SandboxRequests = requests
+        self._session_id: str = session_id
 
     def read(self, path: str) -> bytes:
         """Read a guest file without text conversion.
@@ -40,9 +48,9 @@ class SandboxFiles:
             The validated response or request value.
 
         """
-        response = self.requests.send(
+        response = self._requests.send(
             SandboxRequest(
-                "read_sandbox_session_file", self.session_id, body={"path": path}
+                "read_sandbox_session_file", self._session_id, body={"path": path}
             )
         )
         return base64.b64decode(text(record(response).get("data")), validate=True)
@@ -57,10 +65,10 @@ class SandboxFiles:
         if len(data) > _FILE_LIMIT:
             message = "Sandbox files are limited to 8 MiB"
             raise ValidationError(message)
-        _ = self.requests.send(
+        _ = self._requests.send(
             SandboxRequest(
                 "write_sandbox_session_file",
-                self.session_id,
+                self._session_id,
                 body={"path": path, "data": base64.b64encode(data).decode()},
             ),
             204,
@@ -73,13 +81,43 @@ class SandboxSession:
     def __init__(self, requests: SandboxRequests, value: object) -> None:
         """Construct from a validated API response."""
         data = record(value)
-        self.requests: SandboxRequests = requests
-        self.id: str = identifier(text(data.get("id")))
-        self.project_id: str = identifier(text(data.get("project_id")))
-        self.region: str = text(data.get("region"))
-        self.state: str = state(data.get("state"))
-        self.expires_at: str = text(data.get("expires_at"))
-        self.files: SandboxFiles = SandboxFiles(requests, self.id)
+        self._requests: SandboxRequests = requests
+        self._id: str = identifier(text(data.get("id")))
+        self._project_id: str = identifier(text(data.get("project_id")))
+        self._region: str = text(data.get("region"))
+        self._state: SandboxState = state(data.get("state"))
+        self._expires_at: datetime = timestamp(data.get("expires_at"))
+        self._files: SandboxFiles = SandboxFiles(requests, self._id)
+
+    @property
+    def id(self) -> str:
+        """The immutable session identity."""
+        return self._id
+
+    @property
+    def project_id(self) -> str:
+        """The project that owns this session."""
+        return self._project_id
+
+    @property
+    def region(self) -> str:
+        """The session's region."""
+        return self._region
+
+    @property
+    def state(self) -> SandboxState:
+        """The most recently observed lifecycle state."""
+        return self._state
+
+    @property
+    def expires_at(self) -> datetime:
+        """The aware expiration timestamp observed from the API."""
+        return self._expires_at
+
+    @property
+    def files(self) -> SandboxFiles:
+        """The file operations bound to this session."""
+        return self._files
 
     def refresh(self) -> SandboxSession:
         """Refresh observed lifecycle state.
@@ -119,14 +157,14 @@ class SandboxSession:
 
     def _update(self, operation: str, status: int = 200) -> SandboxSession:
         response = record(
-            self.requests.send(SandboxRequest(operation, self.id), status)
+            self._requests.send(SandboxRequest(operation, self.id), status)
         )
         if response.get("id") != self.id:
             message = "Sandbox session identity changed"
             raise TypeError(message)
         next_state = state(response.get("state"))
-        expiry = text(response.get("expires_at"))
-        self.state, self.expires_at = next_state, expiry
+        expiry = timestamp(response.get("expires_at"))
+        self._state, self._expires_at = next_state, expiry
         return self
 
     def exec(
@@ -138,7 +176,7 @@ class SandboxSession:
             The validated response or request value.
 
         """
-        response = self.requests.send(
+        response = self._requests.send(
             SandboxRequest(
                 "execute_sandbox_session",
                 self.id,
@@ -157,7 +195,7 @@ class SandboxSession:
 
         """
         response = record(
-            self.requests.send(
+            self._requests.send(
                 SandboxRequest(
                     "create_sandbox_session_access", self.id, body={"port": port}
                 )
@@ -166,7 +204,7 @@ class SandboxSession:
         return SandboxAccess(
             text(response.get("url")),
             text(response.get("token")),
-            text(response.get("expires_at")),
+            timestamp(response.get("expires_at")),
         )
 
     def __enter__(self) -> Self:
@@ -185,10 +223,14 @@ class SandboxSession:
         _traceback: TracebackType | None,
     ) -> None:
         """Request cleanup even if the context body raises."""
-        if self.state != "terminated":
+        if self.state not in {"terminating", "terminated"}:
             try:
-                _ = self.terminate()
+                self._cleanup()
             except Exception as cleanup_error:
                 if _error is None:
                     raise
                 _error.add_note(f"Sandbox cleanup failed: {cleanup_error}")
+
+    def _cleanup(self) -> None:
+        with suppress(NotFoundError):
+            _ = self.terminate()

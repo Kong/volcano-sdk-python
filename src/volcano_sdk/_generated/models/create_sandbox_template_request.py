@@ -10,8 +10,6 @@ from ..types import UNSET, Unset
 
 from ..models.create_sandbox_template_request_memory_mb import check_create_sandbox_template_request_memory_mb
 from ..models.create_sandbox_template_request_memory_mb import CreateSandboxTemplateRequestMemoryMb
-from ..models.create_sandbox_template_request_preset import check_create_sandbox_template_request_preset
-from ..models.create_sandbox_template_request_preset import CreateSandboxTemplateRequestPreset
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -29,12 +27,12 @@ class CreateSandboxTemplateRequest:
     """ 
         Attributes:
             name (str):
-            preset (CreateSandboxTemplateRequestPreset):
+            preset (str): Preset ID from the available Sandbox preset catalog.
             memory_mb (CreateSandboxTemplateRequestMemoryMb | Unset):  Default: 1024.
      """
 
     name: str
-    preset: CreateSandboxTemplateRequestPreset
+    preset: str
     memory_mb: CreateSandboxTemplateRequestMemoryMb | Unset = 1024
 
 
@@ -44,7 +42,7 @@ class CreateSandboxTemplateRequest:
     def to_dict(self) -> dict[str, Any]:
         name = self.name
 
-        preset: str = self.preset
+        preset = self.preset
 
         memory_mb: int | Unset = UNSET
         if not isinstance(self.memory_mb, Unset):
@@ -70,10 +68,7 @@ class CreateSandboxTemplateRequest:
         d = dict(src_dict)
         name = d.pop("name")
 
-        preset = check_create_sandbox_template_request_preset(d.pop("preset"))
-
-
-
+        preset = d.pop("preset")
 
         _memory_mb = d.pop("memory_mb", UNSET)
         memory_mb: CreateSandboxTemplateRequestMemoryMb | Unset
