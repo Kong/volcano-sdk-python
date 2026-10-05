@@ -37,7 +37,7 @@ from .errors import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from ._generated.client import AuthenticatedClient
+    from ._generated.client import AuthenticatedClient, Client
     from .models import JSONValue
 
 
@@ -149,7 +149,7 @@ def request_params(
 
 
 def generated_request(
-    client: AuthenticatedClient, kwargs: Mapping[str, object]
+    client: AuthenticatedClient | Client, kwargs: Mapping[str, object]
 ) -> httpx.Response:
     if kwargs.keys() - {"method", "url", "headers", "json", "params"}:
         field = "unsupported field"
