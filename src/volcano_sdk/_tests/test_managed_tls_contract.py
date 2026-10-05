@@ -13,45 +13,45 @@ from volcano_sdk._generated.models import (
 )
 
 
-def test_managed_tls_request_omits_certificate_material() -> None:
-    request = CreateFrontendCustomDomainRequest(
-        domain="app.example.com",
-        tls=FrontendCustomDomainTLSConfig(mode="managed"),
-    )
-
-    assert request.to_dict() == {
-        "domain": "app.example.com",
-        "tls": {"mode": "managed"},
-    }
-
-
-def test_byoc_tls_request_carries_certificate_material() -> None:
-    request = CreateFrontendCustomDomainRequest(
-        domain="app.example.com",
-        tls=FrontendCustomDomainTLSConfig(
-            mode="byoc",
-            certificate_pem="certificate",
-            private_key_pem="private-key",
+@pytest.mark.parametrize(
+    ("tls", "wire_tls"),
+    [
+        (FrontendCustomDomainTLSConfig(mode="managed"), {"mode": "managed"}),
+        (
+            FrontendCustomDomainTLSConfig(
+                mode="byoc",
+                certificate_pem="certificate",
+                private_key_pem="private-key",
+            ),
+            {
+                "mode": "byoc",
+                "certificate_pem": "certificate",
+                "private_key_pem": "private-key",
+            },
         ),
-    )
+    ],
+    ids=["managed", "byoc"],
+)
+def test_create_request_encodes_the_selected_tls_mode(
+    tls: FrontendCustomDomainTLSConfig,
+    wire_tls: dict[str, str],
+) -> None:
+    request = CreateFrontendCustomDomainRequest(domain="app.example.com", tls=tls)
 
-    assert request.to_dict() == {
-        "domain": "app.example.com",
-        "tls": {
-            "mode": "byoc",
-            "certificate_pem": "certificate",
-            "private_key_pem": "private-key",
-        },
-    }
+    assert request.to_dict() == {"domain": "app.example.com", "tls": wire_tls}
 
 
 @pytest.mark.parametrize(
     "model", [FrontendCustomDomainResponse, ProjectFrontendCustomDomain]
 )
-def test_domain_responses_do_not_expose_certificate_internals(
+def test_domain_responses_do_not_declare_certificate_or_key_fields(
     model: type[FrontendCustomDomainResponse | ProjectFrontendCustomDomain],
 ) -> None:
-    assert not [name for name in fields_dict(model) if "certificate" in name]
+    assert not [
+        name
+        for name in fields_dict(model)
+        if any(marker in name for marker in ("certificate", "private_key", "pem"))
+    ]
 
 
 def test_managed_tls_response_exposes_provider_neutral_lifecycle() -> None:
