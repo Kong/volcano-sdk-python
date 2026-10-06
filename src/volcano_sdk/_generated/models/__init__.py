@@ -96,6 +96,8 @@ from .ban_user_response_status import BanUserResponseStatus
 from .batch_function_deploy_failure import BatchFunctionDeployFailure
 from .batch_function_deploy_failure_operation import BatchFunctionDeployFailureOperation
 from .batch_function_deploy_response import BatchFunctionDeployResponse
+from .byoc_project_config_frontend_custom_domain_tls_config import BYOCProjectConfigFrontendCustomDomainTLSConfig
+from .byoc_project_config_frontend_custom_domain_tls_config_mode import BYOCProjectConfigFrontendCustomDomainTLSConfigMode
 from .call_o_auth_provider_api_body import CallOAuthProviderApiBody
 from .call_o_auth_provider_api_body_body import CallOAuthProviderApiBodyBody
 from .call_o_auth_provider_api_body_method import CallOAuthProviderApiBodyMethod
@@ -197,6 +199,7 @@ from .email_template_template_type import EmailTemplateTemplateType
 from .error import Error
 from .export_project_source_request import ExportProjectSourceRequest
 from .frontend import Frontend
+from .frontend_custom_domain_conflict_error import FrontendCustomDomainConflictError
 from .frontend_custom_domain_response import FrontendCustomDomainResponse
 from .frontend_custom_domain_response_domain_status import FrontendCustomDomainResponseDomainStatus
 from .frontend_custom_domain_response_tls_mode import FrontendCustomDomainResponseTlsMode
@@ -311,6 +314,8 @@ from .log_search_event import LogSearchEvent
 from .log_search_request import LogSearchRequest
 from .log_search_response import LogSearchResponse
 from .log_stream_request import LogStreamRequest
+from .managed_project_config_frontend_custom_domain_tls_config import ManagedProjectConfigFrontendCustomDomainTLSConfig
+from .managed_project_config_frontend_custom_domain_tls_config_mode import ManagedProjectConfigFrontendCustomDomainTLSConfigMode
 from .metric_usage_data import MetricUsageData
 from .o_auth_config import OAuthConfig
 from .o_auth_config_provider import OAuthConfigProvider
@@ -642,6 +647,8 @@ __all__ = (
     "BatchFunctionDeployFailure",
     "BatchFunctionDeployFailureOperation",
     "BatchFunctionDeployResponse",
+    "BYOCProjectConfigFrontendCustomDomainTLSConfig",
+    "BYOCProjectConfigFrontendCustomDomainTLSConfigMode",
     "CallOAuthProviderApiBody",
     "CallOAuthProviderApiBodyBody",
     "CallOAuthProviderApiBodyMethod",
@@ -743,6 +750,7 @@ __all__ = (
     "Error",
     "ExportProjectSourceRequest",
     "Frontend",
+    "FrontendCustomDomainConflictError",
     "FrontendCustomDomainResponse",
     "FrontendCustomDomainResponseDomainStatus",
     "FrontendCustomDomainResponseTlsMode",
@@ -857,6 +865,8 @@ __all__ = (
     "LogSearchRequest",
     "LogSearchResponse",
     "LogStreamRequest",
+    "ManagedProjectConfigFrontendCustomDomainTLSConfig",
+    "ManagedProjectConfigFrontendCustomDomainTLSConfigMode",
     "MetricUsageData",
     "OAuthConfig",
     "OAuthConfigProvider",

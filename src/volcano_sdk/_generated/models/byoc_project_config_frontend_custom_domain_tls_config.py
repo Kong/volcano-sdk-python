@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any, TypeVar, BinaryIO, TextIO, TYPE_CHECKING, Generator
+
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
+
+from ..types import UNSET, Unset
+
+from ..models.byoc_project_config_frontend_custom_domain_tls_config_mode import BYOCProjectConfigFrontendCustomDomainTLSConfigMode
+from ..models.byoc_project_config_frontend_custom_domain_tls_config_mode import check_byoc_project_config_frontend_custom_domain_tls_config_mode
+from ..types import UNSET, Unset
+from typing import cast
+
+
+
+
+
+
+T = TypeVar("T", bound="BYOCProjectConfigFrontendCustomDomainTLSConfig")
+
+
+
+@_attrs_define
+class BYOCProjectConfigFrontendCustomDomainTLSConfig:
+    """ Your own certificate. Send `certificate_pem` and `private_key_pem` together, with an optional
+    `certificate_chain_pem`, to create the domain or rotate its certificate. For an existing BYOC domain, `mode: byoc`
+    without certificate fields keeps the stored certificate; exports render only the mode.
+
+        Attributes:
+            mode (BYOCProjectConfigFrontendCustomDomainTLSConfigMode | Unset): Optional; a TLS block without `mode` is BYOC.
+            certificate_pem (str | Unset): PEM-encoded certificate for create or rotation. Requires private_key_pem. Omitted
+                from exports.
+            private_key_pem (str | Unset): PEM-encoded private key for create or rotation. Requires certificate_pem. Omitted
+                from exports.
+            certificate_chain_pem (str | Unset): Optional PEM-encoded certificate chain. Requires certificate_pem and
+                private_key_pem. Omitted from exports.
+     """
+
+    mode: BYOCProjectConfigFrontendCustomDomainTLSConfigMode | Unset = UNSET
+    certificate_pem: str | Unset = UNSET
+    private_key_pem: str | Unset = UNSET
+    certificate_chain_pem: str | Unset = UNSET
+
+
+
+
+
+    def to_dict(self) -> dict[str, Any]:
+        mode: str | Unset = UNSET
+        if not isinstance(self.mode, Unset):
+            mode = self.mode
+
+
+        certificate_pem = self.certificate_pem
+
+        private_key_pem = self.private_key_pem
+
+        certificate_chain_pem = self.certificate_chain_pem
+
+
+        field_dict: dict[str, Any] = {}
+
+        field_dict.update({
+        })
+        if mode is not UNSET:
+            field_dict["mode"] = mode
+        if certificate_pem is not UNSET:
+            field_dict["certificate_pem"] = certificate_pem
+        if private_key_pem is not UNSET:
+            field_dict["private_key_pem"] = private_key_pem
+        if certificate_chain_pem is not UNSET:
+            field_dict["certificate_chain_pem"] = certificate_chain_pem
+
+        return field_dict
+
+
+
+    @classmethod
+    def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        d = dict(src_dict)
+        _mode = d.pop("mode", UNSET)
+        mode: BYOCProjectConfigFrontendCustomDomainTLSConfigMode | Unset
+        if isinstance(_mode,  Unset):
+            mode = UNSET
+        else:
+            mode = check_byoc_project_config_frontend_custom_domain_tls_config_mode(_mode)
+
+
+
+
+        certificate_pem = d.pop("certificate_pem", UNSET)
+
+        private_key_pem = d.pop("private_key_pem", UNSET)
+
+        certificate_chain_pem = d.pop("certificate_chain_pem", UNSET)
+
+        byoc_project_config_frontend_custom_domain_tls_config = cls(
+            mode=mode,
+            certificate_pem=certificate_pem,
+            private_key_pem=private_key_pem,
+            certificate_chain_pem=certificate_chain_pem,
+        )
+
+        return byoc_project_config_frontend_custom_domain_tls_config
+

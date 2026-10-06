@@ -38,14 +38,22 @@ class ProjectFrontendCustomDomain:
             domain (str):
             tls_mode (FrontendCustomDomainResponseTlsMode):
             domain_status (FrontendCustomDomainResponseDomainStatus):
-            verification_status (FrontendCustomDomainResponseVerificationStatus):
+            verification_status (FrontendCustomDomainResponseVerificationStatus): `verified`: the domain is served by a
+                validated certificate. `pending`: it is not served yet, is being re-validated after its certificate material was
+                withdrawn, or Volcano is retrying after a failure. `failed`: a failure left the domain unserved, alongside
+                `domain_status: failed`; managed domains report the cause in `failure_reason`.
             effective_urls (list[str]):
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
             frontend (ProjectFrontendCustomDomainFrontend): The frontend this custom domain is attached to. Inlined to
                 avoid a second fetch from the project-scoped feed.
+            failure_reason (str | Unset): Failure category, present only when managed TLS setup has failed. Current values
+                are provider, certificate, ownership, and internal; ownership means another account has already claimed the
+                hostname through ownership verification. Treat unrecognized values as internal.
             verification_records (list[FrontendDomainVerificationRecord] | Unset):
             required_routing_record (FrontendDomainRoutingRecord | Unset):
+            routing_target_hostname (str | Unset): DNS routing target hostname for this frontend. The DNS record type
+                depends on whether the custom domain is a zone apex.
      """
 
     domain: str
@@ -56,8 +64,10 @@ class ProjectFrontendCustomDomain:
     created_at: datetime.datetime
     updated_at: datetime.datetime
     frontend: ProjectFrontendCustomDomainFrontend
+    failure_reason: str | Unset = UNSET
     verification_records: list[FrontendDomainVerificationRecord] | Unset = UNSET
     required_routing_record: FrontendDomainRoutingRecord | Unset = UNSET
+    routing_target_hostname: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -86,6 +96,8 @@ class ProjectFrontendCustomDomain:
 
         frontend = self.frontend.to_dict()
 
+        failure_reason = self.failure_reason
+
         verification_records: list[dict[str, Any]] | Unset = UNSET
         if not isinstance(self.verification_records, Unset):
             verification_records = []
@@ -98,6 +110,8 @@ class ProjectFrontendCustomDomain:
         required_routing_record: dict[str, Any] | Unset = UNSET
         if not isinstance(self.required_routing_record, Unset):
             required_routing_record = self.required_routing_record.to_dict()
+
+        routing_target_hostname = self.routing_target_hostname
 
 
         field_dict: dict[str, Any] = {}
@@ -112,10 +126,14 @@ class ProjectFrontendCustomDomain:
             "updated_at": updated_at,
             "frontend": frontend,
         })
+        if failure_reason is not UNSET:
+            field_dict["failure_reason"] = failure_reason
         if verification_records is not UNSET:
             field_dict["verification_records"] = verification_records
         if required_routing_record is not UNSET:
             field_dict["required_routing_record"] = required_routing_record
+        if routing_target_hostname is not UNSET:
+            field_dict["routing_target_hostname"] = routing_target_hostname
 
         return field_dict
 
@@ -162,6 +180,8 @@ class ProjectFrontendCustomDomain:
 
 
 
+        failure_reason = d.pop("failure_reason", UNSET)
+
         _verification_records = d.pop("verification_records", UNSET)
         verification_records: list[FrontendDomainVerificationRecord] | Unset = UNSET
         if _verification_records is not UNSET:
@@ -184,6 +204,8 @@ class ProjectFrontendCustomDomain:
 
 
 
+        routing_target_hostname = d.pop("routing_target_hostname", UNSET)
+
         project_frontend_custom_domain = cls(
             domain=domain,
             tls_mode=tls_mode,
@@ -193,8 +215,10 @@ class ProjectFrontendCustomDomain:
             created_at=created_at,
             updated_at=updated_at,
             frontend=frontend,
+            failure_reason=failure_reason,
             verification_records=verification_records,
             required_routing_record=required_routing_record,
+            routing_target_hostname=routing_target_hostname,
         )
 
 

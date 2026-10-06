@@ -25,13 +25,15 @@ T = TypeVar("T", bound="CreateFrontendCustomDomainRequest")
 class CreateFrontendCustomDomainRequest:
     """ 
         Attributes:
-            domain (str): Fully-qualified domain name (hostname only, no scheme/path) Example: app.example.com.
-            tls (FrontendCustomDomainTLSConfig):
+            domain (str): Fully-qualified domain name (hostname only, no scheme/path). Managed TLS (`tls.mode: managed`)
+                accepts at most 219 characters; BYOC accepts 253. Example: app.example.com.
+            tls (FrontendCustomDomainTLSConfig): TLS for a new custom domain. With `mode: managed`, Volcano issues and
+                renews the certificate; omit every PEM field. With `mode: byoc`, send both `certificate_pem` and
+                `private_key_pem`, plus an optional `certificate_chain_pem`.
      """
 
     domain: str
     tls: FrontendCustomDomainTLSConfig
-    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
 
@@ -45,7 +47,7 @@ class CreateFrontendCustomDomainRequest:
 
 
         field_dict: dict[str, Any] = {}
-        field_dict.update(self.additional_properties)
+
         field_dict.update({
             "domain": domain,
             "tls": tls,
@@ -71,22 +73,5 @@ class CreateFrontendCustomDomainRequest:
             tls=tls,
         )
 
-
-        create_frontend_custom_domain_request.additional_properties = d
         return create_frontend_custom_domain_request
 
-    @property
-    def additional_keys(self) -> list[str]:
-        return list(self.additional_properties.keys())
-
-    def __getitem__(self, key: str) -> Any:
-        return self.additional_properties[key]
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        self.additional_properties[key] = value
-
-    def __delitem__(self, key: str) -> None:
-        del self.additional_properties[key]
-
-    def __contains__(self, key: str) -> bool:
-        return key in self.additional_properties

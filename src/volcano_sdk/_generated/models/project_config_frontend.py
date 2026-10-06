@@ -30,12 +30,15 @@ class ProjectConfigFrontend:
 
         Attributes:
             name (str):
-            custom_domain (ProjectConfigCustomDomain | Unset): Custom domain with BYOC TLS (SUPERAGENT plan). `tls` is
-                required when the
-                domain is first created and optional afterwards: providing new TLS
-                material for the same domain rotates the certificate in place (zero
-                downtime); omitting `tls` keeps the stored certificate. TLS material is
-                write-only and omitted from config export.
+            custom_domain (ProjectConfigCustomDomain | Unset): Custom domain with managed or BYOC TLS (SUPERAGENT plan).
+                `tls` is required
+                when the domain is first created and optional afterwards. For an existing
+                domain, omitting `tls` or sending only `tls.mode` keeps the stored
+                certificate; new BYOC material for the same domain rotates the
+                certificate in place (zero downtime). Changing `tls.mode` for the same
+                hostname, or the hostname of a managed domain, requires deleting the
+                domain first. BYOC TLS material is write-only; exports render only
+                `tls.mode`.
      """
 
     name: str
