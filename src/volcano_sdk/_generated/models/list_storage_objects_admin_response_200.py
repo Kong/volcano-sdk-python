@@ -50,7 +50,7 @@ class ListStorageObjectsAdminResponse200:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.storage_object_with_bucket import StorageObjectWithBucket
+        from ..models.storage_object_with_bucket import StorageObjectWithBucket # noqa: PLC0415
         data: list[dict[str, Any]] | Unset = UNSET
         if not isinstance(self.data, Unset):
             data = []
@@ -98,7 +98,7 @@ class ListStorageObjectsAdminResponse200:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.storage_object_with_bucket import StorageObjectWithBucket
+        from ..models.storage_object_with_bucket import StorageObjectWithBucket # noqa: PLC0415
         d = dict(src_dict)
         _data = d.pop("data", UNSET)
         data: list[StorageObjectWithBucket] | Unset = UNSET

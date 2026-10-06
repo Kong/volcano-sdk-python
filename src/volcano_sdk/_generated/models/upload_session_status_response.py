@@ -63,7 +63,7 @@ class UploadSessionStatusResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.upload_session_part import UploadSessionPart
+        from ..models.upload_session_part import UploadSessionPart # noqa: PLC0415
         session_id = self.session_id
 
         status: str | Unset = UNSET
@@ -138,7 +138,7 @@ class UploadSessionStatusResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.upload_session_part import UploadSessionPart
+        from ..models.upload_session_part import UploadSessionPart # noqa: PLC0415
         d = dict(src_dict)
         session_id = d.pop("session_id", UNSET)
 

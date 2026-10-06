@@ -143,7 +143,7 @@ def sync_detailed(
     x_upload_complete: UploadStorageObjectXUploadComplete | Unset = UNSET,
 
 ) -> Response[Any | CompleteUploadSessionResponse | CreateUploadSessionResponse | StorageObject | Error]:
-    r""" Upload a file or create resumable session
+    """ Upload a file or create resumable session
 
      Unified endpoint for file uploads. Behavior depends on Content-Type and headers:
 
@@ -152,8 +152,8 @@ def sync_detailed(
 
     **Create Resumable Session (application/json):**
     Create a session for chunked uploads. Best for large files or unreliable networks.
-    Requires: `Content-Type: application/json` with body `{\"filename\": \"...\", \"content_type\":
-    \"...\", \"total_size\": ...}`
+    Requires: `Content-Type: application/json` with body `{"filename": "...", "content_type": "...",
+    "total_size": ...}`
 
     **Complete Resumable Session:**
     Complete a session after all parts are uploaded.
@@ -207,7 +207,7 @@ def sync(
     x_upload_complete: UploadStorageObjectXUploadComplete | Unset = UNSET,
 
 ) -> Any | CompleteUploadSessionResponse | CreateUploadSessionResponse | StorageObject | Error | None:
-    r""" Upload a file or create resumable session
+    """ Upload a file or create resumable session
 
      Unified endpoint for file uploads. Behavior depends on Content-Type and headers:
 
@@ -216,8 +216,8 @@ def sync(
 
     **Create Resumable Session (application/json):**
     Create a session for chunked uploads. Best for large files or unreliable networks.
-    Requires: `Content-Type: application/json` with body `{\"filename\": \"...\", \"content_type\":
-    \"...\", \"total_size\": ...}`
+    Requires: `Content-Type: application/json` with body `{"filename": "...", "content_type": "...",
+    "total_size": ...}`
 
     **Complete Resumable Session:**
     Complete a session after all parts are uploaded.
@@ -266,7 +266,7 @@ async def asyncio_detailed(
     x_upload_complete: UploadStorageObjectXUploadComplete | Unset = UNSET,
 
 ) -> Response[Any | CompleteUploadSessionResponse | CreateUploadSessionResponse | StorageObject | Error]:
-    r""" Upload a file or create resumable session
+    """ Upload a file or create resumable session
 
      Unified endpoint for file uploads. Behavior depends on Content-Type and headers:
 
@@ -275,8 +275,8 @@ async def asyncio_detailed(
 
     **Create Resumable Session (application/json):**
     Create a session for chunked uploads. Best for large files or unreliable networks.
-    Requires: `Content-Type: application/json` with body `{\"filename\": \"...\", \"content_type\":
-    \"...\", \"total_size\": ...}`
+    Requires: `Content-Type: application/json` with body `{"filename": "...", "content_type": "...",
+    "total_size": ...}`
 
     **Complete Resumable Session:**
     Complete a session after all parts are uploaded.
@@ -330,7 +330,7 @@ async def asyncio(
     x_upload_complete: UploadStorageObjectXUploadComplete | Unset = UNSET,
 
 ) -> Any | CompleteUploadSessionResponse | CreateUploadSessionResponse | StorageObject | Error | None:
-    r""" Upload a file or create resumable session
+    """ Upload a file or create resumable session
 
      Unified endpoint for file uploads. Behavior depends on Content-Type and headers:
 
@@ -339,8 +339,8 @@ async def asyncio(
 
     **Create Resumable Session (application/json):**
     Create a session for chunked uploads. Best for large files or unreliable networks.
-    Requires: `Content-Type: application/json` with body `{\"filename\": \"...\", \"content_type\":
-    \"...\", \"total_size\": ...}`
+    Requires: `Content-Type: application/json` with body `{"filename": "...", "content_type": "...",
+    "total_size": ...}`
 
     **Complete Resumable Session:**
     Complete a session after all parts are uploaded.

@@ -81,7 +81,7 @@ class DurableExecution:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.durable_execution_error import DurableExecutionError
+        from ..models.durable_execution_error import DurableExecutionError # noqa: PLC0415
         id = str(self.id)
 
         function_id = str(self.function_id)
@@ -132,7 +132,7 @@ class DurableExecution:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.durable_execution_error import DurableExecutionError
+        from ..models.durable_execution_error import DurableExecutionError # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 

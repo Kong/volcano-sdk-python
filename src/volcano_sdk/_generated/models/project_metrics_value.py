@@ -37,7 +37,7 @@ class ProjectMetricsValue:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_metrics_dimensions import ProjectMetricsDimensions
+        from ..models.project_metrics_dimensions import ProjectMetricsDimensions # noqa: PLC0415
         dimensions = self.dimensions.to_dict()
 
         value = self.value
@@ -56,7 +56,7 @@ class ProjectMetricsValue:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_metrics_dimensions import ProjectMetricsDimensions
+        from ..models.project_metrics_dimensions import ProjectMetricsDimensions # noqa: PLC0415
         d = dict(src_dict)
         dimensions = ProjectMetricsDimensions.from_dict(d.pop("dimensions"))
 

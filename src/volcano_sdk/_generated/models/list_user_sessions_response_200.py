@@ -54,7 +54,7 @@ class ListUserSessionsResponse200:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_session import AuthSession
+        from ..models.auth_session import AuthSession # noqa: PLC0415
         sessions: list[dict[str, Any]] | Unset = UNSET
         if not isinstance(self.sessions, Unset):
             sessions = []
@@ -117,7 +117,7 @@ class ListUserSessionsResponse200:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_session import AuthSession
+        from ..models.auth_session import AuthSession # noqa: PLC0415
         d = dict(src_dict)
         _sessions = d.pop("sessions", UNSET)
         sessions: list[AuthSession] | Unset = UNSET

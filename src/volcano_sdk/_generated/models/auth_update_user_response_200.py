@@ -37,7 +37,7 @@ class AuthUpdateUserResponse200:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_user import AuthUser
+        from ..models.auth_user import AuthUser # noqa: PLC0415
         user: dict[str, Any] | Unset = UNSET
         if not isinstance(self.user, Unset):
             user = self.user.to_dict()
@@ -56,7 +56,7 @@ class AuthUpdateUserResponse200:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_user import AuthUser
+        from ..models.auth_user import AuthUser # noqa: PLC0415
         d = dict(src_dict)
         _user = d.pop("user", UNSET)
         user: AuthUser | Unset

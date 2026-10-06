@@ -39,7 +39,7 @@ class StorageListResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.storage_object import StorageObject
+        from ..models.storage_object import StorageObject # noqa: PLC0415
         objects: list[dict[str, Any]] | Unset = UNSET
         if not isinstance(self.objects, Unset):
             objects = []
@@ -67,7 +67,7 @@ class StorageListResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.storage_object import StorageObject
+        from ..models.storage_object import StorageObject # noqa: PLC0415
         d = dict(src_dict)
         _objects = d.pop("objects", UNSET)
         objects: list[StorageObject] | Unset = UNSET

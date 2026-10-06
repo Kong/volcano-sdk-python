@@ -123,12 +123,12 @@ def sync_detailed(
     search: str | Unset = UNSET,
 
 ) -> Response[Error | PaginatedProjectCustomDomains]:
-    r""" List all custom domains in a project
+    """ List all custom domains in a project
 
      Project-scoped custom-domain list. Returns every active custom
     domain across every frontend in the project (excludes soft-deleted
     rows). Each item inlines the linked frontend's id and name so the
-    UI does not need a second fetch to render the \"Linked to\" column.
+    UI does not need a second fetch to render the "Linked to" column.
 
     Args:
         id (UUID):
@@ -177,12 +177,12 @@ def sync(
     search: str | Unset = UNSET,
 
 ) -> Error | PaginatedProjectCustomDomains | None:
-    r""" List all custom domains in a project
+    """ List all custom domains in a project
 
      Project-scoped custom-domain list. Returns every active custom
     domain across every frontend in the project (excludes soft-deleted
     rows). Each item inlines the linked frontend's id and name so the
-    UI does not need a second fetch to render the \"Linked to\" column.
+    UI does not need a second fetch to render the "Linked to" column.
 
     Args:
         id (UUID):
@@ -226,12 +226,12 @@ async def asyncio_detailed(
     search: str | Unset = UNSET,
 
 ) -> Response[Error | PaginatedProjectCustomDomains]:
-    r""" List all custom domains in a project
+    """ List all custom domains in a project
 
      Project-scoped custom-domain list. Returns every active custom
     domain across every frontend in the project (excludes soft-deleted
     rows). Each item inlines the linked frontend's id and name so the
-    UI does not need a second fetch to render the \"Linked to\" column.
+    UI does not need a second fetch to render the "Linked to" column.
 
     Args:
         id (UUID):
@@ -280,12 +280,12 @@ async def asyncio(
     search: str | Unset = UNSET,
 
 ) -> Error | PaginatedProjectCustomDomains | None:
-    r""" List all custom domains in a project
+    """ List all custom domains in a project
 
      Project-scoped custom-domain list. Returns every active custom
     domain across every frontend in the project (excludes soft-deleted
     rows). Each item inlines the linked frontend's id and name so the
-    UI does not need a second fetch to render the \"Linked to\" column.
+    UI does not need a second fetch to render the "Linked to" column.
 
     Args:
         id (UUID):

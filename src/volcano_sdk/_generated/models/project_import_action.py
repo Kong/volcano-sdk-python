@@ -44,7 +44,7 @@ class ProjectImportAction:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_import_resource import ProjectImportResource
+        from ..models.project_import_resource import ProjectImportResource # noqa: PLC0415
         code: str = self.code
 
         resource = self.resource.to_dict()
@@ -66,7 +66,7 @@ class ProjectImportAction:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_import_resource import ProjectImportResource
+        from ..models.project_import_resource import ProjectImportResource # noqa: PLC0415
         d = dict(src_dict)
         code = check_project_import_action_code(d.pop("code"))
 

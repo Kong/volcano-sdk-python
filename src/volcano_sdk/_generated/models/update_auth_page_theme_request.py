@@ -35,7 +35,7 @@ class UpdateAuthPageThemeRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_page_theme import AuthPageTheme
+        from ..models.auth_page_theme import AuthPageTheme # noqa: PLC0415
         theme = self.theme.to_dict()
 
 
@@ -51,7 +51,7 @@ class UpdateAuthPageThemeRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_page_theme import AuthPageTheme
+        from ..models.auth_page_theme import AuthPageTheme # noqa: PLC0415
         d = dict(src_dict)
         theme = AuthPageTheme.from_dict(d.pop("theme"))
 

@@ -20,8 +20,7 @@ T = TypeVar("T", bound="SandboxCommandRequestEnvironment")
 
 @_attrs_define
 class SandboxCommandRequestEnvironment:
-    """
-     """
+
 
     additional_properties: dict[str, str] = _attrs_field(init=False, factory=dict)
 

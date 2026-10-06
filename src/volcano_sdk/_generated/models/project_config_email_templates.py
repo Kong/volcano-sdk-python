@@ -46,7 +46,7 @@ class ProjectConfigEmailTemplates:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_config_email_template import ProjectConfigEmailTemplate
+        from ..models.project_config_email_template import ProjectConfigEmailTemplate # noqa: PLC0415
         confirmation: dict[str, Any] | Unset = UNSET
         if not isinstance(self.confirmation, Unset):
             confirmation = self.confirmation.to_dict()
@@ -83,7 +83,7 @@ class ProjectConfigEmailTemplates:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_config_email_template import ProjectConfigEmailTemplate
+        from ..models.project_config_email_template import ProjectConfigEmailTemplate # noqa: PLC0415
         d = dict(src_dict)
         _confirmation = d.pop("confirmation", UNSET)
         confirmation: ProjectConfigEmailTemplate | Unset

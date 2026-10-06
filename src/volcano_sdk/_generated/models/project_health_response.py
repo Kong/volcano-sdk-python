@@ -54,7 +54,7 @@ class ProjectHealthResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_health_check import ProjectHealthCheck
+        from ..models.project_health_check import ProjectHealthCheck # noqa: PLC0415
         project_id = str(self.project_id)
 
         status: str = self.status
@@ -98,7 +98,7 @@ class ProjectHealthResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_health_check import ProjectHealthCheck
+        from ..models.project_health_check import ProjectHealthCheck # noqa: PLC0415
         d = dict(src_dict)
         project_id = UUID(d.pop("project_id"))
 

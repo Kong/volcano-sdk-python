@@ -23,8 +23,7 @@ T = TypeVar("T", bound="AuthPageAppearanceResponseLayouts")
 
 @_attrs_define
 class AuthPageAppearanceResponseLayouts:
-    """ 
-     """
+    
 
     additional_properties: dict[str, AuthPageLayout] = _attrs_field(init=False, factory=dict)
 

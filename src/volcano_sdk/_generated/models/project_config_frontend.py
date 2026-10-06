@@ -46,7 +46,7 @@ class ProjectConfigFrontend:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_config_custom_domain import ProjectConfigCustomDomain
+        from ..models.project_config_custom_domain import ProjectConfigCustomDomain # noqa: PLC0415
         name = self.name
 
         custom_domain: dict[str, Any] | Unset = UNSET
@@ -68,7 +68,7 @@ class ProjectConfigFrontend:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_config_custom_domain import ProjectConfigCustomDomain
+        from ..models.project_config_custom_domain import ProjectConfigCustomDomain # noqa: PLC0415
         d = dict(src_dict)
         name = d.pop("name")
 

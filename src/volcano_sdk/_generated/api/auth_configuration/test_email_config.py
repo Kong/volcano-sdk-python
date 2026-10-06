@@ -92,14 +92,14 @@ def sync_detailed(
     body: TestEmailRequest,
 
 ) -> Response[Any | TestEmailResponse]:
-    r""" Send a test email using the project's saved SMTP config
+    """ Send a test email using the project's saved SMTP config
 
      Sends a diagnostic email to `to_email` using the project's
     persisted `auth_config` SMTP credentials. If `html_body` or
     `text_body` is supplied, the override path is taken: those
     values (plus optional `subject`) are rendered through
     html/text templates against the project's `Data` and
-    used as the body — used by the template editor's \"Send Test\"
+    used as the body — used by the template editor's "Send Test"
     affordance to preview an unsaved template. With both bodies
     omitted, a hardcoded diagnostic message is sent and any
     `subject` field is ignored. Sending `subject` alone (no
@@ -146,14 +146,14 @@ def sync(
     body: TestEmailRequest,
 
 ) -> Any | TestEmailResponse | None:
-    r""" Send a test email using the project's saved SMTP config
+    """ Send a test email using the project's saved SMTP config
 
      Sends a diagnostic email to `to_email` using the project's
     persisted `auth_config` SMTP credentials. If `html_body` or
     `text_body` is supplied, the override path is taken: those
     values (plus optional `subject`) are rendered through
     html/text templates against the project's `Data` and
-    used as the body — used by the template editor's \"Send Test\"
+    used as the body — used by the template editor's "Send Test"
     affordance to preview an unsaved template. With both bodies
     omitted, a hardcoded diagnostic message is sent and any
     `subject` field is ignored. Sending `subject` alone (no
@@ -195,14 +195,14 @@ async def asyncio_detailed(
     body: TestEmailRequest,
 
 ) -> Response[Any | TestEmailResponse]:
-    r""" Send a test email using the project's saved SMTP config
+    """ Send a test email using the project's saved SMTP config
 
      Sends a diagnostic email to `to_email` using the project's
     persisted `auth_config` SMTP credentials. If `html_body` or
     `text_body` is supplied, the override path is taken: those
     values (plus optional `subject`) are rendered through
     html/text templates against the project's `Data` and
-    used as the body — used by the template editor's \"Send Test\"
+    used as the body — used by the template editor's "Send Test"
     affordance to preview an unsaved template. With both bodies
     omitted, a hardcoded diagnostic message is sent and any
     `subject` field is ignored. Sending `subject` alone (no
@@ -249,14 +249,14 @@ async def asyncio(
     body: TestEmailRequest,
 
 ) -> Any | TestEmailResponse | None:
-    r""" Send a test email using the project's saved SMTP config
+    """ Send a test email using the project's saved SMTP config
 
      Sends a diagnostic email to `to_email` using the project's
     persisted `auth_config` SMTP credentials. If `html_body` or
     `text_body` is supplied, the override path is taken: those
     values (plus optional `subject`) are rendered through
     html/text templates against the project's `Data` and
-    used as the body — used by the template editor's \"Send Test\"
+    used as the body — used by the template editor's "Send Test"
     affordance to preview an unsaved template. With both bodies
     omitted, a hardcoded diagnostic message is sent and any
     `subject` field is ignored. Sending `subject` alone (no

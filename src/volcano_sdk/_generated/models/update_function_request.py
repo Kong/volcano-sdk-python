@@ -53,7 +53,7 @@ class UpdateFunctionRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.update_function_request_openapi_spec_type_0 import UpdateFunctionRequestOpenapiSpecType0
+        from ..models.update_function_request_openapi_spec_type_0 import UpdateFunctionRequestOpenapiSpecType0 # noqa: PLC0415
         is_public = self.is_public
 
         invocation_mode: str | Unset = UNSET
@@ -94,7 +94,7 @@ class UpdateFunctionRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.update_function_request_openapi_spec_type_0 import UpdateFunctionRequestOpenapiSpecType0
+        from ..models.update_function_request_openapi_spec_type_0 import UpdateFunctionRequestOpenapiSpecType0 # noqa: PLC0415
         d = dict(src_dict)
         is_public = d.pop("is_public", UNSET)
 

@@ -38,7 +38,7 @@ class DatabaseBackupSchedule:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.database_backup_schedule_entry import DatabaseBackupScheduleEntry
+        from ..models.database_backup_schedule_entry import DatabaseBackupScheduleEntry # noqa: PLC0415
         entries = []
         for entries_item_data in self.entries:
             entries_item = entries_item_data.to_dict()
@@ -59,7 +59,7 @@ class DatabaseBackupSchedule:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.database_backup_schedule_entry import DatabaseBackupScheduleEntry
+        from ..models.database_backup_schedule_entry import DatabaseBackupScheduleEntry # noqa: PLC0415
         d = dict(src_dict)
         entries = []
         _entries = d.pop("entries")

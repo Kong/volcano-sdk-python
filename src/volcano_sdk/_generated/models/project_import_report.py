@@ -67,11 +67,11 @@ class ProjectImportReport:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.import_source import ImportSource
-        from ..models.project_import_action import ProjectImportAction
-        from ..models.project_import_destination import ProjectImportDestination
-        from ..models.project_import_finding import ProjectImportFinding
-        from ..models.project_import_summary import ProjectImportSummary
+        from ..models.import_source import ImportSource # noqa: PLC0415
+        from ..models.project_import_action import ProjectImportAction # noqa: PLC0415
+        from ..models.project_import_destination import ProjectImportDestination # noqa: PLC0415
+        from ..models.project_import_finding import ProjectImportFinding # noqa: PLC0415
+        from ..models.project_import_summary import ProjectImportSummary # noqa: PLC0415
         schema_version = self.schema_version
 
         provider: str = self.provider
@@ -130,11 +130,11 @@ class ProjectImportReport:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.import_source import ImportSource
-        from ..models.project_import_action import ProjectImportAction
-        from ..models.project_import_destination import ProjectImportDestination
-        from ..models.project_import_finding import ProjectImportFinding
-        from ..models.project_import_summary import ProjectImportSummary
+        from ..models.import_source import ImportSource # noqa: PLC0415
+        from ..models.project_import_action import ProjectImportAction # noqa: PLC0415
+        from ..models.project_import_destination import ProjectImportDestination # noqa: PLC0415
+        from ..models.project_import_finding import ProjectImportFinding # noqa: PLC0415
+        from ..models.project_import_summary import ProjectImportSummary # noqa: PLC0415
         d = dict(src_dict)
         schema_version = d.pop("schema_version")
 

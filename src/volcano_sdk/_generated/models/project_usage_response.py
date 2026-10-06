@@ -46,8 +46,8 @@ class ProjectUsageResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.frontend_usage_data import FrontendUsageData
-        from ..models.metric_usage_data import MetricUsageData
+        from ..models.frontend_usage_data import FrontendUsageData # noqa: PLC0415
+        from ..models.metric_usage_data import MetricUsageData # noqa: PLC0415
         project_id = str(self.project_id)
 
         month = self.month
@@ -85,8 +85,8 @@ class ProjectUsageResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.frontend_usage_data import FrontendUsageData
-        from ..models.metric_usage_data import MetricUsageData
+        from ..models.frontend_usage_data import FrontendUsageData # noqa: PLC0415
+        from ..models.metric_usage_data import MetricUsageData # noqa: PLC0415
         d = dict(src_dict)
         project_id = UUID(d.pop("project_id"))
 

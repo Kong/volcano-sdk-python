@@ -36,7 +36,7 @@ class FunctionRuntimesResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.function_runtime_option import FunctionRuntimeOption
+        from ..models.function_runtime_option import FunctionRuntimeOption # noqa: PLC0415
         runtimes = []
         for runtimes_item_data in self.runtimes:
             runtimes_item = runtimes_item_data.to_dict()
@@ -57,7 +57,7 @@ class FunctionRuntimesResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.function_runtime_option import FunctionRuntimeOption
+        from ..models.function_runtime_option import FunctionRuntimeOption # noqa: PLC0415
         d = dict(src_dict)
         runtimes = []
         _runtimes = d.pop("runtimes")

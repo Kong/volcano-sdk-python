@@ -49,8 +49,8 @@ class ProjectSourceExport:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_source_export_omission import ProjectSourceExportOmission
-        from ..models.project_source_export_skip import ProjectSourceExportSkip
+        from ..models.project_source_export_omission import ProjectSourceExportOmission # noqa: PLC0415
+        from ..models.project_source_export_skip import ProjectSourceExportSkip # noqa: PLC0415
         repo_full_name = self.repo_full_name
 
         branch = self.branch
@@ -91,8 +91,8 @@ class ProjectSourceExport:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_source_export_omission import ProjectSourceExportOmission
-        from ..models.project_source_export_skip import ProjectSourceExportSkip
+        from ..models.project_source_export_omission import ProjectSourceExportOmission # noqa: PLC0415
+        from ..models.project_source_export_skip import ProjectSourceExportSkip # noqa: PLC0415
         d = dict(src_dict)
         repo_full_name = d.pop("repo_full_name")
 

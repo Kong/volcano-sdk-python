@@ -52,10 +52,10 @@ class ProjectConfigApplyResult:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_config_apply_result_entry import ProjectConfigApplyResultEntry
-        from ..models.project_config_apply_summary import ProjectConfigApplySummary
-        from ..models.project_config_missing_resource import ProjectConfigMissingResource
-        from ..models.project_config_skipped_resource import ProjectConfigSkippedResource
+        from ..models.project_config_apply_result_entry import ProjectConfigApplyResultEntry # noqa: PLC0415
+        from ..models.project_config_apply_summary import ProjectConfigApplySummary # noqa: PLC0415
+        from ..models.project_config_missing_resource import ProjectConfigMissingResource # noqa: PLC0415
+        from ..models.project_config_skipped_resource import ProjectConfigSkippedResource # noqa: PLC0415
         results = []
         for results_item_data in self.results:
             results_item = results_item_data.to_dict()
@@ -99,10 +99,10 @@ class ProjectConfigApplyResult:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_config_apply_result_entry import ProjectConfigApplyResultEntry
-        from ..models.project_config_apply_summary import ProjectConfigApplySummary
-        from ..models.project_config_missing_resource import ProjectConfigMissingResource
-        from ..models.project_config_skipped_resource import ProjectConfigSkippedResource
+        from ..models.project_config_apply_result_entry import ProjectConfigApplyResultEntry # noqa: PLC0415
+        from ..models.project_config_apply_summary import ProjectConfigApplySummary # noqa: PLC0415
+        from ..models.project_config_missing_resource import ProjectConfigMissingResource # noqa: PLC0415
+        from ..models.project_config_skipped_resource import ProjectConfigSkippedResource # noqa: PLC0415
         d = dict(src_dict)
         results = []
         _results = d.pop("results")

@@ -20,8 +20,7 @@ T = TypeVar("T", bound="UpdateFunctionSchedulerRequestPayload")
 
 @_attrs_define
 class UpdateFunctionSchedulerRequestPayload:
-    """ 
-     """
+    
 
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 

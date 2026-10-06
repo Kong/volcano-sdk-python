@@ -48,7 +48,7 @@ class ProjectConfigHostedPages:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_config_hosted_page import ProjectConfigHostedPage
+        from ..models.project_config_hosted_page import ProjectConfigHostedPage # noqa: PLC0415
         login: dict[str, Any] | Unset = UNSET
         if not isinstance(self.login, Unset):
             login = self.login.to_dict()
@@ -97,7 +97,7 @@ class ProjectConfigHostedPages:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_config_hosted_page import ProjectConfigHostedPage
+        from ..models.project_config_hosted_page import ProjectConfigHostedPage # noqa: PLC0415
         d = dict(src_dict)
         _login = d.pop("login", UNSET)
         login: ProjectConfigHostedPage | Unset

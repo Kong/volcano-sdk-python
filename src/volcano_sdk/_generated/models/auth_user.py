@@ -64,8 +64,8 @@ class AuthUser:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_user_app_metadata import AuthUserAppMetadata
-        from ..models.auth_user_user_metadata import AuthUserUserMetadata
+        from ..models.auth_user_app_metadata import AuthUserAppMetadata # noqa: PLC0415
+        from ..models.auth_user_user_metadata import AuthUserUserMetadata # noqa: PLC0415
         id = str(self.id)
 
         email = self.email
@@ -141,8 +141,8 @@ class AuthUser:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_user_app_metadata import AuthUserAppMetadata
-        from ..models.auth_user_user_metadata import AuthUserUserMetadata
+        from ..models.auth_user_app_metadata import AuthUserAppMetadata # noqa: PLC0415
+        from ..models.auth_user_user_metadata import AuthUserUserMetadata # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 

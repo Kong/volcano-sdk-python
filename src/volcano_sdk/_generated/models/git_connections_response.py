@@ -36,7 +36,7 @@ class GitConnectionsResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.git_connection import GitConnection
+        from ..models.git_connection import GitConnection # noqa: PLC0415
         connections = []
         for connections_item_data in self.connections:
             connections_item = connections_item_data.to_dict()
@@ -57,7 +57,7 @@ class GitConnectionsResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.git_connection import GitConnection
+        from ..models.git_connection import GitConnection # noqa: PLC0415
         d = dict(src_dict)
         connections = []
         _connections = d.pop("connections")

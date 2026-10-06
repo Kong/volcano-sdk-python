@@ -8,37 +8,37 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..models.call_o_auth_provider_api_body_method import CallOAuthProviderAPIBodyMethod
+from ..models.call_o_auth_provider_api_body_method import CallOAuthProviderApiBodyMethod
 from ..models.call_o_auth_provider_api_body_method import check_call_o_auth_provider_api_body_method
 from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
-  from ..models.call_o_auth_provider_api_body_body import CallOAuthProviderAPIBodyBody
+  from ..models.call_o_auth_provider_api_body_body import CallOAuthProviderApiBodyBody
 
 
 
 
 
-T = TypeVar("T", bound="CallOAuthProviderAPIBody")
+T = TypeVar("T", bound="CallOAuthProviderApiBody")
 
 
 
 @_attrs_define
-class CallOAuthProviderAPIBody:
+class CallOAuthProviderApiBody:
     """ 
         Attributes:
             endpoint (str): Relative path on the provider's API, beginning with `/`. It is
                 joined with the provider's fixed base URL; it must not contain a
                 scheme, host, userinfo, or a leading `//`.
                  Example: /user/repos.
-            method (CallOAuthProviderAPIBodyMethod | Unset): HTTP method to use Default: 'GET'.
-            body (CallOAuthProviderAPIBodyBody | Unset): Request body for POST requests
+            method (CallOAuthProviderApiBodyMethod | Unset): HTTP method to use Default: 'GET'.
+            body (CallOAuthProviderApiBodyBody | Unset): Request body for POST requests
      """
 
     endpoint: str
-    method: CallOAuthProviderAPIBodyMethod | Unset = 'GET'
-    body: CallOAuthProviderAPIBodyBody | Unset = UNSET
+    method: CallOAuthProviderApiBodyMethod | Unset = 'GET'
+    body: CallOAuthProviderApiBodyBody | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -46,7 +46,7 @@ class CallOAuthProviderAPIBody:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.call_o_auth_provider_api_body_body import CallOAuthProviderAPIBodyBody
+        from ..models.call_o_auth_provider_api_body_body import CallOAuthProviderApiBodyBody # noqa: PLC0415
         endpoint = self.endpoint
 
         method: str | Unset = UNSET
@@ -75,12 +75,12 @@ class CallOAuthProviderAPIBody:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.call_o_auth_provider_api_body_body import CallOAuthProviderAPIBodyBody
+        from ..models.call_o_auth_provider_api_body_body import CallOAuthProviderApiBodyBody # noqa: PLC0415
         d = dict(src_dict)
         endpoint = d.pop("endpoint")
 
         _method = d.pop("method", UNSET)
-        method: CallOAuthProviderAPIBodyMethod | Unset
+        method: CallOAuthProviderApiBodyMethod | Unset
         if isinstance(_method,  Unset):
             method = UNSET
         else:
@@ -90,11 +90,11 @@ class CallOAuthProviderAPIBody:
 
 
         _body = d.pop("body", UNSET)
-        body: CallOAuthProviderAPIBodyBody | Unset
+        body: CallOAuthProviderApiBodyBody | Unset
         if isinstance(_body,  Unset):
             body = UNSET
         else:
-            body = CallOAuthProviderAPIBodyBody.from_dict(_body)
+            body = CallOAuthProviderApiBodyBody.from_dict(_body)
 
 
 

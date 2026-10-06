@@ -36,7 +36,7 @@ class ProjectHealthScope:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_health_resource import ProjectHealthResource
+        from ..models.project_health_resource import ProjectHealthResource # noqa: PLC0415
         resource = self.resource.to_dict()
 
 
@@ -52,7 +52,7 @@ class ProjectHealthScope:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_health_resource import ProjectHealthResource
+        from ..models.project_health_resource import ProjectHealthResource # noqa: PLC0415
         d = dict(src_dict)
         resource = ProjectHealthResource.from_dict(d.pop("resource"))
 
