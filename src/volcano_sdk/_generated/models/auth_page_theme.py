@@ -55,7 +55,7 @@ class AuthPageTheme:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_page_theme_colors import AuthPageThemeColors
+        from ..models.auth_page_theme_colors import AuthPageThemeColors # noqa: PLC0415
         version: int = self.version
 
         colors = self.colors.to_dict()
@@ -86,7 +86,7 @@ class AuthPageTheme:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_page_theme_colors import AuthPageThemeColors
+        from ..models.auth_page_theme_colors import AuthPageThemeColors # noqa: PLC0415
         d = dict(src_dict)
         version = check_auth_page_theme_version(d.pop("version"))
 

@@ -39,7 +39,7 @@ class DatabaseDeleteRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.database_query_filter import DatabaseQueryFilter
+        from ..models.database_query_filter import DatabaseQueryFilter # noqa: PLC0415
         table = self.table
 
         filters = []
@@ -63,7 +63,7 @@ class DatabaseDeleteRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.database_query_filter import DatabaseQueryFilter
+        from ..models.database_query_filter import DatabaseQueryFilter # noqa: PLC0415
         d = dict(src_dict)
         table = d.pop("table")
 

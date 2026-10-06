@@ -40,8 +40,8 @@ class ProjectConfigAuthProviders:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_config_auth_email_password_provider import ProjectConfigAuthEmailPasswordProvider
-        from ..models.project_config_o_auth_provider import ProjectConfigOAuthProvider
+        from ..models.project_config_auth_email_password_provider import ProjectConfigAuthEmailPasswordProvider # noqa: PLC0415
+        from ..models.project_config_o_auth_provider import ProjectConfigOAuthProvider # noqa: PLC0415
         email_password: dict[str, Any] | Unset = UNSET
         if not isinstance(self.email_password, Unset):
             email_password = self.email_password.to_dict()
@@ -71,8 +71,8 @@ class ProjectConfigAuthProviders:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_config_auth_email_password_provider import ProjectConfigAuthEmailPasswordProvider
-        from ..models.project_config_o_auth_provider import ProjectConfigOAuthProvider
+        from ..models.project_config_auth_email_password_provider import ProjectConfigAuthEmailPasswordProvider # noqa: PLC0415
+        from ..models.project_config_o_auth_provider import ProjectConfigOAuthProvider # noqa: PLC0415
         d = dict(src_dict)
         _email_password = d.pop("email_password", UNSET)
         email_password: ProjectConfigAuthEmailPasswordProvider | Unset

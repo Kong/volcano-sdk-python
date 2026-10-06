@@ -37,7 +37,7 @@ class ListEmailTemplatesResponse200:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.email_template import EmailTemplate
+        from ..models.email_template import EmailTemplate # noqa: PLC0415
         data: list[dict[str, Any]] | Unset = UNSET
         if not isinstance(self.data, Unset):
             data = []
@@ -61,7 +61,7 @@ class ListEmailTemplatesResponse200:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.email_template import EmailTemplate
+        from ..models.email_template import EmailTemplate # noqa: PLC0415
         d = dict(src_dict)
         _data = d.pop("data", UNSET)
         data: list[EmailTemplate] | Unset = UNSET

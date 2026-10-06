@@ -43,7 +43,7 @@ class ProjectConfigCustomDomain:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig
+        from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig # noqa: PLC0415
         domain = self.domain
 
         tls: dict[str, Any] | Unset = UNSET
@@ -65,7 +65,7 @@ class ProjectConfigCustomDomain:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig
+        from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig # noqa: PLC0415
         d = dict(src_dict)
         domain = d.pop("domain")
 

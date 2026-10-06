@@ -38,8 +38,8 @@ class SandboxDeploymentPage:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.sandbox_deployment import SandboxDeployment
-        from ..models.sandbox_pagination import SandboxPagination
+        from ..models.sandbox_deployment import SandboxDeployment # noqa: PLC0415
+        from ..models.sandbox_pagination import SandboxPagination # noqa: PLC0415
         data = []
         for data_item_data in self.data:
             data_item = data_item_data.to_dict()
@@ -63,8 +63,8 @@ class SandboxDeploymentPage:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.sandbox_deployment import SandboxDeployment
-        from ..models.sandbox_pagination import SandboxPagination
+        from ..models.sandbox_deployment import SandboxDeployment # noqa: PLC0415
+        from ..models.sandbox_pagination import SandboxPagination # noqa: PLC0415
         d = dict(src_dict)
         data = []
         _data = d.pop("data")

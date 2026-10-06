@@ -47,7 +47,7 @@ class PaginatedProjectCustomDomains:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_frontend_custom_domain import ProjectFrontendCustomDomain
+        from ..models.project_frontend_custom_domain import ProjectFrontendCustomDomain # noqa: PLC0415
         data = []
         for data_item_data in self.data:
             data_item = data_item_data.to_dict()
@@ -84,7 +84,7 @@ class PaginatedProjectCustomDomains:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_frontend_custom_domain import ProjectFrontendCustomDomain
+        from ..models.project_frontend_custom_domain import ProjectFrontendCustomDomain # noqa: PLC0415
         d = dict(src_dict)
         data = []
         _data = d.pop("data")

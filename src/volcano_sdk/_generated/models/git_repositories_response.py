@@ -36,7 +36,7 @@ class GitRepositoriesResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.git_repository import GitRepository
+        from ..models.git_repository import GitRepository # noqa: PLC0415
         repositories = []
         for repositories_item_data in self.repositories:
             repositories_item = repositories_item_data.to_dict()
@@ -57,7 +57,7 @@ class GitRepositoriesResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.git_repository import GitRepository
+        from ..models.git_repository import GitRepository # noqa: PLC0415
         d = dict(src_dict)
         repositories = []
         _repositories = d.pop("repositories")

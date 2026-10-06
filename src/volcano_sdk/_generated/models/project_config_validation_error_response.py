@@ -39,7 +39,7 @@ class ProjectConfigValidationErrorResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_config_validation_error import ProjectConfigValidationError
+        from ..models.project_config_validation_error import ProjectConfigValidationError # noqa: PLC0415
         error = self.error
 
         errors = []
@@ -63,7 +63,7 @@ class ProjectConfigValidationErrorResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_config_validation_error import ProjectConfigValidationError
+        from ..models.project_config_validation_error import ProjectConfigValidationError # noqa: PLC0415
         d = dict(src_dict)
         error = d.pop("error")
 

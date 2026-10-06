@@ -25,7 +25,7 @@ from ._generated.models.auth_list_o_auth_providers_response_200 import (
 )
 from ._generated.models.auth_update_user_response_200 import AuthUpdateUserResponse200
 from ._generated.models.call_o_auth_provider_api_response_200 import (
-    CallOAuthProviderAPIResponse200,
+    CallOAuthProviderApiResponse200,
 )
 from ._generated.models.get_o_auth_provider_token_response_200 import (
     GetOAuthProviderTokenResponse200,
@@ -470,7 +470,7 @@ def oauth_api_data(payload: OAuthAPIData) -> object:
 
 
 def oauth_api_data_from_payload(payload: object) -> JSONValue:
-    if not isinstance(payload, CallOAuthProviderAPIResponse200):
+    if not isinstance(payload, CallOAuthProviderApiResponse200):
         raise VolcanoError(INVALID_OAUTH_API_RESPONSE)
     data = oauth_api_data(payload)
     if not is_json_value(data):

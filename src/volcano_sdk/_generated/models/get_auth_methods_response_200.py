@@ -45,9 +45,9 @@ class GetAuthMethodsResponse200:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.get_auth_methods_response_200_anonymous import GetAuthMethodsResponse200Anonymous
-        from ..models.get_auth_methods_response_200_email_password import GetAuthMethodsResponse200EmailPassword
-        from ..models.get_auth_methods_response_200_oauth_providers_item import GetAuthMethodsResponse200OauthProvidersItem
+        from ..models.get_auth_methods_response_200_anonymous import GetAuthMethodsResponse200Anonymous # noqa: PLC0415
+        from ..models.get_auth_methods_response_200_email_password import GetAuthMethodsResponse200EmailPassword # noqa: PLC0415
+        from ..models.get_auth_methods_response_200_oauth_providers_item import GetAuthMethodsResponse200OauthProvidersItem # noqa: PLC0415
         email_password: dict[str, Any] | Unset = UNSET
         if not isinstance(self.email_password, Unset):
             email_password = self.email_password.to_dict()
@@ -91,9 +91,9 @@ class GetAuthMethodsResponse200:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.get_auth_methods_response_200_anonymous import GetAuthMethodsResponse200Anonymous
-        from ..models.get_auth_methods_response_200_email_password import GetAuthMethodsResponse200EmailPassword
-        from ..models.get_auth_methods_response_200_oauth_providers_item import GetAuthMethodsResponse200OauthProvidersItem
+        from ..models.get_auth_methods_response_200_anonymous import GetAuthMethodsResponse200Anonymous # noqa: PLC0415
+        from ..models.get_auth_methods_response_200_email_password import GetAuthMethodsResponse200EmailPassword # noqa: PLC0415
+        from ..models.get_auth_methods_response_200_oauth_providers_item import GetAuthMethodsResponse200OauthProvidersItem # noqa: PLC0415
         d = dict(src_dict)
         _email_password = d.pop("email_password", UNSET)
         email_password: GetAuthMethodsResponse200EmailPassword | Unset

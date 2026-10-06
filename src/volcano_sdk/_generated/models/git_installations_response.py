@@ -36,7 +36,7 @@ class GitInstallationsResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.git_installation import GitInstallation
+        from ..models.git_installation import GitInstallation # noqa: PLC0415
         installations = []
         for installations_item_data in self.installations:
             installations_item = installations_item_data.to_dict()
@@ -57,7 +57,7 @@ class GitInstallationsResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.git_installation import GitInstallation
+        from ..models.git_installation import GitInstallation # noqa: PLC0415
         d = dict(src_dict)
         installations = []
         _installations = d.pop("installations")

@@ -43,9 +43,9 @@ class LogActivityBucketCounts:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.log_activity_bucket_counts_levels import LogActivityBucketCountsLevels
-        from ..models.log_activity_bucket_counts_regions import LogActivityBucketCountsRegions
-        from ..models.log_activity_bucket_counts_resource_ids import LogActivityBucketCountsResourceIds
+        from ..models.log_activity_bucket_counts_levels import LogActivityBucketCountsLevels # noqa: PLC0415
+        from ..models.log_activity_bucket_counts_regions import LogActivityBucketCountsRegions # noqa: PLC0415
+        from ..models.log_activity_bucket_counts_resource_ids import LogActivityBucketCountsResourceIds # noqa: PLC0415
         levels = self.levels.to_dict()
 
         regions = self.regions.to_dict()
@@ -67,9 +67,9 @@ class LogActivityBucketCounts:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.log_activity_bucket_counts_levels import LogActivityBucketCountsLevels
-        from ..models.log_activity_bucket_counts_regions import LogActivityBucketCountsRegions
-        from ..models.log_activity_bucket_counts_resource_ids import LogActivityBucketCountsResourceIds
+        from ..models.log_activity_bucket_counts_levels import LogActivityBucketCountsLevels # noqa: PLC0415
+        from ..models.log_activity_bucket_counts_regions import LogActivityBucketCountsRegions # noqa: PLC0415
+        from ..models.log_activity_bucket_counts_resource_ids import LogActivityBucketCountsResourceIds # noqa: PLC0415
         d = dict(src_dict)
         levels = LogActivityBucketCountsLevels.from_dict(d.pop("levels"))
 

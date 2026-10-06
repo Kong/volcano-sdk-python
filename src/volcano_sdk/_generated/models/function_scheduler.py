@@ -82,7 +82,7 @@ class FunctionScheduler:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.function_scheduler_payload import FunctionSchedulerPayload
+        from ..models.function_scheduler_payload import FunctionSchedulerPayload # noqa: PLC0415
         id: str | Unset = UNSET
         if not isinstance(self.id, Unset):
             id = str(self.id)
@@ -195,7 +195,7 @@ class FunctionScheduler:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.function_scheduler_payload import FunctionSchedulerPayload
+        from ..models.function_scheduler_payload import FunctionSchedulerPayload # noqa: PLC0415
         d = dict(src_dict)
         _id = d.pop("id", UNSET)
         id: UUID | Unset

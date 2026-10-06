@@ -24,7 +24,7 @@ from volcano_sdk._generated.models import (
     AuthGetUserResponse200,
     AuthListOAuthProvidersResponse200,
     AuthListOAuthProvidersResponse200ProvidersItem,
-    CallOAuthProviderAPIResponse200,
+    CallOAuthProviderApiResponse200,
 )
 from volcano_sdk._generated.types import UNSET, Unset
 
@@ -141,7 +141,7 @@ def test_profile_parser_rejects_non_json_extra_user_data() -> None:
 
 @pytest.mark.parametrize("data", [object(), [object()], {"invalid": object()}])
 def test_oauth_api_parser_rejects_non_json_provider_data(data: object) -> None:
-    payload = CallOAuthProviderAPIResponse200.from_dict(
+    payload = CallOAuthProviderApiResponse200.from_dict(
         {
             "provider": "github",
             "endpoint": "/user",
@@ -154,7 +154,7 @@ def test_oauth_api_parser_rejects_non_json_provider_data(data: object) -> None:
 
 
 def test_oauth_api_parser_preserves_nested_json() -> None:
-    payload = CallOAuthProviderAPIResponse200.from_dict(
+    payload = CallOAuthProviderApiResponse200.from_dict(
         {
             "provider": "github",
             "endpoint": "/user",

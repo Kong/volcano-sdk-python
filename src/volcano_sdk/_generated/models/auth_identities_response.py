@@ -36,7 +36,7 @@ class AuthIdentitiesResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_identity import AuthIdentity
+        from ..models.auth_identity import AuthIdentity # noqa: PLC0415
         identities = []
         for identities_item_data in self.identities:
             identities_item = identities_item_data.to_dict()
@@ -57,7 +57,7 @@ class AuthIdentitiesResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_identity import AuthIdentity
+        from ..models.auth_identity import AuthIdentity # noqa: PLC0415
         d = dict(src_dict)
         identities = []
         _identities = d.pop("identities")

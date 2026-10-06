@@ -63,8 +63,8 @@ class ProjectImportRun:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.deployment_reference import DeploymentReference
-        from ..models.resource_reference import ResourceReference
+        from ..models.deployment_reference import DeploymentReference # noqa: PLC0415
+        from ..models.resource_reference import ResourceReference # noqa: PLC0415
         id = self.id
 
         provider: str = self.provider
@@ -112,8 +112,8 @@ class ProjectImportRun:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.deployment_reference import DeploymentReference
-        from ..models.resource_reference import ResourceReference
+        from ..models.deployment_reference import DeploymentReference # noqa: PLC0415
+        from ..models.resource_reference import ResourceReference # noqa: PLC0415
         d = dict(src_dict)
         id = d.pop("id")
 

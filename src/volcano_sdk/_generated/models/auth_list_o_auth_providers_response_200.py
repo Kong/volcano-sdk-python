@@ -37,7 +37,7 @@ class AuthListOAuthProvidersResponse200:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_list_o_auth_providers_response_200_providers_item import AuthListOAuthProvidersResponse200ProvidersItem
+        from ..models.auth_list_o_auth_providers_response_200_providers_item import AuthListOAuthProvidersResponse200ProvidersItem # noqa: PLC0415
         providers: list[dict[str, Any]] | Unset = UNSET
         if not isinstance(self.providers, Unset):
             providers = []
@@ -61,7 +61,7 @@ class AuthListOAuthProvidersResponse200:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_list_o_auth_providers_response_200_providers_item import AuthListOAuthProvidersResponse200ProvidersItem
+        from ..models.auth_list_o_auth_providers_response_200_providers_item import AuthListOAuthProvidersResponse200ProvidersItem # noqa: PLC0415
         d = dict(src_dict)
         _providers = d.pop("providers", UNSET)
         providers: list[AuthListOAuthProvidersResponse200ProvidersItem] | Unset = UNSET

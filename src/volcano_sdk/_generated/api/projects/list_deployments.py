@@ -176,7 +176,7 @@ def sync_detailed(
     order: ListDeploymentsOrder | Unset = 'created_at.desc',
 
 ) -> Response[Error | PaginatedProjectDeployments]:
-    r""" List deployments across a user's projects
+    """ List deployments across a user's projects
 
      Lists Function and Frontend deployment attempts across every project the
     user owns, newest first. Pass `project_id` to narrow the feed to a single
@@ -193,16 +193,16 @@ def sync_detailed(
 
     The owner is not checked for existence: an id with no projects returns an
     empty page rather than `404`. Unlike `/users/{id}/usage`, this endpoint is
-    polled to detect an event, so a caller needs `404` to keep meaning \"this
-    route is not served here\" — which is how a consumer notices it is running
-    against an older release. A mistyped owner therefore reads as \"nothing
-    deployed\"; callers that need to tell those apart should verify the user
+    polled to detect an event, so a caller needs `404` to keep meaning "this
+    route is not served here" — which is how a consumer notices it is running
+    against an older release. A mistyped owner therefore reads as "nothing
+    deployed"; callers that need to tell those apart should verify the user
     through `GET /users/{id}` first.
 
     Ordering is selectable. The default is the feed order — most recent
     attempt first. `completed_at.asc` orders by completion, oldest first, and
     considers only attempts that finished; combined with `limit=1` and a
-    `status` filter it answers \"when did this user first succeed\" in one
+    `status` filter it answers "when did this user first succeed" in one
     bounded query.
 
     Both pagination modes are supported, selected exactly as
@@ -278,7 +278,7 @@ def sync(
     order: ListDeploymentsOrder | Unset = 'created_at.desc',
 
 ) -> Error | PaginatedProjectDeployments | None:
-    r""" List deployments across a user's projects
+    """ List deployments across a user's projects
 
      Lists Function and Frontend deployment attempts across every project the
     user owns, newest first. Pass `project_id` to narrow the feed to a single
@@ -295,16 +295,16 @@ def sync(
 
     The owner is not checked for existence: an id with no projects returns an
     empty page rather than `404`. Unlike `/users/{id}/usage`, this endpoint is
-    polled to detect an event, so a caller needs `404` to keep meaning \"this
-    route is not served here\" — which is how a consumer notices it is running
-    against an older release. A mistyped owner therefore reads as \"nothing
-    deployed\"; callers that need to tell those apart should verify the user
+    polled to detect an event, so a caller needs `404` to keep meaning "this
+    route is not served here" — which is how a consumer notices it is running
+    against an older release. A mistyped owner therefore reads as "nothing
+    deployed"; callers that need to tell those apart should verify the user
     through `GET /users/{id}` first.
 
     Ordering is selectable. The default is the feed order — most recent
     attempt first. `completed_at.asc` orders by completion, oldest first, and
     considers only attempts that finished; combined with `limit=1` and a
-    `status` filter it answers \"when did this user first succeed\" in one
+    `status` filter it answers "when did this user first succeed" in one
     bounded query.
 
     Both pagination modes are supported, selected exactly as
@@ -375,7 +375,7 @@ async def asyncio_detailed(
     order: ListDeploymentsOrder | Unset = 'created_at.desc',
 
 ) -> Response[Error | PaginatedProjectDeployments]:
-    r""" List deployments across a user's projects
+    """ List deployments across a user's projects
 
      Lists Function and Frontend deployment attempts across every project the
     user owns, newest first. Pass `project_id` to narrow the feed to a single
@@ -392,16 +392,16 @@ async def asyncio_detailed(
 
     The owner is not checked for existence: an id with no projects returns an
     empty page rather than `404`. Unlike `/users/{id}/usage`, this endpoint is
-    polled to detect an event, so a caller needs `404` to keep meaning \"this
-    route is not served here\" — which is how a consumer notices it is running
-    against an older release. A mistyped owner therefore reads as \"nothing
-    deployed\"; callers that need to tell those apart should verify the user
+    polled to detect an event, so a caller needs `404` to keep meaning "this
+    route is not served here" — which is how a consumer notices it is running
+    against an older release. A mistyped owner therefore reads as "nothing
+    deployed"; callers that need to tell those apart should verify the user
     through `GET /users/{id}` first.
 
     Ordering is selectable. The default is the feed order — most recent
     attempt first. `completed_at.asc` orders by completion, oldest first, and
     considers only attempts that finished; combined with `limit=1` and a
-    `status` filter it answers \"when did this user first succeed\" in one
+    `status` filter it answers "when did this user first succeed" in one
     bounded query.
 
     Both pagination modes are supported, selected exactly as
@@ -477,7 +477,7 @@ async def asyncio(
     order: ListDeploymentsOrder | Unset = 'created_at.desc',
 
 ) -> Error | PaginatedProjectDeployments | None:
-    r""" List deployments across a user's projects
+    """ List deployments across a user's projects
 
      Lists Function and Frontend deployment attempts across every project the
     user owns, newest first. Pass `project_id` to narrow the feed to a single
@@ -494,16 +494,16 @@ async def asyncio(
 
     The owner is not checked for existence: an id with no projects returns an
     empty page rather than `404`. Unlike `/users/{id}/usage`, this endpoint is
-    polled to detect an event, so a caller needs `404` to keep meaning \"this
-    route is not served here\" — which is how a consumer notices it is running
-    against an older release. A mistyped owner therefore reads as \"nothing
-    deployed\"; callers that need to tell those apart should verify the user
+    polled to detect an event, so a caller needs `404` to keep meaning "this
+    route is not served here" — which is how a consumer notices it is running
+    against an older release. A mistyped owner therefore reads as "nothing
+    deployed"; callers that need to tell those apart should verify the user
     through `GET /users/{id}` first.
 
     Ordering is selectable. The default is the feed order — most recent
     attempt first. `completed_at.asc` orders by completion, oldest first, and
     considers only attempts that finished; combined with `limit=1` and a
-    `status` filter it answers \"when did this user first succeed\" in one
+    `status` filter it answers "when did this user first succeed" in one
     bounded query.
 
     Both pagination modes are supported, selected exactly as

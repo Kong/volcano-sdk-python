@@ -45,7 +45,7 @@ class LogFunctionRequestResource:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.log_deployment_request_selector import LogDeploymentRequestSelector
+        from ..models.log_deployment_request_selector import LogDeploymentRequestSelector # noqa: PLC0415
         type_: str = self.type_
 
         ids: list[str] | Unset = UNSET
@@ -78,7 +78,7 @@ class LogFunctionRequestResource:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.log_deployment_request_selector import LogDeploymentRequestSelector
+        from ..models.log_deployment_request_selector import LogDeploymentRequestSelector # noqa: PLC0415
         d = dict(src_dict)
         type_ = check_log_function_request_resource_type(d.pop("type"))
 

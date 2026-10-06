@@ -96,12 +96,12 @@ from .ban_user_response_status import BanUserResponseStatus
 from .batch_function_deploy_failure import BatchFunctionDeployFailure
 from .batch_function_deploy_failure_operation import BatchFunctionDeployFailureOperation
 from .batch_function_deploy_response import BatchFunctionDeployResponse
-from .call_o_auth_provider_api_body import CallOAuthProviderAPIBody
-from .call_o_auth_provider_api_body_body import CallOAuthProviderAPIBodyBody
-from .call_o_auth_provider_api_body_method import CallOAuthProviderAPIBodyMethod
-from .call_o_auth_provider_api_provider import CallOAuthProviderAPIProvider
-from .call_o_auth_provider_api_response_200 import CallOAuthProviderAPIResponse200
-from .call_o_auth_provider_api_response_200_provider import CallOAuthProviderAPIResponse200Provider
+from .call_o_auth_provider_api_body import CallOAuthProviderApiBody
+from .call_o_auth_provider_api_body_body import CallOAuthProviderApiBodyBody
+from .call_o_auth_provider_api_body_method import CallOAuthProviderApiBodyMethod
+from .call_o_auth_provider_api_provider import CallOAuthProviderApiProvider
+from .call_o_auth_provider_api_response_200 import CallOAuthProviderApiResponse200
+from .call_o_auth_provider_api_response_200_provider import CallOAuthProviderApiResponse200Provider
 from .complete_upload_session_response import CompleteUploadSessionResponse
 from .configure_auth_methods_body import ConfigureAuthMethodsBody
 from .configure_auth_methods_body_oauth_providers_item import ConfigureAuthMethodsBodyOauthProvidersItem
@@ -642,12 +642,12 @@ __all__ = (
     "BatchFunctionDeployFailure",
     "BatchFunctionDeployFailureOperation",
     "BatchFunctionDeployResponse",
-    "CallOAuthProviderAPIBody",
-    "CallOAuthProviderAPIBodyBody",
-    "CallOAuthProviderAPIBodyMethod",
-    "CallOAuthProviderAPIProvider",
-    "CallOAuthProviderAPIResponse200",
-    "CallOAuthProviderAPIResponse200Provider",
+    "CallOAuthProviderApiBody",
+    "CallOAuthProviderApiBodyBody",
+    "CallOAuthProviderApiBodyMethod",
+    "CallOAuthProviderApiProvider",
+    "CallOAuthProviderApiResponse200",
+    "CallOAuthProviderApiResponse200Provider",
     "CompleteUploadSessionResponse",
     "ConfigureAuthMethodsBody",
     "ConfigureAuthMethodsBodyOauthProvidersItem",

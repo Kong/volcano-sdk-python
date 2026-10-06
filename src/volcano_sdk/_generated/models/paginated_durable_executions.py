@@ -44,7 +44,7 @@ class PaginatedDurableExecutions:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.durable_execution import DurableExecution
+        from ..models.durable_execution import DurableExecution # noqa: PLC0415
         data = []
         for data_item_data in self.data:
             data_item = data_item_data.to_dict()
@@ -77,7 +77,7 @@ class PaginatedDurableExecutions:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.durable_execution import DurableExecution
+        from ..models.durable_execution import DurableExecution # noqa: PLC0415
         d = dict(src_dict)
         data = []
         _data = d.pop("data")

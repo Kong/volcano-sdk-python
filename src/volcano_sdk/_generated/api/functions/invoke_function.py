@@ -117,7 +117,7 @@ def sync_detailed(
     body: FunctionInvocationRequest,
 
 ) -> Response[Error | FunctionInvocationResponse]:
-    r""" Invoke a function
+    """ Invoke a function
 
      Invoke a serverless function.
 
@@ -131,10 +131,10 @@ def sync_detailed(
     - Function receives payload + `__volcano_auth` context:
       ```javascript
       {
-        user_id: \"uuid\",
-        email: \"user@example.com\",
-        project_id: \"uuid\",
-        role: \"authenticated\" or \"anonymous\"
+        user_id: "uuid",
+        email: "user@example.com",
+        project_id: "uuid",
+        role: "authenticated" or "anonymous"
       }
       ```
     - Database queries enforce RLS (user-scoped data)
@@ -194,7 +194,7 @@ def sync(
     body: FunctionInvocationRequest,
 
 ) -> Error | FunctionInvocationResponse | None:
-    r""" Invoke a function
+    """ Invoke a function
 
      Invoke a serverless function.
 
@@ -208,10 +208,10 @@ def sync(
     - Function receives payload + `__volcano_auth` context:
       ```javascript
       {
-        user_id: \"uuid\",
-        email: \"user@example.com\",
-        project_id: \"uuid\",
-        role: \"authenticated\" or \"anonymous\"
+        user_id: "uuid",
+        email: "user@example.com",
+        project_id: "uuid",
+        role: "authenticated" or "anonymous"
       }
       ```
     - Database queries enforce RLS (user-scoped data)
@@ -266,7 +266,7 @@ async def asyncio_detailed(
     body: FunctionInvocationRequest,
 
 ) -> Response[Error | FunctionInvocationResponse]:
-    r""" Invoke a function
+    """ Invoke a function
 
      Invoke a serverless function.
 
@@ -280,10 +280,10 @@ async def asyncio_detailed(
     - Function receives payload + `__volcano_auth` context:
       ```javascript
       {
-        user_id: \"uuid\",
-        email: \"user@example.com\",
-        project_id: \"uuid\",
-        role: \"authenticated\" or \"anonymous\"
+        user_id: "uuid",
+        email: "user@example.com",
+        project_id: "uuid",
+        role: "authenticated" or "anonymous"
       }
       ```
     - Database queries enforce RLS (user-scoped data)
@@ -343,7 +343,7 @@ async def asyncio(
     body: FunctionInvocationRequest,
 
 ) -> Error | FunctionInvocationResponse | None:
-    r""" Invoke a function
+    """ Invoke a function
 
      Invoke a serverless function.
 
@@ -357,10 +357,10 @@ async def asyncio(
     - Function receives payload + `__volcano_auth` context:
       ```javascript
       {
-        user_id: \"uuid\",
-        email: \"user@example.com\",
-        project_id: \"uuid\",
-        role: \"authenticated\" or \"anonymous\"
+        user_id: "uuid",
+        email: "user@example.com",
+        project_id: "uuid",
+        role: "authenticated" or "anonymous"
       }
       ```
     - Database queries enforce RLS (user-scoped data)

@@ -36,7 +36,7 @@ class ImportSourcesResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.import_source import ImportSource
+        from ..models.import_source import ImportSource # noqa: PLC0415
         sources = []
         for sources_item_data in self.sources:
             sources_item = sources_item_data.to_dict()
@@ -57,7 +57,7 @@ class ImportSourcesResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.import_source import ImportSource
+        from ..models.import_source import ImportSource # noqa: PLC0415
         d = dict(src_dict)
         sources = []
         _sources = d.pop("sources")
