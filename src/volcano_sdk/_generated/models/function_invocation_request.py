@@ -50,7 +50,7 @@ class FunctionInvocationRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.function_invocation_request_payload import FunctionInvocationRequestPayload
+        from ..models.function_invocation_request_payload import FunctionInvocationRequestPayload # noqa: PLC0415
         payload: dict[str, Any] | Unset = UNSET
         if not isinstance(self.payload, Unset):
             payload = self.payload.to_dict()
@@ -69,7 +69,7 @@ class FunctionInvocationRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.function_invocation_request_payload import FunctionInvocationRequestPayload
+        from ..models.function_invocation_request_payload import FunctionInvocationRequestPayload # noqa: PLC0415
         d = dict(src_dict)
         _payload = d.pop("payload", UNSET)
         payload: FunctionInvocationRequestPayload | Unset

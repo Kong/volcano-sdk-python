@@ -44,7 +44,7 @@ class LogActivityBucket:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.log_activity_bucket_counts import LogActivityBucketCounts
+        from ..models.log_activity_bucket_counts import LogActivityBucketCounts # noqa: PLC0415
         start_time = self.start_time.isoformat()
 
         end_time = self.end_time.isoformat()
@@ -69,7 +69,7 @@ class LogActivityBucket:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.log_activity_bucket_counts import LogActivityBucketCounts
+        from ..models.log_activity_bucket_counts import LogActivityBucketCounts # noqa: PLC0415
         d = dict(src_dict)
         start_time = datetime.datetime.fromisoformat(d.pop("start_time"))
 

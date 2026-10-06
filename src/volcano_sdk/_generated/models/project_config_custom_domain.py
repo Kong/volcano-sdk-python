@@ -49,8 +49,8 @@ class ProjectConfigCustomDomain:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.byoc_project_config_frontend_custom_domain_tls_config import BYOCProjectConfigFrontendCustomDomainTLSConfig
-        from ..models.managed_project_config_frontend_custom_domain_tls_config import ManagedProjectConfigFrontendCustomDomainTLSConfig
+        from ..models.byoc_project_config_frontend_custom_domain_tls_config import BYOCProjectConfigFrontendCustomDomainTLSConfig # noqa: PLC0415
+        from ..models.managed_project_config_frontend_custom_domain_tls_config import ManagedProjectConfigFrontendCustomDomainTLSConfig # noqa: PLC0415
         domain = self.domain
 
         tls: dict[str, Any] | Unset
@@ -77,8 +77,8 @@ class ProjectConfigCustomDomain:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.byoc_project_config_frontend_custom_domain_tls_config import BYOCProjectConfigFrontendCustomDomainTLSConfig
-        from ..models.managed_project_config_frontend_custom_domain_tls_config import ManagedProjectConfigFrontendCustomDomainTLSConfig
+        from ..models.byoc_project_config_frontend_custom_domain_tls_config import BYOCProjectConfigFrontendCustomDomainTLSConfig # noqa: PLC0415
+        from ..models.managed_project_config_frontend_custom_domain_tls_config import ManagedProjectConfigFrontendCustomDomainTLSConfig # noqa: PLC0415
         d = dict(src_dict)
         domain = d.pop("domain")
 

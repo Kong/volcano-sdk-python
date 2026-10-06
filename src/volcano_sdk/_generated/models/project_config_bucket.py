@@ -47,7 +47,7 @@ class ProjectConfigBucket:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_config_bucket_policy import ProjectConfigBucketPolicy
+        from ..models.project_config_bucket_policy import ProjectConfigBucketPolicy # noqa: PLC0415
         name = self.name
 
         file_size_limit = self.file_size_limit
@@ -86,7 +86,7 @@ class ProjectConfigBucket:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_config_bucket_policy import ProjectConfigBucketPolicy
+        from ..models.project_config_bucket_policy import ProjectConfigBucketPolicy # noqa: PLC0415
         d = dict(src_dict)
         name = d.pop("name")
 

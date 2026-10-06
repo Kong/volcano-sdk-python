@@ -46,8 +46,8 @@ class UpdateFunctionSchedulerRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.schedule_request import ScheduleRequest
-        from ..models.update_function_scheduler_request_payload import UpdateFunctionSchedulerRequestPayload
+        from ..models.schedule_request import ScheduleRequest # noqa: PLC0415
+        from ..models.update_function_scheduler_request_payload import UpdateFunctionSchedulerRequestPayload # noqa: PLC0415
         name = self.name
 
         enabled = self.enabled
@@ -88,8 +88,8 @@ class UpdateFunctionSchedulerRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.schedule_request import ScheduleRequest
-        from ..models.update_function_scheduler_request_payload import UpdateFunctionSchedulerRequestPayload
+        from ..models.schedule_request import ScheduleRequest # noqa: PLC0415
+        from ..models.update_function_scheduler_request_payload import UpdateFunctionSchedulerRequestPayload # noqa: PLC0415
         d = dict(src_dict)
         name = d.pop("name", UNSET)
 

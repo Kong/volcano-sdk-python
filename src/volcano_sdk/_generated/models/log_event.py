@@ -59,9 +59,9 @@ class LogEvent:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.log_deployment import LogDeployment
-        from ..models.log_event_body_type_1 import LogEventBodyType1
-        from ..models.log_resource import LogResource
+        from ..models.log_deployment import LogDeployment # noqa: PLC0415
+        from ..models.log_event_body_type_1 import LogEventBodyType1 # noqa: PLC0415
+        from ..models.log_resource import LogResource # noqa: PLC0415
         timestamp = self.timestamp.isoformat()
 
         body: bool | dict[str, Any] | float | list[Any] | None | str
@@ -119,9 +119,9 @@ class LogEvent:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.log_deployment import LogDeployment
-        from ..models.log_event_body_type_1 import LogEventBodyType1
-        from ..models.log_resource import LogResource
+        from ..models.log_deployment import LogDeployment # noqa: PLC0415
+        from ..models.log_event_body_type_1 import LogEventBodyType1 # noqa: PLC0415
+        from ..models.log_resource import LogResource # noqa: PLC0415
         d = dict(src_dict)
         timestamp = datetime.datetime.fromisoformat(d.pop("timestamp"))
 

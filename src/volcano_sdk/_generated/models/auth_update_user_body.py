@@ -42,7 +42,7 @@ class AuthUpdateUserBody:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_update_user_body_user_metadata import AuthUpdateUserBodyUserMetadata
+        from ..models.auth_update_user_body_user_metadata import AuthUpdateUserBodyUserMetadata # noqa: PLC0415
         password = self.password
 
         user_metadata: dict[str, Any] | Unset = UNSET
@@ -65,7 +65,7 @@ class AuthUpdateUserBody:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_update_user_body_user_metadata import AuthUpdateUserBodyUserMetadata
+        from ..models.auth_update_user_body_user_metadata import AuthUpdateUserBodyUserMetadata # noqa: PLC0415
         d = dict(src_dict)
         password = d.pop("password", UNSET)
 

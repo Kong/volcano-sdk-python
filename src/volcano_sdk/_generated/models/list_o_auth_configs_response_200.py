@@ -37,7 +37,7 @@ class ListOAuthConfigsResponse200:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.o_auth_config import OAuthConfig
+        from ..models.o_auth_config import OAuthConfig # noqa: PLC0415
         configs: list[dict[str, Any]] | Unset = UNSET
         if not isinstance(self.configs, Unset):
             configs = []
@@ -61,7 +61,7 @@ class ListOAuthConfigsResponse200:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.o_auth_config import OAuthConfig
+        from ..models.o_auth_config import OAuthConfig # noqa: PLC0415
         d = dict(src_dict)
         _configs = d.pop("configs", UNSET)
         configs: list[OAuthConfig] | Unset = UNSET

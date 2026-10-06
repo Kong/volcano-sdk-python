@@ -75,7 +75,7 @@ class DatabaseStats:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.database_branch_storage import DatabaseBranchStorage
+        from ..models.database_branch_storage import DatabaseBranchStorage # noqa: PLC0415
         current_storage_bytes = self.current_storage_bytes
 
         current_storage_mb = self.current_storage_mb
@@ -134,7 +134,7 @@ class DatabaseStats:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.database_branch_storage import DatabaseBranchStorage
+        from ..models.database_branch_storage import DatabaseBranchStorage # noqa: PLC0415
         d = dict(src_dict)
         current_storage_bytes = d.pop("current_storage_bytes")
 

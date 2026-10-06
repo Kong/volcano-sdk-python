@@ -42,7 +42,7 @@ class AuthSignupBody:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_signup_body_user_metadata import AuthSignupBodyUserMetadata
+        from ..models.auth_signup_body_user_metadata import AuthSignupBodyUserMetadata # noqa: PLC0415
         email = self.email
 
         password = self.password
@@ -67,7 +67,7 @@ class AuthSignupBody:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_signup_body_user_metadata import AuthSignupBodyUserMetadata
+        from ..models.auth_signup_body_user_metadata import AuthSignupBodyUserMetadata # noqa: PLC0415
         d = dict(src_dict)
         email = d.pop("email")
 

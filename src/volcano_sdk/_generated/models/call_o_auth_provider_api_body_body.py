@@ -14,12 +14,12 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="CallOAuthProviderAPIBodyBody")
+T = TypeVar("T", bound="CallOAuthProviderApiBodyBody")
 
 
 
 @_attrs_define
-class CallOAuthProviderAPIBodyBody:
+class CallOAuthProviderApiBodyBody:
     """ Request body for POST requests
 
      """

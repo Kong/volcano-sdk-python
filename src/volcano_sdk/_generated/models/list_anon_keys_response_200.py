@@ -46,7 +46,7 @@ class ListAnonKeysResponse200:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.anon_key import AnonKey
+        from ..models.anon_key import AnonKey # noqa: PLC0415
         data: list[dict[str, Any]] | Unset = UNSET
         if not isinstance(self.data, Unset):
             data = []
@@ -86,7 +86,7 @@ class ListAnonKeysResponse200:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.anon_key import AnonKey
+        from ..models.anon_key import AnonKey # noqa: PLC0415
         d = dict(src_dict)
         _data = d.pop("data", UNSET)
         data: list[AnonKey] | Unset = UNSET

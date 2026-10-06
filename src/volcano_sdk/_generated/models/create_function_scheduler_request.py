@@ -47,8 +47,8 @@ class CreateFunctionSchedulerRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.create_function_scheduler_request_payload import CreateFunctionSchedulerRequestPayload
-        from ..models.schedule_request import ScheduleRequest
+        from ..models.create_function_scheduler_request_payload import CreateFunctionSchedulerRequestPayload # noqa: PLC0415
+        from ..models.schedule_request import ScheduleRequest # noqa: PLC0415
         name = self.name
 
         schedule = self.schedule.to_dict()
@@ -85,8 +85,8 @@ class CreateFunctionSchedulerRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.create_function_scheduler_request_payload import CreateFunctionSchedulerRequestPayload
-        from ..models.schedule_request import ScheduleRequest
+        from ..models.create_function_scheduler_request_payload import CreateFunctionSchedulerRequestPayload # noqa: PLC0415
+        from ..models.schedule_request import ScheduleRequest # noqa: PLC0415
         d = dict(src_dict)
         name = d.pop("name")
 

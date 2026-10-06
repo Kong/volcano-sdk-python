@@ -49,9 +49,9 @@ from ._generated.models.auth_list_o_auth_providers_response_200 import (
     AuthListOAuthProvidersResponse200,
 )
 from ._generated.models.auth_o_auth_exchange_body import AuthOAuthExchangeBody
-from ._generated.models.call_o_auth_provider_api_body import CallOAuthProviderAPIBody
+from ._generated.models.call_o_auth_provider_api_body import CallOAuthProviderApiBody
 from ._generated.models.call_o_auth_provider_api_response_200 import (
-    CallOAuthProviderAPIResponse200,
+    CallOAuthProviderApiResponse200,
 )
 from ._generated.models.get_o_auth_provider_token_response_200 import (
     GetOAuthProviderTokenResponse200,
@@ -94,7 +94,7 @@ if TYPE_CHECKING:
         AuthUnlinkOAuthProviderProvider,
     )
     from ._generated.models.call_o_auth_provider_api_provider import (
-        CallOAuthProviderAPIProvider,
+        CallOAuthProviderApiProvider,
     )
     from ._generated.models.get_o_auth_provider_token_provider import (
         GetOAuthProviderTokenProvider,
@@ -322,7 +322,7 @@ class AuthAccountTransport(TransportBase):
         self,
         *,
         authorization: str,
-        provider: CallOAuthProviderAPIProvider,
+        provider: CallOAuthProviderApiProvider,
         endpoint: str,
         method: str,
         body: Mapping[str, JSONValue] | None,
@@ -330,7 +330,7 @@ class AuthAccountTransport(TransportBase):
         request_values: dict[str, object] = {"endpoint": endpoint, "method": method}
         if body is not None:
             request_values["body"] = plain_json(body)
-        request_body = CallOAuthProviderAPIBody.from_dict(request_values)
+        request_body = CallOAuthProviderApiBody.from_dict(request_values)
         with self._client(authorization) as client:
             response = generated_request(
                 client, call_oauth_provider_api_kwargs(provider, body=request_body)
@@ -338,7 +338,7 @@ class AuthAccountTransport(TransportBase):
         if response.status_code != HTTP_OK:
             return unparsed_response(response)
         try:
-            payload = CallOAuthProviderAPIResponse200.from_dict(json_object(response))
+            payload = CallOAuthProviderApiResponse200.from_dict(json_object(response))
         except (
             AttributeError,
             KeyError,

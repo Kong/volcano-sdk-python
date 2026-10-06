@@ -46,9 +46,9 @@ class AuthHostedPageResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_hosted_page import AuthHostedPage
-        from ..models.auth_hosted_page_defaults import AuthHostedPageDefaults
-        from ..models.auth_hosted_page_runtime import AuthHostedPageRuntime
+        from ..models.auth_hosted_page import AuthHostedPage # noqa: PLC0415
+        from ..models.auth_hosted_page_defaults import AuthHostedPageDefaults # noqa: PLC0415
+        from ..models.auth_hosted_page_runtime import AuthHostedPageRuntime # noqa: PLC0415
         page: dict[str, Any] | None
         if isinstance(self.page, AuthHostedPage):
             page = self.page.to_dict()
@@ -74,9 +74,9 @@ class AuthHostedPageResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_hosted_page import AuthHostedPage
-        from ..models.auth_hosted_page_defaults import AuthHostedPageDefaults
-        from ..models.auth_hosted_page_runtime import AuthHostedPageRuntime
+        from ..models.auth_hosted_page import AuthHostedPage # noqa: PLC0415
+        from ..models.auth_hosted_page_defaults import AuthHostedPageDefaults # noqa: PLC0415
+        from ..models.auth_hosted_page_runtime import AuthHostedPageRuntime # noqa: PLC0415
         d = dict(src_dict)
         def _parse_page(data: object) -> AuthHostedPage | None:
             if data is None:

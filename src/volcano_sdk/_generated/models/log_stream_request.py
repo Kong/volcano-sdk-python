@@ -48,9 +48,9 @@ class LogStreamRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.log_database_request_resource import LogDatabaseRequestResource
-        from ..models.log_frontend_request_resource import LogFrontendRequestResource
-        from ..models.log_function_request_resource import LogFunctionRequestResource
+        from ..models.log_database_request_resource import LogDatabaseRequestResource # noqa: PLC0415
+        from ..models.log_frontend_request_resource import LogFrontendRequestResource # noqa: PLC0415
+        from ..models.log_function_request_resource import LogFunctionRequestResource # noqa: PLC0415
         resource: dict[str, Any]
         if isinstance(self.resource, LogFunctionRequestResource):
             resource = self.resource.to_dict()
@@ -87,9 +87,9 @@ class LogStreamRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.log_database_request_resource import LogDatabaseRequestResource
-        from ..models.log_frontend_request_resource import LogFrontendRequestResource
-        from ..models.log_function_request_resource import LogFunctionRequestResource
+        from ..models.log_database_request_resource import LogDatabaseRequestResource # noqa: PLC0415
+        from ..models.log_frontend_request_resource import LogFrontendRequestResource # noqa: PLC0415
+        from ..models.log_function_request_resource import LogFunctionRequestResource # noqa: PLC0415
         d = dict(src_dict)
         def _parse_resource(data: object) -> LogDatabaseRequestResource | LogFrontendRequestResource | LogFunctionRequestResource:
             try:

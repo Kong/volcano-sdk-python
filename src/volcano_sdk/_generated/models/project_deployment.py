@@ -70,8 +70,8 @@ class ProjectDeployment:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.deployment_progress import DeploymentProgress
-        from ..models.project_deployment_resource import ProjectDeploymentResource
+        from ..models.deployment_progress import DeploymentProgress # noqa: PLC0415
+        from ..models.project_deployment_resource import ProjectDeploymentResource # noqa: PLC0415
         id = str(self.id)
 
         project_id = str(self.project_id)
@@ -128,8 +128,8 @@ class ProjectDeployment:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.deployment_progress import DeploymentProgress
-        from ..models.project_deployment_resource import ProjectDeploymentResource
+        from ..models.deployment_progress import DeploymentProgress # noqa: PLC0415
+        from ..models.project_deployment_resource import ProjectDeploymentResource # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 

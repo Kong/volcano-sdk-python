@@ -45,8 +45,8 @@ class BatchFunctionDeployResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.batch_function_deploy_failure import BatchFunctionDeployFailure
-        from ..models.function import Function
+        from ..models.batch_function_deploy_failure import BatchFunctionDeployFailure # noqa: PLC0415
+        from ..models.function import Function # noqa: PLC0415
         batch_id = str(self.batch_id)
 
         data = []
@@ -81,8 +81,8 @@ class BatchFunctionDeployResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.batch_function_deploy_failure import BatchFunctionDeployFailure
-        from ..models.function import Function
+        from ..models.batch_function_deploy_failure import BatchFunctionDeployFailure # noqa: PLC0415
+        from ..models.function import Function # noqa: PLC0415
         d = dict(src_dict)
         batch_id = UUID(d.pop("batch_id"))
 

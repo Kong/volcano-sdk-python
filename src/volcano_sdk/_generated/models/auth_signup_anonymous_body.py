@@ -38,7 +38,7 @@ class AuthSignupAnonymousBody:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_signup_anonymous_body_user_metadata import AuthSignupAnonymousBodyUserMetadata
+        from ..models.auth_signup_anonymous_body_user_metadata import AuthSignupAnonymousBodyUserMetadata # noqa: PLC0415
         user_metadata: dict[str, Any] | Unset = UNSET
         if not isinstance(self.user_metadata, Unset):
             user_metadata = self.user_metadata.to_dict()
@@ -57,7 +57,7 @@ class AuthSignupAnonymousBody:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_signup_anonymous_body_user_metadata import AuthSignupAnonymousBodyUserMetadata
+        from ..models.auth_signup_anonymous_body_user_metadata import AuthSignupAnonymousBodyUserMetadata # noqa: PLC0415
         d = dict(src_dict)
         _user_metadata = d.pop("user_metadata", UNSET)
         user_metadata: AuthSignupAnonymousBodyUserMetadata | Unset

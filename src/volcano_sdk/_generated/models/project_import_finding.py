@@ -50,7 +50,7 @@ class ProjectImportFinding:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_import_resource import ProjectImportResource
+        from ..models.project_import_resource import ProjectImportResource # noqa: PLC0415
         code = self.code
 
         resource = self.resource.to_dict()
@@ -81,7 +81,7 @@ class ProjectImportFinding:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_import_resource import ProjectImportResource
+        from ..models.project_import_resource import ProjectImportResource # noqa: PLC0415
         d = dict(src_dict)
         code = d.pop("code")
 

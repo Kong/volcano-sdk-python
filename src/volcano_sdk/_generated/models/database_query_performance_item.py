@@ -54,7 +54,7 @@ class DatabaseQueryPerformanceItem:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.database_query_performance_database import DatabaseQueryPerformanceDatabase
+        from ..models.database_query_performance_database import DatabaseQueryPerformanceDatabase # noqa: PLC0415
         query_id = self.query_id
 
         query = self.query
@@ -97,7 +97,7 @@ class DatabaseQueryPerformanceItem:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.database_query_performance_database import DatabaseQueryPerformanceDatabase
+        from ..models.database_query_performance_database import DatabaseQueryPerformanceDatabase # noqa: PLC0415
         d = dict(src_dict)
         query_id = d.pop("query_id")
 

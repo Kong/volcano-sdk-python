@@ -20,8 +20,7 @@ T = TypeVar("T", bound="AuthConvertAnonymousBodyUserMetadata")
 
 @_attrs_define
 class AuthConvertAnonymousBodyUserMetadata:
-    """ 
-     """
+    
 
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 

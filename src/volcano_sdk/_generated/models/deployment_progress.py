@@ -51,7 +51,7 @@ class DeploymentProgress:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.deployment_phase import DeploymentPhase
+        from ..models.deployment_phase import DeploymentPhase # noqa: PLC0415
         started_at = self.started_at.isoformat()
 
         elapsed_seconds = self.elapsed_seconds
@@ -94,7 +94,7 @@ class DeploymentProgress:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.deployment_phase import DeploymentPhase
+        from ..models.deployment_phase import DeploymentPhase # noqa: PLC0415
         d = dict(src_dict)
         started_at = datetime.datetime.fromisoformat(d.pop("started_at"))
 

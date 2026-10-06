@@ -48,7 +48,7 @@ class FrontendUsageHistoryResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.frontend_usage_daily_entry import FrontendUsageDailyEntry
+        from ..models.frontend_usage_daily_entry import FrontendUsageDailyEntry # noqa: PLC0415
         frontend_id = str(self.frontend_id)
 
         days = self.days
@@ -84,7 +84,7 @@ class FrontendUsageHistoryResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.frontend_usage_daily_entry import FrontendUsageDailyEntry
+        from ..models.frontend_usage_daily_entry import FrontendUsageDailyEntry # noqa: PLC0415
         d = dict(src_dict)
         frontend_id = UUID(d.pop("frontend_id"))
 

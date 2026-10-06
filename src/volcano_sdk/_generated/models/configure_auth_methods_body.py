@@ -41,7 +41,7 @@ class ConfigureAuthMethodsBody:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.configure_auth_methods_body_oauth_providers_item import ConfigureAuthMethodsBodyOauthProvidersItem
+        from ..models.configure_auth_methods_body_oauth_providers_item import ConfigureAuthMethodsBodyOauthProvidersItem # noqa: PLC0415
         enable_email_password = self.enable_email_password
 
         enable_anonymous = self.enable_anonymous
@@ -73,7 +73,7 @@ class ConfigureAuthMethodsBody:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.configure_auth_methods_body_oauth_providers_item import ConfigureAuthMethodsBodyOauthProvidersItem
+        from ..models.configure_auth_methods_body_oauth_providers_item import ConfigureAuthMethodsBodyOauthProvidersItem # noqa: PLC0415
         d = dict(src_dict)
         enable_email_password = d.pop("enable_email_password", UNSET)
 

@@ -34,7 +34,7 @@ class DatabaseSelectRequest:
             order (list[DatabaseQueryOrder] | Unset): ORDER BY clauses Example: [{'column': 'created_at', 'ascending':
                 False}].
             limit (int | Unset): Maximum rows to return Example: 10.
-            offset (int | Unset): Number of rows to skip (for pagination)
+            offset (int | Unset): Number of rows to skip (for pagination) Example: 0.
      """
 
     table: str
@@ -50,8 +50,8 @@ class DatabaseSelectRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.database_query_filter import DatabaseQueryFilter
-        from ..models.database_query_order import DatabaseQueryOrder
+        from ..models.database_query_filter import DatabaseQueryFilter # noqa: PLC0415
+        from ..models.database_query_order import DatabaseQueryOrder # noqa: PLC0415
         table = self.table
 
         select: list[str] | Unset = UNSET
@@ -105,8 +105,8 @@ class DatabaseSelectRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.database_query_filter import DatabaseQueryFilter
-        from ..models.database_query_order import DatabaseQueryOrder
+        from ..models.database_query_filter import DatabaseQueryFilter # noqa: PLC0415
+        from ..models.database_query_order import DatabaseQueryOrder # noqa: PLC0415
         d = dict(src_dict)
         table = d.pop("table")
 

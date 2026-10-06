@@ -44,8 +44,8 @@ class ProjectMetricsQueryResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_metrics_result import ProjectMetricsResult
-        from ..models.project_metrics_window import ProjectMetricsWindow
+        from ..models.project_metrics_result import ProjectMetricsResult # noqa: PLC0415
+        from ..models.project_metrics_window import ProjectMetricsWindow # noqa: PLC0415
         observed_at = self.observed_at.isoformat()
 
         window = self.window.to_dict()
@@ -78,8 +78,8 @@ class ProjectMetricsQueryResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_metrics_result import ProjectMetricsResult
-        from ..models.project_metrics_window import ProjectMetricsWindow
+        from ..models.project_metrics_result import ProjectMetricsResult # noqa: PLC0415
+        from ..models.project_metrics_window import ProjectMetricsWindow # noqa: PLC0415
         d = dict(src_dict)
         observed_at = datetime.datetime.fromisoformat(d.pop("observed_at"))
 

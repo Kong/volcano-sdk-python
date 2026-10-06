@@ -71,8 +71,8 @@ class FrontendCustomDomainResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.frontend_domain_routing_record import FrontendDomainRoutingRecord
-        from ..models.frontend_domain_verification_record import FrontendDomainVerificationRecord
+        from ..models.frontend_domain_routing_record import FrontendDomainRoutingRecord # noqa: PLC0415
+        from ..models.frontend_domain_verification_record import FrontendDomainVerificationRecord # noqa: PLC0415
         domain = self.domain
 
         tls_mode: str = self.tls_mode
@@ -133,8 +133,8 @@ class FrontendCustomDomainResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.frontend_domain_routing_record import FrontendDomainRoutingRecord
-        from ..models.frontend_domain_verification_record import FrontendDomainVerificationRecord
+        from ..models.frontend_domain_routing_record import FrontendDomainRoutingRecord # noqa: PLC0415
+        from ..models.frontend_domain_verification_record import FrontendDomainVerificationRecord # noqa: PLC0415
         d = dict(src_dict)
         domain = d.pop("domain")
 

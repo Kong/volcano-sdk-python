@@ -40,7 +40,7 @@ class SandboxCommandRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.sandbox_command_request_environment import SandboxCommandRequestEnvironment
+        from ..models.sandbox_command_request_environment import SandboxCommandRequestEnvironment # noqa: PLC0415
         command = self.command
 
         timeout_seconds = self.timeout_seconds
@@ -66,7 +66,7 @@ class SandboxCommandRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.sandbox_command_request_environment import SandboxCommandRequestEnvironment
+        from ..models.sandbox_command_request_environment import SandboxCommandRequestEnvironment # noqa: PLC0415
         d = dict(src_dict)
         command = d.pop("command")
 

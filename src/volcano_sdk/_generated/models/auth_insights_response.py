@@ -47,9 +47,9 @@ class AuthInsightsResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_insights_series_point import AuthInsightsSeriesPoint
-        from ..models.auth_insights_summary import AuthInsightsSummary
-        from ..models.auth_insights_window import AuthInsightsWindow
+        from ..models.auth_insights_series_point import AuthInsightsSeriesPoint # noqa: PLC0415
+        from ..models.auth_insights_summary import AuthInsightsSummary # noqa: PLC0415
+        from ..models.auth_insights_window import AuthInsightsWindow # noqa: PLC0415
         project_id = str(self.project_id)
 
         observed_at = self.observed_at.isoformat()
@@ -82,9 +82,9 @@ class AuthInsightsResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_insights_series_point import AuthInsightsSeriesPoint
-        from ..models.auth_insights_summary import AuthInsightsSummary
-        from ..models.auth_insights_window import AuthInsightsWindow
+        from ..models.auth_insights_series_point import AuthInsightsSeriesPoint # noqa: PLC0415
+        from ..models.auth_insights_summary import AuthInsightsSummary # noqa: PLC0415
+        from ..models.auth_insights_window import AuthInsightsWindow # noqa: PLC0415
         d = dict(src_dict)
         project_id = UUID(d.pop("project_id"))
 
