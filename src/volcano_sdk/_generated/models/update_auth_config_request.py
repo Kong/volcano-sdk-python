@@ -51,8 +51,8 @@ class UpdateAuthConfigRequest:
                 prefix); matching is exact, so subdomains need their own entry. At
                 most 100 entries.
 
-                Restricting signups is a PRO feature to configure and to enforce: a
-                FREE project can only remove the restriction and gets 403 for any
+                Restricting signups is a SUPERAGENT feature to configure and to enforce: a
+                HOBBY project can only remove the restriction and gets 403 for any
                 other change, and the list it keeps is parked until it upgrades.
                  Example: ['domain1.com', 'domain2.com'].
             allowed_email_domains_mode (UpdateAuthConfigRequestAllowedEmailDomainsMode | Unset): How far

@@ -34,7 +34,7 @@ if TYPE_CHECKING:
         AuthUnlinkOAuthProviderProvider,
     )
     from ._generated.models.call_o_auth_provider_api_provider import (
-        CallOAuthProviderAPIProvider,
+        CallOAuthProviderApiProvider,
     )
     from ._generated.models.get_o_auth_provider_token_provider import (
         GetOAuthProviderTokenProvider,
@@ -427,7 +427,7 @@ class AuthCallOAuthAPITransport(Protocol):
         self,
         *,
         authorization: str,
-        provider: CallOAuthProviderAPIProvider,
+        provider: CallOAuthProviderApiProvider,
         endpoint: str,
         method: str,
         body: Mapping[str, JSONValue] | None,

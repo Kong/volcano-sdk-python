@@ -48,7 +48,7 @@ from volcano_sdk._generated.models.auth_update_user_response_200 import (
     AuthUpdateUserResponse200,
 )
 from volcano_sdk._generated.models.call_o_auth_provider_api_response_200 import (
-    CallOAuthProviderAPIResponse200,
+    CallOAuthProviderApiResponse200,
 )
 from volcano_sdk._generated.models.get_o_auth_provider_token_response_200 import (
     GetOAuthProviderTokenResponse200,
@@ -272,7 +272,7 @@ class OAuthTransport:
         self.on_refresh_oauth_provider_token: Callable[[], None] | None = None
         self.call_oauth_api_response: Response = Response(
             200,
-            CallOAuthProviderAPIResponse200.from_dict(
+            CallOAuthProviderApiResponse200.from_dict(
                 {
                     "provider": "github",
                     "endpoint": "/user/repos",

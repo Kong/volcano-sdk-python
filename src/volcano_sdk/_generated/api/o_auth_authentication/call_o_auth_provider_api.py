@@ -8,19 +8,19 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.call_o_auth_provider_api_body import CallOAuthProviderAPIBody
-from ...models.call_o_auth_provider_api_provider import CallOAuthProviderAPIProvider
+from ...models.call_o_auth_provider_api_body import CallOAuthProviderApiBody
+from ...models.call_o_auth_provider_api_provider import CallOAuthProviderApiProvider
 from ...models.call_o_auth_provider_api_provider import check_call_o_auth_provider_api_provider
-from ...models.call_o_auth_provider_api_response_200 import CallOAuthProviderAPIResponse200
+from ...models.call_o_auth_provider_api_response_200 import CallOAuthProviderApiResponse200
 from ...models.error import Error
 from typing import cast
 
 
 
 def request_kwargs(
-    provider: CallOAuthProviderAPIProvider,
+    provider: CallOAuthProviderApiProvider,
     *,
-    body: CallOAuthProviderAPIBody,
+    body: CallOAuthProviderApiBody,
 
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
@@ -44,9 +44,9 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> CallOAuthProviderAPIResponse200 | Error | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> CallOAuthProviderApiResponse200 | Error | None:
     if response.status_code == 200:
-        response_200 = CallOAuthProviderAPIResponse200.from_dict(response.json())
+        response_200 = CallOAuthProviderApiResponse200.from_dict(response.json())
 
 
 
@@ -93,7 +93,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[CallOAuthProviderAPIResponse200 | Error]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[CallOAuthProviderApiResponse200 | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -103,12 +103,12 @@ def build_response(*, client: AuthenticatedClient | Client, response: httpx.Resp
 
 
 def sync_detailed(
-    provider: CallOAuthProviderAPIProvider,
+    provider: CallOAuthProviderApiProvider,
     *,
     client: AuthenticatedClient,
-    body: CallOAuthProviderAPIBody,
+    body: CallOAuthProviderApiBody,
 
-) -> Response[CallOAuthProviderAPIResponse200 | Error]:
+) -> Response[CallOAuthProviderApiResponse200 | Error]:
     """ Call OAuth provider API
 
      Make an authenticated request to an OAuth provider's API on behalf of the user.
@@ -134,15 +134,15 @@ def sync_detailed(
     return `400`.
 
     Args:
-        provider (CallOAuthProviderAPIProvider):
-        body (CallOAuthProviderAPIBody):
+        provider (CallOAuthProviderApiProvider):
+        body (CallOAuthProviderApiBody):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[CallOAuthProviderAPIResponse200 | Error]
+        Response[CallOAuthProviderApiResponse200 | Error]
      """
 
 
@@ -159,12 +159,12 @@ body=body,
     return build_response(client=client, response=response)
 
 def sync(
-    provider: CallOAuthProviderAPIProvider,
+    provider: CallOAuthProviderApiProvider,
     *,
     client: AuthenticatedClient,
-    body: CallOAuthProviderAPIBody,
+    body: CallOAuthProviderApiBody,
 
-) -> CallOAuthProviderAPIResponse200 | Error | None:
+) -> CallOAuthProviderApiResponse200 | Error | None:
     """ Call OAuth provider API
 
      Make an authenticated request to an OAuth provider's API on behalf of the user.
@@ -190,15 +190,15 @@ def sync(
     return `400`.
 
     Args:
-        provider (CallOAuthProviderAPIProvider):
-        body (CallOAuthProviderAPIBody):
+        provider (CallOAuthProviderApiProvider):
+        body (CallOAuthProviderApiBody):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        CallOAuthProviderAPIResponse200 | Error
+        CallOAuthProviderApiResponse200 | Error
      """
 
 
@@ -210,12 +210,12 @@ body=body,
     ).parsed
 
 async def asyncio_detailed(
-    provider: CallOAuthProviderAPIProvider,
+    provider: CallOAuthProviderApiProvider,
     *,
     client: AuthenticatedClient,
-    body: CallOAuthProviderAPIBody,
+    body: CallOAuthProviderApiBody,
 
-) -> Response[CallOAuthProviderAPIResponse200 | Error]:
+) -> Response[CallOAuthProviderApiResponse200 | Error]:
     """ Call OAuth provider API
 
      Make an authenticated request to an OAuth provider's API on behalf of the user.
@@ -241,15 +241,15 @@ async def asyncio_detailed(
     return `400`.
 
     Args:
-        provider (CallOAuthProviderAPIProvider):
-        body (CallOAuthProviderAPIBody):
+        provider (CallOAuthProviderApiProvider):
+        body (CallOAuthProviderApiBody):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[CallOAuthProviderAPIResponse200 | Error]
+        Response[CallOAuthProviderApiResponse200 | Error]
      """
 
 
@@ -266,12 +266,12 @@ body=body,
     return build_response(client=client, response=response)
 
 async def asyncio(
-    provider: CallOAuthProviderAPIProvider,
+    provider: CallOAuthProviderApiProvider,
     *,
     client: AuthenticatedClient,
-    body: CallOAuthProviderAPIBody,
+    body: CallOAuthProviderApiBody,
 
-) -> CallOAuthProviderAPIResponse200 | Error | None:
+) -> CallOAuthProviderApiResponse200 | Error | None:
     """ Call OAuth provider API
 
      Make an authenticated request to an OAuth provider's API on behalf of the user.
@@ -297,15 +297,15 @@ async def asyncio(
     return `400`.
 
     Args:
-        provider (CallOAuthProviderAPIProvider):
-        body (CallOAuthProviderAPIBody):
+        provider (CallOAuthProviderApiProvider):
+        body (CallOAuthProviderApiBody):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        CallOAuthProviderAPIResponse200 | Error
+        CallOAuthProviderApiResponse200 | Error
      """
 
 

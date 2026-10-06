@@ -26,7 +26,7 @@ class ProjectConfigProject:
 
         Attributes:
             name (str | Unset):
-            all_regions (bool | Unset): Region policy. `false` requires `selected_regions` (PRO plan).
+            all_regions (bool | Unset): Region policy. `false` requires `selected_regions` (SUPERAGENT plan).
             selected_regions (list[str] | Unset): Region subset (bare region names). Requires `all_regions=false`.
      """
 

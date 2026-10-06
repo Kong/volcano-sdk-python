@@ -41,7 +41,7 @@ class DatabaseQueryResult:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.database_query_result_data_item import DatabaseQueryResultDataItem
+        from ..models.database_query_result_data_item import DatabaseQueryResultDataItem # noqa: PLC0415
         data: list[dict[str, Any]] | Unset = UNSET
         if not isinstance(self.data, Unset):
             data = []
@@ -69,7 +69,7 @@ class DatabaseQueryResult:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.database_query_result_data_item import DatabaseQueryResultDataItem
+        from ..models.database_query_result_data_item import DatabaseQueryResultDataItem # noqa: PLC0415
         d = dict(src_dict)
         _data = d.pop("data", UNSET)
         data: list[DatabaseQueryResultDataItem] | Unset = UNSET

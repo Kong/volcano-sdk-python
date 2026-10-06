@@ -45,8 +45,8 @@ class DatabaseUpdateRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.database_query_filter import DatabaseQueryFilter
-        from ..models.database_update_request_values import DatabaseUpdateRequestValues
+        from ..models.database_query_filter import DatabaseQueryFilter # noqa: PLC0415
+        from ..models.database_update_request_values import DatabaseUpdateRequestValues # noqa: PLC0415
         table = self.table
 
         values = self.values.to_dict()
@@ -73,8 +73,8 @@ class DatabaseUpdateRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.database_query_filter import DatabaseQueryFilter
-        from ..models.database_update_request_values import DatabaseUpdateRequestValues
+        from ..models.database_query_filter import DatabaseQueryFilter # noqa: PLC0415
+        from ..models.database_update_request_values import DatabaseUpdateRequestValues # noqa: PLC0415
         d = dict(src_dict)
         table = d.pop("table")
 

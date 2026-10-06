@@ -75,14 +75,14 @@ class ProjectConfig:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_config_auth import ProjectConfigAuth
-        from ..models.project_config_bucket import ProjectConfigBucket
-        from ..models.project_config_database import ProjectConfigDatabase
-        from ..models.project_config_frontend import ProjectConfigFrontend
-        from ..models.project_config_function import ProjectConfigFunction
-        from ..models.project_config_project import ProjectConfigProject
-        from ..models.project_config_realtime import ProjectConfigRealtime
-        from ..models.project_config_variable import ProjectConfigVariable
+        from ..models.project_config_auth import ProjectConfigAuth # noqa: PLC0415
+        from ..models.project_config_bucket import ProjectConfigBucket # noqa: PLC0415
+        from ..models.project_config_database import ProjectConfigDatabase # noqa: PLC0415
+        from ..models.project_config_frontend import ProjectConfigFrontend # noqa: PLC0415
+        from ..models.project_config_function import ProjectConfigFunction # noqa: PLC0415
+        from ..models.project_config_project import ProjectConfigProject # noqa: PLC0415
+        from ..models.project_config_realtime import ProjectConfigRealtime # noqa: PLC0415
+        from ..models.project_config_variable import ProjectConfigVariable # noqa: PLC0415
         version: int = self.version
 
         project: dict[str, Any] | Unset = UNSET
@@ -179,14 +179,14 @@ class ProjectConfig:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_config_auth import ProjectConfigAuth
-        from ..models.project_config_bucket import ProjectConfigBucket
-        from ..models.project_config_database import ProjectConfigDatabase
-        from ..models.project_config_frontend import ProjectConfigFrontend
-        from ..models.project_config_function import ProjectConfigFunction
-        from ..models.project_config_project import ProjectConfigProject
-        from ..models.project_config_realtime import ProjectConfigRealtime
-        from ..models.project_config_variable import ProjectConfigVariable
+        from ..models.project_config_auth import ProjectConfigAuth # noqa: PLC0415
+        from ..models.project_config_bucket import ProjectConfigBucket # noqa: PLC0415
+        from ..models.project_config_database import ProjectConfigDatabase # noqa: PLC0415
+        from ..models.project_config_frontend import ProjectConfigFrontend # noqa: PLC0415
+        from ..models.project_config_function import ProjectConfigFunction # noqa: PLC0415
+        from ..models.project_config_project import ProjectConfigProject # noqa: PLC0415
+        from ..models.project_config_realtime import ProjectConfigRealtime # noqa: PLC0415
+        from ..models.project_config_variable import ProjectConfigVariable # noqa: PLC0415
         d = dict(src_dict)
         version = check_project_config_version(d.pop("version"))
 

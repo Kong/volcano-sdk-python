@@ -30,7 +30,8 @@ class ProjectConfigAuthManagedPages:
         Attributes:
             enabled (bool | Unset): Enable or disable managed auth hosted pages
             redirects (ProjectConfigAuthRedirects | Unset):
-            pages (ProjectConfigHostedPages | Unset): Hosted auth pages keyed by page type (PRO plan). Upsert-only: omitted
+            pages (ProjectConfigHostedPages | Unset): Hosted auth pages keyed by page type (SUPERAGENT plan). Upsert-only:
+                omitted
                 pages are left untouched (there is no delete for hosted pages).
             appearance (ProjectConfigAuthPageAppearance | Unset):
      """
@@ -45,9 +46,9 @@ class ProjectConfigAuthManagedPages:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_config_auth_page_appearance import ProjectConfigAuthPageAppearance
-        from ..models.project_config_auth_redirects import ProjectConfigAuthRedirects
-        from ..models.project_config_hosted_pages import ProjectConfigHostedPages
+        from ..models.project_config_auth_page_appearance import ProjectConfigAuthPageAppearance # noqa: PLC0415
+        from ..models.project_config_auth_redirects import ProjectConfigAuthRedirects # noqa: PLC0415
+        from ..models.project_config_hosted_pages import ProjectConfigHostedPages # noqa: PLC0415
         enabled = self.enabled
 
         redirects: dict[str, Any] | Unset = UNSET
@@ -82,9 +83,9 @@ class ProjectConfigAuthManagedPages:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_config_auth_page_appearance import ProjectConfigAuthPageAppearance
-        from ..models.project_config_auth_redirects import ProjectConfigAuthRedirects
-        from ..models.project_config_hosted_pages import ProjectConfigHostedPages
+        from ..models.project_config_auth_page_appearance import ProjectConfigAuthPageAppearance # noqa: PLC0415
+        from ..models.project_config_auth_redirects import ProjectConfigAuthRedirects # noqa: PLC0415
+        from ..models.project_config_hosted_pages import ProjectConfigHostedPages # noqa: PLC0415
         d = dict(src_dict)
         enabled = d.pop("enabled", UNSET)
 

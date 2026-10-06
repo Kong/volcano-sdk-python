@@ -24,7 +24,7 @@ T = TypeVar("T", bound="ProjectConfigCustomDomain")
 
 @_attrs_define
 class ProjectConfigCustomDomain:
-    """ Custom domain with BYOC TLS (PRO plan). `tls` is required when the
+    """ Custom domain with BYOC TLS (SUPERAGENT plan). `tls` is required when the
     domain is first created and optional afterwards: providing new TLS
     material for the same domain rotates the certificate in place (zero
     downtime); omitting `tls` keeps the stored certificate. TLS material is
@@ -43,7 +43,7 @@ class ProjectConfigCustomDomain:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig
+        from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig # noqa: PLC0415
         domain = self.domain
 
         tls: dict[str, Any] | Unset = UNSET
@@ -65,7 +65,7 @@ class ProjectConfigCustomDomain:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig
+        from ..models.frontend_custom_domain_tls_config import FrontendCustomDomainTLSConfig # noqa: PLC0415
         d = dict(src_dict)
         domain = d.pop("domain")
 

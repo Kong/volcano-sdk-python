@@ -38,8 +38,8 @@ class ProjectMetricsQueryRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_metrics_query import ProjectMetricsQuery
-        from ..models.project_metrics_query_time_range import ProjectMetricsQueryTimeRange
+        from ..models.project_metrics_query import ProjectMetricsQuery # noqa: PLC0415
+        from ..models.project_metrics_query_time_range import ProjectMetricsQueryTimeRange # noqa: PLC0415
         time_range = self.time_range.to_dict()
 
         queries = []
@@ -63,8 +63,8 @@ class ProjectMetricsQueryRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_metrics_query import ProjectMetricsQuery
-        from ..models.project_metrics_query_time_range import ProjectMetricsQueryTimeRange
+        from ..models.project_metrics_query import ProjectMetricsQuery # noqa: PLC0415
+        from ..models.project_metrics_query_time_range import ProjectMetricsQueryTimeRange # noqa: PLC0415
         d = dict(src_dict)
         time_range = ProjectMetricsQueryTimeRange.from_dict(d.pop("time_range"))
 

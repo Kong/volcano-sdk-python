@@ -45,7 +45,7 @@ class RealtimeStats:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.realtime_plan_limits import RealtimePlanLimits
+        from ..models.realtime_plan_limits import RealtimePlanLimits # noqa: PLC0415
         num_connections = self.num_connections
 
         peak_connections = self.peak_connections
@@ -78,7 +78,7 @@ class RealtimeStats:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.realtime_plan_limits import RealtimePlanLimits
+        from ..models.realtime_plan_limits import RealtimePlanLimits # noqa: PLC0415
         d = dict(src_dict)
         num_connections = d.pop("num_connections", UNSET)
 

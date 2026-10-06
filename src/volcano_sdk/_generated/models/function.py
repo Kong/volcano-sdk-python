@@ -90,7 +90,7 @@ class Function:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.function_openapi_spec_type_0 import FunctionOpenapiSpecType0
+        from ..models.function_openapi_spec_type_0 import FunctionOpenapiSpecType0 # noqa: PLC0415
         id = str(self.id)
 
         project_id = str(self.project_id)
@@ -185,7 +185,7 @@ class Function:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.function_openapi_spec_type_0 import FunctionOpenapiSpecType0
+        from ..models.function_openapi_spec_type_0 import FunctionOpenapiSpecType0 # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 

@@ -85,8 +85,8 @@ class ProjectConfigFunction:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_config_function_openapi_spec_type_0 import ProjectConfigFunctionOpenapiSpecType0
-        from ..models.project_config_scheduler import ProjectConfigScheduler
+        from ..models.project_config_function_openapi_spec_type_0 import ProjectConfigFunctionOpenapiSpecType0 # noqa: PLC0415
+        from ..models.project_config_scheduler import ProjectConfigScheduler # noqa: PLC0415
         name = self.name
 
         kind: str | Unset = UNSET
@@ -163,8 +163,8 @@ class ProjectConfigFunction:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_config_function_openapi_spec_type_0 import ProjectConfigFunctionOpenapiSpecType0
-        from ..models.project_config_scheduler import ProjectConfigScheduler
+        from ..models.project_config_function_openapi_spec_type_0 import ProjectConfigFunctionOpenapiSpecType0 # noqa: PLC0415
+        from ..models.project_config_scheduler import ProjectConfigScheduler # noqa: PLC0415
         d = dict(src_dict)
         name = d.pop("name")
 

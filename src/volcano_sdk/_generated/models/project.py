@@ -42,7 +42,7 @@ class Project:
             selected_regions (list[str]): Effective region set for this project (normalized and deduplicated)
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
-            plan (ProjectPlan | Unset): Platform plan applied to the project when available
+            plan (ProjectPlan | Unset): Public plan name; FREE and PRO are accepted from older Hosting responses.
             aws_application_name (str | Unset):
             last_invoked_at (datetime.datetime | Unset): Most recent activity timestamp across project resources
             logo_url (str | Unset): Relative API path that serves the project logo when one has been
@@ -74,8 +74,8 @@ class Project:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_git_connection_summary import ProjectGitConnectionSummary
-        from ..models.project_health_summary import ProjectHealthSummary
+        from ..models.project_git_connection_summary import ProjectGitConnectionSummary # noqa: PLC0415
+        from ..models.project_health_summary import ProjectHealthSummary # noqa: PLC0415
         id = str(self.id)
 
         name = self.name
@@ -144,8 +144,8 @@ class Project:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_git_connection_summary import ProjectGitConnectionSummary
-        from ..models.project_health_summary import ProjectHealthSummary
+        from ..models.project_git_connection_summary import ProjectGitConnectionSummary # noqa: PLC0415
+        from ..models.project_health_summary import ProjectHealthSummary # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 

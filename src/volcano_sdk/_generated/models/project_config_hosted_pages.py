@@ -24,7 +24,7 @@ T = TypeVar("T", bound="ProjectConfigHostedPages")
 
 @_attrs_define
 class ProjectConfigHostedPages:
-    """ Hosted auth pages keyed by page type (PRO plan). Upsert-only: omitted
+    """ Hosted auth pages keyed by page type (SUPERAGENT plan). Upsert-only: omitted
     pages are left untouched (there is no delete for hosted pages).
 
         Attributes:
@@ -48,7 +48,7 @@ class ProjectConfigHostedPages:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_config_hosted_page import ProjectConfigHostedPage
+        from ..models.project_config_hosted_page import ProjectConfigHostedPage # noqa: PLC0415
         login: dict[str, Any] | Unset = UNSET
         if not isinstance(self.login, Unset):
             login = self.login.to_dict()
@@ -97,7 +97,7 @@ class ProjectConfigHostedPages:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_config_hosted_page import ProjectConfigHostedPage
+        from ..models.project_config_hosted_page import ProjectConfigHostedPage # noqa: PLC0415
         d = dict(src_dict)
         _login = d.pop("login", UNSET)
         login: ProjectConfigHostedPage | Unset

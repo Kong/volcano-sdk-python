@@ -50,11 +50,11 @@ class AuthPageAppearanceResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_page_appearance_defaults import AuthPageAppearanceDefaults
-        from ..models.auth_page_appearance_options import AuthPageAppearanceOptions
-        from ..models.auth_page_appearance_response_layouts import AuthPageAppearanceResponseLayouts
-        from ..models.auth_page_appearance_response_parked import AuthPageAppearanceResponseParked
-        from ..models.auth_page_theme import AuthPageTheme
+        from ..models.auth_page_appearance_defaults import AuthPageAppearanceDefaults # noqa: PLC0415
+        from ..models.auth_page_appearance_options import AuthPageAppearanceOptions # noqa: PLC0415
+        from ..models.auth_page_appearance_response_layouts import AuthPageAppearanceResponseLayouts # noqa: PLC0415
+        from ..models.auth_page_appearance_response_parked import AuthPageAppearanceResponseParked # noqa: PLC0415
+        from ..models.auth_page_theme import AuthPageTheme # noqa: PLC0415
         theme = self.theme.to_dict()
 
         layouts = self.layouts.to_dict()
@@ -85,11 +85,11 @@ class AuthPageAppearanceResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_page_appearance_defaults import AuthPageAppearanceDefaults
-        from ..models.auth_page_appearance_options import AuthPageAppearanceOptions
-        from ..models.auth_page_appearance_response_layouts import AuthPageAppearanceResponseLayouts
-        from ..models.auth_page_appearance_response_parked import AuthPageAppearanceResponseParked
-        from ..models.auth_page_theme import AuthPageTheme
+        from ..models.auth_page_appearance_defaults import AuthPageAppearanceDefaults # noqa: PLC0415
+        from ..models.auth_page_appearance_options import AuthPageAppearanceOptions # noqa: PLC0415
+        from ..models.auth_page_appearance_response_layouts import AuthPageAppearanceResponseLayouts # noqa: PLC0415
+        from ..models.auth_page_appearance_response_parked import AuthPageAppearanceResponseParked # noqa: PLC0415
+        from ..models.auth_page_theme import AuthPageTheme # noqa: PLC0415
         d = dict(src_dict)
         theme = AuthPageTheme.from_dict(d.pop("theme"))
 

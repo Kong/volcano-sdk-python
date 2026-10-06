@@ -65,7 +65,7 @@ class StorageObjectWithBucket:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.storage_object_with_bucket_metadata import StorageObjectWithBucketMetadata
+        from ..models.storage_object_with_bucket_metadata import StorageObjectWithBucketMetadata # noqa: PLC0415
         id = str(self.id)
 
         bucket_id = str(self.bucket_id)
@@ -135,7 +135,7 @@ class StorageObjectWithBucket:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.storage_object_with_bucket_metadata import StorageObjectWithBucketMetadata
+        from ..models.storage_object_with_bucket_metadata import StorageObjectWithBucketMetadata # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 

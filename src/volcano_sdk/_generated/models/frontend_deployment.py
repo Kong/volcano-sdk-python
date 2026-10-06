@@ -89,7 +89,7 @@ class FrontendDeployment:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.deployment_progress import DeploymentProgress
+        from ..models.deployment_progress import DeploymentProgress # noqa: PLC0415
         id = str(self.id)
 
         frontend_id = str(self.frontend_id)
@@ -178,7 +178,7 @@ class FrontendDeployment:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.deployment_progress import DeploymentProgress
+        from ..models.deployment_progress import DeploymentProgress # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 

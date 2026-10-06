@@ -46,7 +46,7 @@ class AuthTokenResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_user import AuthUser
+        from ..models.auth_user import AuthUser # noqa: PLC0415
         access_token = self.access_token
 
         token_type = self.token_type
@@ -75,7 +75,7 @@ class AuthTokenResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_user import AuthUser
+        from ..models.auth_user import AuthUser # noqa: PLC0415
         d = dict(src_dict)
         access_token = d.pop("access_token")
 

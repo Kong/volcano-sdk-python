@@ -36,7 +36,7 @@ class AuthMethodsResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_method_summary import AuthMethodSummary
+        from ..models.auth_method_summary import AuthMethodSummary # noqa: PLC0415
         methods = []
         for methods_item_data in self.methods:
             methods_item = methods_item_data.to_dict()
@@ -57,7 +57,7 @@ class AuthMethodsResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_method_summary import AuthMethodSummary
+        from ..models.auth_method_summary import AuthMethodSummary # noqa: PLC0415
         d = dict(src_dict)
         methods = []
         _methods = d.pop("methods")

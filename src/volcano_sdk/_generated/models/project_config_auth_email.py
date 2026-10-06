@@ -35,7 +35,7 @@ class ProjectConfigAuthEmail:
                 template
                 types absent from a declared map revert to server defaults (custom
                 bodies deleted, subject overrides cleared). Custom template bodies
-                require the PRO plan; subject-only changes are available on FREE.
+                require the SUPERAGENT plan; subject-only changes are available on HOBBY.
      """
 
     enabled: bool | Unset = UNSET
@@ -48,9 +48,9 @@ class ProjectConfigAuthEmail:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_config_auth_email_from import ProjectConfigAuthEmailFrom
-        from ..models.project_config_auth_email_smtp import ProjectConfigAuthEmailSMTP
-        from ..models.project_config_email_templates import ProjectConfigEmailTemplates
+        from ..models.project_config_auth_email_from import ProjectConfigAuthEmailFrom # noqa: PLC0415
+        from ..models.project_config_auth_email_smtp import ProjectConfigAuthEmailSMTP # noqa: PLC0415
+        from ..models.project_config_email_templates import ProjectConfigEmailTemplates # noqa: PLC0415
         enabled = self.enabled
 
         from_: dict[str, Any] | Unset = UNSET
@@ -85,9 +85,9 @@ class ProjectConfigAuthEmail:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_config_auth_email_from import ProjectConfigAuthEmailFrom
-        from ..models.project_config_auth_email_smtp import ProjectConfigAuthEmailSMTP
-        from ..models.project_config_email_templates import ProjectConfigEmailTemplates
+        from ..models.project_config_auth_email_from import ProjectConfigAuthEmailFrom # noqa: PLC0415
+        from ..models.project_config_auth_email_smtp import ProjectConfigAuthEmailSMTP # noqa: PLC0415
+        from ..models.project_config_email_templates import ProjectConfigEmailTemplates # noqa: PLC0415
         d = dict(src_dict)
         enabled = d.pop("enabled", UNSET)
 

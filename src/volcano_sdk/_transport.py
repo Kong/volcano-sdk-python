@@ -6,6 +6,7 @@ from ._transport_database import DatabaseTransport
 from ._transport_execution import ExecutionTransport
 from ._transport_locks import LocksTransport
 from ._transport_response import invoke, invoke_async, response_payload
+from ._transport_sandbox import SandboxHTTPTransport
 from ._transport_storage import StorageTransport
 from ._transport_types import (
     ERROR_TYPES_BY_STATUS,
@@ -107,5 +108,6 @@ class GeneratedTransport(
     StorageTransport,
     ExecutionTransport,
     LocksTransport,
+    SandboxHTTPTransport,
 ):
     """Compose typed generated operations behind the stable SDK transport."""

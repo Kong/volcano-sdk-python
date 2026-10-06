@@ -39,7 +39,7 @@ class DatabaseInsertRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.database_insert_request_values import DatabaseInsertRequestValues
+        from ..models.database_insert_request_values import DatabaseInsertRequestValues # noqa: PLC0415
         table = self.table
 
         values = self.values.to_dict()
@@ -58,7 +58,7 @@ class DatabaseInsertRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.database_insert_request_values import DatabaseInsertRequestValues
+        from ..models.database_insert_request_values import DatabaseInsertRequestValues # noqa: PLC0415
         d = dict(src_dict)
         table = d.pop("table")
 

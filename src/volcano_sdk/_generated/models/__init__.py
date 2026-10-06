@@ -96,12 +96,12 @@ from .ban_user_response_status import BanUserResponseStatus
 from .batch_function_deploy_failure import BatchFunctionDeployFailure
 from .batch_function_deploy_failure_operation import BatchFunctionDeployFailureOperation
 from .batch_function_deploy_response import BatchFunctionDeployResponse
-from .call_o_auth_provider_api_body import CallOAuthProviderAPIBody
-from .call_o_auth_provider_api_body_body import CallOAuthProviderAPIBodyBody
-from .call_o_auth_provider_api_body_method import CallOAuthProviderAPIBodyMethod
-from .call_o_auth_provider_api_provider import CallOAuthProviderAPIProvider
-from .call_o_auth_provider_api_response_200 import CallOAuthProviderAPIResponse200
-from .call_o_auth_provider_api_response_200_provider import CallOAuthProviderAPIResponse200Provider
+from .call_o_auth_provider_api_body import CallOAuthProviderApiBody
+from .call_o_auth_provider_api_body_body import CallOAuthProviderApiBodyBody
+from .call_o_auth_provider_api_body_method import CallOAuthProviderApiBodyMethod
+from .call_o_auth_provider_api_provider import CallOAuthProviderApiProvider
+from .call_o_auth_provider_api_response_200 import CallOAuthProviderApiResponse200
+from .call_o_auth_provider_api_response_200_provider import CallOAuthProviderApiResponse200Provider
 from .complete_upload_session_response import CompleteUploadSessionResponse
 from .configure_auth_methods_body import ConfigureAuthMethodsBody
 from .configure_auth_methods_body_oauth_providers_item import ConfigureAuthMethodsBodyOauthProvidersItem
@@ -131,6 +131,8 @@ from .create_functions_batch_body import CreateFunctionsBatchBody
 from .create_o_auth_config_request import CreateOAuthConfigRequest
 from .create_o_auth_config_request_provider import CreateOAuthConfigRequestProvider
 from .create_project_request import CreateProjectRequest
+from .create_sandbox_template_request import CreateSandboxTemplateRequest
+from .create_sandbox_template_request_memory_mb import CreateSandboxTemplateRequestMemoryMb
 from .create_service_key_body import CreateServiceKeyBody
 from .create_storage_bucket_request import CreateStorageBucketRequest
 from .create_storage_policy_request import CreateStoragePolicyRequest
@@ -449,6 +451,9 @@ from .project_source_export_state import ProjectSourceExportState
 from .project_source_export_state_mode import ProjectSourceExportStateMode
 from .project_status import ProjectStatus
 from .project_usage_response import ProjectUsageResponse
+from .publish_sandbox_preset_request import PublishSandboxPresetRequest
+from .publish_sandbox_preset_request_memory_mb import PublishSandboxPresetRequestMemoryMb
+from .publish_sandbox_preset_request_preset import PublishSandboxPresetRequestPreset
 from .realtime_config import RealtimeConfig
 from .realtime_plan_limits import RealtimePlanLimits
 from .realtime_stats import RealtimeStats
@@ -460,6 +465,31 @@ from .reset_database_password_response_200 import ResetDatabasePasswordResponse2
 from .resolve_function_response import ResolveFunctionResponse
 from .resource_reference import ResourceReference
 from .resource_reference_type import ResourceReferenceType
+from .sandbox_access import SandboxAccess
+from .sandbox_access_request import SandboxAccessRequest
+from .sandbox_capacity import SandboxCapacity
+from .sandbox_capacity_list import SandboxCapacityList
+from .sandbox_command_request import SandboxCommandRequest
+from .sandbox_command_request_environment import SandboxCommandRequestEnvironment
+from .sandbox_command_result import SandboxCommandResult
+from .sandbox_deployment import SandboxDeployment
+from .sandbox_deployment_page import SandboxDeploymentPage
+from .sandbox_execution_result import SandboxExecutionResult
+from .sandbox_file_read_request import SandboxFileReadRequest
+from .sandbox_file_result import SandboxFileResult
+from .sandbox_file_write_request import SandboxFileWriteRequest
+from .sandbox_pagination import SandboxPagination
+from .sandbox_preset import SandboxPreset
+from .sandbox_preset_list import SandboxPresetList
+from .sandbox_preset_memory_mb import SandboxPresetMemoryMb
+from .sandbox_session import SandboxSession
+from .sandbox_session_desired_state import SandboxSessionDesiredState
+from .sandbox_session_page import SandboxSessionPage
+from .sandbox_session_state import SandboxSessionState
+from .sandbox_subject_grant_request import SandboxSubjectGrantRequest
+from .sandbox_template import SandboxTemplate
+from .sandbox_template_page import SandboxTemplatePage
+from .sandbox_template_status import SandboxTemplateStatus
 from .schedule_request import ScheduleRequest
 from .schedule_request_kind import ScheduleRequestKind
 from .service_key import ServiceKey
@@ -501,6 +531,7 @@ from .update_o_auth_config_request import UpdateOAuthConfigRequest
 from .update_project_git_deploy_settings_request import UpdateProjectGitDeploySettingsRequest
 from .update_project_request import UpdateProjectRequest
 from .update_realtime_config_request import UpdateRealtimeConfigRequest
+from .update_sandbox_template_request import UpdateSandboxTemplateRequest
 from .update_storage_bucket_request import UpdateStorageBucketRequest
 from .update_variable_request import UpdateVariableRequest
 from .upload_project_logo_body import UploadProjectLogoBody
@@ -611,12 +642,12 @@ __all__ = (
     "BatchFunctionDeployFailure",
     "BatchFunctionDeployFailureOperation",
     "BatchFunctionDeployResponse",
-    "CallOAuthProviderAPIBody",
-    "CallOAuthProviderAPIBodyBody",
-    "CallOAuthProviderAPIBodyMethod",
-    "CallOAuthProviderAPIProvider",
-    "CallOAuthProviderAPIResponse200",
-    "CallOAuthProviderAPIResponse200Provider",
+    "CallOAuthProviderApiBody",
+    "CallOAuthProviderApiBodyBody",
+    "CallOAuthProviderApiBodyMethod",
+    "CallOAuthProviderApiProvider",
+    "CallOAuthProviderApiResponse200",
+    "CallOAuthProviderApiResponse200Provider",
     "CompleteUploadSessionResponse",
     "ConfigureAuthMethodsBody",
     "ConfigureAuthMethodsBodyOauthProvidersItem",
@@ -646,6 +677,8 @@ __all__ = (
     "CreateOAuthConfigRequest",
     "CreateOAuthConfigRequestProvider",
     "CreateProjectRequest",
+    "CreateSandboxTemplateRequest",
+    "CreateSandboxTemplateRequestMemoryMb",
     "CreateServiceKeyBody",
     "CreateStorageBucketRequest",
     "CreateStoragePolicyRequest",
@@ -964,6 +997,9 @@ __all__ = (
     "ProjectSourceExportStateMode",
     "ProjectStatus",
     "ProjectUsageResponse",
+    "PublishSandboxPresetRequest",
+    "PublishSandboxPresetRequestMemoryMb",
+    "PublishSandboxPresetRequestPreset",
     "RealtimeConfig",
     "RealtimePlanLimits",
     "RealtimeStats",
@@ -975,6 +1011,31 @@ __all__ = (
     "ResolveFunctionResponse",
     "ResourceReference",
     "ResourceReferenceType",
+    "SandboxAccess",
+    "SandboxAccessRequest",
+    "SandboxCapacity",
+    "SandboxCapacityList",
+    "SandboxCommandRequest",
+    "SandboxCommandRequestEnvironment",
+    "SandboxCommandResult",
+    "SandboxDeployment",
+    "SandboxDeploymentPage",
+    "SandboxExecutionResult",
+    "SandboxFileReadRequest",
+    "SandboxFileResult",
+    "SandboxFileWriteRequest",
+    "SandboxPagination",
+    "SandboxPreset",
+    "SandboxPresetList",
+    "SandboxPresetMemoryMb",
+    "SandboxSession",
+    "SandboxSessionDesiredState",
+    "SandboxSessionPage",
+    "SandboxSessionState",
+    "SandboxSubjectGrantRequest",
+    "SandboxTemplate",
+    "SandboxTemplatePage",
+    "SandboxTemplateStatus",
     "ScheduleRequest",
     "ScheduleRequestKind",
     "ServiceKey",
@@ -1016,6 +1077,7 @@ __all__ = (
     "UpdateProjectGitDeploySettingsRequest",
     "UpdateProjectRequest",
     "UpdateRealtimeConfigRequest",
+    "UpdateSandboxTemplateRequest",
     "UpdateStorageBucketRequest",
     "UpdateVariableRequest",
     "UploadProjectLogoBody",

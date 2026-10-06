@@ -49,7 +49,7 @@ class ProjectMetricsResult:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_metrics_value import ProjectMetricsValue
+        from ..models.project_metrics_value import ProjectMetricsValue # noqa: PLC0415
         id = self.id
 
         metric: str = self.metric
@@ -82,7 +82,7 @@ class ProjectMetricsResult:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_metrics_value import ProjectMetricsValue
+        from ..models.project_metrics_value import ProjectMetricsValue # noqa: PLC0415
         d = dict(src_dict)
         id = d.pop("id")
 

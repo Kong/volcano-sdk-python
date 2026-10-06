@@ -8,7 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..models.call_o_auth_provider_api_response_200_provider import CallOAuthProviderAPIResponse200Provider
+from ..models.call_o_auth_provider_api_response_200_provider import CallOAuthProviderApiResponse200Provider
 from ..models.call_o_auth_provider_api_response_200_provider import check_call_o_auth_provider_api_response_200_provider
 from typing import cast
 
@@ -17,22 +17,22 @@ from typing import cast
 
 
 
-T = TypeVar("T", bound="CallOAuthProviderAPIResponse200")
+T = TypeVar("T", bound="CallOAuthProviderApiResponse200")
 
 
 
 @_attrs_define
-class CallOAuthProviderAPIResponse200:
+class CallOAuthProviderApiResponse200:
     """ OAuth provider API response envelope
 
         Attributes:
-            provider (CallOAuthProviderAPIResponse200Provider):
+            provider (CallOAuthProviderApiResponse200Provider):
             endpoint (str):
             status_code (int):
             data (Any): Raw provider JSON value, or null when the provider returns no body
      """
 
-    provider: CallOAuthProviderAPIResponse200Provider
+    provider: CallOAuthProviderApiResponse200Provider
     endpoint: str
     status_code: int
     data: Any

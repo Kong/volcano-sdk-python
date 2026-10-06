@@ -25,7 +25,7 @@ class DatabaseQueryOrder:
 
         Attributes:
             column (str):  Example: created_at.
-            ascending (bool | Unset):  Default: True.
+            ascending (bool | Unset):  Default: True. Example: False.
             nulls_first (bool | Unset):  Default: False.
      """
 

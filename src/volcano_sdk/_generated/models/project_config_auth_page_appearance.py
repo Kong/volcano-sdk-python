@@ -39,8 +39,8 @@ class ProjectConfigAuthPageAppearance:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_page_theme import AuthPageTheme
-        from ..models.project_config_auth_page_layouts import ProjectConfigAuthPageLayouts
+        from ..models.auth_page_theme import AuthPageTheme # noqa: PLC0415
+        from ..models.project_config_auth_page_layouts import ProjectConfigAuthPageLayouts # noqa: PLC0415
         theme: dict[str, Any] | Unset = UNSET
         if not isinstance(self.theme, Unset):
             theme = self.theme.to_dict()
@@ -65,8 +65,8 @@ class ProjectConfigAuthPageAppearance:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_page_theme import AuthPageTheme
-        from ..models.project_config_auth_page_layouts import ProjectConfigAuthPageLayouts
+        from ..models.auth_page_theme import AuthPageTheme # noqa: PLC0415
+        from ..models.project_config_auth_page_layouts import ProjectConfigAuthPageLayouts # noqa: PLC0415
         d = dict(src_dict)
         _theme = d.pop("theme", UNSET)
         theme: AuthPageTheme | Unset

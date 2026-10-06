@@ -58,9 +58,9 @@ class AuthConfig:
                 403, and `allowed_email_domains_mode` decides whether sign-in is
                 covered as well.
 
-                The allowlist is a PRO feature to configure and to enforce. A
+                The allowlist is a SUPERAGENT feature to configure and to enforce. A
                 downgrade parks it: the domains are still returned here and stop
-                being applied until the project is back on PRO.
+                being applied until the project is back on SUPERAGENT.
                  Example: ['domain1.com', 'domain2.com'].
             allowed_email_domains_mode (AuthConfigAllowedEmailDomainsMode | Unset): How far `allowed_email_domains` reaches.
                 `signup` only gates account
@@ -160,7 +160,7 @@ class AuthConfig:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_password_policy import AuthPasswordPolicy
+        from ..models.auth_password_policy import AuthPasswordPolicy # noqa: PLC0415
         password_policy = self.password_policy.to_dict()
 
         project_id: str | Unset = UNSET
@@ -373,7 +373,7 @@ class AuthConfig:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_password_policy import AuthPasswordPolicy
+        from ..models.auth_password_policy import AuthPasswordPolicy # noqa: PLC0415
         d = dict(src_dict)
         password_policy = AuthPasswordPolicy.from_dict(d.pop("password_policy"))
 

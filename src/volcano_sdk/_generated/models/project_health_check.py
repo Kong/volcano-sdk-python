@@ -51,8 +51,8 @@ class ProjectHealthCheck:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_health_evidence import ProjectHealthEvidence
-        from ..models.project_health_scope import ProjectHealthScope
+        from ..models.project_health_evidence import ProjectHealthEvidence # noqa: PLC0415
+        from ..models.project_health_scope import ProjectHealthScope # noqa: PLC0415
         id = self.id
 
         category: str = self.category
@@ -83,8 +83,8 @@ class ProjectHealthCheck:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_health_evidence import ProjectHealthEvidence
-        from ..models.project_health_scope import ProjectHealthScope
+        from ..models.project_health_evidence import ProjectHealthEvidence # noqa: PLC0415
+        from ..models.project_health_scope import ProjectHealthScope # noqa: PLC0415
         d = dict(src_dict)
         id = d.pop("id")
 

@@ -39,7 +39,7 @@ class AuthConfirmEmailChangeResponse200:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.auth_user import AuthUser
+        from ..models.auth_user import AuthUser # noqa: PLC0415
         message = self.message
 
         user: dict[str, Any] | Unset = UNSET
@@ -62,7 +62,7 @@ class AuthConfirmEmailChangeResponse200:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.auth_user import AuthUser
+        from ..models.auth_user import AuthUser # noqa: PLC0415
         d = dict(src_dict)
         message = d.pop("message", UNSET)
 

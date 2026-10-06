@@ -67,17 +67,17 @@ class ProjectConfigAuth:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.project_config_auth_cors import ProjectConfigAuthCORS
-        from ..models.project_config_auth_email import ProjectConfigAuthEmail
-        from ..models.project_config_auth_email_verification import ProjectConfigAuthEmailVerification
-        from ..models.project_config_auth_managed_pages import ProjectConfigAuthManagedPages
-        from ..models.project_config_auth_password import ProjectConfigAuthPassword
-        from ..models.project_config_auth_password_reset import ProjectConfigAuthPasswordReset
-        from ..models.project_config_auth_providers import ProjectConfigAuthProviders
-        from ..models.project_config_auth_rate_limits import ProjectConfigAuthRateLimits
-        from ..models.project_config_auth_sessions import ProjectConfigAuthSessions
-        from ..models.project_config_auth_signup import ProjectConfigAuthSignup
-        from ..models.project_config_auth_tokens import ProjectConfigAuthTokens
+        from ..models.project_config_auth_cors import ProjectConfigAuthCORS # noqa: PLC0415
+        from ..models.project_config_auth_email import ProjectConfigAuthEmail # noqa: PLC0415
+        from ..models.project_config_auth_email_verification import ProjectConfigAuthEmailVerification # noqa: PLC0415
+        from ..models.project_config_auth_managed_pages import ProjectConfigAuthManagedPages # noqa: PLC0415
+        from ..models.project_config_auth_password import ProjectConfigAuthPassword # noqa: PLC0415
+        from ..models.project_config_auth_password_reset import ProjectConfigAuthPasswordReset # noqa: PLC0415
+        from ..models.project_config_auth_providers import ProjectConfigAuthProviders # noqa: PLC0415
+        from ..models.project_config_auth_rate_limits import ProjectConfigAuthRateLimits # noqa: PLC0415
+        from ..models.project_config_auth_sessions import ProjectConfigAuthSessions # noqa: PLC0415
+        from ..models.project_config_auth_signup import ProjectConfigAuthSignup # noqa: PLC0415
+        from ..models.project_config_auth_tokens import ProjectConfigAuthTokens # noqa: PLC0415
         tokens: dict[str, Any] | Unset = UNSET
         if not isinstance(self.tokens, Unset):
             tokens = self.tokens.to_dict()
@@ -156,17 +156,17 @@ class ProjectConfigAuth:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.project_config_auth_cors import ProjectConfigAuthCORS
-        from ..models.project_config_auth_email import ProjectConfigAuthEmail
-        from ..models.project_config_auth_email_verification import ProjectConfigAuthEmailVerification
-        from ..models.project_config_auth_managed_pages import ProjectConfigAuthManagedPages
-        from ..models.project_config_auth_password import ProjectConfigAuthPassword
-        from ..models.project_config_auth_password_reset import ProjectConfigAuthPasswordReset
-        from ..models.project_config_auth_providers import ProjectConfigAuthProviders
-        from ..models.project_config_auth_rate_limits import ProjectConfigAuthRateLimits
-        from ..models.project_config_auth_sessions import ProjectConfigAuthSessions
-        from ..models.project_config_auth_signup import ProjectConfigAuthSignup
-        from ..models.project_config_auth_tokens import ProjectConfigAuthTokens
+        from ..models.project_config_auth_cors import ProjectConfigAuthCORS # noqa: PLC0415
+        from ..models.project_config_auth_email import ProjectConfigAuthEmail # noqa: PLC0415
+        from ..models.project_config_auth_email_verification import ProjectConfigAuthEmailVerification # noqa: PLC0415
+        from ..models.project_config_auth_managed_pages import ProjectConfigAuthManagedPages # noqa: PLC0415
+        from ..models.project_config_auth_password import ProjectConfigAuthPassword # noqa: PLC0415
+        from ..models.project_config_auth_password_reset import ProjectConfigAuthPasswordReset # noqa: PLC0415
+        from ..models.project_config_auth_providers import ProjectConfigAuthProviders # noqa: PLC0415
+        from ..models.project_config_auth_rate_limits import ProjectConfigAuthRateLimits # noqa: PLC0415
+        from ..models.project_config_auth_sessions import ProjectConfigAuthSessions # noqa: PLC0415
+        from ..models.project_config_auth_signup import ProjectConfigAuthSignup # noqa: PLC0415
+        from ..models.project_config_auth_tokens import ProjectConfigAuthTokens # noqa: PLC0415
         d = dict(src_dict)
         _tokens = d.pop("tokens", UNSET)
         tokens: ProjectConfigAuthTokens | Unset

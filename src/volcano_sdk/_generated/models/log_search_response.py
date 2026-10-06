@@ -44,7 +44,7 @@ class LogSearchResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.log_search_event import LogSearchEvent
+        from ..models.log_search_event import LogSearchEvent # noqa: PLC0415
         data = []
         for data_item_data in self.data:
             data_item = data_item_data.to_dict()
@@ -75,7 +75,7 @@ class LogSearchResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.log_search_event import LogSearchEvent
+        from ..models.log_search_event import LogSearchEvent # noqa: PLC0415
         d = dict(src_dict)
         data = []
         _data = d.pop("data")

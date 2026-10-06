@@ -52,7 +52,7 @@ class PaginatedFunctions:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.function import Function
+        from ..models.function import Function # noqa: PLC0415
         data = []
         for data_item_data in self.data:
             data_item = data_item_data.to_dict()
@@ -97,7 +97,7 @@ class PaginatedFunctions:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.function import Function
+        from ..models.function import Function # noqa: PLC0415
         d = dict(src_dict)
         data = []
         _data = d.pop("data")

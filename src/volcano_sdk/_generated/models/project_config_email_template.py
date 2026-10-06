@@ -24,8 +24,8 @@ class ProjectConfigEmailTemplate:
     """ 
         Attributes:
             subject (str | Unset):
-            html_body (str | Unset): HTML body. Max 256 KiB. PRO plan required for custom bodies.
-            text_body (str | Unset): Plain-text body. Max 256 KiB. PRO plan required for custom bodies.
+            html_body (str | Unset): HTML body. Max 256 KiB. SUPERAGENT plan required for custom bodies.
+            text_body (str | Unset): Plain-text body. Max 256 KiB. SUPERAGENT plan required for custom bodies.
      """
 
     subject: str | Unset = UNSET

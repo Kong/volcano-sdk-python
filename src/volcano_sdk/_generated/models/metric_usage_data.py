@@ -62,7 +62,7 @@ class MetricUsageData:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.usage_data_point import UsageDataPoint
+        from ..models.usage_data_point import UsageDataPoint # noqa: PLC0415
         metric = self.metric
 
         total = self.total
@@ -100,7 +100,7 @@ class MetricUsageData:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.usage_data_point import UsageDataPoint
+        from ..models.usage_data_point import UsageDataPoint # noqa: PLC0415
         d = dict(src_dict)
         metric = d.pop("metric")
 
