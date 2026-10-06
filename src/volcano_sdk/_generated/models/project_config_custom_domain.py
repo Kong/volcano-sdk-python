@@ -38,7 +38,7 @@ class ProjectConfigCustomDomain:
             domain (str): Fully-qualified domain name (hostname only, no scheme/path). Managed TLS (`tls.mode: managed`)
                 accepts at most 219 characters; BYOC accepts 253.
             tls (BYOCProjectConfigFrontendCustomDomainTLSConfig | ManagedProjectConfigFrontendCustomDomainTLSConfig |
-                Unset):
+                Unset): TLS for the custom domain. `mode` defaults to `byoc` when omitted.
      """
 
     domain: str

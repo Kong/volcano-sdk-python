@@ -377,6 +377,23 @@ def test_project_config_tls_decodes_each_mode(
     assert domain.to_dict() == wire_domain
 
 
+@pytest.mark.parametrize(
+    "wire_tls",
+    [{}, dict(BYOC_MATERIAL)],
+    ids=["empty-block", "byoc-material"],
+)
+def test_project_config_tls_without_mode_decodes_as_byoc(
+    wire_tls: dict[str, str],
+) -> None:
+    wire_domain = {"domain": "app.example.com", "tls": wire_tls}
+
+    domain = ProjectConfigCustomDomain.from_dict(wire_domain)
+
+    assert isinstance(domain.tls, BYOCProjectConfigFrontendCustomDomainTLSConfig)
+    assert domain.tls.mode is UNSET
+    assert domain.to_dict() == wire_domain
+
+
 def test_project_config_domain_without_tls_omits_tls_on_the_wire() -> None:
     domain = ProjectConfigCustomDomain.from_dict({"domain": "app.example.com"})
 

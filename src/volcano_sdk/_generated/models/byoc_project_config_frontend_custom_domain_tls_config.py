@@ -29,7 +29,7 @@ class BYOCProjectConfigFrontendCustomDomainTLSConfig:
     without certificate fields keeps the stored certificate; exports render only the mode.
 
         Attributes:
-            mode (BYOCProjectConfigFrontendCustomDomainTLSConfigMode):
+            mode (BYOCProjectConfigFrontendCustomDomainTLSConfigMode | Unset): Optional; a TLS block without `mode` is BYOC.
             certificate_pem (str | Unset): PEM-encoded certificate for create or rotation. Requires private_key_pem. Omitted
                 from exports.
             private_key_pem (str | Unset): PEM-encoded private key for create or rotation. Requires certificate_pem. Omitted
@@ -38,7 +38,7 @@ class BYOCProjectConfigFrontendCustomDomainTLSConfig:
                 private_key_pem. Omitted from exports.
      """
 
-    mode: BYOCProjectConfigFrontendCustomDomainTLSConfigMode
+    mode: BYOCProjectConfigFrontendCustomDomainTLSConfigMode | Unset = UNSET
     certificate_pem: str | Unset = UNSET
     private_key_pem: str | Unset = UNSET
     certificate_chain_pem: str | Unset = UNSET
@@ -48,7 +48,10 @@ class BYOCProjectConfigFrontendCustomDomainTLSConfig:
 
 
     def to_dict(self) -> dict[str, Any]:
-        mode: str = self.mode
+        mode: str | Unset = UNSET
+        if not isinstance(self.mode, Unset):
+            mode = self.mode
+
 
         certificate_pem = self.certificate_pem
 
@@ -60,8 +63,9 @@ class BYOCProjectConfigFrontendCustomDomainTLSConfig:
         field_dict: dict[str, Any] = {}
 
         field_dict.update({
-            "mode": mode,
         })
+        if mode is not UNSET:
+            field_dict["mode"] = mode
         if certificate_pem is not UNSET:
             field_dict["certificate_pem"] = certificate_pem
         if private_key_pem is not UNSET:
@@ -76,7 +80,12 @@ class BYOCProjectConfigFrontendCustomDomainTLSConfig:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        mode = check_byoc_project_config_frontend_custom_domain_tls_config_mode(d.pop("mode"))
+        _mode = d.pop("mode", UNSET)
+        mode: BYOCProjectConfigFrontendCustomDomainTLSConfigMode | Unset
+        if isinstance(_mode,  Unset):
+            mode = UNSET
+        else:
+            mode = check_byoc_project_config_frontend_custom_domain_tls_config_mode(_mode)
 
 
 
