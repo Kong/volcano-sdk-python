@@ -146,7 +146,8 @@ def sync_detailed(
     holds one, a managed TLS request gets `409` with `code: ownership_verification_required` and the
     caller's own `required_record`; after publishing it, the same request takes over the reservation. A
     BYOC request with a publicly trusted certificate and key for the hostname also takes it over; other
-    BYOC requests get a `409` without `code`. Verified hostnames and BYOC domains are never taken over.
+    BYOC requests get a `409` without `code`. Hostnames claimed through ownership verification and BYOC
+    domains are never taken over.
 
     Args:
         id (UUID):
@@ -197,7 +198,8 @@ def sync(
     holds one, a managed TLS request gets `409` with `code: ownership_verification_required` and the
     caller's own `required_record`; after publishing it, the same request takes over the reservation. A
     BYOC request with a publicly trusted certificate and key for the hostname also takes it over; other
-    BYOC requests get a `409` without `code`. Verified hostnames and BYOC domains are never taken over.
+    BYOC requests get a `409` without `code`. Hostnames claimed through ownership verification and BYOC
+    domains are never taken over.
 
     Args:
         id (UUID):
@@ -243,7 +245,8 @@ async def asyncio_detailed(
     holds one, a managed TLS request gets `409` with `code: ownership_verification_required` and the
     caller's own `required_record`; after publishing it, the same request takes over the reservation. A
     BYOC request with a publicly trusted certificate and key for the hostname also takes it over; other
-    BYOC requests get a `409` without `code`. Verified hostnames and BYOC domains are never taken over.
+    BYOC requests get a `409` without `code`. Hostnames claimed through ownership verification and BYOC
+    domains are never taken over.
 
     Args:
         id (UUID):
@@ -294,7 +297,8 @@ async def asyncio(
     holds one, a managed TLS request gets `409` with `code: ownership_verification_required` and the
     caller's own `required_record`; after publishing it, the same request takes over the reservation. A
     BYOC request with a publicly trusted certificate and key for the hostname also takes it over; other
-    BYOC requests get a `409` without `code`. Verified hostnames and BYOC domains are never taken over.
+    BYOC requests get a `409` without `code`. Hostnames claimed through ownership verification and BYOC
+    domains are never taken over.
 
     Args:
         id (UUID):

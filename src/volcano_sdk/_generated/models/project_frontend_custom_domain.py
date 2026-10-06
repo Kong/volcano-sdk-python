@@ -38,15 +38,18 @@ class ProjectFrontendCustomDomain:
             domain (str):
             tls_mode (FrontendCustomDomainResponseTlsMode):
             domain_status (FrontendCustomDomainResponseDomainStatus):
-            verification_status (FrontendCustomDomainResponseVerificationStatus):
+            verification_status (FrontendCustomDomainResponseVerificationStatus): `verified`: the domain is served by a
+                validated certificate. `pending`: it is not served yet, is being re-validated after its certificate material was
+                withdrawn, or Volcano is retrying after a failure. `failed`: a failure left the domain unserved, alongside
+                `domain_status: failed`; managed domains report the cause in `failure_reason`.
             effective_urls (list[str]):
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
             frontend (ProjectFrontendCustomDomainFrontend): The frontend this custom domain is attached to. Inlined to
                 avoid a second fetch from the project-scoped feed.
             failure_reason (str | Unset): Failure category, present only when managed TLS setup has failed. Current values
-                are provider, certificate, ownership, and internal; ownership means another account has already verified the
-                hostname. Treat unrecognized values as internal.
+                are provider, certificate, ownership, and internal; ownership means another account has already claimed the
+                hostname through ownership verification. Treat unrecognized values as internal.
             verification_records (list[FrontendDomainVerificationRecord] | Unset):
             required_routing_record (FrontendDomainRoutingRecord | Unset):
             routing_target_hostname (str | Unset): DNS routing target hostname for this frontend. The DNS record type

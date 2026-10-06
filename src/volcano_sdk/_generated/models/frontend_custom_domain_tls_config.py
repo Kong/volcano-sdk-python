@@ -29,6 +29,7 @@ class FrontendCustomDomainTLSConfig:
 
         Attributes:
             mode (FrontendCustomDomainTLSConfigMode): managed for a Volcano-issued certificate; byoc to supply your own.
+                Default: 'byoc'.
             certificate_pem (str | Unset): PEM-encoded certificate. Required when mode is byoc; not allowed when mode is
                 managed.
             private_key_pem (str | Unset): PEM-encoded private key. Required when mode is byoc; not allowed when mode is
@@ -37,7 +38,7 @@ class FrontendCustomDomainTLSConfig:
                 mode is managed.
      """
 
-    mode: FrontendCustomDomainTLSConfigMode
+    mode: FrontendCustomDomainTLSConfigMode = 'byoc'
     certificate_pem: str | Unset = UNSET
     private_key_pem: str | Unset = UNSET
     certificate_chain_pem: str | Unset = UNSET

@@ -162,6 +162,23 @@ def test_create_request_encodes_the_selected_tls_mode(
     assert CreateFrontendCustomDomainRequest.from_dict(wire_request) == request
 
 
+def test_tls_mode_defaults_to_byoc_and_is_always_sent() -> None:
+    byoc_material = {
+        "certificate_pem": BYOC_MATERIAL["certificate_pem"],
+        "private_key_pem": BYOC_MATERIAL["private_key_pem"],
+    }
+
+    tls = FrontendCustomDomainTLSConfig(
+        certificate_pem=byoc_material["certificate_pem"],
+        private_key_pem=byoc_material["private_key_pem"],
+    )
+
+    assert tls.mode == "byoc"
+    assert tls.to_dict() == {"mode": "byoc", **byoc_material}
+    with pytest.raises(KeyError, match="mode"):
+        _ = FrontendCustomDomainTLSConfig.from_dict(byoc_material)
+
+
 @pytest.mark.parametrize(
     "model",
     [
