@@ -252,7 +252,15 @@
             "magic-value-comparison",
             "assert",
             "hardcoded-password-string",
-            "hardcoded-password-func-arg",
+            "hardcoded-password-func-arg"
+          ],
+          "src/volcano_sdk/_tests/conftest.py": [
+            "pytest-fixture-autouse"
+          ],
+          "src/volcano_sdk/_tests/realtime_probes.py": [
+            "pytest-fixture-autouse"
+          ],
+          "src/volcano_sdk/_tests/test_durable_authoring.py": [
             "pytest-fixture-autouse"
           ]
         },

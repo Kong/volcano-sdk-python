@@ -184,9 +184,12 @@ max-complexity = 5
   "assert",
   "hardcoded-password-string",
   "hardcoded-password-func-arg",
-  # Autouse fixtures install suite-wide cache isolation and inspection probes.
-  "pytest-fixture-autouse",
 ]
+# These fixtures reset process-wide caches and install inspection probes for
+# every test by design. New autouse fixtures elsewhere still fail lint.
+"src/volcano_sdk/_tests/conftest.py" = ["pytest-fixture-autouse"]
+"src/volcano_sdk/_tests/realtime_probes.py" = ["pytest-fixture-autouse"]
+"src/volcano_sdk/_tests/test_durable_authoring.py" = ["pytest-fixture-autouse"]
 
 [tool.pytest.ini_options]
 minversion = "9.1.1"
