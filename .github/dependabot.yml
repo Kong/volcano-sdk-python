@@ -16,8 +16,8 @@ updates:
     # bumps change only uv.lock and published lower bounds stay put.
     versioning-strategy: "increase-if-necessary"
     labels: []
-    # `[project] dependencies` use `fix` so Release Please cuts a release.
-    # Dependency groups, the build backend, and the `durable` extra count as
+    # `[project] dependencies` and the `durable` extra use `fix` so Release
+    # Please cuts a release. Dependency groups and the build backend count as
     # development and use `chore`, which does not.
     commit-message:
       prefix: "fix"

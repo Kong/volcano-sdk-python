@@ -22,16 +22,14 @@ Dependabot runs its own uv, so `tool.uv.required-version` sets only a minimum.
 An exact pin makes Dependabot report an unsupported tool version and open no uv
 pull requests.
 
-Updates to `[project] dependencies` are titled `fix(deps)`, so Release Please
-releases them. Dependency groups, the build backend and the `durable` extra use
-`chore`, which does not. When merging an update that changes what the package
-ships, edit the squash commit title to `fix(deps): ...`:
-
-- An update that changes the `durable` extra's range.
-- An openapi-python-client or ruff update whose regenerated client differs
-  (ruff runs as a generator post-hook). If `poe generated` fails, run
-  `uv run python scripts/generate_openapi.py` and commit the result to the
-  update's PR.
+Updates to `[project] dependencies` and the `durable` extra are titled
+`fix(deps)`, so Release Please releases them. Dependency groups and the build
+backend use `chore`, which does not. If an openapi-python-client or ruff update
+changes the regenerated client (ruff runs as a generator post-hook), edit the
+squash commit title to `fix(deps): ...` when merging, because the package ships
+that client. If `poe generated` fails, run
+`uv run python scripts/generate_openapi.py` and commit the result to the
+update's PR.
 
 These dependencies get their own pull requests:
 
