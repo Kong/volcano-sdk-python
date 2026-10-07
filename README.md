@@ -411,7 +411,9 @@ if not decision.approved:
 `decision` carries `approved`, `status` (`approved`, `denied`, or `expired`),
 `comment`, `decided_by` (`id` and `email`, or `None`), and `decided_at`. Volcano
 sets `VOLCANO_PLATFORM_API_URL` on durable functions; without it the call raises
-`RuntimeError`. See the
+`RuntimeError`. The function retries registering the approval for up to 30
+seconds. If Volcano refuses it, the call raises the durable runtime's
+`CallbackSubmitterError` with the SDK error's message. See the
 [functions guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/functions.md#wait-for-an-approval).
 
 `logs.search()` returns an immutable page of retained runtime or deployment log

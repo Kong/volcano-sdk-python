@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
-from time import sleep
+from time import monotonic, sleep
 from typing import TYPE_CHECKING, TypeGuard
 
 import httpx
@@ -20,6 +21,7 @@ from ._transport_response import (
 from ._transport_types import HTTP_CREATED, HTTP_OK, decode_json
 from .errors import (
     ConflictError,
+    NotFoundError,
     RateLimitedError,
     ServerError,
     TransportError,
@@ -30,18 +32,33 @@ from .models import DurableApprovalDecider
 if TYPE_CHECKING:
     from .models import JSONValue
 
-# 0.5 s doubling to a 5 s cap, about 30 s in all: long enough to outlast the
-# moment the platform has not yet seen the callback open.
-_RETRY_DELAYS = (0.5, 1.0, 2.0, 4.0, 5.0, 5.0, 5.0, 5.0)
+# 0.5 s doubling to a 5 s cap, ending where the deadline runs out: long enough
+# to outlast the moment the platform has not yet seen the execution start or
+# the callback open.
+_RETRY_DELAYS = (0.5, 1.0, 2.0, 4.0, 5.0, 5.0, 5.0, 5.0, 2.5)
+_DEADLINE_SECONDS = 30.0
 _REQUEST_TIMEOUT_SECONDS = 10.0
 _NOT_READY = "approval_not_ready"
+_CLOSED = "approval_closed"
+_HEADERS = {"Content-Type": "application/json"}
+_MAX_BODY_BYTES = 65536
+# The callback id is assigned once the callback opens, after the size check;
+# the spec allows it 1024 characters.
+_LONGEST_CALLBACK_ID = "x" * 1024
+_TOO_LARGE = (
+    "the approval is larger than the 64 KiB Volcano accepts once encoded as "
+    "JSON; send less in details"
+)
 _INVALID_DECISION = "Expected a complete approval decision"
 _API_URL_VARIABLE = "VOLCANO_PLATFORM_API_URL"
 _MISSING_API_URL = (
     "wait_for_approval() needs VOLCANO_PLATFORM_API_URL. Volcano sets it on "
     "deployed durable functions; set it yourself to run the handler elsewhere."
 )
-_INVALID_DETAILS = "details must be a JSON value"
+_INVALID_DETAILS = (
+    "details must be JSON-serializable: mappings with string keys, lists, "
+    "tuples, strings, finite numbers, booleans, and None"
+)
 # The spec's limits on what the approval shows the person deciding.
 _TEXT_LIMITS = {"name": 255, "title": 200, "description": 4000}
 EXPIRED = ApprovalDecision(approved=False, status="expired")
@@ -87,6 +104,11 @@ def _text(value: object, field: str, *, required: bool) -> str:
     if not isinstance(value, str):
         message = f"{field} must be a string"
         raise TypeError(message)
+    try:
+        _ = value.encode()
+    except UnicodeEncodeError as error:
+        message = f"{field} must be JSON-serializable: it contains a surrogate"
+        raise TypeError(message) from error
     if required and not value.strip():
         message = f"{field} must not be empty"
         raise ValueError(message)
@@ -97,41 +119,96 @@ def _text(value: object, field: str, *, required: bool) -> str:
     return value
 
 
+def check_size(body: Mapping[str, JSONValue]) -> None:
+    """Refuse an approval too large for Volcano, before any callback is opened.
+
+    Raises:
+        ValueError: The registration, with the longest callback id the runtime
+            can assign, would encode to more than 64 KiB.
+
+    """
+    if len(_encode({**body, "callback_id": _LONGEST_CALLBACK_ID})) > _MAX_BODY_BYTES:
+        raise ValueError(_TOO_LARGE)
+
+
+def _encode(body: Mapping[str, JSONValue]) -> bytes:
+    return json.dumps(
+        plain_json(body), ensure_ascii=False, separators=(",", ":"), allow_nan=False
+    ).encode()
+
+
 def register_approval(api_url: str, body: Mapping[str, JSONValue]) -> None:
     """Ask Volcano to record the approval and hold the callback for a person.
 
     The route takes no credential: the execution reference and callback id in
     the body are what Volcano checks against the running execution.
 
+    What can clear on its own is retried until a 30 second deadline: no
+    answer, an execution or callback Volcano cannot see yet, throttling, and
+    server failures. An approval that already closed, normally because its
+    timeout passed first, needs no registration: the callback's own outcome
+    is what the execution resumes with.
+
     Raises:
         VolcanoError: Volcano refused the approval, or kept failing until the
-            retries ran out.
+            deadline passed or the retries ran out.
 
     """
     url = f"{api_url.removesuffix('/')}/durable-approvals"
-    with httpx.Client(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
+    content = _encode(body)
+    deadline = monotonic() + _DEADLINE_SECONDS
+    timeout = _REQUEST_TIMEOUT_SECONDS
+    with httpx.Client() as client:
         for delay in _RETRY_DELAYS:
             try:
-                _post(client, url, body)
+                _post(client, url, content, timeout)
             except VolcanoError as error:
-                if not _retryable(error):
+                next_timeout = _next_timeout(error, delay, deadline)
+                if next_timeout is None:
                     raise
-                sleep(delay)
+                timeout = next_timeout
             else:
                 return
-        _post(client, url, body)
+        _post(client, url, content, timeout)
 
 
-def _post(client: httpx.Client, url: str, body: Mapping[str, JSONValue]) -> None:
-    response = unparsed_response(invoke(client.post, url, json=plain_json(body)))
-    if response.status_code != HTTP_CREATED:
+def _post(client: httpx.Client, url: str, content: bytes, timeout: float) -> None:
+    response = unparsed_response(
+        invoke(client.post, url, content=content, headers=_HEADERS, timeout=timeout)
+    )
+    if response.status_code == HTTP_CREATED:
+        return
+    try:
         _ = response_payload(response, HTTP_OK)
+    except ConflictError as error:
+        if error.code != _CLOSED:
+            raise
 
 
 def _retryable(error: VolcanoError) -> bool:
-    if isinstance(error, (TransportError, RateLimitedError, ServerError)):
+    # NotFoundError included: Volcano records an execution only once it has
+    # started, so an approval that is its first operation can arrive first.
+    if isinstance(
+        error, (TransportError, NotFoundError, RateLimitedError, ServerError)
+    ):
         return True
     return isinstance(error, ConflictError) and error.code == _NOT_READY
+
+
+def _next_timeout(error: VolcanoError, delay: float, deadline: float) -> float | None:
+    """Wait to retry a failed attempt, if it is worth retrying in the time left.
+
+    Returns:
+        The next attempt's timeout, or None when the failure is final.
+
+    """
+    if not _retryable(error) or monotonic() + delay >= deadline:
+        return None
+    sleep(delay)
+    remaining = deadline - monotonic()
+    if remaining <= 0:
+        return None
+    return min(_REQUEST_TIMEOUT_SECONDS, remaining)
 
 
 def approval_decision(result: object) -> ApprovalDecision:

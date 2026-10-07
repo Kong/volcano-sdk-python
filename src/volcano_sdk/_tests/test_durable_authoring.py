@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from types import ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING, TypeGuard, TypeVar, cast
 
+import httpx
 import pytest
 from aws_durable_execution_sdk_python.config import (
     Duration,
@@ -30,6 +31,7 @@ from aws_durable_execution_sdk_python.config import (
 )
 from aws_durable_execution_sdk_python.exceptions import (
     CallbackError,
+    CallbackSubmitterError,
     CallbackTimeoutError,
     WaitForConditionError,
 )
@@ -1622,6 +1624,73 @@ def test_a_refused_registration_fails_the_execution_without_retrying(
     assert attempts == ["ship-order"]
 
 
+def test_a_refusal_reaches_the_handler_as_the_runtimes_submitter_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def refuse(_api_url: str, _body: Mapping[str, JSONValue]) -> None:
+        message = "title is too long"
+        raise ValidationError(message, status=400)
+
+    monkeypatch.setattr("volcano_sdk.durable_authoring.register_approval", refuse)
+    monkeypatch.setenv("VOLCANO_PLATFORM_API_URL", PLATFORM_API_URL)
+
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        try:
+            _ = ctx.wait_for_approval("ship-order", title="Ship?")
+        except CallbackSubmitterError as error:
+            return str(error)
+        return None
+
+    assert run_handler(handler) == "title is too long"
+
+
+def test_an_approval_closed_before_it_registered_resumes_expired(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def closed(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            409,
+            json={
+                "error": "approval request is no longer open",
+                "code": "approval_closed",
+            },
+        )
+
+    real_client = httpx.Client
+
+    def client() -> httpx.Client:
+        return real_client(transport=httpx.MockTransport(closed))
+
+    monkeypatch.setattr(
+        "volcano_sdk._durable_approval_registration.httpx.Client", client
+    )
+    monkeypatch.setenv("VOLCANO_PLATFORM_API_URL", PLATFORM_API_URL)
+
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        decision = ctx.wait_for_approval("ship-order", title="Ship?", timeout="1s")
+        return decision_summary(decision)
+
+    with local_runner(handler) as runner:
+        result = runner.run(input=json.dumps({}), timeout=15)
+
+    assert result.error is None
+    assert result.result is not None
+    assert json.loads(result.result) == {
+        "approved": False,
+        "status": "expired",
+        "comment": "",
+        "decided_by": None,
+        "decided_at": None,
+    }
+    assert len(requests) == 1
+    assert str(requests[0].url) == f"{PLATFORM_API_URL}/durable-approvals"
+
+
 def test_a_failed_callback_is_not_mistaken_for_an_expiry(
     registrations: Registrations,
 ) -> None:
@@ -1735,10 +1804,10 @@ def test_only_a_callback_timeout_becomes_an_expired_decision() -> None:
 @pytest.mark.parametrize(
     ("timeout", "error", "message"),
     [
-        pytest.param("0s", ValueError, "timeout must be at least 1 second", id="0"),
+        pytest.param("0s", TypeError, "timeout must be at least 1 second", id="0"),
         pytest.param(
             {"days": 367},
-            ValueError,
+            TypeError,
             r"timeout must be at most 31622400 seconds \(366 days\)",
             id="367d",
         ),
@@ -1762,15 +1831,80 @@ def test_an_approval_timeout_accepts_its_bounds() -> None:
     assert context.approval_timeout({"days": 366}) == 31_622_400
 
 
+@pytest.mark.parametrize("duration", ["0s", 0, {"days": 367}, 31_622_401])
+def test_an_approval_timeout_is_bounded_like_a_wait(duration: object) -> None:
+    context = InspectedDurableContext(RecordingContext(), Engine(), "arn:execution")
+
+    with pytest.raises(TypeError) as waited:
+        _ = context.wait_duration(duration)
+    with pytest.raises(TypeError) as timed:
+        _ = context.approval_timeout(duration)
+
+    assert str(timed.value) == str(waited.value).replace("wait", "timeout", 1)
+
+
 @pytest.mark.usefixtures("registrations")
-def test_an_invalid_approval_is_refused_before_opening_a_callback() -> None:
+@pytest.mark.parametrize(
+    ("title", "details", "timeout", "error", "message"),
+    [
+        pytest.param(
+            "Ship?",
+            None,
+            0,
+            TypeError,
+            "timeout must be at least 1 second",
+            id="timeout",
+        ),
+        pytest.param(
+            "Ship?",
+            {"total": float("nan")},
+            None,
+            TypeError,
+            "details must be JSON-serializable",
+            id="details",
+        ),
+        pytest.param(
+            "Ship\ud800?",
+            None,
+            None,
+            TypeError,
+            "title must be JSON-serializable",
+            id="surrogate",
+        ),
+        pytest.param(
+            "Ship?",
+            {"lines": ["x" * 1000] * 65},
+            None,
+            ValueError,
+            "larger than the 64 KiB Volcano accepts",
+            id="too large with the callback id",
+        ),
+    ],
+)
+def test_an_invalid_approval_is_refused_before_opening_a_callback(
+    title: str,
+    details: JSONValue,
+    timeout: int | None,
+    error: type[Exception],
+    message: str,
+) -> None:
+    runtime = RecordingContext()
+    context = DurableContext(runtime, Engine(), "arn:execution")
+
+    with pytest.raises(error, match=message):
+        _ = context.wait_for_approval(
+            "ship-order", title=title, details=details, timeout=timeout
+        )
+    assert runtime.submitter is None
+
+
+@pytest.mark.usefixtures("registrations")
+def test_a_non_string_title_is_refused_before_opening_a_callback() -> None:
     runtime = RecordingContext()
     context = DurableContext(runtime, Engine(), "arn:execution")
 
     with pytest.raises(TypeError, match="title must be a string"):
         non_string_approval_title(context)
-    with pytest.raises(ValueError, match="timeout must be at least 1 second"):
-        _ = context.wait_for_approval("ship-order", title="Ship?", timeout=0)
     assert runtime.submitter is None
 
 

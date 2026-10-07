@@ -160,11 +160,13 @@ def handler(event, ctx):
 
 | Argument | Description |
 |---|---|
-| `name` | Operation name, up to 255 characters. Filter and search approvals by it. |
+| `name` | Required. Operation name in the execution's history, up to 255 characters. |
 | `title` | Required. What the approver is asked, up to 200 characters. |
 | `description` | Optional context, up to 4000 characters. |
-| `details` | Optional JSON value shown with the approval. |
+| `details` | Optional JSON value shown with the approval. The whole approval, `details` included, must encode to at most 64 KiB of JSON. |
 | `timeout` | Optional duration in the `ctx.wait()` format, from one second to 366 days. Without it, the approval stays open as long as the execution runs. |
+
+Limits count Unicode characters. A blank `name` or `title` raises `ValueError`, as does a value over its limit or an approval over 64 KiB. A value that is not a string, or that cannot be encoded as JSON, raises `TypeError`. A timeout out of range raises `TypeError`, as it does for `ctx.wait()`. These checks run before anything is recorded.
 
 The call returns an immutable `ApprovalDecision`:
 
@@ -173,12 +175,12 @@ The call returns an immutable `ApprovalDecision`:
 | `approved` | `True` | `False` | `False` |
 | `status` | `"approved"` | `"denied"` | `"expired"` |
 | `comment` | The approver's comment, or `""` | The approver's comment, or `""` | `""` |
-| `decided_by` | `DurableApprovalDecider` with `id` and `email`, or `None` | Same as approved | `None` |
+| `decided_by` | `DurableApprovalDecider` with `id` and `email`, or `None` if the account was deleted before the decision reached the execution | Same as approved | `None` |
 | `decided_at` | RFC 3339 timestamp | RFC 3339 timestamp | `None` |
 
 A denial or a timeout is a value to branch on, not an exception. The execution costs nothing while it waits, and a resumed execution replays the recorded decision without asking again.
 
-Volcano sets `VOLCANO_PLATFORM_API_URL` on deployed and local durable functions. The function sends the approval there without a credential. Volcano accepts it only from the execution that is waiting. Transient failures are retried for about 30 seconds. If Volcano refuses the approval, the execution fails with the SDK error. Calling `wait_for_approval()` without `VOLCANO_PLATFORM_API_URL`, or from a handler that is not decorated with `@durable`, raises `RuntimeError`.
+Volcano sets `VOLCANO_PLATFORM_API_URL` on deployed and local durable functions. The function sends the approval there without a credential. Volcano accepts it only from the execution that is waiting. When Volcano does not answer, has not seen the execution or its approval yet, throttles the request, or fails, the function retries for up to 30 seconds. An approval whose timeout passes before Volcano records it returns the `expired` decision. If Volcano refuses the approval, or keeps failing for 30 seconds, `wait_for_approval()` raises the durable runtime's `CallbackSubmitterError`, carrying the SDK error's message. Unless the handler catches it, the execution fails. Calling `wait_for_approval()` without `VOLCANO_PLATFORM_API_URL`, or from a handler that is not decorated with `@durable`, raises `RuntimeError`.
 
 ## Decide approvals from a backend
 

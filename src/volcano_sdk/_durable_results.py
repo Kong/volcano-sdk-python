@@ -26,7 +26,8 @@ class ApprovalDecision:
     approved: bool
     status: Literal["approved", "denied", "expired"]
     comment: str = ""
-    # None when the approval expired, or the deciding account no longer exists.
+    # None when the approval expired, or when the deciding account was deleted
+    # before the decision reached the workflow.
     decided_by: DurableApprovalDecider | None = None
     # RFC 3339, as Volcano recorded it; None when the approval expired.
     decided_at: str | None = None

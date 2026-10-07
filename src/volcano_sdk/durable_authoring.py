@@ -44,6 +44,7 @@ from ._durable_approval_registration import (
     EXPIRED,
     approval_body,
     approval_decision,
+    check_size,
     platform_api_url,
     register_approval,
 )
@@ -394,6 +395,11 @@ class DurableContext:
         rather than raising, and a denial is a decision too: branch on
         `approved`.
 
+        The arguments, and the 64 KiB Volcano accepts for the whole approval,
+        are checked before the callback opens. Registering it is retried for
+        up to 30 seconds; a refusal raises the runtime's
+        `CallbackSubmitterError` with the SDK error's message.
+
         Returns:
             The decision, restored from its checkpoint during replay.
 
@@ -409,6 +415,7 @@ class DurableContext:
         if self._execution_ref is None:
             raise RuntimeError(_MISSING_EXECUTION_REF)
         body["execution_ref"] = self._execution_ref
+        check_size(body)
 
         # Runs inside the runtime's checkpointed submitter step, so a replay
         # does not register the approval again.
@@ -425,24 +432,10 @@ class DurableContext:
 
     @staticmethod
     def _approval_timeout(value: object) -> int:
-        seconds = to_seconds(value, "timeout")
-        if seconds < _MIN_WAIT_SECONDS:
-            message = f"timeout must be at least {_MIN_WAIT_SECONDS} second"
-            raise ValueError(message)
-        if seconds > _MAX_WAIT_SECONDS:
-            message = f"timeout must be at most {_MAX_WAIT_SECONDS} seconds (366 days)"
-            raise ValueError(message)
-        return seconds
+        return _bounded_seconds(value, "timeout")
 
     def _wait_duration(self, value: object) -> object:
-        seconds = to_seconds(value, "wait")
-        if seconds < _MIN_WAIT_SECONDS:
-            message = f"wait must be at least {_MIN_WAIT_SECONDS} second"
-            raise TypeError(message)
-        if seconds > _MAX_WAIT_SECONDS:
-            message = f"wait must be at most {_MAX_WAIT_SECONDS} seconds (366 days)"
-            raise TypeError(message)
-        return self._engine.seconds(seconds)
+        return self._engine.seconds(_bounded_seconds(value, "wait"))
 
 
 @overload
@@ -529,6 +522,17 @@ def _execution_ref(event: object) -> str | None:
 
 def _is_event_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
     return isinstance(value, Mapping)
+
+
+def _bounded_seconds(value: object, field_name: str) -> int:
+    seconds = to_seconds(value, field_name)
+    if seconds < _MIN_WAIT_SECONDS:
+        message = f"{field_name} must be at least {_MIN_WAIT_SECONDS} second"
+        raise TypeError(message)
+    if seconds > _MAX_WAIT_SECONDS:
+        message = f"{field_name} must be at most {_MAX_WAIT_SECONDS} seconds (366 days)"
+        raise TypeError(message)
+    return seconds
 
 
 def _validate_wait_options(options: WaitUntilOptions[T]) -> None:
