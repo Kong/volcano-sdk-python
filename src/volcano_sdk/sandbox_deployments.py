@@ -212,10 +212,10 @@ def _validate_source(source: bytes, ports: list[int]) -> None:
     if len(source) > _MAX_SOURCE:
         message = "Sandbox source archives are limited to 32 MiB"
         raise ValidationError(message)
+    for port in ports:
+        if type(port) is not int or not 1 <= port <= _MAX_PORT:
+            message = "Sandbox ports must be between 1 and 65532"
+            raise ValidationError(message)
     if len(ports) > _MAX_PORTS or len(set(ports)) != len(ports):
         message = "Sandbox ports must be unique and contain at most 16 entries"
         raise ValidationError(message)
-    for port in ports:
-        if isinstance(port, bool) or not 1 <= port <= _MAX_PORT:
-            message = "Sandbox ports must be between 1 and 65532"
-            raise ValidationError(message)

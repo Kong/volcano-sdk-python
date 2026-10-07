@@ -110,7 +110,9 @@ def test_custom_deployment_rejects_invalid_ports_before_transport() -> None:
     assert not server.requests
 
 
-@pytest.mark.parametrize("port", [0, -1, 65533, 65534, 65535, 65536, True, False])
+@pytest.mark.parametrize(
+    "port", [0, -1, 65533, 65534, 65535, 65536, True, False, 8080.5, "8080", None, []]
+)
 def test_custom_deployment_invalid_port_boundaries(port: int) -> None:
     server = SandboxHTTP()
     with pytest.raises(
