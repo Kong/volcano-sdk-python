@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from threading import Event, Thread
 
 import pytest
@@ -8,6 +8,8 @@ from typing_extensions import override
 
 from volcano_sdk import Session, VolcanoError
 from volcano_sdk._session_operations import SessionOperations
+
+from .thread_support import worker_pool
 
 SESSION = Session("access", "refresh", "user")
 
@@ -118,7 +120,7 @@ def test_refresh_joins_pending_work_without_starting_another_operation(
     def unexpected_refresh() -> Session:
         pytest.fail("a joined refresh must not issue another request")
 
-    with ThreadPoolExecutor(max_workers=1) as pool:
+    with worker_pool(max_workers=1) as pool:
         waiter = pool.submit(operations.refresh, unexpected_refresh)
         try:
             assert joined.wait(2)

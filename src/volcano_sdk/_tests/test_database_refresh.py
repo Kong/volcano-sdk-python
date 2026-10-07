@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier, Event, Thread
 from typing import TYPE_CHECKING
 
@@ -18,6 +17,7 @@ from volcano_sdk import (
 from volcano_sdk._transport import GeneratedTransport
 
 from .session_fixtures import access_token
+from .thread_support import worker_pool
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -276,7 +276,7 @@ def test_concurrent_reads_share_refresh_for_the_captured_session() -> None:
 
     client = make_client(handle)
     query = client.database("db").from_("items")
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with worker_pool(max_workers=2) as pool:
         reads = [pool.submit(query.execute) for _ in range(2)]
         results = [read.result(timeout=5) for read in reads]
     assert results == [[{"id": 1}], [{"id": 1}]]
@@ -318,7 +318,7 @@ def test_concurrent_failed_refresh_preserves_each_read_error() -> None:
         return httpx.Response(401, json={"error": "read expired"})
 
     client = make_client(handle)
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with worker_pool(max_workers=2) as pool:
         reads = [
             pool.submit(client.database("db").from_("items").execute) for _ in range(2)
         ]
@@ -341,7 +341,7 @@ def test_read_completes_before_a_queued_refresh_listener_changes_session() -> No
         if event == "TOKEN_REFRESHED":
             _ = client.auth.set_session(replacement)
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with worker_pool(max_workers=2) as pool:
         registration = pool.submit(client.auth.on_auth_state_change, on_auth_change)
         try:
             assert listening.wait(timeout=5)

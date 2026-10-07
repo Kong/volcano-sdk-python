@@ -12,7 +12,6 @@ import json
 import threading
 import time
 from collections.abc import Callable, Iterator
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -25,6 +24,8 @@ if TYPE_CHECKING:
 import pytest
 
 from volcano_sdk import NotFoundError, VolcanoClient
+
+from .thread_support import worker_pool
 
 pytestmark = pytest.mark.allow_hosts(["127.0.0.1"])
 
@@ -264,7 +265,7 @@ def test_concurrent_first_invocations_share_one_resolve(
     )
     try:
         client = _client(api.url)
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with worker_pool(max_workers=8) as executor:
             futures = [
                 executor.submit(client.functions.invoke, "send-welcome")
                 for _ in range(8)
