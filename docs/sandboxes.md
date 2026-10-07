@@ -151,3 +151,5 @@ region="aws-us-east-1", cursor=..., limit=100)` returns regional build messages.
 `delete_template(project_id, sandbox_id)` deletes the template and terminates
 its sessions and requires the `sandboxes.terminate` permission. History page
 limits range from 1 to 100. Archives are limited to 32 MiB compressed and expanded.
+
+Custom deployments accept at most 16 unique ports, from 1 through 65532.

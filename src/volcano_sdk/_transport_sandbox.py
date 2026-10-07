@@ -69,7 +69,12 @@ from ._generated.models.sandbox_file_write_request import SandboxFileWriteReques
 from ._generated.models.sandbox_subject_grant_request import SandboxSubjectGrantRequest
 from ._generated.types import UNSET, File
 from ._transport_base import TransportBase
-from ._transport_response import generated_request, unparsed_response
+from ._transport_response import (
+    generated_request,
+    request_headers,
+    required_request_string,
+    unparsed_response,
+)
 from ._transport_types import GeneratedTransportResponse
 from .models import JSONValue
 
@@ -235,12 +240,17 @@ def _deploy(
         ),
         ports=json.dumps(request.body.get("ports", [])),
     )
+    kwargs = deploy_sandbox.request_kwargs(
+        UUID(request.resource_id),
+        UUID(request.subject_id),
+        body=body,
+        idempotency_key=request.request_id,
+    )
     return unparsed_response(
-        deploy_sandbox.sync_detailed(
-            UUID(request.resource_id),
-            UUID(request.subject_id),
-            client=cast("AuthenticatedClient", client),
-            body=body,
-            idempotency_key=request.request_id,
+        client.get_httpx_client().request(
+            method=required_request_string(kwargs, "method"),
+            url=required_request_string(kwargs, "url"),
+            headers=request_headers(kwargs),
+            files=body.to_multipart(),
         )
     )

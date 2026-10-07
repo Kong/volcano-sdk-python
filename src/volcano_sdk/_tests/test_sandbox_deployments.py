@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from volcano_sdk import NotFoundError, ValidationError
+from volcano_sdk import NotFoundError, ServerError, ValidationError, VolcanoError
 from volcano_sdk._sandbox import SandboxRequests
 from volcano_sdk._transport import GeneratedTransport
 from volcano_sdk._transport_sandbox import SandboxRequest
@@ -110,11 +110,11 @@ def test_custom_deployment_rejects_invalid_ports_before_transport() -> None:
     assert not server.requests
 
 
-@pytest.mark.parametrize("port", [0, -1, 65536, True, False])
+@pytest.mark.parametrize("port", [0, -1, 65533, 65534, 65535, 65536, True, False])
 def test_custom_deployment_invalid_port_boundaries(port: int) -> None:
     server = SandboxHTTP()
     with pytest.raises(
-        ValidationError, match=r"^Sandbox ports must be between 1 and 65535$"
+        ValidationError, match=r"^Sandbox ports must be between 1 and 65532$"
     ):
         _ = server.client.sandboxes.deploy(
             PROJECT, SUBJECT, b"source", name="custom", ports=[port]
@@ -146,9 +146,9 @@ def test_custom_deployment_accepts_port_boundaries() -> None:
     server = SandboxHTTP()
     server.reply(_DEPLOYMENT, 202)
     _ = server.client.sandboxes.deploy(
-        PROJECT, SUBJECT, b"source", name="custom", ports=[1, 65535]
+        PROJECT, SUBJECT, b"source", name="custom", ports=[1, 65532]
     )
-    assert b"[1, 65535]" in server.requests[-1].content
+    assert b"[1, 65532]" in server.requests[-1].content
 
 
 @pytest.mark.parametrize("more", [None, 0, "true"])
@@ -237,3 +237,40 @@ def test_generated_deployment_transport_defaults_omitted_ports() -> None:
         b'name="ports"\r\nContent-Type: text/plain\r\n\r\n[]'
         in server.requests[-1].content
     )
+
+
+@pytest.mark.parametrize("status", [500, 502, 418])
+def test_deployment_gateway_errors_preserve_typed_error_status(status: int) -> None:
+    server = SandboxHTTP()
+    server.responses.append(
+        httpx.Response(status, content=b"<html>upstream failed</html>")
+    )
+    expected = ServerError if status >= 500 else VolcanoError
+    with pytest.raises(expected) as caught:
+        _ = server.client.sandboxes.deploy(PROJECT, SUBJECT, b"archive", name="custom")
+    assert caught.value.status == status
+    assert str(caught.value) == "Volcano request failed"
+    assert len(server.requests) == 1
+
+
+@pytest.mark.parametrize("ports", [[8080, 8080], list(range(1, 18))])
+def test_deployment_rejects_duplicate_or_excess_ports(ports: list[int]) -> None:
+    server = SandboxHTTP()
+    with pytest.raises(
+        ValidationError,
+        match=r"^Sandbox ports must be unique and contain at most 16 entries$",
+    ):
+        _ = server.client.sandboxes.deploy(
+            PROJECT, SUBJECT, b"archive", name="custom", ports=ports
+        )
+    assert not server.requests
+
+
+def test_deployment_accepts_sixteen_unique_ports() -> None:
+    server = SandboxHTTP()
+    server.reply(_DEPLOYMENT, 202)
+    ports = list(range(1, 17))
+    _ = server.client.sandboxes.deploy(
+        PROJECT, SUBJECT, b"archive", name="custom", ports=ports
+    )
+    assert str(ports).encode() in server.requests[-1].content

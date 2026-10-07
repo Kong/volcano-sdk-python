@@ -1,0 +1,15 @@
+from typing import Literal
+
+{# Project.plan is response-only. Preserve values emitted by earlier servers. #}
+{% set values = enum.values|list %}
+{% if enum.class_info.name == "ProjectPlan" %}
+{% set values = (values + ["FREE", "PRO"])|unique|list %}
+{% endif %}
+{{ enum.class_info.name }} = Literal{{ "%r" | format(values|sort) }}
+
+{{ enum.get_class_name_snake_case() | upper }}_VALUES: set[{{ enum.class_info.name }}] = { {% for v in values|sort %}{{"%r"|format(v)}}, {% endfor %} }
+
+def check_{{ enum.get_class_name_snake_case() }}(value: {{ enum.get_instance_type_string() | as_unembedded_code }}) -> {{ enum.class_info.name}}:
+    if value in {{ enum.get_class_name_snake_case() | upper }}_VALUES:
+        return value
+    raise TypeError(f"Unexpected value {value!r}. Expected one of {{"{"}}{{ enum.get_class_name_snake_case() | upper }}_VALUES!r}")

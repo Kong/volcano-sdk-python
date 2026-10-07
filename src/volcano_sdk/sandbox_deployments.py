@@ -19,7 +19,8 @@ if TYPE_CHECKING:
     from .sandbox_deployment_models import SandboxBuildLogOptions, SandboxDeployOptions
 
 _MAX_SOURCE = 32 * 1024 * 1024
-_MAX_PORT = 65535
+_MAX_PORT = 65532
+_MAX_PORTS = 16
 
 
 class SandboxDeployments:
@@ -211,7 +212,10 @@ def _validate_source(source: bytes, ports: list[int]) -> None:
     if len(source) > _MAX_SOURCE:
         message = "Sandbox source archives are limited to 32 MiB"
         raise ValidationError(message)
+    if len(ports) > _MAX_PORTS or len(set(ports)) != len(ports):
+        message = "Sandbox ports must be unique and contain at most 16 entries"
+        raise ValidationError(message)
     for port in ports:
         if isinstance(port, bool) or not 1 <= port <= _MAX_PORT:
-            message = "Sandbox ports must be between 1 and 65535"
+            message = "Sandbox ports must be between 1 and 65532"
             raise ValidationError(message)
