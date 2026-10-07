@@ -1,0 +1,72 @@
+version: 2
+updates:
+  # pyproject.toml and uv.lock. Dependabot runs its own uv, so pyproject's
+  # `[tool.uv] required-version` must admit that version or these updates fail.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
+    labels: []
+    # `[project] dependencies` use `fix` so Release Please cuts a release.
+    # Dependency groups, the build backend, and the `durable` extra count as
+    # development and use `chore`, which does not.
+    commit-message:
+      prefix: "fix"
+      prefix-development: "chore"
+      include: "scope"
+    groups:
+      # openapi-python-client generates src/volcano_sdk/_generated and runs ruff
+      # as a post-hook. CI's `poe generated` fails until the committed client is
+      # regenerated with `uv run python scripts/generate_openapi.py`. A ruff bump
+      # also needs `[tool.ruff] required-version` and
+      # maintainers/quality-policy.lock.json updated to match.
+      openapi-codegen:
+        patterns:
+          - "openapi-python-client"
+          - "ruff"
+        update-types:
+          - "minor"
+          - "patch"
+      # centrifuge-python stays in its own pull request: every update needs the
+      # checks in maintainers/realtime-compatibility.md.
+      uv-production:
+        dependency-type: "production"
+        exclude-patterns:
+          - "centrifuge-python"
+        update-types:
+          - "minor"
+          - "patch"
+      # hatchling stays in its own pull request: `[tool.uv]
+      # build-constraint-dependencies` pins it by hash, and Dependabot does not
+      # update those hashes.
+      uv-development:
+        dependency-type: "development"
+        exclude-patterns:
+          - "hatchling"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    # GitHub Actions supports only `default-days`.
+    cooldown:
+      default-days: 5
+    labels: []
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
