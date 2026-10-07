@@ -900,10 +900,26 @@ def test_the_status_alone_decides(result: object, expected: ApprovalDecision) ->
                 ("time without seconds", "2026-10-06T12:05Z"),
                 ("space for the T", "2026-10-06 12:05:00Z"),
                 ("basic format", "20261006T120500Z"),
+                ("text before it", "at 2026-10-06T12:05:00Z"),
+                ("text after it", "2026-10-06T12:05:00Z UTC"),
+                ("interval", "2026-10-06T12:05:00Z/2026-10-07T12:05:00Z"),
+                ("day zero", "2026-10-00T12:05:00Z"),
+                ("impossible day of any month", "2026-10-32T12:05:00Z"),
                 ("impossible day", "2026-02-30T12:05:00Z"),
                 ("impossible hour", "2026-10-06T24:00:00Z"),
+                ("three-digit hour", "2026-10-06T012:05:00Z"),
                 ("impossible month", "2026-13-06T12:05:00Z"),
+                ("impossible offset", "2026-10-06T12:05:00+24:00"),
                 ("leap second", "2026-10-06T23:59:60Z"),
+            ]
+        ),
+        *(
+            pytest.param(
+                complete_decision(decided_at=value), {"decided_at": value}, id=case
+            )
+            for case, value in [
+                ("last day of a month kept", "2026-10-31T12:05:00Z"),
+                ("latest time and widest offset kept", "2026-10-06T23:59:59-23:59"),
             ]
         ),
         pytest.param(
