@@ -32,14 +32,14 @@ class DeploySandboxBody:
         Attributes:
             name (str):
             code (File): Source tar.gz archive, limited to 32 MiB compressed and expanded.
-            memory_mb (DeploySandboxBodyMemoryMb | Unset):  Default: 1024.
+            memory_mb (DeploySandboxBodyMemoryMb | Unset): Memory in MiB. Defaults to 1024 when omitted.
             ports (str | Unset): JSON array of application ports that must become ready before activation, for example
                 [8080].
      """
 
     name: str
     code: File
-    memory_mb: DeploySandboxBodyMemoryMb | Unset = 1024
+    memory_mb: DeploySandboxBodyMemoryMb | Unset = UNSET
     ports: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
