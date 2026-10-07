@@ -31,6 +31,13 @@ Surviving, uncovered, timed-out, crashed, and incomplete mutants still fail.
 Mutmut passes pytest `-x` so a selected test's first assertion failure kills the
 mutant before a later selected test can hang on the same defect. Mutants that
 hang before any failure remain timeouts and fail separately.
+Mutmut runs a mutant's selected tests in order of recorded duration, which
+varies between runs, so every concurrency test must fail within its own bounds.
+Tests run worker calls through `_tests/thread_support.worker_pool`, because
+exiting a `ThreadPoolExecutor` context joins a blocked worker without a timeout,
+and check each call's outcome through its future. An exception that escapes a
+test thread after `-x` stops the run is raised from `pytest.main`; Mutmut
+records that as exit code 255, which it counts as a timeout.
 The runner rebuilds mutmut's native test-selection cache for each gate so newly
 added tests are included. Direct mutmut runs also watch Python test files for
 cache invalidation.
