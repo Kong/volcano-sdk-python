@@ -1,7 +1,8 @@
 version: 2
 updates:
   # pyproject.toml and uv.lock. Dependabot runs its own uv, so pyproject's
-  # `[tool.uv] required-version` must admit that version or these updates fail.
+  # `[tool.uv] required-version` sets only a minimum; an exact pin stops these
+  # updates.
   # maintainers/releasing.md covers updates that need a change before merging.
   - package-ecosystem: "uv"
     directory: "/"

@@ -18,9 +18,9 @@ This checklist does not authorize a release, a registry mutation or an environme
 
 ## Dependabot updates
 
-Dependabot runs its own uv, so `tool.uv.required-version` must allow that
-version. An exact pin makes Dependabot report an unsupported tool version and
-open no uv pull requests.
+Dependabot runs its own uv, so `tool.uv.required-version` sets only a minimum.
+An exact pin makes Dependabot report an unsupported tool version and open no uv
+pull requests.
 
 Updates to `[project] dependencies` are titled `fix(deps)`, so Release Please
 releases them. Dependency groups, the build backend and the `durable` extra use
@@ -90,7 +90,7 @@ the tox environments never receive its artifacts or publishing credentials.
 publication use this task. uv verifies isolated build dependencies against the
 versions and hashes in `tool.uv.build-constraint-dependencies`. These native
 constraints also apply to editable installs during `uv sync` and `uv run`.
-The project and CI require uv 0.12.17.
+CI uses uv 0.12.17, and the project requires at least that version.
 
 The release job installs locked dependency wheels without building an editable
 SDK and disables implicit sync in subsequent commands. To reproduce that setup:
