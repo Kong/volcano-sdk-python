@@ -758,7 +758,10 @@ def test_a_decision_posts_its_body_over_the_wire(
 def test_wire_failures_map_to_typed_errors(
     status: int, expected: type[Exception]
 ) -> None:
-    message = "approvals are decided by a person; use a platform token or the dashboard"
+    message = (
+        "project access tokens cannot decide durable approvals; "
+        "a person decides in the dashboard or with a platform token"
+    )
     client, _requests = wire_client(
         lambda _r: httpx.Response(status, json={"error": message, "code": "c"})
     )
