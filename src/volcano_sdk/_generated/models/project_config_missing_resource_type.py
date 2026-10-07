@@ -1,8 +1,8 @@
 from typing import Literal
 
-ProjectConfigMissingResourceType = Literal['bucket', 'database', 'frontend', 'function']
+ProjectConfigMissingResourceType = Literal['bucket', 'database', 'frontend', 'function', 'sandbox']
 
-PROJECT_CONFIG_MISSING_RESOURCE_TYPE_VALUES: set[ProjectConfigMissingResourceType] = { 'bucket', 'database', 'frontend', 'function',  }
+PROJECT_CONFIG_MISSING_RESOURCE_TYPE_VALUES: set[ProjectConfigMissingResourceType] = { 'bucket', 'database', 'frontend', 'function', 'sandbox',  }
 
 def check_project_config_missing_resource_type(value: str) -> ProjectConfigMissingResourceType:
     if value in PROJECT_CONFIG_MISSING_RESOURCE_TYPE_VALUES:

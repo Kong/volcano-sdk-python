@@ -122,12 +122,18 @@ def sync_detailed(
             `succeeded`, `failed`, `timed_out`, `stopped` and `unknown` are
             terminal.
 
-            `unknown` means the platform lost track of the execution's outcome: it
-            was never seen to finish and is no longer reported, so no result or
-            error can be given for it. It is terminal because nothing can settle it
-            later, and it is rare — treat it as an outcome to retry under a new
-            name rather than a state to wait on. `completed_at` on an `unknown`
-            execution is when the platform gave up, not when the work ended.
+            `unknown` means the execution's outcome cannot be established, so no
+            result or error can be given for it. Either it was under way and was
+            never seen to finish, or its start failed with a `500` without the
+            platform establishing whether the execution began — which is why a
+            name whose start returned an error can later read as `unknown` rather
+            than not being found. It is terminal because nothing can settle it
+            later, and it is rare — treat it as an outcome to retry rather than a
+            state to wait on. A retry under the same name picks this execution back
+            up instead of starting a second one, and needs a free concurrency slot
+            because an `unknown` execution has given its own up. `completed_at` on
+            an `unknown` execution is when the platform gave up, not when the work
+            ended.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -180,12 +186,18 @@ def sync(
             `succeeded`, `failed`, `timed_out`, `stopped` and `unknown` are
             terminal.
 
-            `unknown` means the platform lost track of the execution's outcome: it
-            was never seen to finish and is no longer reported, so no result or
-            error can be given for it. It is terminal because nothing can settle it
-            later, and it is rare — treat it as an outcome to retry under a new
-            name rather than a state to wait on. `completed_at` on an `unknown`
-            execution is when the platform gave up, not when the work ended.
+            `unknown` means the execution's outcome cannot be established, so no
+            result or error can be given for it. Either it was under way and was
+            never seen to finish, or its start failed with a `500` without the
+            platform establishing whether the execution began — which is why a
+            name whose start returned an error can later read as `unknown` rather
+            than not being found. It is terminal because nothing can settle it
+            later, and it is rare — treat it as an outcome to retry rather than a
+            state to wait on. A retry under the same name picks this execution back
+            up instead of starting a second one, and needs a free concurrency slot
+            because an `unknown` execution has given its own up. `completed_at` on
+            an `unknown` execution is when the platform gave up, not when the work
+            ended.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -233,12 +245,18 @@ async def asyncio_detailed(
             `succeeded`, `failed`, `timed_out`, `stopped` and `unknown` are
             terminal.
 
-            `unknown` means the platform lost track of the execution's outcome: it
-            was never seen to finish and is no longer reported, so no result or
-            error can be given for it. It is terminal because nothing can settle it
-            later, and it is rare — treat it as an outcome to retry under a new
-            name rather than a state to wait on. `completed_at` on an `unknown`
-            execution is when the platform gave up, not when the work ended.
+            `unknown` means the execution's outcome cannot be established, so no
+            result or error can be given for it. Either it was under way and was
+            never seen to finish, or its start failed with a `500` without the
+            platform establishing whether the execution began — which is why a
+            name whose start returned an error can later read as `unknown` rather
+            than not being found. It is terminal because nothing can settle it
+            later, and it is rare — treat it as an outcome to retry rather than a
+            state to wait on. A retry under the same name picks this execution back
+            up instead of starting a second one, and needs a free concurrency slot
+            because an `unknown` execution has given its own up. `completed_at` on
+            an `unknown` execution is when the platform gave up, not when the work
+            ended.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -291,12 +309,18 @@ async def asyncio(
             `succeeded`, `failed`, `timed_out`, `stopped` and `unknown` are
             terminal.
 
-            `unknown` means the platform lost track of the execution's outcome: it
-            was never seen to finish and is no longer reported, so no result or
-            error can be given for it. It is terminal because nothing can settle it
-            later, and it is rare — treat it as an outcome to retry under a new
-            name rather than a state to wait on. `completed_at` on an `unknown`
-            execution is when the platform gave up, not when the work ended.
+            `unknown` means the execution's outcome cannot be established, so no
+            result or error can be given for it. Either it was under way and was
+            never seen to finish, or its start failed with a `500` without the
+            platform establishing whether the execution began — which is why a
+            name whose start returned an error can later read as `unknown` rather
+            than not being found. It is terminal because nothing can settle it
+            later, and it is rare — treat it as an outcome to retry rather than a
+            state to wait on. A retry under the same name picks this execution back
+            up instead of starting a second one, and needs a free concurrency slot
+            because an `unknown` execution has given its own up. `completed_at` on
+            an `unknown` execution is when the platform gave up, not when the work
+            ended.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

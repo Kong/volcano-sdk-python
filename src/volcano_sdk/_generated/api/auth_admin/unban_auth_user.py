@@ -51,6 +51,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_404
 
+    if response.status_code == 409:
+        response_409 = Error.from_dict(response.json())
+
+
+
+        return response_409
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
@@ -76,7 +83,7 @@ def sync_detailed(
     """ Unban a user
 
      Removes a ban from a user, restoring their ability to sign in.
-    The user's status is set back to 'active'.
+    The user's status is set back to 'active'. Deleted accounts cannot be restored.
 
     Args:
         id (UUID):
@@ -113,7 +120,7 @@ def sync(
     """ Unban a user
 
      Removes a ban from a user, restoring their ability to sign in.
-    The user's status is set back to 'active'.
+    The user's status is set back to 'active'. Deleted accounts cannot be restored.
 
     Args:
         id (UUID):
@@ -145,7 +152,7 @@ async def asyncio_detailed(
     """ Unban a user
 
      Removes a ban from a user, restoring their ability to sign in.
-    The user's status is set back to 'active'.
+    The user's status is set back to 'active'. Deleted accounts cannot be restored.
 
     Args:
         id (UUID):
@@ -182,7 +189,7 @@ async def asyncio(
     """ Unban a user
 
      Removes a ban from a user, restoring their ability to sign in.
-    The user's status is set back to 'active'.
+    The user's status is set back to 'active'. Deleted accounts cannot be restored.
 
     Args:
         id (UUID):

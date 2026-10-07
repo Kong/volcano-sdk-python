@@ -146,11 +146,16 @@ def sync_detailed(
     `/projects/{id}/durable-functions/...` remains the owner's management
     surface.
 
-    **With a service key or an auth user token:** any durable function in
-    the project.
+    **With a service key:** any durable function in the project.
+
+    **With an auth user token:** a durable function whose `visibility` is
+    `authenticated` or `public`.
 
     **With an anon key:** requires the `functions.invoke` permission, and
-    the function must have `is_public: true`.
+    the function must have `visibility: public`.
+
+    A `private` durable function answers every credential but a service key
+    exactly as a missing one, with 404.
 
     Starting is all this endpoint does. Reading a result or stopping an
     execution requires the project owner's token, because an anon key is
@@ -214,11 +219,16 @@ def sync(
     `/projects/{id}/durable-functions/...` remains the owner's management
     surface.
 
-    **With a service key or an auth user token:** any durable function in
-    the project.
+    **With a service key:** any durable function in the project.
+
+    **With an auth user token:** a durable function whose `visibility` is
+    `authenticated` or `public`.
 
     **With an anon key:** requires the `functions.invoke` permission, and
-    the function must have `is_public: true`.
+    the function must have `visibility: public`.
+
+    A `private` durable function answers every credential but a service key
+    exactly as a missing one, with 404.
 
     Starting is all this endpoint does. Reading a result or stopping an
     execution requires the project owner's token, because an anon key is
@@ -277,11 +287,16 @@ async def asyncio_detailed(
     `/projects/{id}/durable-functions/...` remains the owner's management
     surface.
 
-    **With a service key or an auth user token:** any durable function in
-    the project.
+    **With a service key:** any durable function in the project.
+
+    **With an auth user token:** a durable function whose `visibility` is
+    `authenticated` or `public`.
 
     **With an anon key:** requires the `functions.invoke` permission, and
-    the function must have `is_public: true`.
+    the function must have `visibility: public`.
+
+    A `private` durable function answers every credential but a service key
+    exactly as a missing one, with 404.
 
     Starting is all this endpoint does. Reading a result or stopping an
     execution requires the project owner's token, because an anon key is
@@ -345,11 +360,16 @@ async def asyncio(
     `/projects/{id}/durable-functions/...` remains the owner's management
     surface.
 
-    **With a service key or an auth user token:** any durable function in
-    the project.
+    **With a service key:** any durable function in the project.
+
+    **With an auth user token:** a durable function whose `visibility` is
+    `authenticated` or `public`.
 
     **With an anon key:** requires the `functions.invoke` permission, and
-    the function must have `is_public: true`.
+    the function must have `visibility: public`.
+
+    A `private` durable function answers every credential but a service key
+    exactly as a missing one, with 404.
 
     Starting is all this endpoint does. Reading a result or stopping an
     execution requires the project owner's token, because an anon key is

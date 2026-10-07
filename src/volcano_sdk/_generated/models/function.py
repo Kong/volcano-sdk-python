@@ -14,6 +14,8 @@ from ..models.function_invocation_mode import check_function_invocation_mode
 from ..models.function_invocation_mode import FunctionInvocationMode
 from ..models.function_status import check_function_status
 from ..models.function_status import FunctionStatus
+from ..models.function_visibility import check_function_visibility
+from ..models.function_visibility import FunctionVisibility
 from ..types import UNSET, Unset
 from typing import cast
 from uuid import UUID
@@ -38,15 +40,22 @@ class Function:
             project_id (UUID):
             name (str):
             status (FunctionStatus):
-            is_public (bool): Function visibility for anon-key invocation.
-                - `false` (default): only auth user tokens and service keys can invoke
-                - `true`: anon keys with `functions.invoke` can invoke
+            visibility (FunctionVisibility): Who can invoke the function. Each level admits everything the one
+                before it does.
+                - `private`: service keys and the project's schedulers only. The
+                  default for a new function. To any other credential the function
+                  does not exist: it answers 404, like a missing one.
+                - `authenticated`: also any signed-in user of the project, including
+                  anonymous sign-ins. The function receives their auth context.
+                - `public`: also anon keys holding `functions.invoke`, and Frontend
+                  Function routes, which forward requests without a credential.
+            is_public (bool): Deprecated. `true` exactly when `visibility` is `public`.
             invocation_mode (FunctionInvocationMode): Invocation contract. `rpc` preserves the existing POST `{payload:
                 ...}` contract;
                 `http` forwards HTTP request semantics to the function runtime.
             http_auth_mode (FunctionHTTPAuthMode): Authentication applied by the HTTP ingress. `none` is valid only for
-                public
-                HTTP-mode functions and is intended for externally signed webhooks.
+                HTTP-mode functions with `visibility: public` and is intended for
+                externally signed webhooks.
             openapi_spec (FunctionOpenapiSpecType0 | None): Optional OpenAPI 3.0 or 3.1 document describing an HTTP-mode
                 function.
             has_openapi_spec (bool): Whether OpenAPI metadata is configured; list responses omit the document itself.
@@ -54,8 +63,10 @@ class Function:
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
             provisioning_started_at (datetime.datetime | Unset): Timestamp when the current provisioning phase started
-            aws_function_arn (str | Unset):
-            invoke_url (str | Unset): Canonical GeoDNS endpoint URL for invoking this function (always HTTPS)
+            invoke_url (str | Unset): Canonical geo-routed HTTPS endpoint for invoking this function. Use it as-is: it does
+                not share a domain with the API, so a host derived from the API URL will not reach the function. Omitted when
+                the deployment serves no public invocation domain, as in local development, so a client testing for an empty
+                string never matches.
             runtime (str | Unset):
             handler (str | Unset):
             current_deployment_id (UUID | Unset): Identifier of the latest function deployment operation
@@ -67,6 +78,7 @@ class Function:
     project_id: UUID
     name: str
     status: FunctionStatus
+    visibility: FunctionVisibility
     is_public: bool
     invocation_mode: FunctionInvocationMode
     http_auth_mode: FunctionHTTPAuthMode
@@ -76,7 +88,6 @@ class Function:
     created_at: datetime.datetime
     updated_at: datetime.datetime
     provisioning_started_at: datetime.datetime | Unset = UNSET
-    aws_function_arn: str | Unset = UNSET
     invoke_url: str | Unset = UNSET
     runtime: str | Unset = UNSET
     handler: str | Unset = UNSET
@@ -98,6 +109,8 @@ class Function:
         name = self.name
 
         status: str = self.status
+
+        visibility: str = self.visibility
 
         is_public = self.is_public
 
@@ -125,8 +138,6 @@ class Function:
         if not isinstance(self.provisioning_started_at, Unset):
             provisioning_started_at = self.provisioning_started_at.isoformat()
 
-        aws_function_arn = self.aws_function_arn
-
         invoke_url = self.invoke_url
 
         runtime = self.runtime
@@ -153,6 +164,7 @@ class Function:
             "project_id": project_id,
             "name": name,
             "status": status,
+            "visibility": visibility,
             "is_public": is_public,
             "invocation_mode": invocation_mode,
             "http_auth_mode": http_auth_mode,
@@ -164,8 +176,6 @@ class Function:
         })
         if provisioning_started_at is not UNSET:
             field_dict["provisioning_started_at"] = provisioning_started_at
-        if aws_function_arn is not UNSET:
-            field_dict["aws_function_arn"] = aws_function_arn
         if invoke_url is not UNSET:
             field_dict["invoke_url"] = invoke_url
         if runtime is not UNSET:
@@ -200,6 +210,11 @@ class Function:
         name = d.pop("name")
 
         status = check_function_status(d.pop("status"))
+
+
+
+
+        visibility = check_function_visibility(d.pop("visibility"))
 
 
 
@@ -259,8 +274,6 @@ class Function:
 
 
 
-        aws_function_arn = d.pop("aws_function_arn", UNSET)
-
         invoke_url = d.pop("invoke_url", UNSET)
 
         runtime = d.pop("runtime", UNSET)
@@ -302,6 +315,7 @@ class Function:
             project_id=project_id,
             name=name,
             status=status,
+            visibility=visibility,
             is_public=is_public,
             invocation_mode=invocation_mode,
             http_auth_mode=http_auth_mode,
@@ -311,7 +325,6 @@ class Function:
             created_at=created_at,
             updated_at=updated_at,
             provisioning_started_at=provisioning_started_at,
-            aws_function_arn=aws_function_arn,
             invoke_url=invoke_url,
             runtime=runtime,
             handler=handler,

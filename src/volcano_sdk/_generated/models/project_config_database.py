@@ -33,7 +33,8 @@ class ProjectConfigDatabase:
 
         Attributes:
             name (str):
-            region (str): Deployed region ID (e.g. aws-us-east-1). Asserted, never written.
+            region (str): Deployed region ID (e.g. us-east-1). Asserted, never written; region IDs issued by earlier
+                versions of the API match too.
             pg_version (ProjectConfigDatabasePgVersion): PostgreSQL major version. Asserted, never written.
             database_type (ProjectConfigDatabaseDatabaseType | Unset): Compute tier. Asserted, never written - tier changes
                 are not

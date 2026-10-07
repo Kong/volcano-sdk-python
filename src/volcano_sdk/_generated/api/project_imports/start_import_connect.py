@@ -21,6 +21,7 @@ def request_kwargs(
     *,
     provider: ImportProvider | Unset = UNSET,
     redirect: str | Unset = UNSET,
+    callback_url: str | Unset = UNSET,
 
 ) -> dict[str, Any]:
     
@@ -36,6 +37,8 @@ def request_kwargs(
     params["provider"] = json_provider
 
     params["redirect"] = redirect
+
+    params["callback_url"] = callback_url
 
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
@@ -108,6 +111,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     provider: ImportProvider | Unset = UNSET,
     redirect: str | Unset = UNSET,
+    callback_url: str | Unset = UNSET,
 
 ) -> Response[Error | ImportConnectStartResponse]:
     """ Start a project import provider connection
@@ -119,6 +123,7 @@ def sync_detailed(
     Args:
         provider (ImportProvider | Unset):
         redirect (str | Unset):
+        callback_url (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -132,6 +137,7 @@ def sync_detailed(
     kwargs = request_kwargs(
         provider=provider,
 redirect=redirect,
+callback_url=callback_url,
 
     )
 
@@ -146,6 +152,7 @@ def sync(
     client: AuthenticatedClient,
     provider: ImportProvider | Unset = UNSET,
     redirect: str | Unset = UNSET,
+    callback_url: str | Unset = UNSET,
 
 ) -> Error | ImportConnectStartResponse | None:
     """ Start a project import provider connection
@@ -157,6 +164,7 @@ def sync(
     Args:
         provider (ImportProvider | Unset):
         redirect (str | Unset):
+        callback_url (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -171,6 +179,7 @@ def sync(
         client=client,
 provider=provider,
 redirect=redirect,
+callback_url=callback_url,
 
     ).parsed
 
@@ -179,6 +188,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     provider: ImportProvider | Unset = UNSET,
     redirect: str | Unset = UNSET,
+    callback_url: str | Unset = UNSET,
 
 ) -> Response[Error | ImportConnectStartResponse]:
     """ Start a project import provider connection
@@ -190,6 +200,7 @@ async def asyncio_detailed(
     Args:
         provider (ImportProvider | Unset):
         redirect (str | Unset):
+        callback_url (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -203,6 +214,7 @@ async def asyncio_detailed(
     kwargs = request_kwargs(
         provider=provider,
 redirect=redirect,
+callback_url=callback_url,
 
     )
 
@@ -217,6 +229,7 @@ async def asyncio(
     client: AuthenticatedClient,
     provider: ImportProvider | Unset = UNSET,
     redirect: str | Unset = UNSET,
+    callback_url: str | Unset = UNSET,
 
 ) -> Error | ImportConnectStartResponse | None:
     """ Start a project import provider connection
@@ -228,6 +241,7 @@ async def asyncio(
     Args:
         provider (ImportProvider | Unset):
         redirect (str | Unset):
+        callback_url (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -242,5 +256,6 @@ async def asyncio(
         client=client,
 provider=provider,
 redirect=redirect,
+callback_url=callback_url,
 
     )).parsed

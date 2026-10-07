@@ -10,6 +10,8 @@ from ..types import UNSET, Unset
 
 from ..models.durable_function_status import check_durable_function_status
 from ..models.durable_function_status import DurableFunctionStatus
+from ..models.function_visibility import check_function_visibility
+from ..models.function_visibility import FunctionVisibility
 from ..types import UNSET, Unset
 from typing import cast
 from uuid import UUID
@@ -39,20 +41,16 @@ class DurableFunction:
             project_id (UUID):
             name (str):
             status (DurableFunctionStatus):
-            is_public (bool): Whether anon keys may start executions of this function through
-                `POST /durable-functions/{functionId}/executions`.
-
-                When `true`, an anon key holding `functions.invoke` can start an
-                execution. When `false` (the default) only service keys and auth
-                user tokens can. Reading and stopping an execution always require
-                the project owner's token, whatever this is set to.
-
-                Set it when the function is created. Durable functions have no
-                update endpoint, so changing visibility later means redeploying.
-
-                A public durable function is startable, never invocable: it is not
-                reachable through `POST /functions/{functionId}/invoke` or a
-                function URL, which answer `404` for either visibility.
+            visibility (FunctionVisibility): Who can invoke the function. Each level admits everything the one
+                before it does.
+                - `private`: service keys and the project's schedulers only. The
+                  default for a new function. To any other credential the function
+                  does not exist: it answers 404, like a missing one.
+                - `authenticated`: also any signed-in user of the project, including
+                  anonymous sign-ins. The function receives their auth context.
+                - `public`: also anon keys holding `functions.invoke`, and Frontend
+                  Function routes, which forward requests without a credential.
+            is_public (bool): Deprecated. `true` exactly when `visibility` is `public`.
             durable (DurableFunctionConfig): Execution limits the function was created with, derived from the
                 project's plan. Fixed for the life of the function: changing them means
                 creating a new one.
@@ -76,6 +74,7 @@ class DurableFunction:
     project_id: UUID
     name: str
     status: DurableFunctionStatus
+    visibility: FunctionVisibility
     is_public: bool
     durable: DurableFunctionConfig
     deployed_regions: list[str]
@@ -102,6 +101,8 @@ class DurableFunction:
         name = self.name
 
         status: str = self.status
+
+        visibility: str = self.visibility
 
         is_public = self.is_public
 
@@ -143,6 +144,7 @@ class DurableFunction:
             "project_id": project_id,
             "name": name,
             "status": status,
+            "visibility": visibility,
             "is_public": is_public,
             "durable": durable,
             "deployed_regions": deployed_regions,
@@ -183,6 +185,11 @@ class DurableFunction:
         name = d.pop("name")
 
         status = check_durable_function_status(d.pop("status"))
+
+
+
+
+        visibility = check_function_visibility(d.pop("visibility"))
 
 
 
@@ -256,6 +263,7 @@ class DurableFunction:
             project_id=project_id,
             name=name,
             status=status,
+            visibility=visibility,
             is_public=is_public,
             durable=durable,
             deployed_regions=deployed_regions,

@@ -120,8 +120,8 @@ def sync_detailed(
     `requests: 0, errors: 0` so the response always has exactly
     `days` entries.
 
-    Backs the Monitoring section on the Frontend detail page in
-    volcano-web. `days` defaults to 30 and is capped at 90 to keep
+    Backs the Monitoring section on the frontend detail page in
+    the Volcano dashboard. `days` defaults to 30 and is capped at 90 to keep
     the (frontend_id, day) index scan bounded.
 
     Args:
@@ -167,8 +167,8 @@ def sync(
     `requests: 0, errors: 0` so the response always has exactly
     `days` entries.
 
-    Backs the Monitoring section on the Frontend detail page in
-    volcano-web. `days` defaults to 30 and is capped at 90 to keep
+    Backs the Monitoring section on the frontend detail page in
+    the Volcano dashboard. `days` defaults to 30 and is capped at 90 to keep
     the (frontend_id, day) index scan bounded.
 
     Args:
@@ -209,8 +209,8 @@ async def asyncio_detailed(
     `requests: 0, errors: 0` so the response always has exactly
     `days` entries.
 
-    Backs the Monitoring section on the Frontend detail page in
-    volcano-web. `days` defaults to 30 and is capped at 90 to keep
+    Backs the Monitoring section on the frontend detail page in
+    the Volcano dashboard. `days` defaults to 30 and is capped at 90 to keep
     the (frontend_id, day) index scan bounded.
 
     Args:
@@ -256,8 +256,8 @@ async def asyncio(
     `requests: 0, errors: 0` so the response always has exactly
     `days` entries.
 
-    Backs the Monitoring section on the Frontend detail page in
-    volcano-web. `days` defaults to 30 and is capped at 90 to keep
+    Backs the Monitoring section on the frontend detail page in
+    the Volcano dashboard. `days` defaults to 30 and is capped at 90 to keep
     the (frontend_id, day) index scan bounded.
 
     Args:

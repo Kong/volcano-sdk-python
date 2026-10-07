@@ -46,17 +46,10 @@ class FrontendDeployment:
             updated_at (datetime.datetime):
             initiated_by (str | Unset): Platform user that triggered a request-initiated deployment; absent for git and
                 system deployments.
-            artifact_bucket (str | Unset):
-            artifact_key (str | Unset):
-            artifact_version (str | Unset):
             site_url (str | Unset):
-            cloudformation_stack_id (str | Unset):
-            cloudformation_stack_url (str | Unset):
-            codebuild_duration_seconds (int | Unset): Total CodeBuild build duration recorded for this deployment, in
-                seconds.
-            codebuild_build_count (int | Unset): Number of completed CodeBuild builds included in
-                codebuild_duration_seconds.
-            codebuild_duration_recorded_at (datetime.datetime | Unset):
+            build_duration_seconds (int | Unset): Total build time recorded for this deployment, in seconds.
+            build_count (int | Unset): Number of completed builds included in build_duration_seconds.
+            build_duration_recorded_at (datetime.datetime | Unset): When the build time was last recorded.
             progress (DeploymentProgress | Unset): Normalized live progress derived from the deployment workflow and build
                 phases.
             error_message (str | Unset):
@@ -71,15 +64,10 @@ class FrontendDeployment:
     created_at: datetime.datetime
     updated_at: datetime.datetime
     initiated_by: str | Unset = UNSET
-    artifact_bucket: str | Unset = UNSET
-    artifact_key: str | Unset = UNSET
-    artifact_version: str | Unset = UNSET
     site_url: str | Unset = UNSET
-    cloudformation_stack_id: str | Unset = UNSET
-    cloudformation_stack_url: str | Unset = UNSET
-    codebuild_duration_seconds: int | Unset = UNSET
-    codebuild_build_count: int | Unset = UNSET
-    codebuild_duration_recorded_at: datetime.datetime | Unset = UNSET
+    build_duration_seconds: int | Unset = UNSET
+    build_count: int | Unset = UNSET
+    build_duration_recorded_at: datetime.datetime | Unset = UNSET
     progress: DeploymentProgress | Unset = UNSET
     error_message: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -108,25 +96,15 @@ class FrontendDeployment:
 
         initiated_by = self.initiated_by
 
-        artifact_bucket = self.artifact_bucket
-
-        artifact_key = self.artifact_key
-
-        artifact_version = self.artifact_version
-
         site_url = self.site_url
 
-        cloudformation_stack_id = self.cloudformation_stack_id
+        build_duration_seconds = self.build_duration_seconds
 
-        cloudformation_stack_url = self.cloudformation_stack_url
+        build_count = self.build_count
 
-        codebuild_duration_seconds = self.codebuild_duration_seconds
-
-        codebuild_build_count = self.codebuild_build_count
-
-        codebuild_duration_recorded_at: str | Unset = UNSET
-        if not isinstance(self.codebuild_duration_recorded_at, Unset):
-            codebuild_duration_recorded_at = self.codebuild_duration_recorded_at.isoformat()
+        build_duration_recorded_at: str | Unset = UNSET
+        if not isinstance(self.build_duration_recorded_at, Unset):
+            build_duration_recorded_at = self.build_duration_recorded_at.isoformat()
 
         progress: dict[str, Any] | Unset = UNSET
         if not isinstance(self.progress, Unset):
@@ -149,24 +127,14 @@ class FrontendDeployment:
         })
         if initiated_by is not UNSET:
             field_dict["initiated_by"] = initiated_by
-        if artifact_bucket is not UNSET:
-            field_dict["artifact_bucket"] = artifact_bucket
-        if artifact_key is not UNSET:
-            field_dict["artifact_key"] = artifact_key
-        if artifact_version is not UNSET:
-            field_dict["artifact_version"] = artifact_version
         if site_url is not UNSET:
             field_dict["site_url"] = site_url
-        if cloudformation_stack_id is not UNSET:
-            field_dict["cloudformation_stack_id"] = cloudformation_stack_id
-        if cloudformation_stack_url is not UNSET:
-            field_dict["cloudformation_stack_url"] = cloudformation_stack_url
-        if codebuild_duration_seconds is not UNSET:
-            field_dict["codebuild_duration_seconds"] = codebuild_duration_seconds
-        if codebuild_build_count is not UNSET:
-            field_dict["codebuild_build_count"] = codebuild_build_count
-        if codebuild_duration_recorded_at is not UNSET:
-            field_dict["codebuild_duration_recorded_at"] = codebuild_duration_recorded_at
+        if build_duration_seconds is not UNSET:
+            field_dict["build_duration_seconds"] = build_duration_seconds
+        if build_count is not UNSET:
+            field_dict["build_count"] = build_count
+        if build_duration_recorded_at is not UNSET:
+            field_dict["build_duration_recorded_at"] = build_duration_recorded_at
         if progress is not UNSET:
             field_dict["progress"] = progress
         if error_message is not UNSET:
@@ -222,28 +190,18 @@ class FrontendDeployment:
 
         initiated_by = d.pop("initiated_by", UNSET)
 
-        artifact_bucket = d.pop("artifact_bucket", UNSET)
-
-        artifact_key = d.pop("artifact_key", UNSET)
-
-        artifact_version = d.pop("artifact_version", UNSET)
-
         site_url = d.pop("site_url", UNSET)
 
-        cloudformation_stack_id = d.pop("cloudformation_stack_id", UNSET)
+        build_duration_seconds = d.pop("build_duration_seconds", UNSET)
 
-        cloudformation_stack_url = d.pop("cloudformation_stack_url", UNSET)
+        build_count = d.pop("build_count", UNSET)
 
-        codebuild_duration_seconds = d.pop("codebuild_duration_seconds", UNSET)
-
-        codebuild_build_count = d.pop("codebuild_build_count", UNSET)
-
-        _codebuild_duration_recorded_at = d.pop("codebuild_duration_recorded_at", UNSET)
-        codebuild_duration_recorded_at: datetime.datetime | Unset
-        if isinstance(_codebuild_duration_recorded_at,  Unset):
-            codebuild_duration_recorded_at = UNSET
+        _build_duration_recorded_at = d.pop("build_duration_recorded_at", UNSET)
+        build_duration_recorded_at: datetime.datetime | Unset
+        if isinstance(_build_duration_recorded_at,  Unset):
+            build_duration_recorded_at = UNSET
         else:
-            codebuild_duration_recorded_at = datetime.datetime.fromisoformat(_codebuild_duration_recorded_at)
+            build_duration_recorded_at = datetime.datetime.fromisoformat(_build_duration_recorded_at)
 
 
 
@@ -270,15 +228,10 @@ class FrontendDeployment:
             created_at=created_at,
             updated_at=updated_at,
             initiated_by=initiated_by,
-            artifact_bucket=artifact_bucket,
-            artifact_key=artifact_key,
-            artifact_version=artifact_version,
             site_url=site_url,
-            cloudformation_stack_id=cloudformation_stack_id,
-            cloudformation_stack_url=cloudformation_stack_url,
-            codebuild_duration_seconds=codebuild_duration_seconds,
-            codebuild_build_count=codebuild_build_count,
-            codebuild_duration_recorded_at=codebuild_duration_recorded_at,
+            build_duration_seconds=build_duration_seconds,
+            build_count=build_count,
+            build_duration_recorded_at=build_duration_recorded_at,
             progress=progress,
             error_message=error_message,
         )

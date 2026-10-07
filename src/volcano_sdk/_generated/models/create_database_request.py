@@ -34,11 +34,12 @@ class CreateDatabaseRequest:
 
         Attributes:
             name (str): Database name (must be unique within project) Example: my_database.
-            region (str): Region for database hosting. The accepted values are the regions this
-                environment runs in, so read them from `GET /databases/regions` rather
-                than hardcoding a list. A region the environment does not offer is
-                rejected with 400.
-                 Example: aws-us-east-1.
+            region (str): Region for database hosting, such as `us-east-1`. The accepted values
+                are the regions this environment runs in, so read them from
+                `GET /databases/regions` rather than hardcoding a list. A region the
+                environment does not offer is rejected with 400. Region IDs issued by
+                earlier versions of the API are still accepted.
+                 Example: us-east-1.
             pg_version (CreateDatabaseRequestPgVersion): PostgreSQL major version Example: 16.
             database_type (CreateDatabaseRequestDatabaseType | Unset): Compute size tier (optional, defaults to volcano-db-
                 xs).

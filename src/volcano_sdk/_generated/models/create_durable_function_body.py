@@ -14,6 +14,8 @@ from ..models.create_durable_function_body_runtime import check_create_durable_f
 from ..models.create_durable_function_body_runtime import CreateDurableFunctionBodyRuntime
 from ..models.create_durable_function_body_variable_scope import check_create_durable_function_body_variable_scope
 from ..models.create_durable_function_body_variable_scope import CreateDurableFunctionBodyVariableScope
+from ..models.function_visibility import check_function_visibility
+from ..models.function_visibility import FunctionVisibility
 from ..types import File, FileTypes
 from ..types import UNSET, Unset
 from io import BytesIO
@@ -45,15 +47,18 @@ class CreateDurableFunctionBody:
                  Example: nodejs24.x.
             handler (str | Unset): The name of the function to invoke. Defaults to "handler" if not specified. Default:
                 'handler'. Example: handler.
-            is_public (bool | Unset): Whether anon keys with `functions.invoke` may start an
-                execution. Redeploying is the only way to change it, since
-                the collection has no update endpoint; omit it to keep the
-                current visibility, and a new function starts private.
-
-                The standard collection's synchronous invocation fields —
-                `invocation_mode`, `http_auth_mode`, `openapi_spec` —
-                configure a request path no durable route serves, and are
-                rejected with 400 rather than ignored.
+            visibility (FunctionVisibility | Unset): Who can invoke the function. Each level admits everything the one
+                before it does.
+                - `private`: service keys and the project's schedulers only. The
+                  default for a new function. To any other credential the function
+                  does not exist: it answers 404, like a missing one.
+                - `authenticated`: also any signed-in user of the project, including
+                  anonymous sign-ins. The function receives their auth context.
+                - `public`: also anon keys holding `functions.invoke`, and Frontend
+                  Function routes, which forward requests without a credential.
+            is_public (bool | Unset): Deprecated alias for `visibility`: `true` means `public` and
+                `false` means `authenticated`. Sending both with different
+                meanings returns 400.
             variable_scope (CreateDurableFunctionBodyVariableScope | Unset): Which project variables this function receives.
                 `all` (the default) gives it every project variable; `scoped` gives it only the variables it selects. Omitting
                 this leaves an existing function's scope unchanged.
@@ -67,6 +72,7 @@ class CreateDurableFunctionBody:
     code: File
     runtime: CreateDurableFunctionBodyRuntime
     handler: str | Unset = 'handler'
+    visibility: FunctionVisibility | Unset = UNSET
     is_public: bool | Unset = UNSET
     variable_scope: CreateDurableFunctionBodyVariableScope | Unset = UNSET
     variables: str | Unset = UNSET
@@ -85,6 +91,11 @@ class CreateDurableFunctionBody:
         runtime: str = self.runtime
 
         handler = self.handler
+
+        visibility: str | Unset = UNSET
+        if not isinstance(self.visibility, Unset):
+            visibility = self.visibility
+
 
         is_public = self.is_public
 
@@ -105,6 +116,8 @@ class CreateDurableFunctionBody:
         })
         if handler is not UNSET:
             field_dict["handler"] = handler
+        if visibility is not UNSET:
+            field_dict["visibility"] = visibility
         if is_public is not UNSET:
             field_dict["is_public"] = is_public
         if variable_scope is not UNSET:
@@ -132,6 +145,11 @@ class CreateDurableFunctionBody:
 
         if not isinstance(self.handler, Unset):
             files.append(("handler", (None, str(self.handler).encode(), "text/plain")))
+
+
+
+        if not isinstance(self.visibility, Unset):
+            files.append(("visibility", (None, str(self.visibility).encode(), "text/plain")))
 
 
 
@@ -178,6 +196,16 @@ class CreateDurableFunctionBody:
 
         handler = d.pop("handler", UNSET)
 
+        _visibility = d.pop("visibility", UNSET)
+        visibility: FunctionVisibility | Unset
+        if isinstance(_visibility,  Unset):
+            visibility = UNSET
+        else:
+            visibility = check_function_visibility(_visibility)
+
+
+
+
         is_public = d.pop("is_public", UNSET)
 
         _variable_scope = d.pop("variable_scope", UNSET)
@@ -197,6 +225,7 @@ class CreateDurableFunctionBody:
             code=code,
             runtime=runtime,
             handler=handler,
+            visibility=visibility,
             is_public=is_public,
             variable_scope=variable_scope,
             variables=variables,

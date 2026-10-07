@@ -97,7 +97,7 @@ def sync_detailed(
     """ Create email template
 
      Creates a custom email template for the project. Custom email templates
-    are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner are
+    are a SUPERAGENT feature: requests from a HOBBY project owner are
     rejected with 403, and HOBBY projects always send the built-in default
     templates regardless of any previously saved custom rows.
     Every project is created with one template per type, so customizing one
@@ -139,7 +139,7 @@ def sync(
     """ Create email template
 
      Creates a custom email template for the project. Custom email templates
-    are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner are
+    are a SUPERAGENT feature: requests from a HOBBY project owner are
     rejected with 403, and HOBBY projects always send the built-in default
     templates regardless of any previously saved custom rows.
     Every project is created with one template per type, so customizing one
@@ -176,7 +176,7 @@ async def asyncio_detailed(
     """ Create email template
 
      Creates a custom email template for the project. Custom email templates
-    are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner are
+    are a SUPERAGENT feature: requests from a HOBBY project owner are
     rejected with 403, and HOBBY projects always send the built-in default
     templates regardless of any previously saved custom rows.
     Every project is created with one template per type, so customizing one
@@ -218,7 +218,7 @@ async def asyncio(
     """ Create email template
 
      Creates a custom email template for the project. Custom email templates
-    are a SUPERAGENT-plan feature: requests from a HOBBY-plan project owner are
+    are a SUPERAGENT feature: requests from a HOBBY project owner are
     rejected with 403, and HOBBY projects always send the built-in default
     templates regardless of any previously saved custom rows.
     Every project is created with one template per type, so customizing one

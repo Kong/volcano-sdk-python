@@ -49,7 +49,7 @@ class Database:
                 - `volcano_full_access` — Full admin access (DDL, migrations)
                 - `volcano_user_access:{user_id}` — User impersonation (RLS enforced)
                 - `volcano_user_access` — Anonymous access (anon role, RLS enforced)
-            region (str | Unset): Region where the database is hosted Example: aws-us-east-1.
+            region (str | Unset): Region where the database is hosted Example: us-east-1.
             pg_version (str | Unset): PostgreSQL major version Example: 16.
             database_type (DatabaseDatabaseType | Unset): Database size tier that determines available RAM and scaling
                 limits.

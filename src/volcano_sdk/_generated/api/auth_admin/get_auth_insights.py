@@ -133,12 +133,15 @@ def sync_detailed(
 ) -> Response[AuthInsightsResponse | Error]:
     """ Get auth user insights
 
-     Returns current auth-user totals, rolling 30-day active users, and
-    zero-filled signup and successful sign-in counts for an inclusive UTC
-    date range. Weeks start on Monday. Sign-in counts and active-user
-    activity begin when collection is deployed. Historical signup counts
-    are backfilled from users present at deployment. Token refreshes affect
-    active users but not the sign-in series.
+     Returns current and deleted auth-user totals, rolling 24-hour and 30-day
+    active users, and zero-filled signup, deletion, net-growth, and successful
+    sign-in counts for an inclusive UTC date range. Weeks start on Monday.
+    Signups remain counted after deletion; net growth is signups minus
+    deletions. Deleted users contribute to active counts until their last
+    activity leaves the rolling window. Token refreshes affect active users
+    but not the sign-in series. Collection starts at deployment, with signup
+    history backfilled from accounts still present then. Earlier hard-deleted
+    accounts cannot be recovered.
 
     Args:
         id (UUID):
@@ -180,12 +183,15 @@ def sync(
 ) -> AuthInsightsResponse | Error | None:
     """ Get auth user insights
 
-     Returns current auth-user totals, rolling 30-day active users, and
-    zero-filled signup and successful sign-in counts for an inclusive UTC
-    date range. Weeks start on Monday. Sign-in counts and active-user
-    activity begin when collection is deployed. Historical signup counts
-    are backfilled from users present at deployment. Token refreshes affect
-    active users but not the sign-in series.
+     Returns current and deleted auth-user totals, rolling 24-hour and 30-day
+    active users, and zero-filled signup, deletion, net-growth, and successful
+    sign-in counts for an inclusive UTC date range. Weeks start on Monday.
+    Signups remain counted after deletion; net growth is signups minus
+    deletions. Deleted users contribute to active counts until their last
+    activity leaves the rolling window. Token refreshes affect active users
+    but not the sign-in series. Collection starts at deployment, with signup
+    history backfilled from accounts still present then. Earlier hard-deleted
+    accounts cannot be recovered.
 
     Args:
         id (UUID):
@@ -222,12 +228,15 @@ async def asyncio_detailed(
 ) -> Response[AuthInsightsResponse | Error]:
     """ Get auth user insights
 
-     Returns current auth-user totals, rolling 30-day active users, and
-    zero-filled signup and successful sign-in counts for an inclusive UTC
-    date range. Weeks start on Monday. Sign-in counts and active-user
-    activity begin when collection is deployed. Historical signup counts
-    are backfilled from users present at deployment. Token refreshes affect
-    active users but not the sign-in series.
+     Returns current and deleted auth-user totals, rolling 24-hour and 30-day
+    active users, and zero-filled signup, deletion, net-growth, and successful
+    sign-in counts for an inclusive UTC date range. Weeks start on Monday.
+    Signups remain counted after deletion; net growth is signups minus
+    deletions. Deleted users contribute to active counts until their last
+    activity leaves the rolling window. Token refreshes affect active users
+    but not the sign-in series. Collection starts at deployment, with signup
+    history backfilled from accounts still present then. Earlier hard-deleted
+    accounts cannot be recovered.
 
     Args:
         id (UUID):
@@ -269,12 +278,15 @@ async def asyncio(
 ) -> AuthInsightsResponse | Error | None:
     """ Get auth user insights
 
-     Returns current auth-user totals, rolling 30-day active users, and
-    zero-filled signup and successful sign-in counts for an inclusive UTC
-    date range. Weeks start on Monday. Sign-in counts and active-user
-    activity begin when collection is deployed. Historical signup counts
-    are backfilled from users present at deployment. Token refreshes affect
-    active users but not the sign-in series.
+     Returns current and deleted auth-user totals, rolling 24-hour and 30-day
+    active users, and zero-filled signup, deletion, net-growth, and successful
+    sign-in counts for an inclusive UTC date range. Weeks start on Monday.
+    Signups remain counted after deletion; net growth is signups minus
+    deletions. Deleted users contribute to active counts until their last
+    activity leaves the rolling window. Token refreshes affect active users
+    but not the sign-in series. Collection starts at deployment, with signup
+    history backfilled from accounts still present then. Earlier hard-deleted
+    accounts cannot be recovered.
 
     Args:
         id (UUID):
