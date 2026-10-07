@@ -33,13 +33,13 @@ ships, edit the squash commit title to `fix(deps): ...`:
   `uv run python scripts/generate_openapi.py` and commit the result to the
   update's PR.
 
-These updates arrive in their own pull requests because each needs a change
-Dependabot does not make:
+These dependencies get their own pull requests:
 
 - ruff: update `tool.ruff.required-version` to match.
 - hatchling: update the build constraints as described in [Build inputs](#build-inputs).
 - centrifuge-python: run the checks in [realtime-compatibility.md](realtime-compatibility.md).
-- httpx: review the change before Dependabot widens the `<0.29.0` cap.
+- httpx: an update past the `<0.29.0` cap widens it, so review the new 0.x
+  release before merging.
 
 When a grouped update bumps basedpyright, also update its pin in the tox
 `package-types` environment.
