@@ -47,6 +47,9 @@ When a grouped update bumps basedpyright, also update its pin in the tox
 The ruff, hatchling and basedpyright pins are also recorded in the
 [policy lock](quality-policy.md), so update the lock and its digest with them.
 
+Dependabot stops rebasing a pull request once someone else pushes to it, so
+merge it soon after. `@dependabot recreate` starts over and drops those commits.
+
 ## Before publication
 
 1. Identify the release PR, exact source commit, version, tag and intended registry account. Inspect the generated changelog and package metadata.
