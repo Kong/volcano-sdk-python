@@ -58,6 +58,17 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      # Majors share one PR, except the packages above that get their own.
+      uv-major:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "centrifuge-python"
+          - "httpx"
+          - "hatchling"
+          - "ruff"
+        update-types:
+          - "major"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -78,3 +89,8 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      github-actions-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"

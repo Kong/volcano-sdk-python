@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from typing import TYPE_CHECKING
 
@@ -19,6 +18,7 @@ from volcano_sdk._transport import GeneratedTransport
 
 from .client_inspection import InspectedClient
 from .session_fixtures import access_token
+from .thread_support import worker_pool
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -313,7 +313,7 @@ def test_concurrent_function_invocations_share_refresh(refresh_status: int) -> N
     client = make_client(
         concurrent_invocation_handler(initial_calls, refreshes, refresh_status)
     )
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with worker_pool(max_workers=2) as pool:
         calls = [pool.submit(client.functions.invoke, "echo") for _ in range(2)]
         for call in calls:
             assert_invocation_outcome(call, refresh_status)
