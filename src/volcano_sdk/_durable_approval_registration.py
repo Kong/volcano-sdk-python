@@ -9,6 +9,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from http import HTTPMethod
 from time import monotonic, sleep
 from typing import TYPE_CHECKING, TypeGuard
 
@@ -207,7 +208,9 @@ async def _exchange(
 ) -> TransportResponse:
     async with (
         client,
-        client.stream("POST", url, content=content, headers=_HEADERS) as response,
+        client.stream(
+            HTTPMethod.POST, url, content=content, headers=_HEADERS
+        ) as response,
     ):
         answer = await _answer(response)
     return unparsed_response(_Answer(response.status_code, answer, response.headers))
@@ -224,7 +227,8 @@ async def _answer(response: httpx.Response) -> bytes:
     async for chunk in response.aiter_bytes():
         answer += chunk
         if len(answer) > _MAX_ANSWER_BYTES:
-            return b""
+            answer.clear()
+            break
     return bytes(answer)
 
 

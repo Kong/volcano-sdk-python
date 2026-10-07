@@ -103,6 +103,18 @@ class Flood(httpx.AsyncByteStream):
             yield b" " * 4096
 
 
+class Pieces(httpx.AsyncByteStream):
+    """Send a body split into the given pieces."""
+
+    def __init__(self, *pieces: bytes) -> None:
+        self.pieces: tuple[bytes, ...] = pieces
+
+    @override
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        for piece in self.pieces:
+            yield piece
+
+
 Answer: TypeAlias = "httpx.Response | Exception | Stall"
 
 
@@ -348,6 +360,21 @@ def test_waking_up_at_the_deadline_raises_the_last_failure(
     assert fake.timeouts == [10.0]
 
 
+def test_a_retry_that_would_wake_at_the_deadline_is_not_slept_for(
+    platform: InstallPlatform,
+) -> None:
+    # The retry wakes 29 s in; its attempt fails, and the next delay of 1 s
+    # would end exactly at the deadline.
+    fake = platform(refused(503))
+    fake.oversleep = 28.5
+
+    with pytest.raises(ServerError, match="refused with 503"):
+        register_approval(API_URL, BODY)
+
+    assert fake.sleeps == [0.5]
+    assert fake.timeouts == [10.0, 1.0]
+
+
 # Nothing in a mock transport times out, so only the attempt's own deadline can
 # end these early. The retry wakes 29.8 s in, which leaves its attempt 0.2 s.
 _WAKE_LATE = 29.3
@@ -402,6 +429,29 @@ def test_an_answer_too_large_to_be_volcanos_is_not_read_to_the_end(
 
     assert caught.value.code is None
     assert flood.sent <= 65536 + 4096
+    assert len(fake.requests) == 1
+
+
+def test_an_answer_at_the_size_limit_is_read(platform: InstallPlatform) -> None:
+    closed = refused(409, "approval_closed").content
+    fake = platform(httpx.Response(409, content=closed.ljust(65536)))
+
+    register_approval(API_URL, BODY)
+
+    assert len(fake.requests) == 1
+
+
+def test_an_answer_that_arrives_in_pieces_is_read_whole(
+    platform: InstallPlatform,
+) -> None:
+    closed = refused(409, "approval_closed").content
+    middle = len(closed) // 2
+    fake = platform(
+        httpx.Response(409, stream=Pieces(closed[:middle], closed[middle:]))
+    )
+
+    register_approval(API_URL, BODY)
+
     assert len(fake.requests) == 1
 
 
