@@ -21,6 +21,7 @@ if TYPE_CHECKING:
   from ..models.project_config_function import ProjectConfigFunction
   from ..models.project_config_project import ProjectConfigProject
   from ..models.project_config_realtime import ProjectConfigRealtime
+  from ..models.project_config_sandbox import ProjectConfigSandbox
   from ..models.project_config_variable import ProjectConfigVariable
 
 
@@ -50,6 +51,9 @@ class ProjectConfig:
             databases (list[ProjectConfigDatabase] | Unset):
             shared_variables (list[str] | Unset): Replace the complete shared function-variable list with existing names,
                 without changing variable values. Omission keeps membership unchanged; an empty list clears it.
+            frontend_shared_variables (list[str] | Unset): Replace the complete shared frontend-variable list with existing
+                names. Frontends with variable_scope shared receive this list. Omission keeps membership unchanged; an empty
+                list clears it.
             variables (list[ProjectConfigVariable] | Unset): Fully synced when declared - variables absent from this list
                 are deleted.
             buckets (list[ProjectConfigBucket] | Unset):
@@ -57,18 +61,22 @@ class ProjectConfig:
             auth (ProjectConfigAuth | Unset): Authentication settings, grouped like the dashboard auth-settings tabs.
             functions (list[ProjectConfigFunction] | Unset):
             frontends (list[ProjectConfigFrontend] | Unset):
+            sandboxes (list[ProjectConfigSandbox] | Unset): Settings for existing templates; Git deploy applies build
+                settings to matching sandbox source directories. Templates are never deleted by omission.
      """
 
     version: ProjectConfigVersion
     project: ProjectConfigProject | Unset = UNSET
     databases: list[ProjectConfigDatabase] | Unset = UNSET
     shared_variables: list[str] | Unset = UNSET
+    frontend_shared_variables: list[str] | Unset = UNSET
     variables: list[ProjectConfigVariable] | Unset = UNSET
     buckets: list[ProjectConfigBucket] | Unset = UNSET
     realtime: ProjectConfigRealtime | Unset = UNSET
     auth: ProjectConfigAuth | Unset = UNSET
     functions: list[ProjectConfigFunction] | Unset = UNSET
     frontends: list[ProjectConfigFrontend] | Unset = UNSET
+    sandboxes: list[ProjectConfigSandbox] | Unset = UNSET
 
 
 
@@ -82,6 +90,7 @@ class ProjectConfig:
         from ..models.project_config_function import ProjectConfigFunction # noqa: PLC0415
         from ..models.project_config_project import ProjectConfigProject # noqa: PLC0415
         from ..models.project_config_realtime import ProjectConfigRealtime # noqa: PLC0415
+        from ..models.project_config_sandbox import ProjectConfigSandbox # noqa: PLC0415
         from ..models.project_config_variable import ProjectConfigVariable # noqa: PLC0415
         version: int = self.version
 
@@ -101,6 +110,12 @@ class ProjectConfig:
         shared_variables: list[str] | Unset = UNSET
         if not isinstance(self.shared_variables, Unset):
             shared_variables = self.shared_variables
+
+
+
+        frontend_shared_variables: list[str] | Unset = UNSET
+        if not isinstance(self.frontend_shared_variables, Unset):
+            frontend_shared_variables = self.frontend_shared_variables
 
 
 
@@ -148,6 +163,15 @@ class ProjectConfig:
 
 
 
+        sandboxes: list[dict[str, Any]] | Unset = UNSET
+        if not isinstance(self.sandboxes, Unset):
+            sandboxes = []
+            for sandboxes_item_data in self.sandboxes:
+                sandboxes_item = sandboxes_item_data.to_dict()
+                sandboxes.append(sandboxes_item)
+
+
+
 
         field_dict: dict[str, Any] = {}
 
@@ -160,6 +184,8 @@ class ProjectConfig:
             field_dict["databases"] = databases
         if shared_variables is not UNSET:
             field_dict["shared_variables"] = shared_variables
+        if frontend_shared_variables is not UNSET:
+            field_dict["frontend_shared_variables"] = frontend_shared_variables
         if variables is not UNSET:
             field_dict["variables"] = variables
         if buckets is not UNSET:
@@ -172,6 +198,8 @@ class ProjectConfig:
             field_dict["functions"] = functions
         if frontends is not UNSET:
             field_dict["frontends"] = frontends
+        if sandboxes is not UNSET:
+            field_dict["sandboxes"] = sandboxes
 
         return field_dict
 
@@ -186,6 +214,7 @@ class ProjectConfig:
         from ..models.project_config_function import ProjectConfigFunction # noqa: PLC0415
         from ..models.project_config_project import ProjectConfigProject # noqa: PLC0415
         from ..models.project_config_realtime import ProjectConfigRealtime # noqa: PLC0415
+        from ..models.project_config_sandbox import ProjectConfigSandbox # noqa: PLC0415
         from ..models.project_config_variable import ProjectConfigVariable # noqa: PLC0415
         d = dict(src_dict)
         version = check_project_config_version(d.pop("version"))
@@ -216,6 +245,9 @@ class ProjectConfig:
 
 
         shared_variables = cast(list[str], d.pop("shared_variables", UNSET))
+
+
+        frontend_shared_variables = cast(list[str], d.pop("frontend_shared_variables", UNSET))
 
 
         _variables = d.pop("variables", UNSET)
@@ -286,17 +318,31 @@ class ProjectConfig:
                 frontends.append(frontends_item)
 
 
+        _sandboxes = d.pop("sandboxes", UNSET)
+        sandboxes: list[ProjectConfigSandbox] | Unset = UNSET
+        if _sandboxes is not UNSET:
+            sandboxes = []
+            for sandboxes_item_data in _sandboxes:
+                sandboxes_item = ProjectConfigSandbox.from_dict(sandboxes_item_data)
+
+
+
+                sandboxes.append(sandboxes_item)
+
+
         project_config = cls(
             version=version,
             project=project,
             databases=databases,
             shared_variables=shared_variables,
+            frontend_shared_variables=frontend_shared_variables,
             variables=variables,
             buckets=buckets,
             realtime=realtime,
             auth=auth,
             functions=functions,
             frontends=frontends,
+            sandboxes=sandboxes,
         )
 
         return project_config

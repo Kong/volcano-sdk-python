@@ -1,5 +1,5 @@
 
-""" A client library for accessing Volcano Hosting API """
+""" A client library for accessing Volcano API """
 from .client import AuthenticatedClient, Client
 
 __all__ = (

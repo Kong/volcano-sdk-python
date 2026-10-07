@@ -9,6 +9,8 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.error import Error
+from ...models.function_kind_filter import check_function_kind_filter
+from ...models.function_kind_filter import FunctionKindFilter
 from ...models.project_deployment_summary import ProjectDeploymentSummary
 from ...models.summarize_project_deployments_resource_type import check_summarize_project_deployments_resource_type
 from ...models.summarize_project_deployments_resource_type import SummarizeProjectDeploymentsResourceType
@@ -24,6 +26,7 @@ def request_kwargs(
     *,
     search: str | Unset = UNSET,
     resource_type: SummarizeProjectDeploymentsResourceType,
+    function_kind: FunctionKindFilter | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
 
 ) -> dict[str, Any]:
@@ -37,6 +40,12 @@ def request_kwargs(
 
     json_resource_type: str = resource_type
     params["resource_type"] = json_resource_type
+
+    json_function_kind: str | Unset = UNSET
+    if not isinstance(function_kind, Unset):
+        json_function_kind = function_kind
+
+    params["function_kind"] = json_function_kind
 
     json_created_after: str | Unset = UNSET
     if not isinstance(created_after, Unset):
@@ -115,6 +124,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     search: str | Unset = UNSET,
     resource_type: SummarizeProjectDeploymentsResourceType,
+    function_kind: FunctionKindFilter | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
 
 ) -> Response[Error | ProjectDeploymentSummary]:
@@ -127,10 +137,16 @@ def sync_detailed(
     completed, non-superseded attempts with recorded build work,
     including failed builds.
 
+    With `resource_type=function`, pass `function_kind` to summarize one
+    kind of function only. It is rejected with `resource_type=frontend`.
+
     Args:
         id (UUID):
         search (str | Unset):
         resource_type (SummarizeProjectDeploymentsResourceType):
+        function_kind (FunctionKindFilter | Unset): A function kind to filter a list by. Unlike
+            `FunctionKind` it has no
+            default: omitting the filter includes both kinds.
         created_after (datetime.datetime | Unset):
 
     Raises:
@@ -146,6 +162,7 @@ def sync_detailed(
         id=id,
 search=search,
 resource_type=resource_type,
+function_kind=function_kind,
 created_after=created_after,
 
     )
@@ -162,6 +179,7 @@ def sync(
     client: AuthenticatedClient,
     search: str | Unset = UNSET,
     resource_type: SummarizeProjectDeploymentsResourceType,
+    function_kind: FunctionKindFilter | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
 
 ) -> Error | ProjectDeploymentSummary | None:
@@ -174,10 +192,16 @@ def sync(
     completed, non-superseded attempts with recorded build work,
     including failed builds.
 
+    With `resource_type=function`, pass `function_kind` to summarize one
+    kind of function only. It is rejected with `resource_type=frontend`.
+
     Args:
         id (UUID):
         search (str | Unset):
         resource_type (SummarizeProjectDeploymentsResourceType):
+        function_kind (FunctionKindFilter | Unset): A function kind to filter a list by. Unlike
+            `FunctionKind` it has no
+            default: omitting the filter includes both kinds.
         created_after (datetime.datetime | Unset):
 
     Raises:
@@ -194,6 +218,7 @@ def sync(
 client=client,
 search=search,
 resource_type=resource_type,
+function_kind=function_kind,
 created_after=created_after,
 
     ).parsed
@@ -204,6 +229,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     search: str | Unset = UNSET,
     resource_type: SummarizeProjectDeploymentsResourceType,
+    function_kind: FunctionKindFilter | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
 
 ) -> Response[Error | ProjectDeploymentSummary]:
@@ -216,10 +242,16 @@ async def asyncio_detailed(
     completed, non-superseded attempts with recorded build work,
     including failed builds.
 
+    With `resource_type=function`, pass `function_kind` to summarize one
+    kind of function only. It is rejected with `resource_type=frontend`.
+
     Args:
         id (UUID):
         search (str | Unset):
         resource_type (SummarizeProjectDeploymentsResourceType):
+        function_kind (FunctionKindFilter | Unset): A function kind to filter a list by. Unlike
+            `FunctionKind` it has no
+            default: omitting the filter includes both kinds.
         created_after (datetime.datetime | Unset):
 
     Raises:
@@ -235,6 +267,7 @@ async def asyncio_detailed(
         id=id,
 search=search,
 resource_type=resource_type,
+function_kind=function_kind,
 created_after=created_after,
 
     )
@@ -251,6 +284,7 @@ async def asyncio(
     client: AuthenticatedClient,
     search: str | Unset = UNSET,
     resource_type: SummarizeProjectDeploymentsResourceType,
+    function_kind: FunctionKindFilter | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
 
 ) -> Error | ProjectDeploymentSummary | None:
@@ -263,10 +297,16 @@ async def asyncio(
     completed, non-superseded attempts with recorded build work,
     including failed builds.
 
+    With `resource_type=function`, pass `function_kind` to summarize one
+    kind of function only. It is rejected with `resource_type=frontend`.
+
     Args:
         id (UUID):
         search (str | Unset):
         resource_type (SummarizeProjectDeploymentsResourceType):
+        function_kind (FunctionKindFilter | Unset): A function kind to filter a list by. Unlike
+            `FunctionKind` it has no
+            default: omitting the filter includes both kinds.
         created_after (datetime.datetime | Unset):
 
     Raises:
@@ -283,6 +323,7 @@ async def asyncio(
 client=client,
 search=search,
 resource_type=resource_type,
+function_kind=function_kind,
 created_after=created_after,
 
     )).parsed

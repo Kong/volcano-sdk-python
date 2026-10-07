@@ -45,14 +45,9 @@ class FunctionDeployment:
             batch_id (UUID | Unset):
             initiated_by (str | Unset): Platform user that triggered a request-initiated deployment; absent for git and
                 system deployments.
-            artifact_bucket (str | Unset):
-            artifact_key (str | Unset):
-            artifact_version (str | Unset):
-            codebuild_duration_seconds (int | Unset): Total CodeBuild build duration recorded for this deployment, in
-                seconds.
-            codebuild_build_count (int | Unset): Number of completed CodeBuild builds included in
-                codebuild_duration_seconds.
-            codebuild_duration_recorded_at (datetime.datetime | Unset):
+            build_duration_seconds (int | Unset): Total build time recorded for this deployment, in seconds.
+            build_count (int | Unset): Number of completed builds included in build_duration_seconds.
+            build_duration_recorded_at (datetime.datetime | Unset): When the build time was last recorded.
             progress (DeploymentProgress | Unset): Normalized live progress derived from the deployment workflow and build
                 phases.
             error_message (str | Unset):
@@ -69,12 +64,9 @@ class FunctionDeployment:
     updated_at: datetime.datetime
     batch_id: UUID | Unset = UNSET
     initiated_by: str | Unset = UNSET
-    artifact_bucket: str | Unset = UNSET
-    artifact_key: str | Unset = UNSET
-    artifact_version: str | Unset = UNSET
-    codebuild_duration_seconds: int | Unset = UNSET
-    codebuild_build_count: int | Unset = UNSET
-    codebuild_duration_recorded_at: datetime.datetime | Unset = UNSET
+    build_duration_seconds: int | Unset = UNSET
+    build_count: int | Unset = UNSET
+    build_duration_recorded_at: datetime.datetime | Unset = UNSET
     progress: DeploymentProgress | Unset = UNSET
     error_message: str | Unset = UNSET
     completed_at: datetime.datetime | Unset = UNSET
@@ -108,19 +100,13 @@ class FunctionDeployment:
 
         initiated_by = self.initiated_by
 
-        artifact_bucket = self.artifact_bucket
+        build_duration_seconds = self.build_duration_seconds
 
-        artifact_key = self.artifact_key
+        build_count = self.build_count
 
-        artifact_version = self.artifact_version
-
-        codebuild_duration_seconds = self.codebuild_duration_seconds
-
-        codebuild_build_count = self.codebuild_build_count
-
-        codebuild_duration_recorded_at: str | Unset = UNSET
-        if not isinstance(self.codebuild_duration_recorded_at, Unset):
-            codebuild_duration_recorded_at = self.codebuild_duration_recorded_at.isoformat()
+        build_duration_recorded_at: str | Unset = UNSET
+        if not isinstance(self.build_duration_recorded_at, Unset):
+            build_duration_recorded_at = self.build_duration_recorded_at.isoformat()
 
         progress: dict[str, Any] | Unset = UNSET
         if not isinstance(self.progress, Unset):
@@ -149,18 +135,12 @@ class FunctionDeployment:
             field_dict["batch_id"] = batch_id
         if initiated_by is not UNSET:
             field_dict["initiated_by"] = initiated_by
-        if artifact_bucket is not UNSET:
-            field_dict["artifact_bucket"] = artifact_bucket
-        if artifact_key is not UNSET:
-            field_dict["artifact_key"] = artifact_key
-        if artifact_version is not UNSET:
-            field_dict["artifact_version"] = artifact_version
-        if codebuild_duration_seconds is not UNSET:
-            field_dict["codebuild_duration_seconds"] = codebuild_duration_seconds
-        if codebuild_build_count is not UNSET:
-            field_dict["codebuild_build_count"] = codebuild_build_count
-        if codebuild_duration_recorded_at is not UNSET:
-            field_dict["codebuild_duration_recorded_at"] = codebuild_duration_recorded_at
+        if build_duration_seconds is not UNSET:
+            field_dict["build_duration_seconds"] = build_duration_seconds
+        if build_count is not UNSET:
+            field_dict["build_count"] = build_count
+        if build_duration_recorded_at is not UNSET:
+            field_dict["build_duration_recorded_at"] = build_duration_recorded_at
         if progress is not UNSET:
             field_dict["progress"] = progress
         if error_message is not UNSET:
@@ -228,22 +208,16 @@ class FunctionDeployment:
 
         initiated_by = d.pop("initiated_by", UNSET)
 
-        artifact_bucket = d.pop("artifact_bucket", UNSET)
+        build_duration_seconds = d.pop("build_duration_seconds", UNSET)
 
-        artifact_key = d.pop("artifact_key", UNSET)
+        build_count = d.pop("build_count", UNSET)
 
-        artifact_version = d.pop("artifact_version", UNSET)
-
-        codebuild_duration_seconds = d.pop("codebuild_duration_seconds", UNSET)
-
-        codebuild_build_count = d.pop("codebuild_build_count", UNSET)
-
-        _codebuild_duration_recorded_at = d.pop("codebuild_duration_recorded_at", UNSET)
-        codebuild_duration_recorded_at: datetime.datetime | Unset
-        if isinstance(_codebuild_duration_recorded_at,  Unset):
-            codebuild_duration_recorded_at = UNSET
+        _build_duration_recorded_at = d.pop("build_duration_recorded_at", UNSET)
+        build_duration_recorded_at: datetime.datetime | Unset
+        if isinstance(_build_duration_recorded_at,  Unset):
+            build_duration_recorded_at = UNSET
         else:
-            codebuild_duration_recorded_at = datetime.datetime.fromisoformat(_codebuild_duration_recorded_at)
+            build_duration_recorded_at = datetime.datetime.fromisoformat(_build_duration_recorded_at)
 
 
 
@@ -281,12 +255,9 @@ class FunctionDeployment:
             updated_at=updated_at,
             batch_id=batch_id,
             initiated_by=initiated_by,
-            artifact_bucket=artifact_bucket,
-            artifact_key=artifact_key,
-            artifact_version=artifact_version,
-            codebuild_duration_seconds=codebuild_duration_seconds,
-            codebuild_build_count=codebuild_build_count,
-            codebuild_duration_recorded_at=codebuild_duration_recorded_at,
+            build_duration_seconds=build_duration_seconds,
+            build_count=build_count,
+            build_duration_recorded_at=build_duration_recorded_at,
             progress=progress,
             error_message=error_message,
             completed_at=completed_at,

@@ -20,6 +20,7 @@ from ._sandbox import (
     text,
 )
 from ._transport_sandbox import SandboxRequest
+from .sandbox_deployments import SandboxDeployments
 from .sandbox_models import (
     SandboxCreateOptions,
     SandboxExecOptions,
@@ -29,12 +30,12 @@ from .sandbox_models import (
 from .sandbox_session import SandboxSession
 
 
-class Sandboxes:
+class Sandboxes(SandboxDeployments):
     """Create isolated sessions or run a command to completion."""
 
     def __init__(self, requests: SandboxRequests) -> None:
         """Bind the client's Sandbox request scope."""
-        self._requests: SandboxRequests = requests
+        super().__init__(requests)
 
     def presets(self) -> tuple[SandboxPreset, ...]:
         """List the published preset catalog.

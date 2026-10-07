@@ -129,7 +129,7 @@ def sync_detailed(
     - Simple data retrieval
     - Filtered searches with sorting and pagination
 
-    **Note:** For complex queries (JOINs, CTEs), use Lambda functions with direct SQL
+    **Note:** For complex queries (JOINs, CTEs), use a function with direct SQL
 
     **Branch-targeted.** Runs against the named branch instead of the parent
     database, using the branch's own credentials. The branch must be `active`
@@ -183,7 +183,7 @@ def sync(
     - Simple data retrieval
     - Filtered searches with sorting and pagination
 
-    **Note:** For complex queries (JOINs, CTEs), use Lambda functions with direct SQL
+    **Note:** For complex queries (JOINs, CTEs), use a function with direct SQL
 
     **Branch-targeted.** Runs against the named branch instead of the parent
     database, using the branch's own credentials. The branch must be `active`
@@ -232,7 +232,7 @@ async def asyncio_detailed(
     - Simple data retrieval
     - Filtered searches with sorting and pagination
 
-    **Note:** For complex queries (JOINs, CTEs), use Lambda functions with direct SQL
+    **Note:** For complex queries (JOINs, CTEs), use a function with direct SQL
 
     **Branch-targeted.** Runs against the named branch instead of the parent
     database, using the branch's own credentials. The branch must be `active`
@@ -286,7 +286,7 @@ async def asyncio(
     - Simple data retrieval
     - Filtered searches with sorting and pagination
 
-    **Note:** For complex queries (JOINs, CTEs), use Lambda functions with direct SQL
+    **Note:** For complex queries (JOINs, CTEs), use a function with direct SQL
 
     **Branch-targeted.** Runs against the named branch instead of the parent
     database, using the branch's own credentials. The branch must be `active`

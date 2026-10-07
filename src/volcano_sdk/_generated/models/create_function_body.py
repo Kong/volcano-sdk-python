@@ -18,6 +18,8 @@ from ..models.function_http_auth_mode import check_function_http_auth_mode
 from ..models.function_http_auth_mode import FunctionHTTPAuthMode
 from ..models.function_invocation_mode import check_function_invocation_mode
 from ..models.function_invocation_mode import FunctionInvocationMode
+from ..models.function_visibility import check_function_visibility
+from ..models.function_visibility import FunctionVisibility
 from ..types import File, FileTypes
 from ..types import UNSET, Unset
 from io import BytesIO
@@ -51,15 +53,25 @@ class CreateFunctionBody:
                 - Python: def handler() (in main.py)
                 - Ruby: def handler() (in main.rb)
                  Default: 'handler'. Example: handler.
-            is_public (bool | Unset): Whether the function can be reached through public invocation
-                ingress. Omit it to keep the function's current visibility; a
-                new function starts private.
+            visibility (FunctionVisibility | Unset): Who can invoke the function. Each level admits everything the one
+                before it does.
+                - `private`: service keys and the project's schedulers only. The
+                  default for a new function. To any other credential the function
+                  does not exist: it answers 404, like a missing one.
+                - `authenticated`: also any signed-in user of the project, including
+                  anonymous sign-ins. The function receives their auth context.
+                - `public`: also anon keys holding `functions.invoke`, and Frontend
+                  Function routes, which forward requests without a credential.
+            is_public (bool | Unset): Deprecated alias for `visibility`: `true` means `public` and
+                `false` means `authenticated`. Sending both with different
+                meanings returns 400.
             invocation_mode (FunctionInvocationMode | Unset): Invocation contract. `rpc` preserves the existing POST
                 `{payload: ...}` contract;
                 `http` forwards HTTP request semantics to the function runtime.
             http_auth_mode (FunctionHTTPAuthMode | Unset): Authentication applied by the HTTP ingress. `none` is valid only
-                for public
-                HTTP-mode functions and is intended for externally signed webhooks.
+                for
+                HTTP-mode functions with `visibility: public` and is intended for
+                externally signed webhooks.
             openapi_spec (str | Unset): JSON-encoded OpenAPI 3.0 or 3.1 metadata for an HTTP-mode function.
             variable_scope (CreateFunctionBodyVariableScope | Unset): Which project variables this function receives. `all`
                 (the default) gives it only project variables marked `shared: true`; `scoped` gives it only the variables it
@@ -74,6 +86,7 @@ class CreateFunctionBody:
     code: File
     runtime: CreateFunctionBodyRuntime
     handler: str | Unset = 'handler'
+    visibility: FunctionVisibility | Unset = UNSET
     is_public: bool | Unset = UNSET
     invocation_mode: FunctionInvocationMode | Unset = UNSET
     http_auth_mode: FunctionHTTPAuthMode | Unset = UNSET
@@ -95,6 +108,11 @@ class CreateFunctionBody:
         runtime: str = self.runtime
 
         handler = self.handler
+
+        visibility: str | Unset = UNSET
+        if not isinstance(self.visibility, Unset):
+            visibility = self.visibility
+
 
         is_public = self.is_public
 
@@ -127,6 +145,8 @@ class CreateFunctionBody:
         })
         if handler is not UNSET:
             field_dict["handler"] = handler
+        if visibility is not UNSET:
+            field_dict["visibility"] = visibility
         if is_public is not UNSET:
             field_dict["is_public"] = is_public
         if invocation_mode is not UNSET:
@@ -160,6 +180,11 @@ class CreateFunctionBody:
 
         if not isinstance(self.handler, Unset):
             files.append(("handler", (None, str(self.handler).encode(), "text/plain")))
+
+
+
+        if not isinstance(self.visibility, Unset):
+            files.append(("visibility", (None, str(self.visibility).encode(), "text/plain")))
 
 
 
@@ -221,6 +246,16 @@ class CreateFunctionBody:
 
         handler = d.pop("handler", UNSET)
 
+        _visibility = d.pop("visibility", UNSET)
+        visibility: FunctionVisibility | Unset
+        if isinstance(_visibility,  Unset):
+            visibility = UNSET
+        else:
+            visibility = check_function_visibility(_visibility)
+
+
+
+
         is_public = d.pop("is_public", UNSET)
 
         _invocation_mode = d.pop("invocation_mode", UNSET)
@@ -262,6 +297,7 @@ class CreateFunctionBody:
             code=code,
             runtime=runtime,
             handler=handler,
+            visibility=visibility,
             is_public=is_public,
             invocation_mode=invocation_mode,
             http_auth_mode=http_auth_mode,

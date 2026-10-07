@@ -21,6 +21,7 @@ def request_kwargs(
     *,
     provider: StartGitConnectProvider | Unset = 'github',
     redirect: str | Unset = UNSET,
+    callback_url: str | Unset = UNSET,
 
 ) -> dict[str, Any]:
     
@@ -36,6 +37,8 @@ def request_kwargs(
     params["provider"] = json_provider
 
     params["redirect"] = redirect
+
+    params["callback_url"] = callback_url
 
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
@@ -108,6 +111,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     provider: StartGitConnectProvider | Unset = 'github',
     redirect: str | Unset = UNSET,
+    callback_url: str | Unset = UNSET,
 
 ) -> Response[Error | GitConnectStartResponse]:
     """ Start a git provider connection
@@ -120,6 +124,7 @@ def sync_detailed(
     Args:
         provider (StartGitConnectProvider | Unset):  Default: 'github'.
         redirect (str | Unset):
+        callback_url (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -133,6 +138,7 @@ def sync_detailed(
     kwargs = request_kwargs(
         provider=provider,
 redirect=redirect,
+callback_url=callback_url,
 
     )
 
@@ -147,6 +153,7 @@ def sync(
     client: AuthenticatedClient,
     provider: StartGitConnectProvider | Unset = 'github',
     redirect: str | Unset = UNSET,
+    callback_url: str | Unset = UNSET,
 
 ) -> Error | GitConnectStartResponse | None:
     """ Start a git provider connection
@@ -159,6 +166,7 @@ def sync(
     Args:
         provider (StartGitConnectProvider | Unset):  Default: 'github'.
         redirect (str | Unset):
+        callback_url (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -173,6 +181,7 @@ def sync(
         client=client,
 provider=provider,
 redirect=redirect,
+callback_url=callback_url,
 
     ).parsed
 
@@ -181,6 +190,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     provider: StartGitConnectProvider | Unset = 'github',
     redirect: str | Unset = UNSET,
+    callback_url: str | Unset = UNSET,
 
 ) -> Response[Error | GitConnectStartResponse]:
     """ Start a git provider connection
@@ -193,6 +203,7 @@ async def asyncio_detailed(
     Args:
         provider (StartGitConnectProvider | Unset):  Default: 'github'.
         redirect (str | Unset):
+        callback_url (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -206,6 +217,7 @@ async def asyncio_detailed(
     kwargs = request_kwargs(
         provider=provider,
 redirect=redirect,
+callback_url=callback_url,
 
     )
 
@@ -220,6 +232,7 @@ async def asyncio(
     client: AuthenticatedClient,
     provider: StartGitConnectProvider | Unset = 'github',
     redirect: str | Unset = UNSET,
+    callback_url: str | Unset = UNSET,
 
 ) -> Error | GitConnectStartResponse | None:
     """ Start a git provider connection
@@ -232,6 +245,7 @@ async def asyncio(
     Args:
         provider (StartGitConnectProvider | Unset):  Default: 'github'.
         redirect (str | Unset):
+        callback_url (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -246,5 +260,6 @@ async def asyncio(
         client=client,
 provider=provider,
 redirect=redirect,
+callback_url=callback_url,
 
     )).parsed

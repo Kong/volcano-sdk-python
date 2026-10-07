@@ -9,6 +9,8 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.error import Error
+from ...models.function_kind_filter import check_function_kind_filter
+from ...models.function_kind_filter import FunctionKindFilter
 from ...models.list_project_deployments_resource_type import check_list_project_deployments_resource_type
 from ...models.list_project_deployments_resource_type import ListProjectDeploymentsResourceType
 from ...models.paginated_project_deployments import PaginatedProjectDeployments
@@ -30,6 +32,7 @@ def request_kwargs(
     search: str | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
     resource_type: ListProjectDeploymentsResourceType | Unset = UNSET,
+    function_kind: FunctionKindFilter | Unset = UNSET,
 
 ) -> dict[str, Any]:
     
@@ -60,6 +63,12 @@ def request_kwargs(
         json_resource_type = resource_type
 
     params["resource_type"] = json_resource_type
+
+    json_function_kind: str | Unset = UNSET
+    if not isinstance(function_kind, Unset):
+        json_function_kind = function_kind
+
+    params["function_kind"] = json_function_kind
 
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
@@ -139,6 +148,7 @@ def sync_detailed(
     search: str | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
     resource_type: ListProjectDeploymentsResourceType | Unset = UNSET,
+    function_kind: FunctionKindFilter | Unset = UNSET,
 
 ) -> Response[Error | PaginatedProjectDeployments]:
     """ List deployments in a project
@@ -147,6 +157,11 @@ def sync_detailed(
     ordered most-recent first. Each item includes a normalized resource
     reference so clients can render both resource types without extra
     fetches.
+
+    Standard and durable function deployments both appear under
+    `resource.type: function`, and `resource.kind` tells them apart. Pass
+    `function_kind` to list one kind only; frontends are then excluded.
+    Combining `function_kind` with `resource_type=frontend` is rejected.
 
     Args:
         id (UUID):
@@ -158,6 +173,9 @@ def sync_detailed(
         search (str | Unset):
         created_after (datetime.datetime | Unset):
         resource_type (ListProjectDeploymentsResourceType | Unset):
+        function_kind (FunctionKindFilter | Unset): A function kind to filter a list by. Unlike
+            `FunctionKind` it has no
+            default: omitting the filter includes both kinds.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -178,6 +196,7 @@ offset=offset,
 search=search,
 created_after=created_after,
 resource_type=resource_type,
+function_kind=function_kind,
 
     )
 
@@ -199,6 +218,7 @@ def sync(
     search: str | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
     resource_type: ListProjectDeploymentsResourceType | Unset = UNSET,
+    function_kind: FunctionKindFilter | Unset = UNSET,
 
 ) -> Error | PaginatedProjectDeployments | None:
     """ List deployments in a project
@@ -207,6 +227,11 @@ def sync(
     ordered most-recent first. Each item includes a normalized resource
     reference so clients can render both resource types without extra
     fetches.
+
+    Standard and durable function deployments both appear under
+    `resource.type: function`, and `resource.kind` tells them apart. Pass
+    `function_kind` to list one kind only; frontends are then excluded.
+    Combining `function_kind` with `resource_type=frontend` is rejected.
 
     Args:
         id (UUID):
@@ -218,6 +243,9 @@ def sync(
         search (str | Unset):
         created_after (datetime.datetime | Unset):
         resource_type (ListProjectDeploymentsResourceType | Unset):
+        function_kind (FunctionKindFilter | Unset): A function kind to filter a list by. Unlike
+            `FunctionKind` it has no
+            default: omitting the filter includes both kinds.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -239,6 +267,7 @@ offset=offset,
 search=search,
 created_after=created_after,
 resource_type=resource_type,
+function_kind=function_kind,
 
     ).parsed
 
@@ -254,6 +283,7 @@ async def asyncio_detailed(
     search: str | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
     resource_type: ListProjectDeploymentsResourceType | Unset = UNSET,
+    function_kind: FunctionKindFilter | Unset = UNSET,
 
 ) -> Response[Error | PaginatedProjectDeployments]:
     """ List deployments in a project
@@ -262,6 +292,11 @@ async def asyncio_detailed(
     ordered most-recent first. Each item includes a normalized resource
     reference so clients can render both resource types without extra
     fetches.
+
+    Standard and durable function deployments both appear under
+    `resource.type: function`, and `resource.kind` tells them apart. Pass
+    `function_kind` to list one kind only; frontends are then excluded.
+    Combining `function_kind` with `resource_type=frontend` is rejected.
 
     Args:
         id (UUID):
@@ -273,6 +308,9 @@ async def asyncio_detailed(
         search (str | Unset):
         created_after (datetime.datetime | Unset):
         resource_type (ListProjectDeploymentsResourceType | Unset):
+        function_kind (FunctionKindFilter | Unset): A function kind to filter a list by. Unlike
+            `FunctionKind` it has no
+            default: omitting the filter includes both kinds.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -293,6 +331,7 @@ offset=offset,
 search=search,
 created_after=created_after,
 resource_type=resource_type,
+function_kind=function_kind,
 
     )
 
@@ -314,6 +353,7 @@ async def asyncio(
     search: str | Unset = UNSET,
     created_after: datetime.datetime | Unset = UNSET,
     resource_type: ListProjectDeploymentsResourceType | Unset = UNSET,
+    function_kind: FunctionKindFilter | Unset = UNSET,
 
 ) -> Error | PaginatedProjectDeployments | None:
     """ List deployments in a project
@@ -322,6 +362,11 @@ async def asyncio(
     ordered most-recent first. Each item includes a normalized resource
     reference so clients can render both resource types without extra
     fetches.
+
+    Standard and durable function deployments both appear under
+    `resource.type: function`, and `resource.kind` tells them apart. Pass
+    `function_kind` to list one kind only; frontends are then excluded.
+    Combining `function_kind` with `resource_type=frontend` is rejected.
 
     Args:
         id (UUID):
@@ -333,6 +378,9 @@ async def asyncio(
         search (str | Unset):
         created_after (datetime.datetime | Unset):
         resource_type (ListProjectDeploymentsResourceType | Unset):
+        function_kind (FunctionKindFilter | Unset): A function kind to filter a list by. Unlike
+            `FunctionKind` it has no
+            default: omitting the filter includes both kinds.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -354,5 +402,6 @@ offset=offset,
 search=search,
 created_after=created_after,
 resource_type=resource_type,
+function_kind=function_kind,
 
     )).parsed

@@ -62,6 +62,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_404
 
+    if response.status_code == 409:
+        response_409 = Error.from_dict(response.json())
+
+
+
+        return response_409
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
@@ -89,6 +96,7 @@ def sync_detailed(
 
      Bans a user temporarily or permanently. Banned users cannot sign in
     and all their active sessions are immediately revoked.
+    Omitting banned_until clears any previous expiry. Deleted accounts cannot be banned.
 
     - Omit `banned_until` for a permanent ban
     - Provide `banned_until` ISO timestamp for a temporary ban
@@ -132,6 +140,7 @@ def sync(
 
      Bans a user temporarily or permanently. Banned users cannot sign in
     and all their active sessions are immediately revoked.
+    Omitting banned_until clears any previous expiry. Deleted accounts cannot be banned.
 
     - Omit `banned_until` for a permanent ban
     - Provide `banned_until` ISO timestamp for a temporary ban
@@ -170,6 +179,7 @@ async def asyncio_detailed(
 
      Bans a user temporarily or permanently. Banned users cannot sign in
     and all their active sessions are immediately revoked.
+    Omitting banned_until clears any previous expiry. Deleted accounts cannot be banned.
 
     - Omit `banned_until` for a permanent ban
     - Provide `banned_until` ISO timestamp for a temporary ban
@@ -213,6 +223,7 @@ async def asyncio(
 
      Bans a user temporarily or permanently. Banned users cannot sign in
     and all their active sessions are immediately revoked.
+    Omitting banned_until clears any previous expiry. Deleted accounts cannot be banned.
 
     - Omit `banned_until` for a permanent ban
     - Provide `banned_until` ISO timestamp for a temporary ban

@@ -35,9 +35,13 @@ class LogActivityRequest:
             q (str | Unset): Optional activity query. Supports quoted text, implicit AND, AND/OR/NOT, parentheses, and
                 fields such as `level`, `region`, `invocation.id`, `resource.id`, `resource.name`, `function`, `frontend`,
                 `database`, and `body`.
-            start_time (datetime.datetime | Unset): Start time.
-            end_time (datetime.datetime | Unset): End time.
-            bucket_count (int | Unset): Number of activity buckets to return.
+            start_time (datetime.datetime | Unset): Start of the window, inclusive. Defaults to 24 hours before `end_time`.
+            end_time (datetime.datetime | Unset): End of the window, exclusive. Defaults to now.
+            bucket_count (int | Unset): Maximum number of buckets. Defaults to 24. Volcano picks the smallest bucket width
+                from 1s, 2s, 5s, 10s, 15s, 30s, 1m, 2m, 5m, 10m, 15m, 30m, 1h, 2h, 3h, 6h, 12h, 1d, or a whole number of days
+                that covers the window in at most this many buckets. Bucket edges fall on UTC multiples of the width, so they
+                stay fixed as the window moves, and the response can contain fewer buckets. `1` returns one bucket that spans
+                exactly the window.
      """
 
     resource: LogDatabaseRequestResource | LogFrontendRequestResource | LogFunctionRequestResource

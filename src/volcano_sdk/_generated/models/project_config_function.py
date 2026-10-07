@@ -14,6 +14,8 @@ from ..models.function_invocation_mode import check_function_invocation_mode
 from ..models.function_invocation_mode import FunctionInvocationMode
 from ..models.function_kind import check_function_kind
 from ..models.function_kind import FunctionKind
+from ..models.function_visibility import check_function_visibility
+from ..models.function_visibility import FunctionVisibility
 from ..models.project_config_function_variable_scope import check_project_config_function_variable_scope
 from ..models.project_config_function_variable_scope import ProjectConfigFunctionVariableScope
 from ..types import UNSET, Unset
@@ -47,7 +49,21 @@ class ProjectConfigFunction:
                 step, and is invoked asynchronously through its own executions
                 collection. A function's kind is fixed when it is created and cannot be
                 changed afterwards. Omitting this field means `standard`.
-            public (bool | Unset): Function visibility for anon-key invocation
+            visibility (FunctionVisibility | Unset): Who can invoke the function. Each level admits everything the one
+                before it does.
+                - `private`: service keys and the project's schedulers only. The
+                  default for a new function. To any other credential the function
+                  does not exist: it answers 404, like a missing one.
+                - `authenticated`: also any signed-in user of the project, including
+                  anonymous sign-ins. The function receives their auth context.
+                - `public`: also anon keys holding `functions.invoke`, and Frontend
+                  Function routes, which forward requests without a credential.
+            public (bool | Unset): Deprecated alias for `visibility`: `true` means `public` and
+                `false` means `authenticated`, not `private`, so an entry left at
+                `false` applies `authenticated` on every apply; declare
+                `visibility: private` to keep a function private. Declaring both
+                with different meanings is an error. Exports write `visibility`
+                only.
             variable_scope (ProjectConfigFunctionVariableScope | Unset): Which project variables this function receives.
                 `all` (the default)
                 gives it the project variables marked `shared: true`. `scoped` gives it only the variables
@@ -63,8 +79,9 @@ class ProjectConfigFunction:
                 `{payload: ...}` contract;
                 `http` forwards HTTP request semantics to the function runtime.
             http_auth_mode (FunctionHTTPAuthMode | Unset): Authentication applied by the HTTP ingress. `none` is valid only
-                for public
-                HTTP-mode functions and is intended for externally signed webhooks.
+                for
+                HTTP-mode functions with `visibility: public` and is intended for
+                externally signed webhooks.
             openapi_spec (None | ProjectConfigFunctionOpenapiSpecType0 | Unset): OpenAPI 3.0 or 3.1 metadata for an HTTP-
                 mode function
             schedulers (list[ProjectConfigScheduler] | Unset):
@@ -72,6 +89,7 @@ class ProjectConfigFunction:
 
     name: str
     kind: FunctionKind | Unset = UNSET
+    visibility: FunctionVisibility | Unset = UNSET
     public: bool | Unset = UNSET
     variable_scope: ProjectConfigFunctionVariableScope | Unset = UNSET
     variables: list[str] | Unset = UNSET
@@ -92,6 +110,11 @@ class ProjectConfigFunction:
         kind: str | Unset = UNSET
         if not isinstance(self.kind, Unset):
             kind = self.kind
+
+
+        visibility: str | Unset = UNSET
+        if not isinstance(self.visibility, Unset):
+            visibility = self.visibility
 
 
         public = self.public
@@ -142,6 +165,8 @@ class ProjectConfigFunction:
         })
         if kind is not UNSET:
             field_dict["kind"] = kind
+        if visibility is not UNSET:
+            field_dict["visibility"] = visibility
         if public is not UNSET:
             field_dict["public"] = public
         if variable_scope is not UNSET:
@@ -174,6 +199,16 @@ class ProjectConfigFunction:
             kind = UNSET
         else:
             kind = check_function_kind(_kind)
+
+
+
+
+        _visibility = d.pop("visibility", UNSET)
+        visibility: FunctionVisibility | Unset
+        if isinstance(_visibility,  Unset):
+            visibility = UNSET
+        else:
+            visibility = check_function_visibility(_visibility)
 
 
 
@@ -248,6 +283,7 @@ class ProjectConfigFunction:
         project_config_function = cls(
             name=name,
             kind=kind,
+            visibility=visibility,
             public=public,
             variable_scope=variable_scope,
             variables=variables,

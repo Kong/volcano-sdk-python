@@ -110,8 +110,8 @@ def sync_detailed(
     `?format=yaml`; the YAML is returned verbatim as the raw response body
     (`Content-Type: application/yaml`) and is meant to be saved as-is.
     Variable values and write-only secrets (SMTP password, OAuth client secrets, TLS material)
-    are omitted from the export; shared_variables contains names only; the YAML rendering adds a header
-    comment
+    are omitted from the export; shared_variables and frontend_shared_variables contain names only; the
+    YAML rendering adds a header comment
     describing how to set them via CLI environment interpolation.
 
     Args:
@@ -154,8 +154,8 @@ def sync(
     `?format=yaml`; the YAML is returned verbatim as the raw response body
     (`Content-Type: application/yaml`) and is meant to be saved as-is.
     Variable values and write-only secrets (SMTP password, OAuth client secrets, TLS material)
-    are omitted from the export; shared_variables contains names only; the YAML rendering adds a header
-    comment
+    are omitted from the export; shared_variables and frontend_shared_variables contain names only; the
+    YAML rendering adds a header comment
     describing how to set them via CLI environment interpolation.
 
     Args:
@@ -193,8 +193,8 @@ async def asyncio_detailed(
     `?format=yaml`; the YAML is returned verbatim as the raw response body
     (`Content-Type: application/yaml`) and is meant to be saved as-is.
     Variable values and write-only secrets (SMTP password, OAuth client secrets, TLS material)
-    are omitted from the export; shared_variables contains names only; the YAML rendering adds a header
-    comment
+    are omitted from the export; shared_variables and frontend_shared_variables contain names only; the
+    YAML rendering adds a header comment
     describing how to set them via CLI environment interpolation.
 
     Args:
@@ -237,8 +237,8 @@ async def asyncio(
     `?format=yaml`; the YAML is returned verbatim as the raw response body
     (`Content-Type: application/yaml`) and is meant to be saved as-is.
     Variable values and write-only secrets (SMTP password, OAuth client secrets, TLS material)
-    are omitted from the export; shared_variables contains names only; the YAML rendering adds a header
-    comment
+    are omitted from the export; shared_variables and frontend_shared_variables contain names only; the
+    YAML rendering adds a header comment
     describing how to set them via CLI environment interpolation.
 
     Args:

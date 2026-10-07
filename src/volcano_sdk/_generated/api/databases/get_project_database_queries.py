@@ -115,7 +115,9 @@ def sync_detailed(
     """ Get database queries
 
      Returns the database's current top queries from pg_stat_statements
-    ranked by total execution time.
+    ranked by total execution time. Only data statements (SELECT, INSERT,
+    UPDATE, DELETE, MERGE) are listed; statements Volcano runs to operate
+    the database are left out.
 
     **SUPERAGENT plan required.** This endpoint is only available to projects owned
     by users on the SUPERAGENT billing plan.
@@ -158,7 +160,9 @@ def sync(
     """ Get database queries
 
      Returns the database's current top queries from pg_stat_statements
-    ranked by total execution time.
+    ranked by total execution time. Only data statements (SELECT, INSERT,
+    UPDATE, DELETE, MERGE) are listed; statements Volcano runs to operate
+    the database are left out.
 
     **SUPERAGENT plan required.** This endpoint is only available to projects owned
     by users on the SUPERAGENT billing plan.
@@ -196,7 +200,9 @@ async def asyncio_detailed(
     """ Get database queries
 
      Returns the database's current top queries from pg_stat_statements
-    ranked by total execution time.
+    ranked by total execution time. Only data statements (SELECT, INSERT,
+    UPDATE, DELETE, MERGE) are listed; statements Volcano runs to operate
+    the database are left out.
 
     **SUPERAGENT plan required.** This endpoint is only available to projects owned
     by users on the SUPERAGENT billing plan.
@@ -239,7 +245,9 @@ async def asyncio(
     """ Get database queries
 
      Returns the database's current top queries from pg_stat_statements
-    ranked by total execution time.
+    ranked by total execution time. Only data statements (SELECT, INSERT,
+    UPDATE, DELETE, MERGE) are listed; statements Volcano runs to operate
+    the database are left out.
 
     **SUPERAGENT plan required.** This endpoint is only available to projects owned
     by users on the SUPERAGENT billing plan.

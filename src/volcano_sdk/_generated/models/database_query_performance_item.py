@@ -26,9 +26,11 @@ class DatabaseQueryPerformanceItem:
     """ 
         Attributes:
             query_id (str): pg_stat_statements query identifier.
-            query (str): Normalized and obfuscated representative query text.
+            query (str): Normalized representative query text with literal values replaced by `?`.
             database (DatabaseQueryPerformanceDatabase):
-            role (str): Database role used for the query.
+            role (str): Postgres role that ran the query, such as `anon` or `authenticated` for RLS-enforced connections,
+                `service_role`, the database owner role for full-access connections, or a role you created. `unknown` when the
+                role no longer exists.
             calls (int):
             total_exec_time_seconds (float): Cumulative total execution time from pg_stat_statements in seconds.
             max_exec_time_seconds (float):

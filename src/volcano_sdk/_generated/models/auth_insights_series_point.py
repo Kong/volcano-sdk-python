@@ -25,14 +25,19 @@ class AuthInsightsSeriesPoint:
     """ 
         Attributes:
             bucket_start (datetime.date):
-            signups (int): Accounts created during the bucket.
+            signups (int): Registrations during the bucket. Subsequent deletion does not subtract from this count.
+                Historical counts removed before deletion-history collection cannot be reconstructed.
             signins (int): Successful session creations during the bucket.
+            deletions (int): Accounts deleted during this bucket, counted once across soft and hard deletion.
+            net_growth (int): Registrations minus deletions during this bucket. May be negative.
             is_partial (bool): Whether the requested window or observation time clips this bucket.
      """
 
     bucket_start: datetime.date
     signups: int
     signins: int
+    deletions: int
+    net_growth: int
     is_partial: bool
 
 
@@ -46,6 +51,10 @@ class AuthInsightsSeriesPoint:
 
         signins = self.signins
 
+        deletions = self.deletions
+
+        net_growth = self.net_growth
+
         is_partial = self.is_partial
 
 
@@ -55,6 +64,8 @@ class AuthInsightsSeriesPoint:
             "bucket_start": bucket_start,
             "signups": signups,
             "signins": signins,
+            "deletions": deletions,
+            "net_growth": net_growth,
             "is_partial": is_partial,
         })
 
@@ -74,12 +85,18 @@ class AuthInsightsSeriesPoint:
 
         signins = d.pop("signins")
 
+        deletions = d.pop("deletions")
+
+        net_growth = d.pop("net_growth")
+
         is_partial = d.pop("is_partial")
 
         auth_insights_series_point = cls(
             bucket_start=bucket_start,
             signups=signups,
             signins=signins,
+            deletions=deletions,
+            net_growth=net_growth,
             is_partial=is_partial,
         )
 

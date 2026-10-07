@@ -29,8 +29,10 @@ class LogSearchResponse:
         Attributes:
             data (list[LogSearchEvent]): Array of log events sorted by timestamp, newest first.
             limit (int): Number of items requested per page.
-            has_more (bool): Whether there are more log events available.
-            next_cursor (str | Unset): Opaque cursor for the next page. Send this value as `cursor` on the next request.
+            has_more (bool): Whether the search may have more matching log events. A page can hold fewer than `limit`
+                events, or none, while this is true; keep paging until it is false.
+            next_cursor (str | Unset): Opaque cursor for the next page, present while `has_more` is true. Send this value as
+                `cursor` on the next request, even when `data` is empty.
      """
 
     data: list[LogSearchEvent]

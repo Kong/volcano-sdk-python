@@ -79,12 +79,26 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_409
 
+    if response.status_code == 429:
+        response_429 = Error.from_dict(response.json())
+
+
+
+        return response_429
+
     if response.status_code == 500:
         response_500 = Error.from_dict(response.json())
 
 
 
         return response_500
+
+    if response.status_code == 503:
+        response_503 = Error.from_dict(response.json())
+
+
+
+        return response_503
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -110,7 +124,7 @@ def sync_detailed(
 ) -> Response[Error | Function]:
     """ Create or update function code
 
-     Upload a serverless function source bundle. Direct API clients may send the function code
+     Upload a function source bundle. Direct API clients may send the function code
     as a ZIP or tar.gz archive via multipart/form-data. The API stores a normalized tar.gz
     source archive.
     Cloud deploys should include source files and dependency manifests/lockfiles, not installed
@@ -167,7 +181,7 @@ def sync(
 ) -> Error | Function | None:
     """ Create or update function code
 
-     Upload a serverless function source bundle. Direct API clients may send the function code
+     Upload a function source bundle. Direct API clients may send the function code
     as a ZIP or tar.gz archive via multipart/form-data. The API stores a normalized tar.gz
     source archive.
     Cloud deploys should include source files and dependency manifests/lockfiles, not installed
@@ -219,7 +233,7 @@ async def asyncio_detailed(
 ) -> Response[Error | Function]:
     """ Create or update function code
 
-     Upload a serverless function source bundle. Direct API clients may send the function code
+     Upload a function source bundle. Direct API clients may send the function code
     as a ZIP or tar.gz archive via multipart/form-data. The API stores a normalized tar.gz
     source archive.
     Cloud deploys should include source files and dependency manifests/lockfiles, not installed
@@ -276,7 +290,7 @@ async def asyncio(
 ) -> Error | Function | None:
     """ Create or update function code
 
-     Upload a serverless function source bundle. Direct API clients may send the function code
+     Upload a function source bundle. Direct API clients may send the function code
     as a ZIP or tar.gz archive via multipart/form-data. The API stores a normalized tar.gz
     source archive.
     Cloud deploys should include source files and dependency manifests/lockfiles, not installed

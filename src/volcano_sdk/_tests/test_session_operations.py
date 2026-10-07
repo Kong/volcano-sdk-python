@@ -29,6 +29,7 @@ def test_first_refresh_completes_without_waiting_for_itself() -> None:
     assert outcome == [SESSION]
 
 
+@pytest.mark.order(0)
 def test_first_sign_out_completes_without_waiting_for_itself() -> None:
     operations = SessionOperations(SESSION)
     completed: list[bool] = []
@@ -67,6 +68,7 @@ def test_reentrant_refresh_fails_instead_of_waiting_for_its_owner() -> None:
     assert failures == ["Reentrant refresh"]
 
 
+@pytest.mark.order(0)
 def test_reentrant_sign_out_fails_instead_of_waiting_for_its_owner() -> None:
     operations = SessionOperations(SESSION)
     failures: list[str] = []

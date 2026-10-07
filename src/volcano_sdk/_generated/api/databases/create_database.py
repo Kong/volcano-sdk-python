@@ -80,10 +80,10 @@ def sync_detailed(
     body: CreateDatabaseRequest,
 
 ) -> Response[Database | Error]:
-    """ Create a new serverless PostgreSQL database
+    """ Create a new PostgreSQL database
 
-     Creates a serverless PostgreSQL database in the project.
-    Each project can hold 1 database on Hobby and up to 10,000 on Superagent.
+     Creates a PostgreSQL database in the project.
+    Each project can hold 1 database on HOBBY and up to 10,000 on SUPERAGENT.
     Requests over the plan's cap return 403.
 
     Args:
@@ -123,10 +123,10 @@ def sync(
     body: CreateDatabaseRequest,
 
 ) -> Database | Error | None:
-    """ Create a new serverless PostgreSQL database
+    """ Create a new PostgreSQL database
 
-     Creates a serverless PostgreSQL database in the project.
-    Each project can hold 1 database on Hobby and up to 10,000 on Superagent.
+     Creates a PostgreSQL database in the project.
+    Each project can hold 1 database on HOBBY and up to 10,000 on SUPERAGENT.
     Requests over the plan's cap return 403.
 
     Args:
@@ -161,10 +161,10 @@ async def asyncio_detailed(
     body: CreateDatabaseRequest,
 
 ) -> Response[Database | Error]:
-    """ Create a new serverless PostgreSQL database
+    """ Create a new PostgreSQL database
 
-     Creates a serverless PostgreSQL database in the project.
-    Each project can hold 1 database on Hobby and up to 10,000 on Superagent.
+     Creates a PostgreSQL database in the project.
+    Each project can hold 1 database on HOBBY and up to 10,000 on SUPERAGENT.
     Requests over the plan's cap return 403.
 
     Args:
@@ -204,10 +204,10 @@ async def asyncio(
     body: CreateDatabaseRequest,
 
 ) -> Database | Error | None:
-    """ Create a new serverless PostgreSQL database
+    """ Create a new PostgreSQL database
 
-     Creates a serverless PostgreSQL database in the project.
-    Each project can hold 1 database on Hobby and up to 10,000 on Superagent.
+     Creates a PostgreSQL database in the project.
+    Each project can hold 1 database on HOBBY and up to 10,000 on SUPERAGENT.
     Requests over the plan's cap return 403.
 
     Args:

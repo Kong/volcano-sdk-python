@@ -67,7 +67,8 @@ def sync_detailed(
 ) -> Response[list[ListPostgresVersionsResponse200Item]]:
     """ List available PostgreSQL versions
 
-     Returns a list of supported PostgreSQL major versions for database provisioning.
+     Returns the PostgreSQL major versions a database can be created on,
+    newest first. Local mode lists only the version its server runs.
     This is a public endpoint that doesn't require authentication.
 
     Raises:
@@ -96,7 +97,8 @@ def sync(
 ) -> list[ListPostgresVersionsResponse200Item] | None:
     """ List available PostgreSQL versions
 
-     Returns a list of supported PostgreSQL major versions for database provisioning.
+     Returns the PostgreSQL major versions a database can be created on,
+    newest first. Local mode lists only the version its server runs.
     This is a public endpoint that doesn't require authentication.
 
     Raises:
@@ -120,7 +122,8 @@ async def asyncio_detailed(
 ) -> Response[list[ListPostgresVersionsResponse200Item]]:
     """ List available PostgreSQL versions
 
-     Returns a list of supported PostgreSQL major versions for database provisioning.
+     Returns the PostgreSQL major versions a database can be created on,
+    newest first. Local mode lists only the version its server runs.
     This is a public endpoint that doesn't require authentication.
 
     Raises:
@@ -149,7 +152,8 @@ async def asyncio(
 ) -> list[ListPostgresVersionsResponse200Item] | None:
     """ List available PostgreSQL versions
 
-     Returns a list of supported PostgreSQL major versions for database provisioning.
+     Returns the PostgreSQL major versions a database can be created on,
+    newest first. Local mode lists only the version its server runs.
     This is a public endpoint that doesn't require authentication.
 
     Raises:

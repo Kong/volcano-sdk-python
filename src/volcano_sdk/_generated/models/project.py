@@ -20,6 +20,7 @@ import datetime
 if TYPE_CHECKING:
   from ..models.project_git_connection_summary import ProjectGitConnectionSummary
   from ..models.project_health_summary import ProjectHealthSummary
+  from ..models.project_template_installation import ProjectTemplateInstallation
 
 
 
@@ -42,8 +43,12 @@ class Project:
             selected_regions (list[str]): Effective region set for this project (normalized and deduplicated)
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
-            plan (ProjectPlan | Unset): Public plan name; FREE and PRO are accepted from older Hosting responses.
-            aws_application_name (str | Unset):
+            template_installation (ProjectTemplateInstallation | Unset): Template initialization progress, returned by
+                project creation and the
+                individual project endpoint. Omitted for projects without a template.
+                Project creation accepts the installation; wait for `ready` before use.
+                A failed installation retains the project for inspection or deletion.
+            plan (ProjectPlan | Unset): Plan name applied to the project when available.
             last_invoked_at (datetime.datetime | Unset): Most recent activity timestamp across project resources
             logo_url (str | Unset): Relative API path that serves the project logo when one has been
                 uploaded. The path is versioned with a `?v=` cache-busting query
@@ -61,8 +66,8 @@ class Project:
     selected_regions: list[str]
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    template_installation: ProjectTemplateInstallation | Unset = UNSET
     plan: ProjectPlan | Unset = UNSET
-    aws_application_name: str | Unset = UNSET
     last_invoked_at: datetime.datetime | Unset = UNSET
     logo_url: str | Unset = UNSET
     git_connection: ProjectGitConnectionSummary | Unset = UNSET
@@ -76,6 +81,7 @@ class Project:
     def to_dict(self) -> dict[str, Any]:
         from ..models.project_git_connection_summary import ProjectGitConnectionSummary # noqa: PLC0415
         from ..models.project_health_summary import ProjectHealthSummary # noqa: PLC0415
+        from ..models.project_template_installation import ProjectTemplateInstallation # noqa: PLC0415
         id = str(self.id)
 
         name = self.name
@@ -92,12 +98,14 @@ class Project:
 
         updated_at = self.updated_at.isoformat()
 
+        template_installation: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.template_installation, Unset):
+            template_installation = self.template_installation.to_dict()
+
         plan: str | Unset = UNSET
         if not isinstance(self.plan, Unset):
             plan = self.plan
 
-
-        aws_application_name = self.aws_application_name
 
         last_invoked_at: str | Unset = UNSET
         if not isinstance(self.last_invoked_at, Unset):
@@ -125,10 +133,10 @@ class Project:
             "created_at": created_at,
             "updated_at": updated_at,
         })
+        if template_installation is not UNSET:
+            field_dict["template_installation"] = template_installation
         if plan is not UNSET:
             field_dict["plan"] = plan
-        if aws_application_name is not UNSET:
-            field_dict["aws_application_name"] = aws_application_name
         if last_invoked_at is not UNSET:
             field_dict["last_invoked_at"] = last_invoked_at
         if logo_url is not UNSET:
@@ -146,6 +154,7 @@ class Project:
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.project_git_connection_summary import ProjectGitConnectionSummary # noqa: PLC0415
         from ..models.project_health_summary import ProjectHealthSummary # noqa: PLC0415
+        from ..models.project_template_installation import ProjectTemplateInstallation # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 
@@ -174,6 +183,16 @@ class Project:
 
 
 
+        _template_installation = d.pop("template_installation", UNSET)
+        template_installation: ProjectTemplateInstallation | Unset
+        if isinstance(_template_installation,  Unset):
+            template_installation = UNSET
+        else:
+            template_installation = ProjectTemplateInstallation.from_dict(_template_installation)
+
+
+
+
         _plan = d.pop("plan", UNSET)
         plan: ProjectPlan | Unset
         if isinstance(_plan,  Unset):
@@ -183,8 +202,6 @@ class Project:
 
 
 
-
-        aws_application_name = d.pop("aws_application_name", UNSET)
 
         _last_invoked_at = d.pop("last_invoked_at", UNSET)
         last_invoked_at: datetime.datetime | Unset
@@ -226,8 +243,8 @@ class Project:
             selected_regions=selected_regions,
             created_at=created_at,
             updated_at=updated_at,
+            template_installation=template_installation,
             plan=plan,
-            aws_application_name=aws_application_name,
             last_invoked_at=last_invoked_at,
             logo_url=logo_url,
             git_connection=git_connection,

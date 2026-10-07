@@ -8,6 +8,9 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.error import Error
+from ...models.function_kind_filter import check_function_kind_filter
+from ...models.function_kind_filter import FunctionKindFilter
 from ...models.function_scheduler_list_response import FunctionSchedulerListResponse
 from ...types import UNSET, Unset
 from typing import cast
@@ -24,6 +27,7 @@ def request_kwargs(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
+    function_kind: FunctionKindFilter | Unset = UNSET,
 
 ) -> dict[str, Any]:
     
@@ -44,6 +48,12 @@ def request_kwargs(
 
     params["search"] = search
 
+    json_function_kind: str | Unset = UNSET
+    if not isinstance(function_kind, Unset):
+        json_function_kind = function_kind
+
+    params["function_kind"] = json_function_kind
+
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
@@ -59,7 +69,7 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> FunctionSchedulerListResponse | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Error | FunctionSchedulerListResponse | None:
     if response.status_code == 200:
         response_200 = FunctionSchedulerListResponse.from_dict(response.json())
 
@@ -67,13 +77,20 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_200
 
+    if response.status_code == 400:
+        response_400 = Error.from_dict(response.json())
+
+
+
+        return response_400
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[FunctionSchedulerListResponse]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | FunctionSchedulerListResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -92,14 +109,19 @@ def sync_detailed(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
+    function_kind: FunctionKindFilter | Unset = UNSET,
 
-) -> Response[FunctionSchedulerListResponse]:
+) -> Response[Error | FunctionSchedulerListResponse]:
     """ List every function scheduler in a project
 
      Project-scoped counterpart to `/projects/{id}/functions/{functionId}/schedulers`.
     Returns schedulers across all functions in the project, ordered by
     creation time descending, with standard page/limit pagination so
     clients don't have to fan out one request per function.
+
+    Schedulers of standard and durable functions are listed together, and
+    each carries `function_kind`. Pass `function_kind` to list one kind
+    only.
 
     Args:
         id (UUID):
@@ -109,13 +131,16 @@ def sync_detailed(
         ending_before (str | Unset):
         offset (int | Unset):  Default: 0.
         search (str | Unset):
+        function_kind (FunctionKindFilter | Unset): A function kind to filter a list by. Unlike
+            `FunctionKind` it has no
+            default: omitting the filter includes both kinds.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[FunctionSchedulerListResponse]
+        Response[Error | FunctionSchedulerListResponse]
      """
 
 
@@ -127,6 +152,7 @@ cursor=cursor,
 ending_before=ending_before,
 offset=offset,
 search=search,
+function_kind=function_kind,
 
     )
 
@@ -146,14 +172,19 @@ def sync(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
+    function_kind: FunctionKindFilter | Unset = UNSET,
 
-) -> FunctionSchedulerListResponse | None:
+) -> Error | FunctionSchedulerListResponse | None:
     """ List every function scheduler in a project
 
      Project-scoped counterpart to `/projects/{id}/functions/{functionId}/schedulers`.
     Returns schedulers across all functions in the project, ordered by
     creation time descending, with standard page/limit pagination so
     clients don't have to fan out one request per function.
+
+    Schedulers of standard and durable functions are listed together, and
+    each carries `function_kind`. Pass `function_kind` to list one kind
+    only.
 
     Args:
         id (UUID):
@@ -163,13 +194,16 @@ def sync(
         ending_before (str | Unset):
         offset (int | Unset):  Default: 0.
         search (str | Unset):
+        function_kind (FunctionKindFilter | Unset): A function kind to filter a list by. Unlike
+            `FunctionKind` it has no
+            default: omitting the filter includes both kinds.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        FunctionSchedulerListResponse
+        Error | FunctionSchedulerListResponse
      """
 
 
@@ -182,6 +216,7 @@ cursor=cursor,
 ending_before=ending_before,
 offset=offset,
 search=search,
+function_kind=function_kind,
 
     ).parsed
 
@@ -195,14 +230,19 @@ async def asyncio_detailed(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
+    function_kind: FunctionKindFilter | Unset = UNSET,
 
-) -> Response[FunctionSchedulerListResponse]:
+) -> Response[Error | FunctionSchedulerListResponse]:
     """ List every function scheduler in a project
 
      Project-scoped counterpart to `/projects/{id}/functions/{functionId}/schedulers`.
     Returns schedulers across all functions in the project, ordered by
     creation time descending, with standard page/limit pagination so
     clients don't have to fan out one request per function.
+
+    Schedulers of standard and durable functions are listed together, and
+    each carries `function_kind`. Pass `function_kind` to list one kind
+    only.
 
     Args:
         id (UUID):
@@ -212,13 +252,16 @@ async def asyncio_detailed(
         ending_before (str | Unset):
         offset (int | Unset):  Default: 0.
         search (str | Unset):
+        function_kind (FunctionKindFilter | Unset): A function kind to filter a list by. Unlike
+            `FunctionKind` it has no
+            default: omitting the filter includes both kinds.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[FunctionSchedulerListResponse]
+        Response[Error | FunctionSchedulerListResponse]
      """
 
 
@@ -230,6 +273,7 @@ cursor=cursor,
 ending_before=ending_before,
 offset=offset,
 search=search,
+function_kind=function_kind,
 
     )
 
@@ -249,14 +293,19 @@ async def asyncio(
     ending_before: str | Unset = UNSET,
     offset: int | Unset = 0,
     search: str | Unset = UNSET,
+    function_kind: FunctionKindFilter | Unset = UNSET,
 
-) -> FunctionSchedulerListResponse | None:
+) -> Error | FunctionSchedulerListResponse | None:
     """ List every function scheduler in a project
 
      Project-scoped counterpart to `/projects/{id}/functions/{functionId}/schedulers`.
     Returns schedulers across all functions in the project, ordered by
     creation time descending, with standard page/limit pagination so
     clients don't have to fan out one request per function.
+
+    Schedulers of standard and durable functions are listed together, and
+    each carries `function_kind`. Pass `function_kind` to list one kind
+    only.
 
     Args:
         id (UUID):
@@ -266,13 +315,16 @@ async def asyncio(
         ending_before (str | Unset):
         offset (int | Unset):  Default: 0.
         search (str | Unset):
+        function_kind (FunctionKindFilter | Unset): A function kind to filter a list by. Unlike
+            `FunctionKind` it has no
+            default: omitting the filter includes both kinds.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        FunctionSchedulerListResponse
+        Error | FunctionSchedulerListResponse
      """
 
 
@@ -285,5 +337,6 @@ cursor=cursor,
 ending_before=ending_before,
 offset=offset,
 search=search,
+function_kind=function_kind,
 
     )).parsed
