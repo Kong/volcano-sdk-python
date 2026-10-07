@@ -8,31 +8,27 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from typing import cast
+
+if TYPE_CHECKING:
+  from ..models.verified_domain import VerifiedDomain
 
 
 
 
 
-
-T = TypeVar("T", bound="FrontendDomainVerificationRecord")
+T = TypeVar("T", bound="VerifiedDomainsResponse")
 
 
 
 @_attrs_define
-class FrontendDomainVerificationRecord:
-    """ The DNS records currently required. Volcano may require an account-specific TXT ownership record for the hostname's
-    domain before returning a CNAME that authorizes managed certificate issuance and renewal. Clients must follow the
-    records returned for the current lifecycle state instead of assuming a fixed sequence.
-
+class VerifiedDomainsResponse:
+    """ 
         Attributes:
-            name (str):
-            type_ (str):
-            value (str):
+            domains (list[VerifiedDomain]):
      """
 
-    name: str
-    type_: str
-    value: str
+    domains: list[VerifiedDomain]
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -40,19 +36,19 @@ class FrontendDomainVerificationRecord:
 
 
     def to_dict(self) -> dict[str, Any]:
-        name = self.name
+        from ..models.verified_domain import VerifiedDomain # noqa: PLC0415
+        domains = []
+        for domains_item_data in self.domains:
+            domains_item = domains_item_data.to_dict()
+            domains.append(domains_item)
 
-        type_ = self.type_
 
-        value = self.value
 
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "name": name,
-            "type": type_,
-            "value": value,
+            "domains": domains,
         })
 
         return field_dict
@@ -61,22 +57,25 @@ class FrontendDomainVerificationRecord:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.verified_domain import VerifiedDomain # noqa: PLC0415
         d = dict(src_dict)
-        name = d.pop("name")
+        domains = []
+        _domains = d.pop("domains")
+        for domains_item_data in (_domains):
+            domains_item = VerifiedDomain.from_dict(domains_item_data)
 
-        type_ = d.pop("type")
 
-        value = d.pop("value")
 
-        frontend_domain_verification_record = cls(
-            name=name,
-            type_=type_,
-            value=value,
+            domains.append(domains_item)
+
+
+        verified_domains_response = cls(
+            domains=domains,
         )
 
 
-        frontend_domain_verification_record.additional_properties = d
-        return frontend_domain_verification_record
+        verified_domains_response.additional_properties = d
+        return verified_domains_response
 
     @property
     def additional_keys(self) -> list[str]:

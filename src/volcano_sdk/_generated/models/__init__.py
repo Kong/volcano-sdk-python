@@ -594,6 +594,9 @@ from .usage_data_point import UsageDataPoint
 from .variable import Variable
 from .variable_deploy_source import VariableDeploySource
 from .variable_status import VariableStatus
+from .verified_domain import VerifiedDomain
+from .verified_domains_response import VerifiedDomainsResponse
+from .verify_domain_request import VerifyDomainRequest
 
 __all__ = (
     "AnonKey",
@@ -1190,4 +1193,7 @@ __all__ = (
     "Variable",
     "VariableDeploySource",
     "VariableStatus",
+    "VerifiedDomain",
+    "VerifiedDomainsResponse",
+    "VerifyDomainRequest",
 )

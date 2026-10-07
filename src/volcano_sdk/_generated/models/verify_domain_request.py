@@ -14,25 +14,18 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="FrontendDomainVerificationRecord")
+T = TypeVar("T", bound="VerifyDomainRequest")
 
 
 
 @_attrs_define
-class FrontendDomainVerificationRecord:
-    """ The DNS records currently required. Volcano may require an account-specific TXT ownership record for the hostname's
-    domain before returning a CNAME that authorizes managed certificate issuance and renewal. Clients must follow the
-    records returned for the current lifecycle state instead of assuming a fixed sequence.
-
+class VerifyDomainRequest:
+    """ 
         Attributes:
-            name (str):
-            type_ (str):
-            value (str):
+            domain (str): The domain to verify, such as `example.com`.
      """
 
-    name: str
-    type_: str
-    value: str
+    domain: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -40,19 +33,13 @@ class FrontendDomainVerificationRecord:
 
 
     def to_dict(self) -> dict[str, Any]:
-        name = self.name
-
-        type_ = self.type_
-
-        value = self.value
+        domain = self.domain
 
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "name": name,
-            "type": type_,
-            "value": value,
+            "domain": domain,
         })
 
         return field_dict
@@ -62,21 +49,15 @@ class FrontendDomainVerificationRecord:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        name = d.pop("name")
+        domain = d.pop("domain")
 
-        type_ = d.pop("type")
-
-        value = d.pop("value")
-
-        frontend_domain_verification_record = cls(
-            name=name,
-            type_=type_,
-            value=value,
+        verify_domain_request = cls(
+            domain=domain,
         )
 
 
-        frontend_domain_verification_record.additional_properties = d
-        return frontend_domain_verification_record
+        verify_domain_request.additional_properties = d
+        return verify_domain_request
 
     @property
     def additional_keys(self) -> list[str]:

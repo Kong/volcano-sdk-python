@@ -1,8 +1,8 @@
 from typing import Literal
 
-ProjectPlan = Literal['FREE', 'HOBBY', 'PRO', 'SUPERAGENT']
+ProjectPlan = Literal['HOBBY', 'SUPERAGENT']
 
-PROJECT_PLAN_VALUES: set[ProjectPlan] = { 'FREE', 'HOBBY', 'PRO', 'SUPERAGENT',  }
+PROJECT_PLAN_VALUES: set[ProjectPlan] = { 'HOBBY', 'SUPERAGENT',  }
 
 def check_project_plan(value: str) -> ProjectPlan:
     if value in PROJECT_PLAN_VALUES:
