@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from time import monotonic, sleep
 from typing import TYPE_CHECKING, TypeGuard
@@ -14,7 +16,7 @@ import httpx
 from ._durable_response import json_value
 from ._durable_results import ApprovalDecision
 from ._transport_response import (
-    invoke,
+    invoke_async,
     plain_json,
     response_payload,
     unparsed_response,
@@ -31,6 +33,7 @@ from .errors import (
 from .models import DurableApprovalDecider
 
 if TYPE_CHECKING:
+    from ._transport_types import TransportResponse
     from .models import JSONValue
 
 # 0.5 s doubling to a 5 s cap, within the deadline: long enough to outlast the
@@ -42,6 +45,8 @@ _NOT_READY = "approval_not_ready"
 _CLOSED = "approval_closed"
 _HEADERS = {"Content-Type": "application/json"}
 _MAX_BODY_BYTES = 65536
+# Volcano answers in a few hundred bytes; more is not an answer worth reading.
+_MAX_ANSWER_BYTES = 65536
 # The callback id is assigned once the callback opens, after the size check;
 # the spec allows it 1024 characters.
 _LONGEST_CALLBACK_ID = "x" * 1024
@@ -149,6 +154,9 @@ def register_approval(api_url: str, body: Mapping[str, JSONValue]) -> None:
     timeout passed first, needs no registration: the callback's own outcome
     is what the execution resumes with.
 
+    Each attempt, from connecting to the last byte of the answer, ends within
+    10 seconds or what is left of the deadline, whichever is sooner.
+
     Raises:
         VolcanoError: Volcano refused the approval, or kept failing until the
             deadline passed or the retries ran out.
@@ -158,24 +166,32 @@ def register_approval(api_url: str, body: Mapping[str, JSONValue]) -> None:
     content = _encode(body)
     deadline = monotonic() + _DEADLINE_SECONDS
     timeout = _REQUEST_TIMEOUT_SECONDS
-    with httpx.Client() as client:
-        for delay in _RETRY_DELAYS:
-            try:
-                _post(client, url, content, timeout)
-            except VolcanoError as error:
-                next_timeout = _next_timeout(error, delay, deadline)
-                if next_timeout is None:
-                    raise
-                timeout = next_timeout
-            else:
-                return
-        _post(client, url, content, timeout)
+    for delay in _RETRY_DELAYS:
+        try:
+            _attempt(url, content, timeout)
+        except VolcanoError as error:
+            next_timeout = _next_timeout(error, delay, deadline)
+            if next_timeout is None:
+                raise
+            timeout = next_timeout
+        else:
+            return
+    _attempt(url, content, timeout)
 
 
-def _post(client: httpx.Client, url: str, content: bytes, timeout: float) -> None:
-    response = unparsed_response(
-        invoke(client.post, url, content=content, headers=_HEADERS, timeout=timeout)
-    )
+def _attempt(url: str, content: bytes, timeout: float) -> None:
+    # httpx times each network read on its own, restarting with every chunk,
+    # so only cancelling the request bounds the attempt as a whole; its own
+    # timeouts still keep any one phase within it. The runtime calls the
+    # submitter on a thread without an event loop.
+    client = httpx.AsyncClient(timeout=timeout)
+    try:
+        response = asyncio.run(
+            asyncio.wait_for(invoke_async(_exchange, client, url, content), timeout)
+        )
+    except TimeoutError as error:
+        message = f"Volcano did not answer within {timeout:g} seconds"
+        raise TransportError(message) from error
     if response.status_code == HTTP_CREATED:
         return
     try:
@@ -183,6 +199,39 @@ def _post(client: httpx.Client, url: str, content: bytes, timeout: float) -> Non
     except ConflictError as error:
         if error.code != _CLOSED:
             raise
+
+
+async def _exchange(
+    client: httpx.AsyncClient, url: str, content: bytes
+) -> TransportResponse:
+    async with (
+        client,
+        client.stream("POST", url, content=content, headers=_HEADERS) as response,
+    ):
+        answer = await _answer(response)
+    return unparsed_response(_Answer(response.status_code, answer, response.headers))
+
+
+async def _answer(response: httpx.Response) -> bytes:
+    """Read the answer, unless it runs past what Volcano would send.
+
+    Returns:
+        The body, or nothing when it is too large to be one of Volcano's.
+
+    """
+    answer = bytearray()
+    async for chunk in response.aiter_bytes():
+        answer += chunk
+        if len(answer) > _MAX_ANSWER_BYTES:
+            return b""
+    return bytes(answer)
+
+
+@dataclass(frozen=True, slots=True)
+class _Answer:
+    status_code: int
+    content: bytes
+    headers: Mapping[str, str]
 
 
 def _retryable(error: VolcanoError) -> bool:

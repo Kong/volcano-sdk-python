@@ -1690,13 +1690,13 @@ def test_an_approval_closed_before_it_registered_resumes_expired(
             },
         )
 
-    real_client = httpx.Client
+    real_client = httpx.AsyncClient
 
-    def client() -> httpx.Client:
-        return real_client(transport=httpx.MockTransport(closed))
+    def client(*, timeout: float) -> httpx.AsyncClient:
+        return real_client(transport=httpx.MockTransport(closed), timeout=timeout)
 
     monkeypatch.setattr(
-        "volcano_sdk._durable_approval_registration.httpx.Client", client
+        "volcano_sdk._durable_approval_registration.httpx.AsyncClient", client
     )
     monkeypatch.setenv("VOLCANO_PLATFORM_API_URL", PLATFORM_API_URL)
 

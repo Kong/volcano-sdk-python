@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, NoReturn, Protocol, TypeAlias
 
 import httpx
 import pytest
+from typing_extensions import override
 
 from volcano_sdk import (
     ConflictError,
@@ -27,7 +30,7 @@ from volcano_sdk.durable_authoring import ApprovalDecision
 from volcano_sdk.models import DurableApprovalDecider
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import AsyncIterator, Callable
 
     from volcano_sdk.models import JSONValue
 
@@ -39,25 +42,80 @@ BODY: dict[str, JSONValue] = {
     "title": "Ship order 1234?",
 }
 RETRY_DELAYS = [0.5, 1.0, 2.0, 4.0, 5.0, 5.0, 5.0, 5.0]
-# The fixture replaces httpx.Client for the module under test, which is the
-# same attribute everywhere.
-REAL_CLIENT = httpx.Client
+# The fixture replaces httpx.AsyncClient for the module under test, which is
+# the same attribute everywhere.
+REAL_CLIENT = httpx.AsyncClient
 REGISTRATION = "volcano_sdk._durable_approval_registration"
 INVALID_DETAILS = (
     "details must be JSON-serializable: mappings with string keys, lists, "
     "tuples, strings, finite numbers, booleans, and None"
 )
+# Long past any attempt's deadline: a slow answer still running by then was
+# never cut off, and ends rather than hang the suite.
+_GIVE_UP_SECONDS = 10.0
+_TRICKLE_INTERVAL = 0.01
+_NEVER_CANCELLED = "the attempt outlived its deadline"
+
+
+class Stall:
+    """Accept the request and never answer it."""
+
+    def __init__(self) -> None:
+        self.released: bool = False
+
+    async def hold(self) -> NoReturn:
+        try:
+            await asyncio.sleep(_GIVE_UP_SECONDS)
+        finally:
+            self.released = True
+        raise AssertionError(_NEVER_CANCELLED)
+
+
+class Trickle(httpx.AsyncByteStream):
+    """Send a body one byte at a time, each well inside any read timeout."""
+
+    def __init__(self) -> None:
+        self.sent: int = 0
+        self.closed: bool = False
+
+    @override
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        for _ in range(int(_GIVE_UP_SECONDS / _TRICKLE_INTERVAL)):
+            await asyncio.sleep(_TRICKLE_INTERVAL)
+            self.sent += 1
+            yield b" "
+
+    @override
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class Flood(httpx.AsyncByteStream):
+    """Send a body as fast as it is read, forever."""
+
+    def __init__(self) -> None:
+        self.sent: int = 0
+
+    @override
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        while True:
+            self.sent += 4096
+            yield b" " * 4096
+
+
+Answer: TypeAlias = "httpx.Response | Exception | Stall"
 
 
 class Platform:
     """Answer registrations in order and record what was sent.
 
     Time is the platform's own: it passes while the registration sleeps and
-    while a request runs into its timeout, and nowhere else.
+    while a request runs into its timeout, and nowhere else. An attempt that
+    is cancelled at its deadline takes real time, not platform time.
     """
 
-    def __init__(self, *answers: httpx.Response | Exception) -> None:
-        self.answers: list[httpx.Response | Exception] = list(answers)
+    def __init__(self, *answers: Answer) -> None:
+        self.answers: list[Answer] = list(answers)
         self.requests: list[httpx.Request] = []
         self.timeouts: list[float] = []
         self.sleeps: list[float] = []
@@ -66,7 +124,7 @@ class Platform:
         self.oversleep: float = 0.0
         self.clock_runs: bool = True
 
-    def handle(self, request: httpx.Request) -> httpx.Response:
+    async def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         match request.extensions:
             case {"timeout": {"read": float(timeout)}}:
@@ -75,14 +133,16 @@ class Platform:
                 message = f"expected a read timeout, got {request.extensions}"
                 raise AssertionError(message)
         answer = self.answers[0] if len(self.answers) == 1 else self.answers.pop(0)
+        if isinstance(answer, Stall):
+            await answer.hold()
         if isinstance(answer, httpx.TimeoutException):
             self.advance(timeout)
         if isinstance(answer, Exception):
             raise answer
         return answer
 
-    def client(self) -> httpx.Client:
-        return REAL_CLIENT(transport=httpx.MockTransport(self.handle))
+    def client(self, *, timeout: float) -> httpx.AsyncClient:
+        return REAL_CLIENT(transport=httpx.MockTransport(self.handle), timeout=timeout)
 
     def monotonic(self) -> float:
         return self.now
@@ -97,14 +157,14 @@ class Platform:
 
 
 class InstallPlatform(Protocol):
-    def __call__(self, *answers: httpx.Response | Exception) -> Platform: ...
+    def __call__(self, *answers: Answer) -> Platform: ...
 
 
 @pytest.fixture
 def platform(monkeypatch: pytest.MonkeyPatch) -> InstallPlatform:
-    def install(*answers: httpx.Response | Exception) -> Platform:
+    def install(*answers: Answer) -> Platform:
         fake = Platform(*answers)
-        monkeypatch.setattr(f"{REGISTRATION}.httpx.Client", fake.client)
+        monkeypatch.setattr(f"{REGISTRATION}.httpx.AsyncClient", fake.client)
         monkeypatch.setattr(f"{REGISTRATION}.monotonic", fake.monotonic)
         monkeypatch.setattr(f"{REGISTRATION}.sleep", fake.sleep)
         return fake
@@ -286,6 +346,63 @@ def test_waking_up_at_the_deadline_raises_the_last_failure(
 
     assert fake.sleeps == [0.5]
     assert fake.timeouts == [10.0]
+
+
+# Nothing in a mock transport times out, so only the attempt's own deadline can
+# end these early. The retry wakes 29.8 s in, which leaves its attempt 0.2 s.
+_WAKE_LATE = 29.3
+_ENDED_PROMPTLY = 3.0
+
+
+def test_an_attempt_ends_by_its_deadline_when_volcano_never_answers(
+    platform: InstallPlatform,
+) -> None:
+    stall = Stall()
+    fake = platform(refused(503), stall)
+    fake.oversleep = _WAKE_LATE
+    started = time.perf_counter()
+
+    with pytest.raises(TransportError) as caught:
+        register_approval(API_URL, BODY)
+
+    assert time.perf_counter() - started < _ENDED_PROMPTLY
+    assert str(caught.value) == "Volcano did not answer within 0.2 seconds"
+    assert stall.released
+    assert fake.timeouts == [10.0, pytest.approx(0.2)]
+    assert fake.sleeps == [0.5]
+
+
+def test_an_attempt_ends_by_its_deadline_while_the_answer_trickles_in(
+    platform: InstallPlatform,
+) -> None:
+    # Each byte arrives long before any per-read timeout would fire.
+    trickle = Trickle()
+    fake = platform(refused(503), httpx.Response(503, stream=trickle))
+    fake.oversleep = _WAKE_LATE
+    started = time.perf_counter()
+
+    with pytest.raises(TransportError) as caught:
+        register_approval(API_URL, BODY)
+
+    assert time.perf_counter() - started < _ENDED_PROMPTLY
+    assert str(caught.value) == "Volcano did not answer within 0.2 seconds"
+    assert trickle.sent > 0
+    assert trickle.closed
+    assert fake.timeouts == [10.0, pytest.approx(0.2)]
+
+
+def test_an_answer_too_large_to_be_volcanos_is_not_read_to_the_end(
+    platform: InstallPlatform,
+) -> None:
+    flood = Flood()
+    fake = platform(httpx.Response(409, stream=flood))
+
+    with pytest.raises(ConflictError) as caught:
+        register_approval(API_URL, BODY)
+
+    assert caught.value.code is None
+    assert flood.sent <= 65536 + 4096
+    assert len(fake.requests) == 1
 
 
 @pytest.mark.parametrize(
