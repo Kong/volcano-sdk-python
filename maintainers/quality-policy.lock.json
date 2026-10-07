@@ -252,7 +252,8 @@
             "magic-value-comparison",
             "assert",
             "hardcoded-password-string",
-            "hardcoded-password-func-arg"
+            "hardcoded-password-func-arg",
+            "pytest-fixture-autouse"
           ]
         },
         "preview": true,
@@ -261,7 +262,7 @@
         ]
       },
       "output-prefer-rule-codes": true,
-      "required-version": "==0.16.4",
+      "required-version": "==0.16.10",
       "target-version": "py311"
     },
     "tox": {
