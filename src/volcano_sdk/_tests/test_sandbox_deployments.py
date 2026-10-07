@@ -58,12 +58,14 @@ def test_custom_deployment_history_source_logs_and_cleanup() -> None:
             "pagination": {"has_more": True, "limit": 1, "next_cursor": "next"},
         }
     )
-    page = server.client.sandboxes.deployments(PROJECT, SUBJECT, cursor="first")
+    page = server.client.sandboxes.deployments(
+        PROJECT, SUBJECT, cursor="first", limit=7
+    )
     assert page.data[0].id == KEY
     assert page.next_cursor == "next"
     assert page.has_more is True
     assert page.limit == 1
-    assert server.requests[-1].url.params["cursor"] == "first"
+    assert dict(server.requests[-1].url.params) == {"cursor": "first", "limit": "7"}
     server.reply(_DEPLOYMENT)
     assert server.client.sandboxes.deployment(PROJECT, SUBJECT, KEY).id == KEY
     source = bytes([31, 139, 0, 255])
@@ -173,7 +175,7 @@ def test_deployment_empty_pages_and_log_cursor() -> None:
     assert page.has_more is False
     assert page.limit == 20
     assert page.next_cursor is None
-    assert "cursor" not in server.requests[-1].url.params
+    assert dict(server.requests[-1].url.params) == {"limit": "10"}
     server.reply({"data": []})
     logs = server.client.sandboxes.logs(
         PROJECT, SUBJECT, KEY, region="aws-us-west-2", cursor="next-page"

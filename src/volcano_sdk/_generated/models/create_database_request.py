@@ -40,7 +40,10 @@ class CreateDatabaseRequest:
                 environment does not offer is rejected with 400. Region IDs issued by
                 earlier versions of the API are still accepted.
                  Example: us-east-1.
-            pg_version (CreateDatabaseRequestPgVersion): PostgreSQL major version Example: 16.
+            pg_version (CreateDatabaseRequestPgVersion): PostgreSQL major version. `GET /databases/postgres-versions` lists
+                the versions this environment accepts; local mode accepts only the
+                version its server runs. Any other value is rejected with 400.
+                 Example: 18.
             database_type (CreateDatabaseRequestDatabaseType | Unset): Compute size tier (optional, defaults to volcano-db-
                 xs).
                 Determines autoscaling limits for the database.

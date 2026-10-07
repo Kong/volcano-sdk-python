@@ -106,6 +106,7 @@ _OPERATIONS: dict[str, Callable[[SandboxRequest], dict[str, object]]] = {
         UUID(request.resource_id),
         UUID(request.subject_id),
         cursor=request.cursor if request.cursor is not None else UNSET,
+        limit=request.limit,
     ),
     "get_sandbox_deployment": lambda request: get_sandbox_deployment.request_kwargs(
         UUID(request.resource_id), UUID(request.subject_id), UUID(request.deployment_id)

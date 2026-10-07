@@ -59,7 +59,12 @@ class SandboxDeployments:
         return _deployment(self._requests.management().send(request, 202))
 
     def deployments(
-        self, project_id: str, sandbox_id: str, *, cursor: str | None = None
+        self,
+        project_id: str,
+        sandbox_id: str,
+        *,
+        cursor: str | None = None,
+        limit: int = 10,
     ) -> SandboxDeploymentPage:
         """Read one deployment history page.
 
@@ -75,6 +80,7 @@ class SandboxDeployments:
             identifier(project_id),
             identifier(sandbox_id),
             cursor=cursor,
+            limit=limit,
         )
         data = record(self._requests.management().send(request))
         pagination = record(data.get("pagination"))

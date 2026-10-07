@@ -144,9 +144,10 @@ Wait for status `active` before creating sessions with this `sandbox_id`.
 Redeploy with the same template ID and a new request ID to update the image;
 existing sessions retain their original image.
 
-`deployments(project_id, sandbox_id, cursor=...)` returns history and a
+`deployments(project_id, sandbox_id, cursor=..., limit=10)` returns history and a
 `next_cursor`. `source(project_id, sandbox_id, deployment_id)` returns the
 original archive bytes. `logs(project_id, sandbox_id, deployment_id,
 region="aws-us-east-1", cursor=..., limit=100)` returns regional build messages.
 `delete_template(project_id, sandbox_id)` deletes the template and terminates
-its sessions. Archives are limited to 32 MiB compressed and expanded.
+its sessions and requires the `sandboxes.terminate` permission. History page
+limits range from 1 to 100. Archives are limited to 32 MiB compressed and expanded.
