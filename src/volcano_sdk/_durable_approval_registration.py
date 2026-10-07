@@ -32,10 +32,9 @@ from .models import DurableApprovalDecider
 if TYPE_CHECKING:
     from .models import JSONValue
 
-# 0.5 s doubling to a 5 s cap, ending where the deadline runs out: long enough
-# to outlast the moment the platform has not yet seen the execution start or
-# the callback open.
-_RETRY_DELAYS = (0.5, 1.0, 2.0, 4.0, 5.0, 5.0, 5.0, 5.0, 2.5)
+# 0.5 s doubling to a 5 s cap, within the deadline: long enough to outlast the
+# moment the platform has not yet seen the execution start or the callback open.
+_RETRY_DELAYS = (0.5, 1.0, 2.0, 4.0, 5.0, 5.0, 5.0, 5.0)
 _DEADLINE_SECONDS = 30.0
 _REQUEST_TIMEOUT_SECONDS = 10.0
 _NOT_READY = "approval_not_ready"

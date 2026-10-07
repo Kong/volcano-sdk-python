@@ -38,7 +38,7 @@ BODY: dict[str, JSONValue] = {
     "name": "ship-order",
     "title": "Ship order 1234?",
 }
-RETRY_DELAYS = [0.5, 1.0, 2.0, 4.0, 5.0, 5.0, 5.0, 5.0, 2.5]
+RETRY_DELAYS = [0.5, 1.0, 2.0, 4.0, 5.0, 5.0, 5.0, 5.0]
 # The fixture replaces httpx.Client for the module under test, which is the
 # same attribute everywhere.
 REAL_CLIENT = httpx.Client
@@ -220,20 +220,21 @@ def test_retries_back_off_until_the_deadline_and_then_raise(
         register_approval(API_URL, BODY)
 
     assert caught.value.status == 503
-    # The last delay would end exactly at the deadline, with no time to retry.
-    assert fake.sleeps == RETRY_DELAYS[:-1]
-    assert len(fake.requests) == len(RETRY_DELAYS)
+    assert fake.sleeps == RETRY_DELAYS
+    assert len(fake.requests) == len(RETRY_DELAYS) + 1
+    # The last attempt starts 27.5 s in and gets only what is left.
+    assert fake.timeouts[-1] == pytest.approx(2.5)
 
 
 def test_the_last_attempt_before_the_deadline_can_still_succeed(
     platform: InstallPlatform,
 ) -> None:
-    fake = platform(*([refused(429)] * (len(RETRY_DELAYS) - 1)), registered())
+    fake = platform(*([refused(429)] * len(RETRY_DELAYS)), registered())
 
     register_approval(API_URL, BODY)
 
-    assert fake.sleeps == RETRY_DELAYS[:-1]
-    assert len(fake.requests) == len(RETRY_DELAYS)
+    assert fake.sleeps == RETRY_DELAYS
+    assert len(fake.requests) == len(RETRY_DELAYS) + 1
 
 
 def test_the_schedule_bounds_the_attempts_while_time_is_left(
@@ -308,7 +309,7 @@ def test_a_failure_that_persists_raises_its_own_error(
         register_approval(API_URL, BODY)
 
     assert type(caught.value) is expected
-    assert len(fake.requests) == len(RETRY_DELAYS)
+    assert len(fake.requests) == len(RETRY_DELAYS) + 1
 
 
 @pytest.mark.parametrize(
