@@ -253,6 +253,15 @@
             "assert",
             "hardcoded-password-string",
             "hardcoded-password-func-arg"
+          ],
+          "src/volcano_sdk/_tests/conftest.py": [
+            "pytest-fixture-autouse"
+          ],
+          "src/volcano_sdk/_tests/realtime_probes.py": [
+            "pytest-fixture-autouse"
+          ],
+          "src/volcano_sdk/_tests/test_durable_authoring.py": [
+            "pytest-fixture-autouse"
           ]
         },
         "preview": true,
@@ -261,7 +270,7 @@
         ]
       },
       "output-prefer-rule-codes": true,
-      "required-version": "==0.16.4",
+      "required-version": "==0.16.10",
       "target-version": "py311"
     },
     "tox": {
@@ -382,7 +391,7 @@
           "requirement": "trove-classifiers==2026.9.21.13"
         }
       ],
-      "required-version": "==0.12.17"
+      "required-version": ">=0.12.17"
     }
   },
   "schema": 1

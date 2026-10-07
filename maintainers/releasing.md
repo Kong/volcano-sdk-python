@@ -16,6 +16,38 @@ release gate is required.
 The checked-in release and publish workflows own versioning and publication.
 This checklist does not authorize a release, a registry mutation or an environment approval.
 
+## Dependabot updates
+
+Dependabot runs its own uv, so `tool.uv.required-version` sets only a minimum.
+An exact pin makes Dependabot report an unsupported tool version and open no uv
+pull requests.
+
+Updates to `[project] dependencies` and the `durable` extra are titled
+`fix(deps)`, so Release Please releases them. Dependency groups and the build
+backend use `chore`, which does not. If an openapi-python-client or ruff update
+changes the regenerated client (ruff runs as a generator post-hook), edit the
+squash commit title to `fix(deps): ...` when merging, because the package ships
+that client. If `poe generated` fails, run
+`uv run python scripts/generate_openapi.py` and commit the result to the
+update's PR.
+
+These dependencies get their own pull requests:
+
+- ruff: update `tool.ruff.required-version` to match.
+- hatchling: update the build constraints as described in [Build inputs](#build-inputs).
+- centrifuge-python: run the checks in [realtime-compatibility.md](realtime-compatibility.md).
+- httpx: an update past the `<0.29.0` cap widens it, so review the new 0.x
+  release before merging.
+
+When a grouped update bumps basedpyright, also update its pin in the tox
+`package-types` environment.
+
+The ruff, hatchling and basedpyright pins are also recorded in the
+[policy lock](quality-policy.md), so update the lock and its digest with them.
+
+Dependabot stops rebasing a pull request once someone else pushes to it, so
+merge it soon after. `@dependabot recreate` starts over and drops those commits.
+
 ## Before publication
 
 1. Identify the release PR, exact source commit, version, tag and intended registry account. Inspect the generated changelog and package metadata.
@@ -56,7 +88,7 @@ the tox environments never receive its artifacts or publishing credentials.
 publication use this task. uv verifies isolated build dependencies against the
 versions and hashes in `tool.uv.build-constraint-dependencies`. These native
 constraints also apply to editable installs during `uv sync` and `uv run`.
-The project and CI require uv 0.12.17.
+CI uses uv 0.12.17, and the project requires at least that version.
 
 The release job installs locked dependency wheels without building an editable
 SDK and disables implicit sync in subsequent commands. To reproduce that setup:

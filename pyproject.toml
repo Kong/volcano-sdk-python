@@ -52,25 +52,25 @@ dev = [
   "volcano-sdk-python[durable]",
   "aws-durable-execution-sdk-python-testing>=1.2.1,<2.0.0",
   "mypy>=1.18.0",
-  "pyrefly==1.3.1",
+  "pyrefly==1.3.2",
   "openapi-python-client==0.29.1",
   "basedpyright==1.40.1",
   "pytest==9.1.1",
-  "ruff==0.16.4",
+  "ruff==0.16.10",
   "pip-audit==2.10.1",
-  "hypothesis==6.168.0",
-  "poethepoet==0.46.0",
+  "hypothesis==6.168.3",
+  "poethepoet==0.48.0",
   "pytest-asyncio==1.4.0",
   "pytest-order==1.5.0",
-  "coverage==7.16.1",
+  "coverage==7.16.2",
   "pytest-cov==7.1.0",
   "pytest-socket==0.8.1",
-  "tox==4.62.0",
+  "tox==4.64.7",
   "mutmut==3.8.0",
 ]
 
 [tool.uv]
-required-version = "==0.12.17"
+required-version = ">=0.12.17"
 build-constraint-dependencies = [
   { requirement = "hatchling==1.32.4", hashes = [
     "sha256:c4468f73144c054d2aab4ef0f0378c43b9878bf07f8ffd6b79690e970d375f07",
@@ -141,7 +141,7 @@ venv = ".venv"
 typeCheckingMode = "all"
 
 [tool.ruff]
-required-version = "==0.16.4"
+required-version = "==0.16.10"
 target-version = "py311"
 output-prefer-rule-codes = true
 extend-exclude = ["src/volcano_sdk/_generated"]
@@ -185,6 +185,11 @@ max-complexity = 5
   "hardcoded-password-string",
   "hardcoded-password-func-arg",
 ]
+# These fixtures reset process-wide caches and install inspection probes for
+# every test by design. New autouse fixtures elsewhere still fail lint.
+"src/volcano_sdk/_tests/conftest.py" = ["pytest-fixture-autouse"]
+"src/volcano_sdk/_tests/realtime_probes.py" = ["pytest-fixture-autouse"]
+"src/volcano_sdk/_tests/test_durable_authoring.py" = ["pytest-fixture-autouse"]
 
 [tool.pytest.ini_options]
 minversion = "9.1.1"

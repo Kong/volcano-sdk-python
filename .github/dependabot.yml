@@ -1,0 +1,80 @@
+version: 2
+updates:
+  # pyproject.toml and uv.lock. Dependabot runs its own uv, so pyproject's
+  # `[tool.uv] required-version` sets only a minimum; an exact pin stops these
+  # updates.
+  # maintainers/releasing.md covers updates that need a change before merging.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
+    # Keep a range that already allows the new version, so in-range runtime
+    # bumps change only uv.lock and published lower bounds stay put.
+    versioning-strategy: "increase-if-necessary"
+    labels: []
+    # `[project] dependencies` and the `durable` extra use `fix` so Release
+    # Please cuts a release. Dependency groups and the build backend count as
+    # development and use `chore`, which does not.
+    commit-message:
+      prefix: "fix"
+      prefix-development: "chore"
+      include: "scope"
+    # Groups list their exclusions explicitly so no dependency belongs to two.
+    groups:
+      # openapi-python-client generates src/volcano_sdk/_generated. If a bump
+      # changes that output, CI's `poe generated` fails until the client is
+      # regenerated with `uv run python scripts/generate_openapi.py`.
+      openapi-codegen:
+        patterns:
+          - "openapi-python-client"
+        update-types:
+          - "minor"
+          - "patch"
+      # centrifuge-python and httpx get their own pull requests: every
+      # centrifuge-python update needs the checks in
+      # maintainers/realtime-compatibility.md, and httpx is capped below its
+      # next 0.x release on purpose.
+      uv-production:
+        dependency-type: "production"
+        exclude-patterns:
+          - "centrifuge-python"
+          - "httpx"
+        update-types:
+          - "minor"
+          - "patch"
+      # hatchling and ruff get their own pull requests because each needs a
+      # pin that Dependabot does not update: hatchling's build-constraint
+      # hashes and ruff's `required-version`.
+      uv-development:
+        dependency-type: "development"
+        exclude-patterns:
+          - "openapi-python-client"
+          - "hatchling"
+          - "ruff"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    # GitHub Actions supports only `default-days`.
+    cooldown:
+      default-days: 5
+    labels: []
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
