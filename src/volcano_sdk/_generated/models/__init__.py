@@ -188,6 +188,18 @@ from .deployment_progress import DeploymentProgress
 from .deployment_progress_current_phase import DeploymentProgressCurrentPhase
 from .deployment_reference import DeploymentReference
 from .device_authorization_response import DeviceAuthorizationResponse
+from .durable_approval import DurableApproval
+from .durable_approval_counts import DurableApprovalCounts
+from .durable_approval_daily_counts import DurableApprovalDailyCounts
+from .durable_approval_decider_type_0 import DurableApprovalDeciderType0
+from .durable_approval_decision_request import DurableApprovalDecisionRequest
+from .durable_approval_decision_type_0 import DurableApprovalDecisionType0
+from .durable_approval_execution import DurableApprovalExecution
+from .durable_approval_function import DurableApprovalFunction
+from .durable_approval_function_counts import DurableApprovalFunctionCounts
+from .durable_approval_registration import DurableApprovalRegistration
+from .durable_approval_stats import DurableApprovalStats
+from .durable_approval_status import DurableApprovalStatus
 from .durable_execution import DurableExecution
 from .durable_execution_error import DurableExecutionError
 from .durable_execution_status import DurableExecutionStatus
@@ -322,6 +334,7 @@ from .o_auth_config_provider import OAuthConfigProvider
 from .o_auth_error_response import OAuthErrorResponse
 from .paginated_auth_users import PaginatedAuthUsers
 from .paginated_databases import PaginatedDatabases
+from .paginated_durable_approvals import PaginatedDurableApprovals
 from .paginated_durable_executions import PaginatedDurableExecutions
 from .paginated_durable_functions import PaginatedDurableFunctions
 from .paginated_frontend_deployments import PaginatedFrontendDeployments
@@ -466,6 +479,7 @@ from .refresh_o_auth_provider_token_provider import RefreshOAuthProviderTokenPro
 from .refresh_o_auth_provider_token_response_200 import RefreshOAuthProviderTokenResponse200
 from .render_default_managed_auth_page_action import RenderDefaultManagedAuthPageAction
 from .replace_shared_variables_body import ReplaceSharedVariablesBody
+from .request_durable_approval_request import RequestDurableApprovalRequest
 from .reset_database_password_response_200 import ResetDatabasePasswordResponse200
 from .resolve_function_response import ResolveFunctionResponse
 from .resource_reference import ResourceReference
@@ -739,6 +753,18 @@ __all__ = (
     "DeploymentProgressCurrentPhase",
     "DeploymentReference",
     "DeviceAuthorizationResponse",
+    "DurableApproval",
+    "DurableApprovalCounts",
+    "DurableApprovalDailyCounts",
+    "DurableApprovalDeciderType0",
+    "DurableApprovalDecisionRequest",
+    "DurableApprovalDecisionType0",
+    "DurableApprovalExecution",
+    "DurableApprovalFunction",
+    "DurableApprovalFunctionCounts",
+    "DurableApprovalRegistration",
+    "DurableApprovalStats",
+    "DurableApprovalStatus",
     "DurableExecution",
     "DurableExecutionError",
     "DurableExecutionStatus",
@@ -873,6 +899,7 @@ __all__ = (
     "OAuthErrorResponse",
     "PaginatedAuthUsers",
     "PaginatedDatabases",
+    "PaginatedDurableApprovals",
     "PaginatedDurableExecutions",
     "PaginatedDurableFunctions",
     "PaginatedFrontendDeployments",
@@ -1017,6 +1044,7 @@ __all__ = (
     "RefreshOAuthProviderTokenResponse200",
     "RenderDefaultManagedAuthPageAction",
     "ReplaceSharedVariablesBody",
+    "RequestDurableApprovalRequest",
     "ResetDatabasePasswordResponse200",
     "ResolveFunctionResponse",
     "ResourceReference",
