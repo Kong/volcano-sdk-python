@@ -75,6 +75,12 @@ def sync_detailed(
 ) -> Response[DurableApproval | Error]:
     """ Get a durable approval
 
+     Returns one approval: what the workflow asked, the durable function
+    and execution that asked it, its deadline, and the decision once one
+    is made.
+
+    Project access tokens can read approvals, including read-only ones.
+
     Args:
         id (UUID):
         approval_id (UUID):
@@ -109,6 +115,12 @@ def sync(
 ) -> DurableApproval | Error | None:
     """ Get a durable approval
 
+     Returns one approval: what the workflow asked, the durable function
+    and execution that asked it, its deadline, and the decision once one
+    is made.
+
+    Project access tokens can read approvals, including read-only ones.
+
     Args:
         id (UUID):
         approval_id (UUID):
@@ -137,6 +149,12 @@ async def asyncio_detailed(
 
 ) -> Response[DurableApproval | Error]:
     """ Get a durable approval
+
+     Returns one approval: what the workflow asked, the durable function
+    and execution that asked it, its deadline, and the decision once one
+    is made.
+
+    Project access tokens can read approvals, including read-only ones.
 
     Args:
         id (UUID):
@@ -171,6 +189,12 @@ async def asyncio(
 
 ) -> DurableApproval | Error | None:
     """ Get a durable approval
+
+     Returns one approval: what the workflow asked, the durable function
+    and execution that asked it, its deadline, and the decision once one
+    is made.
+
+    Project access tokens can read approvals, including read-only ones.
 
     Args:
         id (UUID):
