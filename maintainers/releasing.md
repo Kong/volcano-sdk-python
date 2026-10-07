@@ -16,6 +16,33 @@ release gate is required.
 The checked-in release and publish workflows own versioning and publication.
 This checklist does not authorize a release, a registry mutation or an environment approval.
 
+## Dependabot updates
+
+Dependabot runs its own uv, so `tool.uv.required-version` must allow that
+version. An exact pin makes Dependabot report an unsupported tool version and
+open no uv pull requests.
+
+Updates to `[project] dependencies` are titled `fix(deps)`, so Release Please
+releases them. Dependency groups, the build backend and the `durable` extra use
+`chore`, which does not. When merging an update that changes what the package
+ships, edit the squash commit title to `fix(deps): ...`:
+
+- An update that changes the `durable` extra's range.
+- An `openapi-codegen` update whose regenerated client differs. If
+  `poe generated` fails, run `uv run python scripts/generate_openapi.py` and
+  commit the result to the update's PR.
+
+These updates arrive in their own pull requests because each needs a change
+Dependabot does not make:
+
+- ruff: update `tool.ruff.required-version` and
+  `maintainers/quality-policy.lock.json` to match.
+- hatchling: update the build constraints as described in [Build inputs](#build-inputs).
+- centrifuge-python: run the checks in [realtime-compatibility.md](realtime-compatibility.md).
+
+When a grouped update bumps basedpyright, also update its pin in the tox
+`package-types` environment and the policy lock.
+
 ## Before publication
 
 1. Identify the release PR, exact source commit, version, tag and intended registry account. Inspect the generated changelog and package metadata.

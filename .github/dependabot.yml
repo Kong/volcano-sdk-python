@@ -2,6 +2,7 @@ version: 2
 updates:
   # pyproject.toml and uv.lock. Dependabot runs its own uv, so pyproject's
   # `[tool.uv] required-version` must admit that version or these updates fail.
+  # maintainers/releasing.md covers updates that need a change before merging.
   - package-ecosystem: "uv"
     directory: "/"
     schedule:
@@ -19,20 +20,17 @@ updates:
       prefix-development: "chore"
       include: "scope"
     groups:
-      # openapi-python-client generates src/volcano_sdk/_generated and runs ruff
-      # as a post-hook. CI's `poe generated` fails until the committed client is
-      # regenerated with `uv run python scripts/generate_openapi.py`. A ruff bump
-      # also needs `[tool.ruff] required-version` and
-      # maintainers/quality-policy.lock.json updated to match.
+      # openapi-python-client generates src/volcano_sdk/_generated. If a bump
+      # changes that output, CI's `poe generated` fails until the client is
+      # regenerated with `uv run python scripts/generate_openapi.py`.
       openapi-codegen:
         patterns:
           - "openapi-python-client"
-          - "ruff"
         update-types:
           - "minor"
           - "patch"
-      # centrifuge-python stays in its own pull request: every update needs the
-      # checks in maintainers/realtime-compatibility.md.
+      # centrifuge-python gets its own pull request because every update needs
+      # the checks in maintainers/realtime-compatibility.md.
       uv-production:
         dependency-type: "production"
         exclude-patterns:
@@ -40,13 +38,14 @@ updates:
         update-types:
           - "minor"
           - "patch"
-      # hatchling stays in its own pull request: `[tool.uv]
-      # build-constraint-dependencies` pins it by hash, and Dependabot does not
-      # update those hashes.
+      # hatchling and ruff get their own pull requests because each needs a
+      # pin that Dependabot does not update: hatchling's build-constraint
+      # hashes and ruff's `required-version`.
       uv-development:
         dependency-type: "development"
         exclude-patterns:
           - "hatchling"
+          - "ruff"
         update-types:
           - "minor"
           - "patch"
