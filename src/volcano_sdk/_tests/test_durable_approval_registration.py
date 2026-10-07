@@ -639,6 +639,12 @@ def complete_decision(**overrides: object) -> dict[str, object]:
     return decision
 
 
+def without(field: str) -> dict[str, object]:
+    decision = complete_decision()
+    del decision[field]
+    return decision
+
+
 @pytest.mark.parametrize(
     "result",
     [
@@ -647,21 +653,121 @@ def complete_decision(**overrides: object) -> dict[str, object]:
         pytest.param(b"\xff", id="not utf-8"),
         pytest.param("[]", id="list"),
         pytest.param({1: "approved"}, id="key"),
-        pytest.param(complete_decision(status="expired"), id="status"),
-        pytest.param(complete_decision(status=None), id="no status"),
-        pytest.param(complete_decision(approved=False), id="disagrees"),
-        pytest.param(complete_decision(status="denied"), id="denied but approved"),
-        pytest.param(complete_decision(approved=1), id="approved type"),
-        pytest.param(complete_decision(comment=None), id="comment"),
-        pytest.param(complete_decision(decided_at=None), id="decided at"),
-        pytest.param(complete_decision(decided_by="ops"), id="decider"),
-        pytest.param(complete_decision(decided_by={1: "ops"}), id="decider key"),
-        pytest.param(complete_decision(decided_by={"id": "u"}), id="decider email"),
+        pytest.param(complete_decision(status="expired"), id="expired"),
+        pytest.param(complete_decision(status="Approved"), id="status case"),
+        pytest.param(complete_decision(status=None), id="null status"),
+        pytest.param(complete_decision(status=True), id="status type"),
+        pytest.param(without("status"), id="no status"),
+    ],
+)
+def test_a_decision_without_a_readable_status_is_refused(result: object) -> None:
+    with pytest.raises(TypeError, match="Expected a complete approval decision"):
+        _ = approval_decision(result)
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
         pytest.param(
-            complete_decision(decided_by={"email": "ops@example.com"}), id="decider id"
+            complete_decision(approved=False),
+            ApprovalDecision(
+                approved=True,
+                status="approved",
+                decided_by=DurableApprovalDecider(id="user-7", email="ops@example.com"),
+                decided_at="2026-10-06T12:05:00Z",
+            ),
+            id="approved disagrees with status",
+        ),
+        pytest.param(
+            complete_decision(status="denied", approved="yes"),
+            ApprovalDecision(
+                approved=False,
+                status="denied",
+                decided_by=DurableApprovalDecider(id="user-7", email="ops@example.com"),
+                decided_at="2026-10-06T12:05:00Z",
+            ),
+            id="denied whatever approved says",
+        ),
+        pytest.param(
+            {"status": "approved"},
+            ApprovalDecision(approved=True, status="approved"),
+            id="status alone",
         ),
     ],
 )
-def test_a_malformed_decision_is_refused(result: object) -> None:
-    with pytest.raises(TypeError, match="Expected a complete approval decision"):
-        _ = approval_decision(result)
+def test_the_status_alone_decides(result: object, expected: ApprovalDecision) -> None:
+    assert approval_decision(result) == expected
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
+        pytest.param(without("comment"), {"comment": ""}, id="no comment"),
+        pytest.param(complete_decision(comment=None), {"comment": ""}, id="null"),
+        pytest.param(complete_decision(comment=7), {"comment": ""}, id="comment type"),
+        pytest.param(without("decided_at"), {"decided_at": None}, id="no time"),
+        pytest.param(
+            complete_decision(decided_at=None), {"decided_at": None}, id="null time"
+        ),
+        pytest.param(
+            complete_decision(decided_at=""), {"decided_at": None}, id="empty time"
+        ),
+        pytest.param(
+            complete_decision(decided_at="yesterday"),
+            {"decided_at": None},
+            id="not a time",
+        ),
+        pytest.param(
+            complete_decision(decided_at=1_791_288_300),
+            {"decided_at": None},
+            id="epoch seconds",
+        ),
+        pytest.param(
+            complete_decision(decided_at="2026-10-06T12:05:00.123456+02:00"),
+            {"decided_at": "2026-10-06T12:05:00.123456+02:00"},
+            id="offset time kept as sent",
+        ),
+        pytest.param(without("decided_by"), {"decided_by": None}, id="no decider"),
+        pytest.param(
+            complete_decision(decided_by="ops"), {"decided_by": None}, id="decider type"
+        ),
+        pytest.param(
+            complete_decision(decided_by=["user-7", "ops@example.com"]),
+            {"decided_by": None},
+            id="decider list",
+        ),
+        pytest.param(
+            complete_decision(decided_by={"id": "user-7"}),
+            {"decided_by": None},
+            id="decider without email",
+        ),
+        pytest.param(
+            complete_decision(decided_by={"email": "ops@example.com"}),
+            {"decided_by": None},
+            id="decider without id",
+        ),
+        pytest.param(
+            complete_decision(decided_by={"id": 7, "email": "ops@example.com"}),
+            {"decided_by": None},
+            id="decider id type",
+        ),
+    ],
+)
+def test_an_unreadable_detail_reads_as_absent(
+    result: dict[str, object], expected: dict[str, object]
+) -> None:
+    decision = approval_decision(json.dumps(result))
+
+    assert decision.approved is True
+    assert decision.status == "approved"
+    read = {
+        "comment": decision.comment,
+        "decided_by": decision.decided_by,
+        "decided_at": decision.decided_at,
+    }
+    assert read == {
+        "comment": "",
+        "decided_by": DurableApprovalDecider(id="user-7", email="ops@example.com"),
+        "decided_at": "2026-10-06T12:05:00Z",
+        **expected,
+    }

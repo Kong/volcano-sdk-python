@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Mapping
+from datetime import datetime
 from time import monotonic, sleep
 from typing import TYPE_CHECKING, TypeGuard
 
@@ -213,6 +214,10 @@ def _next_timeout(error: VolcanoError, delay: float, deadline: float) -> float |
 def approval_decision(result: object) -> ApprovalDecision:
     """Read the decision Volcano completed the callback with.
 
+    Only the status has to be readable. The decision is already recorded, so
+    refusing it over a detail would fail the execution again on every replay;
+    an unreadable comment, decider, or decision time reads as absent instead.
+
     Returns:
         The approved or denied decision.
 
@@ -222,19 +227,16 @@ def approval_decision(result: object) -> ApprovalDecision:
     """
     values = _decision_fields(result)
     status = values.get("status")
+    if status not in {"approved", "denied"}:
+        raise TypeError(_INVALID_DECISION)
     approved = status == "approved"
-    if status not in {"approved", "denied"} or values.get("approved") is not approved:
-        raise TypeError(_INVALID_DECISION)
-    comment = values.get("comment", "")
-    decided_at = values.get("decided_at")
-    if not isinstance(comment, str) or not isinstance(decided_at, str):
-        raise TypeError(_INVALID_DECISION)
+    comment = values.get("comment")
     return ApprovalDecision(
         approved=approved,
         status="approved" if approved else "denied",
-        comment=comment,
+        comment=comment if isinstance(comment, str) else "",
         decided_by=_decider(values.get("decided_by")),
-        decided_at=decided_at,
+        decided_at=_decided_at(values.get("decided_at")),
     )
 
 
@@ -259,12 +261,20 @@ def _is_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
 
 
 def _decider(value: object) -> DurableApprovalDecider | None:
-    if value is None:
+    if not _is_mapping(value):
         return None
-    if not _is_fields(value):
-        raise TypeError(_INVALID_DECISION)
     decider_id = value.get("id")
     email = value.get("email")
     if not isinstance(decider_id, str) or not isinstance(email, str):
-        raise TypeError(_INVALID_DECISION)
+        return None
     return DurableApprovalDecider(id=decider_id, email=email)
+
+
+def _decided_at(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        _ = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return value

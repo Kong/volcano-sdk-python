@@ -1495,6 +1495,36 @@ def test_a_denial_is_a_decision_rather_than_an_error(
     assert set(body) == {"execution_ref", "callback_id", "name", "title"}
 
 
+def test_a_decision_with_unreadable_details_still_resumes_the_execution(
+    registrations: Registrations,
+) -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        decision = ctx.wait_for_approval("ship-order", title="Ship?")
+        ctx.wait("after", "1s")
+        return decision_summary(decision)
+
+    decision = json.dumps(
+        {
+            "status": "denied",
+            "approved": True,
+            "comment": None,
+            "decided_by": {"id": "user-7"},
+            "decided_at": "soon",
+        }
+    ).encode()
+
+    _, result = decide_each(handler, registrations, 1, decision)
+
+    assert result == {
+        "approved": False,
+        "status": "denied",
+        "comment": "",
+        "decided_by": None,
+        "decided_at": None,
+    }
+
+
 def test_an_approval_nobody_decides_expires_instead_of_raising(
     registrations: Registrations,
 ) -> None:

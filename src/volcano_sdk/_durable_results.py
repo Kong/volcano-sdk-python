@@ -26,10 +26,12 @@ class ApprovalDecision:
     approved: bool
     status: Literal["approved", "denied", "expired"]
     comment: str = ""
-    # None when the approval expired, or when the deciding account was deleted
-    # before the decision reached the workflow.
+    # None when the approval expired, when the deciding account was deleted
+    # before the decision reached the workflow, or when the decision does not
+    # name a decider this SDK can read.
     decided_by: DurableApprovalDecider | None = None
-    # RFC 3339, as Volcano recorded it; None when the approval expired.
+    # RFC 3339, as Volcano recorded it; None when the approval expired or the
+    # decision carries no readable time.
     decided_at: str | None = None
 
 
