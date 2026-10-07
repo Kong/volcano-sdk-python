@@ -14,7 +14,7 @@ import threading
 from collections.abc import Mapping
 from contextlib import contextmanager
 from types import ModuleType, SimpleNamespace
-from typing import TYPE_CHECKING, TypeGuard, TypeVar, cast
+from typing import TYPE_CHECKING, TypeGuard, TypeVar
 
 import httpx
 import pytest
@@ -1746,25 +1746,10 @@ def test_a_missing_platform_api_url_fails_before_opening_a_callback(
 ) -> None:
     monkeypatch.delenv("VOLCANO_PLATFORM_API_URL")
     runtime = RecordingContext()
-    context = DurableContext(runtime, Engine(), "arn:execution")
+    context = DurableContext(runtime, Engine())
 
     with pytest.raises(RuntimeError, match="needs VOLCANO_PLATFORM_API_URL"):
         _ = context.wait_for_approval("ship-order", title="Ship?")
-    assert runtime.submitter is None
-
-
-@pytest.mark.usefixtures("registrations")
-def test_an_approval_needs_the_execution_reference() -> None:
-    runtime = RecordingContext()
-    context = DurableContext(runtime, Engine())
-
-    with pytest.raises(RuntimeError) as caught:
-        _ = context.wait_for_approval("ship-order", title="Ship?")
-
-    assert str(caught.value) == (
-        "wait_for_approval() needs the invocation's DurableExecutionArn, which "
-        "@durable reads from the event; call it from a handler wrapped with @durable"
-    )
     assert runtime.submitter is None
 
 
@@ -1773,7 +1758,7 @@ def test_wait_for_approval_forwards_its_name_timeout_and_submitter(
 ) -> None:
     runtime = RecordingContext()
     runtime.callback_result = decided().decode()
-    context = DurableContext(runtime, Engine(), "arn:execution")
+    context = DurableContext(runtime, Engine())
 
     decision = context.wait_for_approval("ship-order", title="Ship?", timeout="2h")
 
@@ -1807,7 +1792,7 @@ def test_wait_for_approval_forwards_its_name_timeout_and_submitter(
 def test_an_approval_without_a_timeout_lasts_as_long_as_the_execution() -> None:
     runtime = RecordingContext()
     runtime.callback_result = decided(approved=False).decode()
-    context = DurableContext(runtime, Engine(), "arn:execution")
+    context = DurableContext(runtime, Engine())
 
     decision = context.wait_for_approval("ship-order", title="Ship?")
 
@@ -1821,7 +1806,7 @@ def test_an_approval_without_a_timeout_lasts_as_long_as_the_execution() -> None:
 def test_only_a_callback_timeout_becomes_an_expired_decision() -> None:
     runtime = RecordingContext()
     runtime.callback_error = CallbackTimeoutError("timed out")
-    context = DurableContext(runtime, Engine(), "arn:execution")
+    context = DurableContext(runtime, Engine())
 
     expired = context.wait_for_approval("ship-order", title="Ship?", timeout=60)
 
@@ -1848,7 +1833,7 @@ def test_only_a_callback_timeout_becomes_an_expired_decision() -> None:
 def test_an_unusable_approval_timeout_is_refused(
     timeout: object, error: type[Exception], message: str
 ) -> None:
-    context = InspectedDurableContext(RecordingContext(), Engine(), "arn:execution")
+    context = InspectedDurableContext(RecordingContext(), Engine())
 
     with pytest.raises(error, match=message):
         _ = context.approval_timeout(timeout)
@@ -1863,7 +1848,7 @@ def test_an_approval_timeout_accepts_its_bounds() -> None:
 
 @pytest.mark.parametrize("duration", ["0s", 0, {"days": 367}, 31_622_401])
 def test_an_approval_timeout_is_bounded_like_a_wait(duration: object) -> None:
-    context = InspectedDurableContext(RecordingContext(), Engine(), "arn:execution")
+    context = InspectedDurableContext(RecordingContext(), Engine())
 
     with pytest.raises(TypeError) as waited:
         _ = context.wait_duration(duration)
@@ -1919,7 +1904,7 @@ def test_an_invalid_approval_is_refused_before_opening_a_callback(
     message: str,
 ) -> None:
     runtime = RecordingContext()
-    context = DurableContext(runtime, Engine(), "arn:execution")
+    context = DurableContext(runtime, Engine())
 
     with pytest.raises(error, match=message):
         _ = context.wait_for_approval(
@@ -1931,62 +1916,50 @@ def test_an_invalid_approval_is_refused_before_opening_a_callback(
 @pytest.mark.usefixtures("registrations")
 def test_a_non_string_title_is_refused_before_opening_a_callback() -> None:
     runtime = RecordingContext()
-    context = DurableContext(runtime, Engine(), "arn:execution")
+    context = DurableContext(runtime, Engine())
 
     with pytest.raises(TypeError, match="title must be a string"):
         non_string_approval_title(context)
     assert runtime.submitter is None
 
 
-def direct_execution(
-    func: Callable[[T, RuntimeContext], object], /
-) -> Callable[[object, object], object]:
-    """Run a handler straight against a recording context, as the runtime would.
-
-    Returns:
-        An invocation handler.
-    """
-
-    def handle(_event: object, _function_context: object) -> object:
-        runtime = RecordingContext()
-        runtime.callback_result = decided().decode()
-        return func(cast("T", {}), runtime)
-
-    return handle
-
-
-@pytest.mark.parametrize(
-    ("event", "expected"),
-    [
-        pytest.param({"DurableExecutionArn": "arn:mapped"}, "arn:mapped", id="mapping"),
-        pytest.param(
-            SimpleNamespace(durable_execution_arn="arn:object"),
-            "arn:object",
-            id="object",
-        ),
-        pytest.param({"DurableExecutionArn": ""}, None, id="empty"),
-        pytest.param({"DurableExecutionArn": 7}, None, id="not a string"),
-        pytest.param({}, None, id="absent"),
-        pytest.param(SimpleNamespace(), None, id="no attribute"),
-    ],
-)
-def test_the_execution_reference_is_read_from_the_invocation_event(
-    monkeypatch: pytest.MonkeyPatch,
-    registrations: Registrations,
-    event: object,
-    expected: str | None,
+def test_one_runtime_wrapper_serves_every_invocation_with_its_own_execution(
+    monkeypatch: pytest.MonkeyPatch, registrations: Registrations
 ) -> None:
     engine = Engine()
-    engine.durable_execution = direct_execution
+    wrap = engine.durable_execution
+    built: list[object] = []
+    invocations: list[object] = []
+
+    def build(
+        func: Callable[[T, RuntimeContext], object], /
+    ) -> Callable[[object, object], object]:
+        built.append(func)
+        run = wrap(func)
+
+        def invoke(event: object, function_context: object) -> object:
+            invocations.append(event)
+            return run(event, function_context)
+
+        return invoke
+
+    engine.durable_execution = build
     monkeypatch.setattr("volcano_sdk.durable_authoring.load_engine", lambda: engine)
 
     @durable
     def handler(_event: object, ctx: DurableContext) -> object:
         return ctx.wait_for_approval("ship-order", title="Ship?").status
 
-    if expected is None:
-        with pytest.raises(RuntimeError, match="DurableExecutionArn"):
-            _ = handler(event, None)
-        return
-    assert handler(event, None) == "approved"
-    assert registrations.bodies == []
+    first, _ = decide_each(handler, registrations, 1)
+    later = Registrations()
+    monkeypatch.setattr(
+        "volcano_sdk.durable_authoring.register_approval", later.register
+    )
+    second, _ = decide_each(handler, later, 1)
+
+    # Each execution suspends on its approval and resumes once decided.
+    assert len(invocations) == 4
+    assert len(built) == 1
+    assert first != second
+    assert [body["execution_ref"] for body in registrations.bodies] == [first]
+    assert [body["execution_ref"] for body in later.bodies] == [second]

@@ -26,14 +26,13 @@ python3.14.
 from __future__ import annotations
 
 import functools
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Generic,
     Never,
     TypeAlias,
-    TypeGuard,
     overload,
 )
 
@@ -121,10 +120,6 @@ _NO_TIMEOUT = (
 _INVALID_BRANCH = "a parallel branch is a callable, or a ParallelBranch"
 _INVALID_ITEMS = "map() requires a sequence of items"
 _INVALID_WAIT_ARGS = "wait() takes a name and a duration, or a duration alone"
-_MISSING_EXECUTION_REF = (
-    "wait_for_approval() needs the invocation's DurableExecutionArn, which "
-    "@durable reads from the event; call it from a handler wrapped with @durable"
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,19 +160,12 @@ class DurableContext:
     completes, when a person decides.
     """
 
-    __slots__: tuple[str, ...] = ("_context", "_engine", "_execution_ref", "log")
+    __slots__: tuple[str, ...] = ("_context", "_engine", "log")
 
-    def __init__(
-        self,
-        context: RuntimeContext,
-        engine: DurableEngine,
-        execution_ref: str | None = None,
-    ) -> None:
+    def __init__(self, context: RuntimeContext, engine: DurableEngine) -> None:
         """Wrap an engine context."""
         self._context: RuntimeContext = context
         self._engine: DurableEngine = engine
-        # Identifies the execution to Volcano when it registers an approval.
-        self._execution_ref: str | None = execution_ref
         # Logs, suppressed while an operation is being replayed.
         self.log: DurableLogger = context.logger
 
@@ -371,7 +359,7 @@ class DurableContext:
         return run_bare
 
     def _derive(self, context: RuntimeContext) -> DurableContext:
-        return DurableContext(context, self._engine, self._execution_ref)
+        return DurableContext(context, self._engine)
 
     def wait_for_approval(
         self,
@@ -396,25 +384,20 @@ class DurableContext:
         `approved`.
 
         The arguments, and the 64 KiB Volcano accepts for the whole approval,
-        are checked before the callback opens. Registering it is retried for
-        up to 30 seconds; a refusal raises the runtime's
+        are checked before the callback opens, as is `VOLCANO_PLATFORM_API_URL`:
+        without it the function is not running where Volcano can record the
+        approval, and the call raises `RuntimeError`. Registering it is retried
+        for up to 30 seconds; a refusal raises the runtime's
         `CallbackSubmitterError` with the SDK error's message.
 
         Returns:
             The decision, restored from its checkpoint during replay.
 
-        Raises:
-            RuntimeError: The function is not running where Volcano can record
-                the approval: `VOLCANO_PLATFORM_API_URL` is unset, or the
-                handler is not wrapped with `@durable`.
-
         """
         body = approval_body(name, title, description, details)
         seconds = None if timeout is None else self._approval_timeout(timeout)
         api_url = platform_api_url()
-        if self._execution_ref is None:
-            raise RuntimeError(_MISSING_EXECUTION_REF)
-        body["execution_ref"] = self._execution_ref
+        body["execution_ref"] = self._context.execution_context.durable_execution_arn
         check_size(body)
 
         # Runs inside the runtime's checkpointed submitter step, so a replay
@@ -486,42 +469,29 @@ def durable(
 def _wrap_durable(
     handler: Callable[[T, DurableContext], object], logger: object
 ) -> FunctionHandler:
-    # Wrapped on invocation, not here: resolving the engine is what fails when
-    # the runtime is absent, and a decorator that raises at import time would
-    # break a module that merely mentions a durable handler. Wrapped per
-    # invocation because the handler runs on the runtime's own thread, and the
-    # execution reference read from this invocation's event has to reach it.
+    # Wrapped on the first invocation, not here: resolving the engine is what
+    # fails when the runtime is absent, and a decorator that raises at import
+    # time would break a module that merely mentions a durable handler.
+    wrapped: list[FunctionHandler] = []
+
     # functools.wraps rather than copying two attributes: __qualname__,
     # __module__, __dict__ and __wrapped__ matter to inspect.unwrap and to a
     # traceback, and leaving them pointing at this closure makes the SDK's
     # wrapper the thing a user sees when their handler fails.
     @functools.wraps(handler)
     def invoke(event: object, function_context: object) -> object:
-        engine = load_engine()
-        execution_ref = _execution_ref(event)
+        if not wrapped:
+            engine = load_engine()
 
-        def run(input_value: T, context: RuntimeContext) -> object:
-            if logger is not None:
-                context.set_logger(logger)
-            return handler(input_value, DurableContext(context, engine, execution_ref))
+            def run(input_value: T, context: RuntimeContext) -> object:
+                if logger is not None:
+                    context.set_logger(logger)
+                return handler(input_value, DurableContext(context, engine))
 
-        return engine.durable_execution(run)(event, function_context)
+            wrapped.append(engine.durable_execution(run))
+        return wrapped[0](event, function_context)
 
     return invoke
-
-
-def _execution_ref(event: object) -> str | None:
-    # A deployed function receives the invocation as a mapping; the local test
-    # runner hands over its parsed input object instead.
-    if _is_event_mapping(event):
-        value = event.get("DurableExecutionArn")
-    else:
-        value = getattr(event, "durable_execution_arn", None)
-    return value if isinstance(value, str) and value else None
-
-
-def _is_event_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
-    return isinstance(value, Mapping)
 
 
 def _bounded_seconds(value: object, field_name: str) -> int:

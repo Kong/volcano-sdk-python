@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         DurableLogger,
         OperationScope,
         RuntimeBatchItem,
+        RuntimeExecution,
     )
 
 T = TypeVar("T")
@@ -98,12 +99,20 @@ class RecordedBatch(EmptyBatch[str]):
         return [self._error]
 
 
+@dataclass(frozen=True)
+class RecordedExecution:
+    """The execution metadata the runtime attaches to every context."""
+
+    durable_execution_arn: str
+
+
 class RecordingContext(RuntimeContext):
     """Implement the runtime context and capture its batch calls."""
 
     logger: DurableLogger = logging.getLogger(__name__)
 
-    def __init__(self) -> None:
+    def __init__(self, execution_arn: str = "arn:execution") -> None:
+        self.execution_context: RuntimeExecution = RecordedExecution(execution_arn)
         self.branches: list[object] | None = None
         self.name: str | None = None
         self.config: object = None

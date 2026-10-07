@@ -99,8 +99,16 @@ class RuntimeBatch(Protocol[T]):
     def throw_if_error(self) -> None: ...
 
 
+class RuntimeExecution(Protocol):
+    @property
+    def durable_execution_arn(self) -> str: ...
+
+
 class RuntimeContext(Protocol):
     logger: DurableLogger
+    # The same for the root context and every child, map, and parallel context
+    # the runtime derives from it.
+    execution_context: RuntimeExecution
 
     def step(
         self,
