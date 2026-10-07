@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -319,9 +320,21 @@ def _decider(value: object) -> DurableApprovalDecider | None:
     return DurableApprovalDecider(id=decider_id, email=email)
 
 
+# RFC 3339 date-time, the form Volcano writes. fromisoformat alone also takes a
+# bare date, a time without an offset, and other ISO 8601 shapes.
+_TIMESTAMP = re.compile(
+    (
+        r"\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3])(?::[0-5]\d){2}(?:\.\d+)?"
+        r"(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)"
+    ),
+    re.ASCII,
+)
+
+
 def _decided_at(value: object) -> str | None:
-    if not isinstance(value, str):
+    if not isinstance(value, str) or not _TIMESTAMP.fullmatch(value):
         return None
+    # It also refuses an impossible day, such as February 30.
     try:
         _ = datetime.fromisoformat(value)
     except ValueError:

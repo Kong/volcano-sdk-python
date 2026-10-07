@@ -839,10 +839,32 @@ def test_the_status_alone_decides(result: object, expected: ApprovalDecision) ->
             {"decided_at": None},
             id="epoch seconds",
         ),
+        *(
+            pytest.param(
+                complete_decision(decided_at=value), {"decided_at": None}, id=case
+            )
+            for case, value in [
+                ("bare year", "2026"),
+                ("date without a time", "2026-10-06"),
+                ("time without an offset", "2026-10-06T12:05:00"),
+                ("time without seconds", "2026-10-06T12:05Z"),
+                ("space for the T", "2026-10-06 12:05:00Z"),
+                ("basic format", "20261006T120500Z"),
+                ("impossible day", "2026-02-30T12:05:00Z"),
+                ("impossible hour", "2026-10-06T24:00:00Z"),
+                ("impossible month", "2026-13-06T12:05:00Z"),
+                ("leap second", "2026-10-06T23:59:60Z"),
+            ]
+        ),
         pytest.param(
             complete_decision(decided_at="2026-10-06T12:05:00.123456+02:00"),
             {"decided_at": "2026-10-06T12:05:00.123456+02:00"},
             id="offset time kept as sent",
+        ),
+        pytest.param(
+            complete_decision(decided_at="2028-02-29T12:05:00Z"),
+            {"decided_at": "2028-02-29T12:05:00Z"},
+            id="leap day kept",
         ),
         pytest.param(without("decided_by"), {"decided_by": None}, id="no decider"),
         pytest.param(
