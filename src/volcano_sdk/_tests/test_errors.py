@@ -13,6 +13,7 @@ from volcano_sdk.errors import (
     AuthenticationError,
     ConflictError,
     NotFoundError,
+    PermissionDeniedError,
     RateLimitedError,
     ServerError,
     SessionChangedError,
@@ -40,7 +41,7 @@ def client_for(handler: Callable[[httpx.Request], httpx.Response]) -> VolcanoCli
     [
         (400, ValidationError),
         (401, AuthenticationError),
-        (403, AuthenticationError),
+        (403, PermissionDeniedError),
         (404, NotFoundError),
         (409, ConflictError),
         (418, VolcanoError),

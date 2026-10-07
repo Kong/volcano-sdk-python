@@ -16,6 +16,7 @@ from .errors import (
     AuthenticationError,
     ConflictError,
     NotFoundError,
+    PermissionDeniedError,
     RateLimitedError,
     ValidationError,
     VolcanoError,
@@ -23,6 +24,7 @@ from .errors import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from datetime import datetime
 
     from ._generated.models.auth_link_o_auth_provider_provider import (
         AuthLinkOAuthProviderProvider,
@@ -42,7 +44,7 @@ if TYPE_CHECKING:
     from ._generated.models.refresh_o_auth_provider_token_provider import (
         RefreshOAuthProviderTokenProvider,
     )
-    from .models import DurableExecutionStatus, JSONValue
+    from .models import DurableApprovalStatus, DurableExecutionStatus, JSONValue
 
 
 HTTP_CREATED = 201
@@ -96,7 +98,7 @@ MALFORMED_OAUTH_API_RESPONSE = "Expected OAuth provider API response data"
 ERROR_TYPES_BY_STATUS: dict[int, type[VolcanoError]] = {
     400: ValidationError,
     401: AuthenticationError,
-    403: AuthenticationError,
+    403: PermissionDeniedError,
     HTTP_NOT_FOUND: NotFoundError,
     HTTP_CONFLICT: ConflictError,
     422: ValidationError,
@@ -157,6 +159,28 @@ class DurableExecutionListRequest:
     status: DurableExecutionStatus | None = None
     page: int | None = None
     limit: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DurableApprovalListRequest:
+    """Filters and paging for a durable approval listing."""
+
+    status: DurableApprovalStatus | None = None
+    function: str | None = None
+    execution_id: str | None = None
+    from_: datetime | None = None
+    to: datetime | None = None
+    page: int | None = None
+    limit: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DurableApprovalStatsRequest:
+    """The function filter and window for durable approval stats."""
+
+    function: str | None = None
+    from_: datetime | None = None
+    to: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)

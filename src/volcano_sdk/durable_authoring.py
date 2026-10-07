@@ -26,19 +26,27 @@ python3.14.
 from __future__ import annotations
 
 import functools
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Generic,
     Never,
     TypeAlias,
+    TypeGuard,
     overload,
 )
 
 from typing_extensions import TypeVar
 
 from ._callbacks import named_operation, operation_callable, require_callable
+from ._durable_approval_registration import (
+    EXPIRED,
+    approval_body,
+    approval_decision,
+    platform_api_url,
+    register_approval,
+)
 from ._durable_duration import to_seconds
 from ._durable_engine import DurableRuntimeMissingError, load_engine
 from ._durable_options import (
@@ -54,13 +62,16 @@ from ._durable_protocols import (
     OperationScope,
     RuntimeContext,
 )
-from ._durable_results import BatchFailure, BatchItem, BatchResult
+from ._durable_results import ApprovalDecision, BatchFailure, BatchItem, BatchResult
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from .models import JSONValue
+
 
 __all__ = [
+    "ApprovalDecision",
     "BatchFailure",
     "BatchItem",
     "BatchOptions",
@@ -109,6 +120,10 @@ _NO_TIMEOUT = (
 _INVALID_BRANCH = "a parallel branch is a callable, or a ParallelBranch"
 _INVALID_ITEMS = "map() requires a sequence of items"
 _INVALID_WAIT_ARGS = "wait() takes a name and a duration, or a duration alone"
+_MISSING_EXECUTION_REF = (
+    "wait_for_approval() needs the invocation's DurableExecutionArn, which "
+    "@durable reads from the event; call it from a handler wrapped with @durable"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,18 +159,24 @@ class DurableContext:
     the operations Volcano supports, in Volcano's vocabulary, and lets
     durations be written as `"30s"` rather than `Duration.from_seconds(30)`.
 
-    Callbacks are the deliberate omission. The engine can suspend on one, but
-    completing it is an AWS API call, and nothing in Volcano -- not the
-    function's own role, not the API -- can make it. Wait on your own state
-    with `wait_until` instead.
+    Raw callbacks are the deliberate omission: completing one takes a call
+    nothing in a project can make. `wait_for_approval` is the callback Volcano
+    completes, when a person decides.
     """
 
-    __slots__: tuple[str, ...] = ("_context", "_engine", "log")
+    __slots__: tuple[str, ...] = ("_context", "_engine", "_execution_ref", "log")
 
-    def __init__(self, context: RuntimeContext, engine: DurableEngine) -> None:
+    def __init__(
+        self,
+        context: RuntimeContext,
+        engine: DurableEngine,
+        execution_ref: str | None = None,
+    ) -> None:
         """Wrap an engine context."""
         self._context: RuntimeContext = context
         self._engine: DurableEngine = engine
+        # Identifies the execution to Volcano when it registers an approval.
+        self._execution_ref: str | None = execution_ref
         # Logs, suppressed while an operation is being replayed.
         self.log: DurableLogger = context.logger
 
@@ -224,10 +245,9 @@ class DurableContext:
 
         """
         child_name, child_func = named_operation(name, func, "child")
-        engine = self._engine
 
         def run(context: RuntimeContext) -> T:
-            return child_func(DurableContext(context, engine))
+            return child_func(self._derive(context))
 
         return self._context.run_in_child_context(run, child_name)
 
@@ -286,17 +306,16 @@ class DurableContext:
         # work per character rather than refuse.
         if isinstance(items, str):
             raise TypeError(_INVALID_ITEMS)
-        engine = self._engine
 
         def run(context: RuntimeContext, item: U, index: int, _all: list[U]) -> T:
-            return map_func(item, DurableContext(context, engine), index)
+            return map_func(item, self._derive(context), index)
 
         return BatchResult(
             self._context.map(
                 list(items),
                 run,
                 name,
-                engine.map_options(options),
+                self._engine.map_options(options),
             )
         )
 
@@ -335,21 +354,85 @@ class DurableContext:
             A named engine branch or a callable that wraps the engine context.
 
         """
-        engine = self._engine
         if isinstance(branch, ParallelBranch):
             named: Callable[[DurableContext], T] = branch.run
 
             def run_named(context: RuntimeContext) -> T:
-                return named(DurableContext(context, engine))
+                return named(self._derive(context))
 
-            return engine.named_branch(run_named, branch.name)
+            return self._engine.named_branch(run_named, branch.name)
         require_callable(branch, _INVALID_BRANCH)
         bare: Callable[[DurableContext], T] = branch
 
         def run_bare(context: RuntimeContext) -> object:
-            return bare(DurableContext(context, engine))
+            return bare(self._derive(context))
 
         return run_bare
+
+    def _derive(self, context: RuntimeContext) -> DurableContext:
+        return DurableContext(context, self._engine, self._execution_ref)
+
+    def wait_for_approval(
+        self,
+        name: str,
+        *,
+        title: str,
+        description: str | None = None,
+        details: JSONValue = None,
+        timeout: Duration | None = None,
+    ) -> ApprovalDecision:
+        """Suspend until a person approves or denies, or the timeout passes.
+
+        Volcano records the approval under the execution, where the project's
+        owners see it in the dashboard, the CLI, or `client.durable.approvals`,
+        and resumes the execution with their decision. It is not running, and
+        not billed, while it waits. `title`, `description`, and `details` are
+        what the person deciding is shown.
+
+        Without a timeout the approval lasts as long as the execution. An
+        approval nobody decides in time resumes with an `expired` decision
+        rather than raising, and a denial is a decision too: branch on
+        `approved`.
+
+        Returns:
+            The decision, restored from its checkpoint during replay.
+
+        Raises:
+            RuntimeError: The function is not running where Volcano can record
+                the approval: `VOLCANO_PLATFORM_API_URL` is unset, or the
+                handler is not wrapped with `@durable`.
+
+        """
+        body = approval_body(name, title, description, details)
+        seconds = None if timeout is None else self._approval_timeout(timeout)
+        api_url = platform_api_url()
+        if self._execution_ref is None:
+            raise RuntimeError(_MISSING_EXECUTION_REF)
+        body["execution_ref"] = self._execution_ref
+
+        # Runs inside the runtime's checkpointed submitter step, so a replay
+        # does not register the approval again.
+        def submit(callback_id: str, _context: object) -> None:
+            register_approval(api_url, {**body, "callback_id": callback_id})
+
+        try:
+            result = self._context.wait_for_callback(
+                submit, name, self._engine.callback_options(seconds)
+            )
+        except self._engine.callback_timeout_error:
+            return EXPIRED
+        return approval_decision(result)
+
+    @staticmethod
+    def _approval_timeout(value: object) -> int:
+        seconds = to_seconds(value, "timeout")
+        if seconds < _MIN_WAIT_SECONDS:
+            message = f"timeout must be at least {_MIN_WAIT_SECONDS} second"
+            raise ValueError(message)
+        if seconds > _MAX_WAIT_SECONDS:
+            message = f"timeout must be at most {_MAX_WAIT_SECONDS} seconds (366 days)"
+            raise ValueError(message)
+        return seconds
 
     def _wait_duration(self, value: object) -> object:
         seconds = to_seconds(value, "wait")
@@ -410,29 +493,42 @@ def durable(
 def _wrap_durable(
     handler: Callable[[T, DurableContext], object], logger: object
 ) -> FunctionHandler:
-    # Wrapped on the first invocation, not here: resolving the engine is what
-    # fails when the runtime is absent, and a decorator that raises at import
-    # time would break a module that merely mentions a durable handler.
-    wrapped: list[FunctionHandler] = []
-
+    # Wrapped on invocation, not here: resolving the engine is what fails when
+    # the runtime is absent, and a decorator that raises at import time would
+    # break a module that merely mentions a durable handler. Wrapped per
+    # invocation because the handler runs on the runtime's own thread, and the
+    # execution reference read from this invocation's event has to reach it.
     # functools.wraps rather than copying two attributes: __qualname__,
     # __module__, __dict__ and __wrapped__ matter to inspect.unwrap and to a
     # traceback, and leaving them pointing at this closure makes the SDK's
     # wrapper the thing a user sees when their handler fails.
     @functools.wraps(handler)
     def invoke(event: object, function_context: object) -> object:
-        if not wrapped:
-            engine = load_engine()
+        engine = load_engine()
+        execution_ref = _execution_ref(event)
 
-            def run(input_value: T, context: RuntimeContext) -> object:
-                if logger is not None:
-                    context.set_logger(logger)
-                return handler(input_value, DurableContext(context, engine))
+        def run(input_value: T, context: RuntimeContext) -> object:
+            if logger is not None:
+                context.set_logger(logger)
+            return handler(input_value, DurableContext(context, engine, execution_ref))
 
-            wrapped.append(engine.durable_execution(run))
-        return wrapped[0](event, function_context)
+        return engine.durable_execution(run)(event, function_context)
 
     return invoke
+
+
+def _execution_ref(event: object) -> str | None:
+    # A deployed function receives the invocation as a mapping; the local test
+    # runner hands over its parsed input object instead.
+    if _is_event_mapping(event):
+        value = event.get("DurableExecutionArn")
+    else:
+        value = getattr(event, "durable_execution_arn", None)
+    return value if isinstance(value, str) and value else None
+
+
+def _is_event_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
+    return isinstance(value, Mapping)
 
 
 def _validate_wait_options(options: WaitUntilOptions[T]) -> None:

@@ -3,6 +3,7 @@
 from ._transport_auth_account import AuthAccountTransport
 from ._transport_auth_identity import AuthIdentityTransport
 from ._transport_database import DatabaseTransport
+from ._transport_durable_approvals import DurableApprovalTransport
 from ._transport_execution import ExecutionTransport
 from ._transport_locks import LocksTransport
 from ._transport_response import invoke, invoke_async, response_payload
@@ -44,6 +45,8 @@ from ._transport_types import (
     AuthSignUpTransport,
     AuthUnlinkOAuthProviderTransport,
     AuthUpdateUserTransport,
+    DurableApprovalListRequest,
+    DurableApprovalStatsRequest,
     DurableExecutionListRequest,
     StorageUploadPartRequest,
     StorageUploadSessionReference,
@@ -88,6 +91,8 @@ __all__ = [
     "AuthSignUpTransport",
     "AuthUnlinkOAuthProviderTransport",
     "AuthUpdateUserTransport",
+    "DurableApprovalListRequest",
+    "DurableApprovalStatsRequest",
     "DurableExecutionListRequest",
     "GeneratedTransport",
     "StorageUploadPartRequest",
@@ -107,6 +112,7 @@ class GeneratedTransport(
     DatabaseTransport,
     StorageTransport,
     ExecutionTransport,
+    DurableApprovalTransport,
     LocksTransport,
     SandboxHTTPTransport,
 ):

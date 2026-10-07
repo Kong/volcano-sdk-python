@@ -128,7 +128,99 @@ functions:
     kind: durable
 ```
 
-Volcano records each context operation. Resumed executions replay recorded results instead of repeating completed work. Keep changing decisions inside `ctx.step()`. Use `ctx.wait_until()` to poll application state. Volcano does not expose externally completed callbacks.
+Volcano records each context operation. Resumed executions replay recorded results instead of repeating completed work. Keep changing decisions inside `ctx.step()`. Use `ctx.wait_until()` to poll application state.
+
+## Wait for an approval
+
+`ctx.wait_for_approval()` pauses the execution until a person approves or denies it from the dashboard, the CLI, or the [owner client](#decide-approvals-from-a-backend):
+
+```python
+from volcano_sdk.durable_authoring import durable
+
+
+@durable
+def handler(event, ctx):
+    order = ctx.step("load-order", lambda scope: load_order(event["order_id"]))
+
+    decision = ctx.wait_for_approval(
+        "ship-order",
+        title=f"Ship order {order['id']}?",
+        description="Orders over $500 need a second look.",
+        details={"order_id": order["id"], "total": order["total"]},
+        timeout="24h",
+    )
+
+    if not decision.approved:
+        ctx.step("release-stock", lambda scope: release_stock(order["id"]))
+        return {"shipped": False, "status": decision.status}
+
+    ctx.step("ship", lambda scope: ship_order(order["id"]))
+    return {"shipped": True, "comment": decision.comment}
+```
+
+| Argument | Description |
+|---|---|
+| `name` | Operation name, up to 255 characters. Filter and search approvals by it. |
+| `title` | Required. What the approver is asked, up to 200 characters. |
+| `description` | Optional context, up to 4000 characters. |
+| `details` | Optional JSON value shown with the approval. |
+| `timeout` | Optional duration in the `ctx.wait()` format, from one second to 366 days. Without it, the approval stays open as long as the execution runs. |
+
+The call returns an immutable `ApprovalDecision`:
+
+| Field | Approved | Denied | Timed out |
+|---|---|---|---|
+| `approved` | `True` | `False` | `False` |
+| `status` | `"approved"` | `"denied"` | `"expired"` |
+| `comment` | The approver's comment, or `""` | The approver's comment, or `""` | `""` |
+| `decided_by` | `DurableApprovalDecider` with `id` and `email`, or `None` | Same as approved | `None` |
+| `decided_at` | RFC 3339 timestamp | RFC 3339 timestamp | `None` |
+
+A denial or a timeout is a value to branch on, not an exception. The execution costs nothing while it waits, and a resumed execution replays the recorded decision without asking again.
+
+Volcano sets `VOLCANO_PLATFORM_API_URL` on deployed and local durable functions. The function sends the approval there without a credential. Volcano accepts it only from the execution that is waiting. Transient failures are retried for about 30 seconds. If Volcano refuses the approval, the execution fails with the SDK error. Calling `wait_for_approval()` without `VOLCANO_PLATFORM_API_URL`, or from a handler that is not decorated with `@durable`, raises `RuntimeError`.
+
+## Decide approvals from a backend
+
+`client.durable.approvals` lists, reads, and decides a project's approvals:
+
+```python
+import os
+from datetime import UTC, datetime, timedelta
+
+from volcano_sdk import ConflictError, VolcanoClient
+
+owner_client = VolcanoClient(
+    anon_key=os.environ["VOLCANO_ANON_KEY"],
+    api_url=os.environ.get("VOLCANO_API_URL", "https://api.volcano.dev"),
+    access_token=os.environ["VOLCANO_PLATFORM_TOKEN"],
+)
+approvals = owner_client.durable.approvals
+
+page = approvals.list(project_id, status="pending", function="charge-order")
+for approval in page.approvals:
+    print(approval.id, approval.title, approval.details, approval.expires_at)
+
+try:
+    approval = approvals.approve(project_id, approval_id, comment="Address checked")
+except ConflictError as error:
+    print(error.code)  # approval_decided, approval_expired, or approval_cancelled
+
+stats = approvals.stats(project_id, from_=datetime.now(UTC) - timedelta(days=7))
+print(stats.counts.pending, stats.approval_rate, stats.median_seconds_to_decision)
+```
+
+| Method | Returns |
+|---|---|
+| `list(project_id, status=..., function=..., execution_id=..., from_=..., to=..., page=..., limit=...)` | `DurableApprovalPage` with `approvals`, `page`, `limit`, `total`, and `has_more`. |
+| `get(project_id, approval_id)` | `DurableApproval`. |
+| `stats(project_id, function=..., from_=..., to=...)` | `DurableApprovalStats` with counts by status, decision times, and per-function and daily counts. |
+| `approve(project_id, approval_id, comment=None)` | The decided `DurableApproval`. |
+| `deny(project_id, approval_id, comment=None)` | The decided `DurableApproval`. |
+
+`status` is one of `pending`, `approved`, `denied`, `expired`, or `cancelled`. An approval is `cancelled` when its execution ends first. `function` takes a durable function's id or name. `from_` and `to` must be timezone-aware datetimes. Stats default to the last 30 days and cover at most 366 days. A comment is up to 2000 characters.
+
+Read approvals with the project owner's platform user token or a project access token. Only a person decides: `approve()` and `deny()` need a platform user token, and a project access token raises `PermissionDeniedError`. Repeating the same decision returns the approval unchanged. A conflicting decision, or deciding an expired or cancelled approval, raises `ConflictError`. An unknown approval raises `NotFoundError`. `PermissionDeniedError` subclasses `AuthenticationError`, so existing handlers still catch it.
 
 ## Run durable functions locally
 
@@ -141,5 +233,7 @@ volcano durable start charge-order --input '{"order_id":"order-9"}'
 ```
 
 Local waits resolve immediately by default while preserving checkpoint and replay behavior. Set `LOCAL_DURABLE_REAL_TIME=true` before `volcano start` when wait timing must match the deployed function. Local executions persist across `volcano stop` and `volcano start`.
+
+Approvals work the same locally. Decide one with `volcano durable approvals approve` or `volcano durable approvals deny`, or point the owner client at the local server. Approval timeouts run in real time.
 
 Running a decorated handler directly in a Python process still needs the optional test runtime: `python -m pip install 'volcano-sdk-python[durable]'`.

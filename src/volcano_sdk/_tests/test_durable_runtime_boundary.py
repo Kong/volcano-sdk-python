@@ -10,6 +10,7 @@ import pytest
 
 from volcano_sdk._durable_modules import (
     load_config,
+    load_exceptions,
     load_retries,
     load_root,
     load_waits,
@@ -25,6 +26,13 @@ if TYPE_CHECKING:
         (
             load_config,
             "aws_durable_execution_sdk_python.config does not provide ConfigModule",
+        ),
+        (
+            load_exceptions,
+            (
+                "aws_durable_execution_sdk_python.exceptions does not provide "
+                "ExceptionsModule"
+            ),
         ),
         (
             load_retries,

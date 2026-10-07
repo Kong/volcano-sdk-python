@@ -7,6 +7,8 @@ if TYPE_CHECKING:
     from typing import BinaryIO
 
     from volcano_sdk.auth import Auth
+    from volcano_sdk.durable import DurableApprovals
+    from volcano_sdk.durable_authoring import DurableContext
     from volcano_sdk.logs import Logs
     from volcano_sdk.models import (
         JSONValue,
@@ -181,3 +183,22 @@ def unsupported_hosted_auth_action(auth: Auth) -> None:
         action="device",  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
         state="state-value",
     )
+
+
+def non_string_approval_comment(approvals: DurableApprovals, approval_id: str) -> None:
+    project_id = "00000000-0000-4000-8000-000000000001"
+    _ = approvals.approve(project_id, approval_id, comment=5)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+
+
+def unknown_approval_status(approvals: DurableApprovals) -> None:
+    project_id = "00000000-0000-4000-8000-000000000001"
+    _ = approvals.list(project_id, status="waiting")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+
+
+def non_string_approval_title(context: DurableContext) -> None:
+    _ = context.wait_for_approval("ship", title=None)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+
+
+def unknown_approval_option(approvals: DurableApprovals) -> None:
+    project_id = "00000000-0000-4000-8000-000000000001"
+    approvals.stats(project_id, state="pending", sort="asc")  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]

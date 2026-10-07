@@ -1,4 +1,4 @@
-"""A typed runtime context that records batch calls without scheduling them."""
+"""A typed runtime context that records calls without scheduling them."""
 
 from __future__ import annotations
 
@@ -109,6 +109,9 @@ class RecordingContext(RuntimeContext):
         self.config: object = None
         self.map_items: list[object] | None = None
         self.map_result: object = None
+        self.submitter: Callable[[str, object], None] | None = None
+        self.callback_result: object = None
+        self.callback_error: Exception | None = None
 
     @override
     def step(
@@ -172,6 +175,20 @@ class RecordingContext(RuntimeContext):
         self.name = name
         self.config = config
         return EmptyBatch[T]()
+
+    @override
+    def wait_for_callback(
+        self,
+        submitter: Callable[[str, object], None],
+        name: str | None,
+        config: object,
+    ) -> object:
+        self.name = name
+        self.config = config
+        self.submitter = submitter
+        if self.callback_error is not None:
+            raise self.callback_error
+        return self.callback_result
 
     @override
     def set_logger(self, logger: object) -> None:

@@ -39,6 +39,9 @@ class InspectedDurableContext(DurableContext):
     def wait_duration(self, value: object) -> object:
         return self._wait_duration(value)
 
+    def approval_timeout(self, value: object) -> int:
+        return self._approval_timeout(value)
+
 
 class ClosingScheduler(Scheduler):
     """Close the upstream scheduler loop after its worker thread stops."""

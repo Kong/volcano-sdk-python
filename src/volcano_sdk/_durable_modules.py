@@ -18,7 +18,9 @@ if TYPE_CHECKING:
         ParallelConfig,
         StepConfig,
         StepSemantics,
+        WaitForCallbackConfig,
     )
+    from aws_durable_execution_sdk_python.exceptions import CallbackTimeoutError
     from aws_durable_execution_sdk_python.retries import (
         RetryDecision,
         RetryStrategyConfig,
@@ -87,6 +89,14 @@ class ConfigModule(Protocol):
     ParallelConfig: type[ParallelConfig]
     CompletionConfig: type[CompletionConfig]
     ParallelBranch: type[ParallelBranch[object]]
+    WaitForCallbackConfig: type[WaitForCallbackConfig]
+
+
+@runtime_checkable
+class ExceptionsModule(Protocol):
+    """Runtime errors the authoring adapter turns into values."""
+
+    CallbackTimeoutError: type[CallbackTimeoutError]
 
 
 @runtime_checkable
@@ -164,6 +174,26 @@ def load_waits() -> WaitsModule:
     module = _import_module("aws_durable_execution_sdk_python.waits")
     if not isinstance(module, WaitsModule):
         message = "aws_durable_execution_sdk_python.waits does not provide WaitsModule"
+        raise TypeError(message)
+    return module
+
+
+def load_exceptions() -> ExceptionsModule:
+    """Validate the optional runtime's exceptions module.
+
+    Returns:
+        The validated module interface.
+
+    Raises:
+        TypeError: The installed runtime lacks a required public export.
+
+    """
+    module = _import_module("aws_durable_execution_sdk_python.exceptions")
+    if not isinstance(module, ExceptionsModule):
+        message = (
+            "aws_durable_execution_sdk_python.exceptions does not provide "
+            "ExceptionsModule"
+        )
         raise TypeError(message)
     return module
 
