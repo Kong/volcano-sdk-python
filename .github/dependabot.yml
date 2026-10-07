@@ -11,6 +11,9 @@ updates:
     cooldown:
       default-days: 5
       semver-major-days: 14
+    # Keep a range that already allows the new version, so in-range runtime
+    # bumps change only uv.lock and published lower bounds stay put.
+    versioning-strategy: "increase-if-necessary"
     labels: []
     # `[project] dependencies` use `fix` so Release Please cuts a release.
     # Dependency groups, the build backend, and the `durable` extra count as
@@ -19,6 +22,7 @@ updates:
       prefix: "fix"
       prefix-development: "chore"
       include: "scope"
+    # Groups list their exclusions explicitly so no dependency belongs to two.
     groups:
       # openapi-python-client generates src/volcano_sdk/_generated. If a bump
       # changes that output, CI's `poe generated` fails until the client is
@@ -29,12 +33,15 @@ updates:
         update-types:
           - "minor"
           - "patch"
-      # centrifuge-python gets its own pull request because every update needs
-      # the checks in maintainers/realtime-compatibility.md.
+      # centrifuge-python and httpx get their own pull requests: every
+      # centrifuge-python update needs the checks in
+      # maintainers/realtime-compatibility.md, and httpx is capped below its
+      # next 0.x release on purpose.
       uv-production:
         dependency-type: "production"
         exclude-patterns:
           - "centrifuge-python"
+          - "httpx"
         update-types:
           - "minor"
           - "patch"
@@ -44,6 +51,7 @@ updates:
       uv-development:
         dependency-type: "development"
         exclude-patterns:
+          - "openapi-python-client"
           - "hatchling"
           - "ruff"
         update-types:

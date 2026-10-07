@@ -28,20 +28,24 @@ releases them. Dependency groups, the build backend and the `durable` extra use
 ships, edit the squash commit title to `fix(deps): ...`:
 
 - An update that changes the `durable` extra's range.
-- An `openapi-codegen` update whose regenerated client differs. If
-  `poe generated` fails, run `uv run python scripts/generate_openapi.py` and
-  commit the result to the update's PR.
+- An openapi-python-client or ruff update whose regenerated client differs
+  (ruff runs as a generator post-hook). If `poe generated` fails, run
+  `uv run python scripts/generate_openapi.py` and commit the result to the
+  update's PR.
 
 These updates arrive in their own pull requests because each needs a change
 Dependabot does not make:
 
-- ruff: update `tool.ruff.required-version` and
-  `maintainers/quality-policy.lock.json` to match.
+- ruff: update `tool.ruff.required-version` to match.
 - hatchling: update the build constraints as described in [Build inputs](#build-inputs).
 - centrifuge-python: run the checks in [realtime-compatibility.md](realtime-compatibility.md).
+- httpx: review the change before Dependabot widens the `<0.29.0` cap.
 
 When a grouped update bumps basedpyright, also update its pin in the tox
-`package-types` environment and the policy lock.
+`package-types` environment.
+
+The ruff, hatchling and basedpyright pins are also recorded in the
+[policy lock](quality-policy.md), so update the lock and its digest with them.
 
 ## Before publication
 
