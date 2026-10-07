@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import base64
 import json
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
 from contextlib import suppress
-from threading import Event, Thread, current_thread
+from threading import Event, current_thread
 from typing import TYPE_CHECKING
 
 import httpx
@@ -15,6 +15,7 @@ from volcano_sdk._transport import GeneratedTransport
 from volcano_sdk.errors import VolcanoError
 
 from .client_inspection import InspectedClient
+from .thread_support import worker_pool
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -238,8 +239,8 @@ def test_sign_out_joins_a_refresh_that_already_owns_the_rotating_token(
 
     monkeypatch.setattr(client, "_capture_session_binding", capture_and_signal)
     with (
-        ThreadPoolExecutor(thread_name_prefix="refresh") as refresher,
-        ThreadPoolExecutor(thread_name_prefix="logout") as logout,
+        worker_pool(thread_name_prefix="refresh") as refresher,
+        worker_pool(thread_name_prefix="logout") as logout,
     ):
         refreshing = refresher.submit(client.auth.refresh_session)
         assert refresh_entered.wait(2)
@@ -312,7 +313,7 @@ def test_sign_out_surfaces_the_refresh_it_joined_without_claiming_replacement(
         original(binding, preceding, notifications, pending=pending)
 
     monkeypatch.setattr(client.requests, "sign_out_captured", notify_claim)
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with worker_pool(max_workers=2) as pool:
         refreshing = pool.submit(client.auth.refresh_session)
         assert entered.wait(2)
         signing_out = pool.submit(client.auth.sign_out)
@@ -357,7 +358,7 @@ def test_rejection_between_logout_capture_and_claim_is_not_replacement(
             assert finished.wait(2)
         return binding
 
-    with ThreadPoolExecutor(max_workers=1) as pool:
+    with worker_pool(max_workers=1) as pool:
         refreshing = pool.submit(client.auth.refresh_session)
         refreshing.add_done_callback(lambda _: finished.set())
         assert entered.wait(2)
@@ -447,7 +448,7 @@ def test_concurrent_sign_out_shares_revocation_outcome(
         captured.set()
         return binding
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with worker_pool(max_workers=2) as pool:
         first = pool.submit(client.auth.sign_out)
         assert entered.wait(2)
         monkeypatch.setattr(client, "_capture_session_binding", notify_capture)
@@ -490,7 +491,7 @@ def test_sign_out_joins_an_outcome_after_local_clearing(
             assert release.wait(2)
 
     monkeypatch.setattr(client.requests, "sign_out_captured", pause_after_clear)
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with worker_pool(max_workers=2) as pool:
         first = pool.submit(client.auth.sign_out)
         assert cleared.wait(2)
         assert owner.signing_out is not None
@@ -583,7 +584,7 @@ def test_deletion_does_not_retain_a_later_refresh_result() -> None:
 
     client = client_for(handle)
     owner = client.capture_session_binding()[1]
-    with ThreadPoolExecutor(max_workers=1) as pool:
+    with worker_pool(max_workers=1) as pool:
         refreshing = pool.submit(client.auth.refresh_session)
         try:
             assert entered.wait(2)
@@ -618,7 +619,7 @@ def test_local_clear_before_refresh_claim_prevents_io(
         return claim(operation)
 
     monkeypatch.setattr(owner, "refresh", delayed_claim)
-    with ThreadPoolExecutor(max_workers=1) as pool:
+    with worker_pool(max_workers=1) as pool:
         refreshing = pool.submit(client.auth.refresh_session)
         try:
             assert entered.wait(2)
@@ -631,27 +632,6 @@ def test_local_clear_before_refresh_claim_prevents_io(
     assert len(requests) == 1
     assert requests[0].url.path == f"/auth/user/sessions/{SESSION_A}"
     assert client.current_session is None
-
-
-def _refresh_until_session_changes(
-    client: InspectedClient, finished: Event, outcomes: list[str]
-) -> None:
-    try:
-        _ = client.auth.refresh_session()
-    except SessionChangedError:
-        outcomes.append("changed")
-    finally:
-        finished.set()
-
-
-def _sign_out_and_signal(
-    client: InspectedClient, finished: Event, outcomes: list[str]
-) -> None:
-    try:
-        client.auth.sign_out()
-        outcomes.append("signed_out")
-    finally:
-        finished.set()
 
 
 @pytest.mark.parametrize("action", ["sign_out", "replace"])
@@ -674,17 +654,12 @@ def test_refresh_rechecks_ownership_after_notifying_subscribers(action: str) -> 
                 _ = client.auth.set_session(replacement)
 
     _ = client.auth.on_auth_state_change(on_change)
-    finished = Event()
-    outcomes: list[str] = []
-    worker = Thread(
-        target=_refresh_until_session_changes,
-        args=(client, finished, outcomes),
-        daemon=True,
-    )
-    worker.start()
-    assert finished.wait(2), "refresh callback blocked the session owner"
-    worker.join(timeout=0)
-    assert outcomes == ["changed"]
+    with worker_pool(max_workers=1) as pool:
+        refreshing = pool.submit(client.auth.refresh_session)
+        finished, _ = wait([refreshing], timeout=2)
+        assert finished, "refresh callback blocked the session owner"
+        with pytest.raises(SessionChangedError):
+            _ = refreshing.result(timeout=0)
     assert client.current_session == (None if action == "sign_out" else replacement)
 
 
@@ -702,17 +677,11 @@ def test_signed_out_notification_can_join_completed_sign_out() -> None:
             client.auth.sign_out()
 
     _ = client.auth.on_auth_state_change(join_sign_out)
-    finished = Event()
-    outcomes: list[str] = []
-    worker = Thread(
-        target=_sign_out_and_signal,
-        args=(client, finished, outcomes),
-        daemon=True,
-    )
-    worker.start()
-    assert finished.wait(2), "sign-out notification blocked the session owner"
-    worker.join(timeout=0)
-    assert outcomes == ["signed_out"]
+    with worker_pool(max_workers=1) as pool:
+        signing_out = pool.submit(client.auth.sign_out)
+        finished, _ = wait([signing_out], timeout=2)
+        assert finished, "sign-out notification blocked the session owner"
+        assert signing_out.result(timeout=0) is None
     assert client.current_session is None
     assert [request.url.path for request in requests] == [
         f"/auth/user/sessions/{SESSION_A}"
