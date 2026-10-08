@@ -264,6 +264,24 @@ outcome it could not determine — as finished. `stop()` is accepted rather than
 awaited: what it returns is the execution read back after asking, often still
 `running`, so poll `get()` to see it reach `stopped`. Repeating a stop is safe.
 
+`durable.approvals` reads and decides the approvals a durable function waits on:
+
+```python
+approvals = owner_client.durable.approvals
+page = approvals.list(project_id, status="pending", function="order-pipeline")
+approval = approvals.approve(project_id, page.approvals[0].id, comment="Looks right")
+stats = approvals.stats(project_id)
+```
+
+`list()`, `get()` and `stats()` accept the project owner's platform user token or
+a project access token. `approve()` and `deny()` are for a person: a project
+access token raises `PermissionDeniedError`, a subclass of `AuthenticationError`.
+Repeating the same decision returns the approval unchanged; a conflicting one, or
+deciding an approval that expired or whose execution ended, raises
+`ConflictError` with `code` set to `approval_decided`, `approval_expired`, or
+`approval_cancelled`. See the
+[functions guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/functions.md#decide-approvals-from-a-backend).
+
 ## Write a durable function
 
 `volcano_sdk.durable_authoring` is what the durable function itself is written
@@ -332,6 +350,7 @@ the clock or a random value.
 | `ctx.step(name, fn, retry=..., at_most_once=...)` | Runs one atomic operation and records its result. `retry=False` fails on the first error; `RetryOptions` sets attempts and backoff. |
 | `ctx.wait(name, duration)` | Suspends the execution. `"30s"`, `"2h"`, `"1m30s"`, a whole number of seconds, or `{"hours": 2}`. |
 | `ctx.wait_until(check, options, name=None)` | Polls your own state until `options.until` holds, suspending between checks. `options.initial_state` is required. |
+| `ctx.wait_for_approval(name, title=..., description=None, details=None, timeout=None)` | Suspends until a person approves or denies, and returns an `ApprovalDecision`. A timeout returns `status="expired"` rather than raising. |
 | `ctx.map(items, fn, name=None, options=None)` | Runs the same work over every item, each in its own child context. |
 | `ctx.parallel(branches, name=None, options=None)` | Runs independent branches at the same time. |
 | `ctx.child(name, fn)` | Groups operations under one recorded context. |
@@ -372,8 +391,30 @@ volcano durable start order-pipeline --input '{"order_id":"order-9"}'
 Local waits resolve immediately by default while preserving checkpoint and replay
 behavior. Set `LOCAL_DURABLE_REAL_TIME=true` before `volcano start` when wait
 timing must match the deployed function. Local executions persist across
-`volcano stop` and `volcano start`. Volcano does not expose externally completed
-callbacks; use `ctx.wait_until` to poll application state instead.
+`volcano stop` and `volcano start`.
+
+`ctx.wait_for_approval` registers the approval with Volcano and suspends until it
+is decided, works the same locally, and replays the recorded decision on resume.
+A denial or timeout is a value to branch on:
+
+```python
+decision = ctx.wait_for_approval(
+    "ship-order",
+    title=f"Ship order {event['order_id']}?",
+    details={"total": event["total"]},
+    timeout="24h",
+)
+if not decision.approved:
+    return {"shipped": False, "status": decision.status}
+```
+
+`decision` carries `approved`, `status` (`approved`, `denied`, or `expired`),
+`comment`, `decided_by` (`id` and `email`, or `None`), and `decided_at`. Volcano
+sets `VOLCANO_PLATFORM_API_URL` on durable functions; without it the call raises
+`RuntimeError`. The function retries registering the approval for up to 30
+seconds. If Volcano refuses it, the call raises the durable runtime's
+`CallbackSubmitterError` with the SDK error's message. See the
+[functions guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/functions.md#wait-for-an-approval).
 
 `logs.search()` returns an immutable page of retained runtime or deployment log
 events. Pass `next_cursor` back as `cursor` to continue a search. `logs.activity()`

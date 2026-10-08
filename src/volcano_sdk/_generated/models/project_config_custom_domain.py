@@ -25,7 +25,7 @@ T = TypeVar("T", bound="ProjectConfigCustomDomain")
 
 @_attrs_define
 class ProjectConfigCustomDomain:
-    """ Custom domain with managed or BYOC TLS (SUPERAGENT plan). `tls` is required
+    """ Custom domain with managed or BYOC TLS. `tls` is required
     when the domain is first created and optional afterwards. For an existing
     domain, omitting `tls` or sending only `tls.mode` keeps the stored
     certificate; new BYOC material for the same domain rotates the

@@ -1,4 +1,4 @@
-"""A typed runtime context that records batch calls without scheduling them."""
+"""A typed runtime context that records calls without scheduling them."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         DurableLogger,
         OperationScope,
         RuntimeBatchItem,
+        RuntimeExecution,
     )
 
 T = TypeVar("T")
@@ -98,17 +99,28 @@ class RecordedBatch(EmptyBatch[str]):
         return [self._error]
 
 
+@dataclass(frozen=True)
+class RecordedExecution:
+    """The execution metadata the runtime attaches to every context."""
+
+    durable_execution_arn: str
+
+
 class RecordingContext(RuntimeContext):
     """Implement the runtime context and capture its batch calls."""
 
     logger: DurableLogger = logging.getLogger(__name__)
 
-    def __init__(self) -> None:
+    def __init__(self, execution_arn: str = "arn:execution") -> None:
+        self.execution_context: RuntimeExecution = RecordedExecution(execution_arn)
         self.branches: list[object] | None = None
         self.name: str | None = None
         self.config: object = None
         self.map_items: list[object] | None = None
         self.map_result: object = None
+        self.submitter: Callable[[str, object], None] | None = None
+        self.callback_result: object = None
+        self.callback_error: Exception | None = None
 
     @override
     def step(
@@ -172,6 +184,20 @@ class RecordingContext(RuntimeContext):
         self.name = name
         self.config = config
         return EmptyBatch[T]()
+
+    @override
+    def wait_for_callback(
+        self,
+        submitter: Callable[[str, object], None],
+        name: str | None,
+        config: object,
+    ) -> object:
+        self.name = name
+        self.config = config
+        self.submitter = submitter
+        if self.callback_error is not None:
+            raise self.callback_error
+        return self.callback_result
 
     @override
     def set_logger(self, logger: object) -> None:

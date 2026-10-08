@@ -9,7 +9,13 @@ from typing import TYPE_CHECKING
 from typing_extensions import TypeVar
 
 from ._durable_duration import to_seconds
-from ._durable_modules import load_config, load_retries, load_root, load_waits
+from ._durable_modules import (
+    load_config,
+    load_exceptions,
+    load_retries,
+    load_root,
+    load_waits,
+)
 from ._durable_options import BatchOptions, RetryOptions, Unset
 
 if TYPE_CHECKING:
@@ -22,6 +28,7 @@ if TYPE_CHECKING:
         ParallelConfig,
         StepConfig,
         StepSemantics,
+        WaitForCallbackConfig,
     )
     from aws_durable_execution_sdk_python.config import Duration as EngineDuration
     from aws_durable_execution_sdk_python.retries import (
@@ -89,6 +96,7 @@ class Engine:
             retries = load_retries()
             waits = load_waits()
             root = load_root()
+            exceptions = load_exceptions()
         except ImportError as error:
             raise DurableRuntimeMissingError from error
         self.durable_execution: DurableExecution = root.durable_execution
@@ -109,6 +117,10 @@ class Engine:
         self.create_wait_strategy: CreateWaitStrategy = waits.create_wait_strategy
         self.wait_strategy_config: WaitStrategyFactory = waits.WaitStrategyConfig
         self.wait_for_condition_config: WaitConfigFactory = waits.WaitForConditionConfig
+        self.wait_for_callback_config: type[WaitForCallbackConfig] = (
+            config.WaitForCallbackConfig
+        )
+        self.callback_timeout_error: type[Exception] = exceptions.CallbackTimeoutError
 
     def seconds(self, value: int) -> EngineDuration:
         """Build the runtime's duration from whole seconds.
@@ -241,6 +253,22 @@ class Engine:
             )
         if options.backoff_rate is not None:
             config.backoff_rate = options.backoff_rate
+
+    def callback_options(self, timeout: int | None) -> WaitForCallbackConfig:
+        """Build the runtime's callback options.
+
+        The submitter is not retried by the runtime: it already retries what is
+        worth retrying, and anything else it raises will not go away.
+
+        Returns:
+            The runtime wait-for-callback configuration.
+
+        """
+        if timeout is None:
+            return self.wait_for_callback_config(retry_strategy=self._never_retry())
+        return self.wait_for_callback_config(
+            timeout=self.seconds(timeout), retry_strategy=self._never_retry()
+        )
 
     def map_options(self, options: BatchOptions | None) -> object:
         """Build the runtime's map options.

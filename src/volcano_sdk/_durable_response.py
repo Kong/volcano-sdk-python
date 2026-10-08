@@ -58,12 +58,25 @@ def _execution_status(value: object) -> DurableExecutionStatus:
 
 
 def _json_result(value: object) -> JSONValue:
+    return json_value(value, _INVALID_EXECUTION_PAYLOAD)
+
+
+def json_value(value: object, message: str) -> JSONValue:
+    """Require a JSON value that can be frozen and re-encoded.
+
+    Returns:
+        The value, narrowed to JSON.
+
+    Raises:
+        TypeError: The value is not JSON, or is nested too deeply to check.
+
+    """
     try:
         if _is_json_value(value, set()):
             return value
     except RecursionError as error:
-        raise TypeError(_INVALID_EXECUTION_PAYLOAD) from error
-    raise TypeError(_INVALID_EXECUTION_PAYLOAD)
+        raise TypeError(message) from error
+    raise TypeError(message)
 
 
 def _is_json_value(value: object, active: set[int]) -> TypeGuard[JSONValue]:

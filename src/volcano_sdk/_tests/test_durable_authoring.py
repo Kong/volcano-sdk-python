@@ -10,11 +10,13 @@ import importlib
 import inspect
 import json
 import logging
+import threading
 from collections.abc import Mapping
 from contextlib import contextmanager
 from types import ModuleType, SimpleNamespace
-from typing import TYPE_CHECKING, TypeGuard
+from typing import TYPE_CHECKING, TypeGuard, TypeVar
 
+import httpx
 import pytest
 from aws_durable_execution_sdk_python.config import (
     Duration,
@@ -22,11 +24,17 @@ from aws_durable_execution_sdk_python.config import (
     ParallelConfig,
     StepConfig,
     StepSemantics,
+    WaitForCallbackConfig,
 )
 from aws_durable_execution_sdk_python.config import (
     ParallelBranch as EngineParallelBranch,
 )
-from aws_durable_execution_sdk_python.exceptions import WaitForConditionError
+from aws_durable_execution_sdk_python.exceptions import (
+    CallbackError,
+    CallbackSubmitterError,
+    CallbackTimeoutError,
+    WaitForConditionError,
+)
 from aws_durable_execution_sdk_python.retries import RetryDecision
 from aws_durable_execution_sdk_python.waits import (
     WaitForConditionConfig,
@@ -36,10 +44,12 @@ from aws_durable_execution_sdk_python.waits import (
 )
 from aws_durable_execution_sdk_python_testing import DurableFunctionTestRunner
 
+from volcano_sdk import ValidationError
 from volcano_sdk._durable_duration import to_seconds
 from volcano_sdk._durable_engine import Engine, load_engine
 from volcano_sdk._durable_results import completion_reason
 from volcano_sdk.durable_authoring import (
+    ApprovalDecision,
     BatchFailure,
     BatchItem,
     BatchOptions,
@@ -53,6 +63,7 @@ from volcano_sdk.durable_authoring import (
     WaitUntilOptions,
     durable,
 )
+from volcano_sdk.models import DurableApprovalDecider
 
 from .fixtures.durable_context import (
     RecordedBatch,
@@ -65,6 +76,7 @@ from .fixtures.durable_inspection import (
     InspectedDurableContext,
     InspectedEngine,
 )
+from .fixtures.invalid_arguments import non_string_approval_title
 from .fixtures.invalid_callbacks import (
     decorate_non_callable,
     register_non_callable_branch,
@@ -77,6 +89,11 @@ from .fixtures.invalid_wait_options import invalid_wait_duration, non_callable_p
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterator
+
+    from volcano_sdk._durable_protocols import RuntimeContext
+    from volcano_sdk.models import JSONValue
+
+T = TypeVar("T")
 
 # The local runner's scheduler calls asyncio.iscoroutinefunction, which Python
 # 3.14 deprecates, and the suite turns warnings into errors. It comes from the
@@ -1275,3 +1292,674 @@ def test_runtime_missing_error_preserves_an_explicit_cause() -> None:
     cause = ImportError("missing runtime")
 
     assert DurableRuntimeMissingError(cause).__cause__ is cause
+
+
+PLATFORM_API_URL = "https://api.volcano.test"
+_INVOCATION_TIMEOUT_SECONDS = 30
+
+
+class Registrations:
+    """Stand in for Volcano's registration route, from the runtime's thread."""
+
+    def __init__(self) -> None:
+        self.bodies: list[dict[str, JSONValue]] = []
+        self.api_urls: list[str] = []
+        self._lock: threading.Lock = threading.Lock()
+
+    def register(self, api_url: str, body: Mapping[str, JSONValue]) -> None:
+        with self._lock:
+            self.api_urls.append(api_url)
+            self.bodies.append(dict(body))
+
+    def expect(self, count: int) -> list[dict[str, JSONValue]]:
+        with self._lock:
+            if len(self.bodies) != count:
+                message = f"expected {count} registrations, got {len(self.bodies)}"
+                raise AssertionError(message)
+            return list(self.bodies)
+
+
+class Invocations:
+    """Count the invocations a handler has finished.
+
+    The local runner invalidates an invocation's checkpoints when a callback
+    completes under it, so a decision is sent only once the invocation that
+    registered the approval has suspended and returned. On the platform a
+    person decides long after that.
+    """
+
+    def __init__(self, handler: FunctionHandler) -> None:
+        self._handler: FunctionHandler = handler
+        self._finished: int = 0
+        self._changed: threading.Condition = threading.Condition()
+
+    def __call__(self, event: object, function_context: object) -> object:
+        try:
+            return self._handler(event, function_context)
+        finally:
+            with self._changed:
+                self._finished += 1
+                self._changed.notify_all()
+
+    def wait_for_one(self) -> None:
+        with self._changed:
+            if not self._changed.wait_for(
+                lambda: self._finished > 0, timeout=_INVOCATION_TIMEOUT_SECONDS
+            ):
+                message = "expected the invocation to suspend"
+                raise AssertionError(message)
+
+
+@contextmanager
+def suspended_on_approvals(
+    handler: FunctionHandler, registrations: Registrations, count: int
+) -> Generator[tuple[DurableFunctionTestRunner, str, list[dict[str, JSONValue]]]]:
+    """Start a handler and wait until it suspends on its approvals.
+
+    The first invocation returns only once every approval it reached has
+    registered and suspended, or once it failed.
+
+    Yields:
+        The runner, the execution reference, and the registration bodies.
+    """
+    invocations = Invocations(handler)
+    with local_runner(invocations) as runner:
+        execution_ref = runner.run_async(input=json.dumps({}))
+        invocations.wait_for_one()
+        yield runner, execution_ref, registrations.expect(count)
+
+
+@pytest.fixture
+def registrations(monkeypatch: pytest.MonkeyPatch) -> Registrations:
+    recorder = Registrations()
+    monkeypatch.setattr(
+        "volcano_sdk.durable_authoring.register_approval", recorder.register
+    )
+    monkeypatch.setenv("VOLCANO_PLATFORM_API_URL", PLATFORM_API_URL)
+    return recorder
+
+
+def decided(*, approved: bool = True, comment: str = "Ship it") -> bytes:
+    return json.dumps(
+        {
+            "status": "approved" if approved else "denied",
+            "approved": approved,
+            "comment": comment,
+            "decided_by": {"id": "user-7", "email": "ops@example.com"},
+            "decided_at": "2026-10-06T12:05:00Z",
+        }
+    ).encode()
+
+
+def callback_id(body: Mapping[str, JSONValue]) -> str:
+    value = body["callback_id"]
+    assert isinstance(value, str)
+    assert value
+    return value
+
+
+def decision_summary(decision: ApprovalDecision) -> dict[str, object]:
+    return {
+        "approved": decision.approved,
+        "status": decision.status,
+        "comment": decision.comment,
+        "decided_by": None if decision.decided_by is None else decision.decided_by.id,
+        "decided_at": decision.decided_at,
+    }
+
+
+def decide_each(
+    handler: FunctionHandler,
+    registrations: Registrations,
+    count: int,
+    decision: bytes | None = None,
+) -> tuple[str, object]:
+    """Run a handler, decide each approval it registers, and return its result.
+
+    Returns:
+        The execution reference and the decoded result.
+
+    Raises:
+        AssertionError: If the handler fails.
+    """
+    with suspended_on_approvals(handler, registrations, count) as (
+        runner,
+        execution_ref,
+        bodies,
+    ):
+        for body in bodies:
+            runner.send_callback_success(callback_id(body), decision or decided())
+        result = runner.wait_for_result(execution_ref, timeout=60)
+    if result.error is not None:
+        raise AssertionError(result.error.message)
+    assert result.result is not None
+    return execution_ref, json.loads(result.result)
+
+
+def test_an_approval_registers_and_resumes_with_the_decision(
+    registrations: Registrations,
+) -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        decision = ctx.wait_for_approval(
+            "ship-order",
+            title="Ship order 1234?",
+            description="Customer asked for express shipping.",
+            details={"order_id": "1234", "items": [1, 2]},
+            timeout="1h",
+        )
+        return decision_summary(decision)
+
+    execution_ref, result = decide_each(handler, registrations, 1)
+
+    assert result == {
+        "approved": True,
+        "status": "approved",
+        "comment": "Ship it",
+        "decided_by": "user-7",
+        "decided_at": "2026-10-06T12:05:00Z",
+    }
+    [body] = registrations.bodies
+    assert body == {
+        "execution_ref": execution_ref,
+        "callback_id": callback_id(body),
+        "name": "ship-order",
+        "title": "Ship order 1234?",
+        "description": "Customer asked for express shipping.",
+        "details": {"order_id": "1234", "items": [1, 2]},
+    }
+    assert registrations.api_urls == [PLATFORM_API_URL]
+
+
+def test_a_denial_is_a_decision_rather_than_an_error(
+    registrations: Registrations,
+) -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        decision = ctx.wait_for_approval("ship-order", title="Ship?")
+        return {"shipped": decision.approved, **decision_summary(decision)}
+
+    _, result = decide_each(
+        handler, registrations, 1, decided(approved=False, comment="Out of stock")
+    )
+
+    assert result == {
+        "shipped": False,
+        "approved": False,
+        "status": "denied",
+        "comment": "Out of stock",
+        "decided_by": "user-7",
+        "decided_at": "2026-10-06T12:05:00Z",
+    }
+    [body] = registrations.bodies
+    assert set(body) == {"execution_ref", "callback_id", "name", "title"}
+
+
+def test_a_decision_with_unreadable_details_still_resumes_the_execution(
+    registrations: Registrations,
+) -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        decision = ctx.wait_for_approval("ship-order", title="Ship?")
+        ctx.wait("after", "1s")
+        return decision_summary(decision)
+
+    decision = json.dumps(
+        {
+            "status": "denied",
+            "approved": True,
+            "comment": None,
+            "decided_by": {"id": "user-7"},
+            "decided_at": "soon",
+        }
+    ).encode()
+
+    _, result = decide_each(handler, registrations, 1, decision)
+
+    assert result == {
+        "approved": False,
+        "status": "denied",
+        "comment": "",
+        "decided_by": None,
+        "decided_at": None,
+    }
+
+
+def test_an_approval_nobody_decides_expires_instead_of_raising(
+    registrations: Registrations,
+) -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        decision = ctx.wait_for_approval("ship-order", title="Ship?", timeout="1s")
+        return decision_summary(decision)
+
+    # A lost timeout would otherwise leave the runner waiting for 15 minutes.
+    with local_runner(handler) as runner:
+        result = runner.run(input=json.dumps({}), timeout=15)
+
+    assert result.error is None
+    assert result.result is not None
+    assert json.loads(result.result) == {
+        "approved": False,
+        "status": "expired",
+        "comment": "",
+        "decided_by": None,
+        "decided_at": None,
+    }
+    assert len(registrations.bodies) == 1
+
+
+def test_a_replay_does_not_register_the_approval_again(
+    registrations: Registrations,
+) -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        decision = ctx.wait_for_approval("ship-order", title="Ship?")
+        ctx.wait("after", "1s")
+        return ctx.step("ship", lambda _scope: decision.approved)
+
+    _, result = decide_each(handler, registrations, 1)
+
+    assert result is True
+    assert len(registrations.bodies) == 1
+
+
+def test_a_child_context_registers_against_the_same_execution(
+    registrations: Registrations,
+) -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        return ctx.child(
+            "review",
+            lambda child: child.wait_for_approval("in-child", title="Ship?").status,
+        )
+
+    execution_ref, result = decide_each(handler, registrations, 1)
+
+    assert result == "approved"
+    assert [body["execution_ref"] for body in registrations.bodies] == [execution_ref]
+
+
+def test_map_items_register_against_the_same_execution(
+    registrations: Registrations,
+) -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        batch = ctx.map(
+            ["a", "b"],
+            lambda item, child, _index: (
+                child.wait_for_approval(f"ship-{item}", title=f"Ship {item}?").approved
+            ),
+            "approvals",
+        )
+        return {"results": list(batch.results), "completed": batch.completed}
+
+    execution_ref, result = decide_each(handler, registrations, 2)
+
+    assert result == {"results": [True, True], "completed": 2}
+    assert sorted(str(body["name"]) for body in registrations.bodies) == [
+        "ship-a",
+        "ship-b",
+    ]
+    assert {str(body["execution_ref"]) for body in registrations.bodies} == {
+        execution_ref
+    }
+
+
+def test_parallel_branches_register_against_the_same_execution(
+    registrations: Registrations,
+) -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        branches: list[Callable[[DurableContext], str] | ParallelBranch[str]] = [
+            ParallelBranch(
+                lambda child: child.wait_for_approval("named", title="A?").status,
+                name="alpha",
+            ),
+            lambda child: child.wait_for_approval("bare", title="B?").status,
+        ]
+        batch = ctx.parallel(branches, "fan-out")
+        return sorted(batch.results)
+
+    execution_ref, result = decide_each(handler, registrations, 2)
+
+    assert result == ["approved", "approved"]
+    assert sorted(str(body["name"]) for body in registrations.bodies) == [
+        "bare",
+        "named",
+    ]
+    assert {str(body["execution_ref"]) for body in registrations.bodies} == {
+        execution_ref
+    }
+
+
+def test_a_refused_registration_fails_the_execution_without_retrying(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts: list[str] = []
+
+    def refuse(_api_url: str, body: Mapping[str, JSONValue]) -> None:
+        attempts.append(str(body["name"]))
+        message = "title is too long"
+        raise ValidationError(message, status=400)
+
+    monkeypatch.setattr("volcano_sdk.durable_authoring.register_approval", refuse)
+    monkeypatch.setenv("VOLCANO_PLATFORM_API_URL", PLATFORM_API_URL)
+
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        return ctx.wait_for_approval("ship-order", title="Ship?").approved
+
+    assert "title is too long" in failing_handler(handler)
+    assert attempts == ["ship-order"]
+
+
+def test_a_refusal_reaches_the_handler_as_the_runtimes_submitter_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def refuse(_api_url: str, _body: Mapping[str, JSONValue]) -> None:
+        message = "title is too long"
+        raise ValidationError(message, status=400)
+
+    monkeypatch.setattr("volcano_sdk.durable_authoring.register_approval", refuse)
+    monkeypatch.setenv("VOLCANO_PLATFORM_API_URL", PLATFORM_API_URL)
+
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        try:
+            _ = ctx.wait_for_approval("ship-order", title="Ship?")
+        except CallbackSubmitterError as error:
+            return str(error)
+        return None
+
+    assert run_handler(handler) == "title is too long"
+
+
+def test_an_approval_closed_before_it_registered_resumes_expired(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def closed(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            409,
+            json={
+                "error": "approval request is no longer open",
+                "code": "approval_closed",
+            },
+        )
+
+    real_client = httpx.AsyncClient
+
+    def client(*, timeout: float) -> httpx.AsyncClient:
+        return real_client(transport=httpx.MockTransport(closed), timeout=timeout)
+
+    monkeypatch.setattr(
+        "volcano_sdk._durable_approval_registration.httpx.AsyncClient", client
+    )
+    monkeypatch.setenv("VOLCANO_PLATFORM_API_URL", PLATFORM_API_URL)
+
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        decision = ctx.wait_for_approval("ship-order", title="Ship?", timeout="1s")
+        return decision_summary(decision)
+
+    with local_runner(handler) as runner:
+        result = runner.run(input=json.dumps({}), timeout=15)
+
+    assert result.error is None
+    assert result.result is not None
+    assert json.loads(result.result) == {
+        "approved": False,
+        "status": "expired",
+        "comment": "",
+        "decided_by": None,
+        "decided_at": None,
+    }
+    assert len(requests) == 1
+    assert str(requests[0].url) == f"{PLATFORM_API_URL}/durable-approvals"
+
+
+def test_a_failed_callback_is_not_mistaken_for_an_expiry(
+    registrations: Registrations,
+) -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        return ctx.wait_for_approval("ship-order", title="Ship?").status
+
+    with suspended_on_approvals(handler, registrations, 1) as (
+        runner,
+        execution_ref,
+        [body],
+    ):
+        runner.send_callback_failure(callback_id(body))
+        result = runner.wait_for_result(execution_ref, timeout=60)
+
+    assert result.error is not None
+    assert result.result is None
+
+
+@pytest.mark.usefixtures("registrations")
+def test_a_missing_platform_api_url_fails_before_opening_a_callback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("VOLCANO_PLATFORM_API_URL")
+    runtime = RecordingContext()
+    context = DurableContext(runtime, Engine())
+
+    with pytest.raises(RuntimeError, match="needs VOLCANO_PLATFORM_API_URL"):
+        _ = context.wait_for_approval("ship-order", title="Ship?")
+    assert runtime.submitter is None
+
+
+def test_wait_for_approval_forwards_its_name_timeout_and_submitter(
+    registrations: Registrations,
+) -> None:
+    runtime = RecordingContext()
+    runtime.callback_result = decided().decode()
+    context = DurableContext(runtime, Engine())
+
+    decision = context.wait_for_approval("ship-order", title="Ship?", timeout="2h")
+
+    assert decision == ApprovalDecision(
+        approved=True,
+        status="approved",
+        comment="Ship it",
+        decided_by=DurableApprovalDecider(id="user-7", email="ops@example.com"),
+        decided_at="2026-10-06T12:05:00Z",
+    )
+    assert runtime.name == "ship-order"
+    assert isinstance(runtime.config, WaitForCallbackConfig)
+    assert runtime.config.timeout.to_seconds() == 7200
+    retry = runtime.config.retry_strategy
+    assert retry is not None
+    assert retry(RuntimeError("failed"), 1).should_retry is False
+    assert runtime.submitter is not None
+    assert registrations.bodies == []
+    runtime.submitter("callback-9", None)
+    assert registrations.bodies == [
+        {
+            "name": "ship-order",
+            "title": "Ship?",
+            "execution_ref": "arn:execution",
+            "callback_id": "callback-9",
+        }
+    ]
+
+
+@pytest.mark.usefixtures("registrations")
+def test_an_approval_without_a_timeout_lasts_as_long_as_the_execution() -> None:
+    runtime = RecordingContext()
+    runtime.callback_result = decided(approved=False).decode()
+    context = DurableContext(runtime, Engine())
+
+    decision = context.wait_for_approval("ship-order", title="Ship?")
+
+    assert decision.status == "denied"
+    assert isinstance(runtime.config, WaitForCallbackConfig)
+    assert runtime.config.timeout.to_seconds() == 0
+    assert runtime.config.retry_strategy is not None
+
+
+@pytest.mark.usefixtures("registrations")
+def test_only_a_callback_timeout_becomes_an_expired_decision() -> None:
+    runtime = RecordingContext()
+    runtime.callback_error = CallbackTimeoutError("timed out")
+    context = DurableContext(runtime, Engine())
+
+    expired = context.wait_for_approval("ship-order", title="Ship?", timeout=60)
+
+    assert expired == ApprovalDecision(approved=False, status="expired")
+    runtime.callback_error = CallbackError("callback failed")
+    with pytest.raises(CallbackError, match="callback failed"):
+        _ = context.wait_for_approval("ship-order", title="Ship?")
+
+
+@pytest.mark.parametrize(
+    ("timeout", "error", "message"),
+    [
+        pytest.param("0s", TypeError, "timeout must be at least 1 second", id="0"),
+        pytest.param(
+            {"days": 367},
+            TypeError,
+            r"timeout must be at most 31622400 seconds \(366 days\)",
+            id="367d",
+        ),
+        pytest.param("soon", ValueError, "^timeout must be a duration", id="text"),
+        pytest.param(1.5, TypeError, "^timeout must be a whole number", id="float"),
+    ],
+)
+def test_an_unusable_approval_timeout_is_refused(
+    timeout: object, error: type[Exception], message: str
+) -> None:
+    context = InspectedDurableContext(RecordingContext(), Engine())
+
+    with pytest.raises(error, match=message):
+        _ = context.approval_timeout(timeout)
+
+
+def test_an_approval_timeout_accepts_its_bounds() -> None:
+    context = InspectedDurableContext(RecordingContext(), Engine())
+
+    assert context.approval_timeout(1) == 1
+    assert context.approval_timeout({"days": 366}) == 31_622_400
+
+
+@pytest.mark.parametrize("duration", ["0s", 0, {"days": 367}, 31_622_401])
+def test_an_approval_timeout_is_bounded_like_a_wait(duration: object) -> None:
+    context = InspectedDurableContext(RecordingContext(), Engine())
+
+    with pytest.raises(TypeError) as waited:
+        _ = context.wait_duration(duration)
+    with pytest.raises(TypeError) as timed:
+        _ = context.approval_timeout(duration)
+
+    assert str(timed.value) == str(waited.value).replace("wait", "timeout", 1)
+
+
+@pytest.mark.usefixtures("registrations")
+@pytest.mark.parametrize(
+    ("title", "details", "timeout", "error", "message"),
+    [
+        pytest.param(
+            "Ship?",
+            None,
+            0,
+            TypeError,
+            "timeout must be at least 1 second",
+            id="timeout",
+        ),
+        pytest.param(
+            "Ship?",
+            {"total": float("nan")},
+            None,
+            TypeError,
+            "details must be JSON-serializable",
+            id="details",
+        ),
+        pytest.param(
+            "Ship\ud800?",
+            None,
+            None,
+            TypeError,
+            "title must be JSON-serializable",
+            id="surrogate",
+        ),
+        pytest.param(
+            "Ship?",
+            {"lines": ["x" * 1000] * 65},
+            None,
+            ValueError,
+            "larger than the 64 KiB Volcano accepts",
+            id="too large with the callback id",
+        ),
+    ],
+)
+def test_an_invalid_approval_is_refused_before_opening_a_callback(
+    title: str,
+    details: JSONValue,
+    timeout: int | None,
+    error: type[Exception],
+    message: str,
+) -> None:
+    runtime = RecordingContext()
+    context = DurableContext(runtime, Engine())
+
+    with pytest.raises(error, match=message):
+        _ = context.wait_for_approval(
+            "ship-order", title=title, details=details, timeout=timeout
+        )
+    assert runtime.submitter is None
+
+
+@pytest.mark.usefixtures("registrations")
+def test_a_non_string_title_is_refused_before_opening_a_callback() -> None:
+    runtime = RecordingContext()
+    context = DurableContext(runtime, Engine())
+
+    with pytest.raises(TypeError, match="title must be a string"):
+        non_string_approval_title(context)
+    assert runtime.submitter is None
+
+
+def test_one_runtime_wrapper_serves_every_invocation_with_its_own_execution(
+    monkeypatch: pytest.MonkeyPatch, registrations: Registrations
+) -> None:
+    engine = Engine()
+    wrap = engine.durable_execution
+    built: list[object] = []
+    invocations: list[object] = []
+
+    def build(
+        func: Callable[[T, RuntimeContext], object], /
+    ) -> Callable[[object, object], object]:
+        built.append(func)
+        run = wrap(func)
+
+        def invoke(event: object, function_context: object) -> object:
+            invocations.append(event)
+            return run(event, function_context)
+
+        return invoke
+
+    engine.durable_execution = build
+    monkeypatch.setattr("volcano_sdk.durable_authoring.load_engine", lambda: engine)
+
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        return ctx.wait_for_approval("ship-order", title="Ship?").status
+
+    first, _ = decide_each(handler, registrations, 1)
+    later = Registrations()
+    monkeypatch.setattr(
+        "volcano_sdk.durable_authoring.register_approval", later.register
+    )
+    second, _ = decide_each(handler, later, 1)
+
+    # Each execution suspends on its approval and resumes once decided.
+    assert len(invocations) == 4
+    assert len(built) == 1
+    assert first != second
+    assert [body["execution_ref"] for body in registrations.bodies] == [first]
+    assert [body["execution_ref"] for body in later.bodies] == [second]

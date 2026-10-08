@@ -25,6 +25,14 @@ class AuthenticationError(VolcanoError):
     """The supplied credentials are missing or invalid."""
 
 
+class PermissionDeniedError(AuthenticationError):
+    """The credentials are valid but not allowed to perform the request.
+
+    A subclass of `AuthenticationError`, which a 403 raised before this
+    existed, so existing handlers keep catching it.
+    """
+
+
 class ValidationError(VolcanoError):
     """The request failed API validation."""
 

@@ -2,9 +2,9 @@
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from types import MappingProxyType
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, TypedDict
 
 from ._json_values import JSONValue as _JSONValue
 from ._json_values import freeze_json
@@ -39,6 +39,15 @@ DurableExecutionStatus: TypeAlias = Literal[
 DURABLE_TERMINAL_STATUSES: frozenset[DurableExecutionStatus] = frozenset(
     {"succeeded", "failed", "timed_out", "stopped", "unknown"}
 )
+# Every status but "pending" is final. "expired" means the approval's timeout
+# passed first; "cancelled" means its execution ended while it was pending.
+DurableApprovalStatus: TypeAlias = Literal[
+    "pending",
+    "approved",
+    "denied",
+    "expired",
+    "cancelled",
+]
 
 
 def _freeze_metadata(
@@ -384,3 +393,162 @@ class DurableExecutionPage:
     def __post_init__(self) -> None:
         """Defensively snapshot the executions in this page."""
         object.__setattr__(self, "executions", tuple(self.executions))
+
+
+class DurableApprovalStatsOptions(TypedDict, total=False):
+    """Narrow approval stats to one function and a window.
+
+    The window defaults to the last 30 days and may span at most 366.
+    """
+
+    # A durable function's id or name.
+    function: str
+    from_: datetime
+    to: datetime
+
+
+class DurableApprovalListOptions(TypedDict, total=False):
+    """Filter and page a project's durable approvals."""
+
+    status: DurableApprovalStatus
+    # A durable function's id or name.
+    function: str
+    execution_id: str
+    # Requested at or after `from_`, and before `to`.
+    from_: datetime
+    to: datetime
+    page: int
+    limit: int
+
+
+@dataclass(frozen=True, slots=True)
+class DurableApprovalDecider:
+    """The person who approved or denied an approval."""
+
+    id: str
+    email: str
+
+
+@dataclass(frozen=True, slots=True)
+class DurableApprovalDecision:
+    """Who decided an approval, when, and what they said."""
+
+    comment: str
+    # None once the deciding account no longer exists.
+    decided_by: DurableApprovalDecider | None
+    decided_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class DurableApprovalFunction:
+    """The durable function that requested an approval."""
+
+    # None once the function has been deleted; the name is kept.
+    id: str | None
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class DurableApprovalExecution:
+    """The durable execution that requested an approval."""
+
+    # Both None once the execution is no longer retained; the name is kept.
+    id: str | None
+    name: str
+    status: DurableExecutionStatus | None
+
+
+@dataclass(frozen=True, slots=True)
+class DurableApproval:
+    """An approval a durable workflow requested with `ctx.wait_for_approval`."""
+
+    id: str
+    status: DurableApprovalStatus
+    name: str
+    title: str
+    description: str
+    function: DurableApprovalFunction
+    execution: DurableApprovalExecution
+    requested_at: datetime
+    # None when the workflow set no timeout: the approval then lasts as long as
+    # its execution.
+    expires_at: datetime | None
+    # Set only once the approval is approved or denied.
+    decision: DurableApprovalDecision | None
+    details: JSONValue = field(default=None, repr=False, hash=False)
+
+    def __post_init__(self) -> None:
+        """Defensively freeze the details the workflow attached."""
+        object.__setattr__(self, "details", freeze_json(self.details))
+
+    @property
+    def is_pending(self) -> bool:
+        """Report whether the approval is still waiting for a decision."""
+        return self.status == "pending"
+
+
+@dataclass(frozen=True, slots=True)
+class DurableApprovalPage:
+    """One page of a project's durable approvals, most recent first."""
+
+    approvals: tuple[DurableApproval, ...]
+    page: int
+    limit: int
+    total: int
+    has_more: bool
+
+    def __post_init__(self) -> None:
+        """Defensively snapshot the approvals in this page."""
+        object.__setattr__(self, "approvals", tuple(self.approvals))
+
+
+@dataclass(frozen=True, slots=True)
+class DurableApprovalCounts:
+    """Approvals counted by outcome; `requested` is all of them."""
+
+    requested: int
+    pending: int
+    approved: int
+    denied: int
+    expired: int
+    cancelled: int
+
+
+@dataclass(frozen=True, slots=True)
+class DurableApprovalFunctionCounts:
+    """Approval counts for one durable function."""
+
+    function: DurableApprovalFunction
+    counts: DurableApprovalCounts
+
+
+@dataclass(frozen=True, slots=True)
+class DurableApprovalDailyCounts:
+    """Approval counts for one UTC day, by the day they were requested."""
+
+    day: date
+    counts: DurableApprovalCounts
+
+
+@dataclass(frozen=True, slots=True)
+class DurableApprovalStats:
+    """Approval outcomes and decision times over a window."""
+
+    from_: datetime
+    to: datetime
+    counts: DurableApprovalCounts
+    # Each None while there is nothing to compute it from.
+    approval_rate: float | None
+    median_seconds_to_decision: float | None
+    p90_seconds_to_decision: float | None
+    # The ten functions with the most requests; the rest are summed in
+    # other_functions.
+    functions: tuple[DurableApprovalFunctionCounts, ...]
+    other_functions: DurableApprovalCounts
+    # Days with no requests are left out.
+    daily: tuple[DurableApprovalDailyCounts, ...]
+
+    def __post_init__(self) -> None:
+        """Defensively snapshot the per-function and per-day breakdowns."""
+        object.__setattr__(self, "functions", tuple(self.functions))
+        object.__setattr__(self, "daily", tuple(self.daily))

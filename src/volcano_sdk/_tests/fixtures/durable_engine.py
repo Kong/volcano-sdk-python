@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from aws_durable_execution_sdk_python import config, retries, waits
+from aws_durable_execution_sdk_python import config, exceptions, retries, waits
 
 from volcano_sdk._durable_engine import load_engine
 from volcano_sdk._durable_modules import load_root
@@ -27,3 +27,5 @@ def assert_runtime_surface() -> None:
     assert engine.create_wait_strategy is waits.create_wait_strategy
     assert engine.wait_strategy_config is waits.WaitStrategyConfig
     assert engine.wait_for_condition_config is waits.WaitForConditionConfig
+    assert engine.wait_for_callback_config is config.WaitForCallbackConfig
+    assert engine.callback_timeout_error is exceptions.CallbackTimeoutError

@@ -14,21 +14,21 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="DatabaseUpdateRequestValues")
+T = TypeVar("T", bound="DurableApprovalDeciderType0")
 
 
 
 @_attrs_define
-class DatabaseUpdateRequestValues:
-    """ Column values to update. JSON objects and arrays are stored as JSON,
-    so send them to `json` or `jsonb` columns. For a Postgres array
-    column, send an array literal string such as `"{a,b}"`.
+class DurableApprovalDeciderType0:
+    """ The person who decided. Null once their account is deleted.
 
-        Example:
-            {'title': 'Updated Title', 'status': 'published'}
-
+        Attributes:
+            id (str):
+            email (str):
      """
 
+    id: str
+    email: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -36,9 +36,17 @@ class DatabaseUpdateRequestValues:
 
 
     def to_dict(self) -> dict[str, Any]:
-        
+        id = self.id
+
+        email = self.email
+
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
+        field_dict.update({
+            "id": id,
+            "email": email,
+        })
 
         return field_dict
 
@@ -47,12 +55,18 @@ class DatabaseUpdateRequestValues:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        database_update_request_values = cls(
+        id = d.pop("id")
+
+        email = d.pop("email")
+
+        durable_approval_decider_type_0 = cls(
+            id=id,
+            email=email,
         )
 
 
-        database_update_request_values.additional_properties = d
-        return database_update_request_values
+        durable_approval_decider_type_0.additional_properties = d
+        return durable_approval_decider_type_0
 
     @property
     def additional_keys(self) -> list[str]:

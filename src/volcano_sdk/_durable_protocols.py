@@ -52,7 +52,11 @@ class DurableLogger(Protocol):
 class DurableEngine(Protocol):
     """The operations the Volcano facade needs from the optional runtime."""
 
+    callback_timeout_error: type[Exception]
+
     def seconds(self, value: int) -> object: ...
+
+    def callback_options(self, timeout: int | None) -> object: ...
 
     def step_options(self, *, retry: Retry, at_most_once: bool) -> object: ...
 
@@ -95,8 +99,16 @@ class RuntimeBatch(Protocol[T]):
     def throw_if_error(self) -> None: ...
 
 
+class RuntimeExecution(Protocol):
+    @property
+    def durable_execution_arn(self) -> str: ...
+
+
 class RuntimeContext(Protocol):
     logger: DurableLogger
+    # The same for the root context and every child, map, and parallel context
+    # the runtime derives from it.
+    execution_context: RuntimeExecution
 
     def step(
         self,
@@ -132,5 +144,12 @@ class RuntimeContext(Protocol):
         name: str | None,
         config: object,
     ) -> RuntimeBatch[T]: ...
+
+    def wait_for_callback(
+        self,
+        submitter: Callable[[str, object], None],
+        name: str | None,
+        config: object,
+    ) -> object: ...
 
     def set_logger(self, logger: object) -> None: ...

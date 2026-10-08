@@ -20,7 +20,9 @@ T = TypeVar("T", bound="DatabaseInsertRequestValues")
 
 @_attrs_define
 class DatabaseInsertRequestValues:
-    """ Column values to insert
+    """ Column values to insert. JSON objects and arrays are stored as JSON,
+    so send them to `json` or `jsonb` columns. For a Postgres array
+    column, send an array literal string such as `"{a,b}"`.
 
         Example:
             {'title': 'My New Post', 'content': 'This is the content', 'status': 'draft'}

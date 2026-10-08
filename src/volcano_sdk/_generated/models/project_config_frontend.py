@@ -38,8 +38,7 @@ class ProjectConfigFrontend:
                 in builds and runtime. Omission preserves the stored selection.
             variables (list[str] | Unset): Names selected when variable_scope is scoped. Missing declared values reject
                 deployment. Omission preserves the stored list; an empty list clears it.
-            custom_domain (ProjectConfigCustomDomain | Unset): Custom domain with managed or BYOC TLS (SUPERAGENT plan).
-                `tls` is required
+            custom_domain (ProjectConfigCustomDomain | Unset): Custom domain with managed or BYOC TLS. `tls` is required
                 when the domain is first created and optional afterwards. For an existing
                 domain, omitting `tls` or sending only `tls.mode` keeps the stored
                 certificate; new BYOC material for the same domain rotates the

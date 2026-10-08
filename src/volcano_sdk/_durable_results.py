@@ -3,14 +3,36 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generic
+from typing import TYPE_CHECKING, Generic, Literal
 
 from typing_extensions import TypeVar
 
 if TYPE_CHECKING:
     from ._durable_protocols import RuntimeBatch, RuntimeBatchItem
+    from .models import DurableApprovalDecider
 
 T = TypeVar("T", default=object)
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovalDecision:
+    """What `ctx.wait_for_approval` resumes with.
+
+    A denial is a decision like an approval, not an error; branch on
+    `approved`. An approval nobody decided before its timeout comes back
+    `expired`, with no comment, decider, or decision time.
+    """
+
+    approved: bool
+    status: Literal["approved", "denied", "expired"]
+    comment: str = ""
+    # None when the approval expired, when the deciding account was deleted
+    # before the decision reached the workflow, or when the decision does not
+    # name a decider this SDK can read.
+    decided_by: DurableApprovalDecider | None = None
+    # RFC 3339, as Volcano recorded it; None when the approval expired or the
+    # decision carries no readable time.
+    decided_at: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

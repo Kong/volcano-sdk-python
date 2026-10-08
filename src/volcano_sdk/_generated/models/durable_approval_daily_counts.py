@@ -8,27 +8,30 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from typing import cast
+import datetime
+
+if TYPE_CHECKING:
+  from ..models.durable_approval_counts import DurableApprovalCounts
 
 
 
 
 
-
-T = TypeVar("T", bound="DatabaseUpdateRequestValues")
+T = TypeVar("T", bound="DurableApprovalDailyCounts")
 
 
 
 @_attrs_define
-class DatabaseUpdateRequestValues:
-    """ Column values to update. JSON objects and arrays are stored as JSON,
-    so send them to `json` or `jsonb` columns. For a Postgres array
-    column, send an array literal string such as `"{a,b}"`.
-
-        Example:
-            {'title': 'Updated Title', 'status': 'published'}
-
+class DurableApprovalDailyCounts:
+    """ 
+        Attributes:
+            date (datetime.date):
+            counts (DurableApprovalCounts): Approvals by status. `requested` is every approval, whatever its status.
      """
 
+    date: datetime.date
+    counts: DurableApprovalCounts
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -36,9 +39,18 @@ class DatabaseUpdateRequestValues:
 
 
     def to_dict(self) -> dict[str, Any]:
-        
+        from ..models.durable_approval_counts import DurableApprovalCounts # noqa: PLC0415
+        date = self.date.isoformat()
+
+        counts = self.counts.to_dict()
+
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
+        field_dict.update({
+            "date": date,
+            "counts": counts,
+        })
 
         return field_dict
 
@@ -46,13 +58,26 @@ class DatabaseUpdateRequestValues:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.durable_approval_counts import DurableApprovalCounts # noqa: PLC0415
         d = dict(src_dict)
-        database_update_request_values = cls(
+        date = datetime.date.fromisoformat(d.pop("date"))
+
+
+
+
+        counts = DurableApprovalCounts.from_dict(d.pop("counts"))
+
+
+
+
+        durable_approval_daily_counts = cls(
+            date=date,
+            counts=counts,
         )
 
 
-        database_update_request_values.additional_properties = d
-        return database_update_request_values
+        durable_approval_daily_counts.additional_properties = d
+        return durable_approval_daily_counts
 
     @property
     def additional_keys(self) -> list[str]:
