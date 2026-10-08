@@ -330,7 +330,7 @@ def test_each_attempt_is_given_what_is_left_of_the_deadline(
 ) -> None:
     fake = platform(httpx.ReadTimeout("timed out"))
 
-    with pytest.raises(TransportError, match="timed out"):
+    with pytest.raises(TransportError, match=r"did not answer within 8\.5 seconds"):
         register_approval(API_URL, BODY)
 
     assert fake.timeouts == [10.0, 10.0, 8.5]
@@ -355,11 +355,23 @@ def test_waking_up_at_the_deadline_raises_the_last_failure(
     fake = platform(httpx.ReadTimeout("timed out"))
     fake.oversleep = 19.5
 
-    with pytest.raises(TransportError, match="timed out"):
+    with pytest.raises(TransportError, match="did not answer within 10 seconds"):
         register_approval(API_URL, BODY)
 
     assert fake.sleeps == [0.5]
     assert fake.timeouts == [10.0]
+
+
+def test_a_network_failure_keeps_its_own_message(
+    platform: InstallPlatform,
+) -> None:
+    fake = platform(httpx.ConnectError("connection refused"))
+    fake.oversleep = 19.5
+
+    with pytest.raises(TransportError) as caught:
+        register_approval(API_URL, BODY)
+
+    assert str(caught.value) == "connection refused"
 
 
 def test_a_retry_that_would_wake_at_the_deadline_is_not_slept_for(
@@ -448,6 +460,57 @@ def test_an_attempt_ends_by_its_deadline_while_the_host_lookup_stalls(
         released.set()
 
     assert time.perf_counter() - started < _ENDED_PROMPTLY
+    assert str(caught.value) == "Volcano did not answer within 0.2 seconds"
+    assert lookups == [b"api.volcano.test", b"api.volcano.test"]
+
+
+def test_the_clients_own_timeout_reports_the_attempts_deadline(
+    platform: InstallPlatform,
+) -> None:
+    # What httpx raises when its connect timeout, not the attempt's, fires.
+    fake = platform(refused(503), httpx.ConnectTimeout(""))
+    fake.oversleep = _WAKE_LATE
+
+    with pytest.raises(TransportError) as caught:
+        register_approval(API_URL, BODY)
+
+    assert str(caught.value) == "Volcano did not answer within 0.2 seconds"
+    assert fake.timeouts == [10.0, pytest.approx(0.2)]
+
+
+def test_a_stalled_loop_still_reports_the_attempts_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Holding the loop past 0.2 s fires the attempt's deadline and the client's
+    # connect timeout in one pass, while the host lookup is still running.
+    fake = Platform()
+    fake.oversleep = _WAKE_LATE
+    monkeypatch.setattr(f"{REGISTRATION}.monotonic", fake.monotonic)
+    monkeypatch.setattr(f"{REGISTRATION}.sleep", fake.sleep)
+    released = threading.Event()
+    lookups: list[object] = []
+    new_event_loop = asyncio.new_event_loop
+
+    def lookup(host: object, *_args: object, **_kwargs: object) -> NoReturn:
+        lookups.append(host)
+        if len(lookups) > 1:
+            _ = released.wait(_GIVE_UP_SECONDS)
+        raise socket.gaierror(socket.EAI_NONAME, "unknown host")
+
+    def stalling_loop() -> asyncio.AbstractEventLoop:
+        loop = new_event_loop()
+        _ = loop.call_later(0.1, time.sleep, 0.3)
+        return loop
+
+    monkeypatch.setattr(socket, "getaddrinfo", lookup)
+    monkeypatch.setattr(f"{REGISTRATION}.asyncio.new_event_loop", stalling_loop)
+
+    try:
+        with pytest.raises(TransportError) as caught:
+            register_approval(API_URL, BODY)
+    finally:
+        released.set()
+
     assert str(caught.value) == "Volcano did not answer within 0.2 seconds"
     assert lookups == [b"api.volcano.test", b"api.volcano.test"]
 

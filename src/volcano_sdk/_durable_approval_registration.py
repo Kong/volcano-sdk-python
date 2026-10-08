@@ -221,6 +221,17 @@ def register_approval(api_url: str, body: Mapping[str, JSONValue]) -> None:
 
 
 def _attempt(url: str, content: bytes, timeout: float) -> None:
+    response = _send(url, content, timeout)
+    if response.status_code == HTTP_CREATED:
+        return
+    try:
+        _ = response_payload(response, HTTP_OK)
+    except ConflictError as error:
+        if error.code != _CLOSED:
+            raise
+
+
+def _send(url: str, content: bytes, timeout: float) -> TransportResponse:
     # httpx times each network read on its own, restarting with every chunk,
     # so only cancelling the request bounds the attempt as a whole; its own
     # timeouts still keep any one phase within it. The runtime calls the
@@ -230,22 +241,24 @@ def _attempt(url: str, content: bytes, timeout: float) -> None:
     client = httpx.AsyncClient(timeout=timeout)
     loop = asyncio.new_event_loop()
     try:
-        response = loop.run_until_complete(
+        return loop.run_until_complete(
             asyncio.wait_for(invoke_async(_exchange, client, url, content), timeout)
         )
     except TimeoutError as error:
-        message = f"Volcano did not answer within {timeout:g} seconds"
-        raise TransportError(message) from error
+        raise _no_answer(timeout) from error
+    except TransportError as error:
+        # The client's timeouts spend the same budget. When a stalled loop
+        # fires both at once, Python 3.11's wait_for reports the client's.
+        if isinstance(error.__cause__, httpx.TimeoutException):
+            raise _no_answer(timeout) from error.__cause__
+        raise
     finally:
         loop.run_until_complete(loop.shutdown_asyncgens())
         loop.close()
-    if response.status_code == HTTP_CREATED:
-        return
-    try:
-        _ = response_payload(response, HTTP_OK)
-    except ConflictError as error:
-        if error.code != _CLOSED:
-            raise
+
+
+def _no_answer(timeout: float) -> TransportError:
+    return TransportError(f"Volcano did not answer within {timeout:g} seconds")
 
 
 async def _exchange(
