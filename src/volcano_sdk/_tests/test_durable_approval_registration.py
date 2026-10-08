@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
+import threading
 import time
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NoReturn, Protocol, TypeAlias
@@ -418,6 +420,38 @@ def test_an_attempt_ends_by_its_deadline_while_the_answer_trickles_in(
     assert fake.timeouts == [10.0, pytest.approx(0.2)]
 
 
+def test_an_attempt_ends_by_its_deadline_while_the_host_lookup_stalls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Only the clock is the platform's: the request goes through a real client,
+    # whose host lookup runs on a thread that cancelling cannot stop.
+    fake = Platform()
+    fake.oversleep = _WAKE_LATE
+    monkeypatch.setattr(f"{REGISTRATION}.monotonic", fake.monotonic)
+    monkeypatch.setattr(f"{REGISTRATION}.sleep", fake.sleep)
+    released = threading.Event()
+    lookups: list[object] = []
+
+    def lookup(host: object, *_args: object, **_kwargs: object) -> NoReturn:
+        lookups.append(host)
+        if len(lookups) > 1:
+            _ = released.wait(_GIVE_UP_SECONDS)
+        raise socket.gaierror(socket.EAI_NONAME, "unknown host")
+
+    monkeypatch.setattr(socket, "getaddrinfo", lookup)
+    started = time.perf_counter()
+
+    try:
+        with pytest.raises(TransportError) as caught:
+            register_approval(API_URL, BODY)
+    finally:
+        released.set()
+
+    assert time.perf_counter() - started < _ENDED_PROMPTLY
+    assert str(caught.value) == "Volcano did not answer within 0.2 seconds"
+    assert lookups == [b"api.volcano.test", b"api.volcano.test"]
+
+
 def test_an_answer_too_large_to_be_volcanos_is_not_read_to_the_end(
     platform: InstallPlatform,
 ) -> None:
@@ -547,10 +581,10 @@ def test_the_body_carries_only_what_was_given() -> None:
 
 
 def test_text_at_its_limit_is_accepted() -> None:
-    body = approval_body("n" * 255, "t" * 200, "d" * 4000, details=False)
+    body = approval_body(" ~" * 118 + "n", "t" * 200, "d" * 4000, details=False)
 
     assert body == {
-        "name": "n" * 255,
+        "name": " ~" * 118 + "n",
         "title": "t" * 200,
         "description": "d" * 4000,
         "details": False,
@@ -567,10 +601,70 @@ def test_text_at_its_limit_is_accepted() -> None:
             (" ", "t", None, None), ValueError, "name must not be empty", id="blank"
         ),
         pytest.param(
-            ("n" * 256, "t", None, None),
+            ("n" * 238, "t", None, None),
             ValueError,
-            "name must be at most 255 characters",
+            "name must be at most 237 characters",
             id="long name",
+        ),
+        pytest.param(
+            ("aprobaci\u00f3n", "t", None, None),
+            ValueError,
+            "name must be printable ASCII",
+            id="non-ascii name",
+        ),
+        pytest.param(
+            ("ship\torder", "t", None, None),
+            ValueError,
+            "name must be printable ASCII",
+            id="control character in name",
+        ),
+        pytest.param(
+            ("ship\x7f", "t", None, None),
+            ValueError,
+            "name must be printable ASCII",
+            id="delete in name",
+        ),
+        pytest.param(
+            ("ship\0", "t", None, None),
+            ValueError,
+            "name must not contain NUL characters",
+            id="nul name",
+        ),
+        pytest.param(
+            ("n", "Ship\0?", None, None),
+            ValueError,
+            "title must not contain NUL characters",
+            id="nul title",
+        ),
+        pytest.param(
+            ("n", "t", "Express\0", None),
+            ValueError,
+            "description must not contain NUL characters",
+            id="nul description",
+        ),
+        pytest.param(
+            ("n", "t", None, "\0"),
+            ValueError,
+            "details must not contain NUL characters",
+            id="nul details",
+        ),
+        pytest.param(
+            ("n", "t", None, {"items": ["a", "b\0"]}),
+            ValueError,
+            "details must not contain NUL characters",
+            id="nul in a details list",
+        ),
+        pytest.param(
+            ("n", "t", None, {"order": {"a\0": 1}}),
+            ValueError,
+            "details must not contain NUL characters",
+            id="nul in a details key",
+        ),
+        pytest.param(
+            ("n", "t", None, (1, {"note": "\0"})),
+            ValueError,
+            "details must not contain NUL characters",
+            id="nul in a details tuple",
         ),
         pytest.param(
             ("n", None, None, None), TypeError, "title must be a string", id="title"
@@ -643,6 +737,23 @@ def test_an_invalid_body_is_refused(
         _ = approval_body(*arguments)
 
     assert str(caught.value) == message
+
+
+def test_details_are_copied_when_checked() -> None:
+    items: list[JSONValue] = [1]
+    details: dict[str, JSONValue] = {"items": items, "frozen": MappingProxyType({})}
+
+    body = approval_body("ship", "Ship?", None, details)
+    items.append("x" * 70_000)
+    details["late"] = True
+
+    assert body["details"] == {"items": [1], "frozen": {}}
+
+
+def test_details_that_only_spell_out_an_escaped_nul_are_kept() -> None:
+    details: JSONValue = {"note": "\\u0000", "items": [1, None, True, 1.5]}
+
+    assert approval_body("ship", "Ship?", None, details)["details"] == details
 
 
 def test_whitespace_is_kept_and_only_blank_text_is_refused() -> None:

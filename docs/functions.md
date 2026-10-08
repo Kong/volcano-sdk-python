@@ -160,13 +160,13 @@ def handler(event, ctx):
 
 | Argument | Description |
 |---|---|
-| `name` | Required. Operation name in the execution's history, up to 255 characters. |
+| `name` | Required. Operation name in the execution's history, up to 237 printable ASCII characters. Keep it short. |
 | `title` | Required. What the approver is asked, up to 200 characters. |
 | `description` | Optional context, up to 4000 characters. |
 | `details` | Optional JSON value shown with the approval. The whole approval, `details` included, must encode to at most 64 KiB of JSON. |
 | `timeout` | Optional duration in the `ctx.wait()` format, from one second to 366 days. Without it, the approval stays open as long as the execution runs. |
 
-Limits count Unicode characters. A blank `name` or `title` raises `ValueError`, as does a value over its limit or an approval over 64 KiB. A value that is not a string, or that cannot be encoded as JSON, raises `TypeError`. A timeout out of range raises `TypeError`, as it does for `ctx.wait()`. These checks run before anything is recorded.
+Limits count Unicode characters. A blank `name` or `title` raises `ValueError`, as does a value over its limit, a `name` outside printable ASCII, a NUL character anywhere in the text or `details`, or an approval over 64 KiB. A value that is not a string, or that cannot be encoded as JSON, raises `TypeError`. A timeout out of range raises `TypeError`, as it does for `ctx.wait()`. These checks run before anything is recorded.
 
 The call returns an immutable `ApprovalDecision`:
 

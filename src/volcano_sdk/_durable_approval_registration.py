@@ -66,8 +66,13 @@ _INVALID_DETAILS = (
     "details must be JSON-serializable: mappings with string keys, lists, "
     "tuples, strings, finite numbers, booleans, and None"
 )
-# The spec's limits on what the approval shows the person deciding.
-_TEXT_LIMITS = {"name": 255, "title": 200, "description": 4000}
+# The limits on what the approval shows the person deciding. The name is also
+# the runtime's operation name, which allows 256 printable ASCII characters,
+# and the runtimes add suffixes of up to 19 characters to it; every SDK holds
+# names to the same limit.
+_TEXT_LIMITS = {"name": 237, "title": 200, "description": 4000}
+_NOT_PRINTABLE_ASCII = "name must be printable ASCII"
+_NUL = "\0"
 EXPIRED = ApprovalDecision(approved=False, status="expired")
 
 
@@ -97,14 +102,41 @@ def approval_body(
 
     """
     body: dict[str, JSONValue] = {
-        "name": _text(name, "name", required=True),
+        "name": _name(name),
         "title": _text(title, "title", required=True),
     }
     if description is not None:
         body["description"] = _text(description, "description", required=False)
     if details is not None:
-        body["details"] = json_value(details, _INVALID_DETAILS)
+        body["details"] = _details(details)
     return body
+
+
+def _name(value: object) -> str:
+    name = _text(value, "name", required=True)
+    if not (name.isascii() and name.isprintable()):
+        raise ValueError(_NOT_PRINTABLE_ASCII)
+    return name
+
+
+def _details(value: object) -> JSONValue:
+    # A copy, so a change the caller makes while the callback opens cannot
+    # slip past the checks.
+    details = plain_json(json_value(value, _INVALID_DETAILS))
+    if _has_nul(details):
+        message = "details must not contain NUL characters"
+        raise ValueError(message)
+    return details
+
+
+def _has_nul(value: JSONValue) -> bool:
+    if isinstance(value, str):
+        return _NUL in value
+    if isinstance(value, dict):
+        return any(_NUL in key or _has_nul(item) for key, item in value.items())
+    if isinstance(value, list):
+        return any(_has_nul(item) for item in value)
+    return False
 
 
 def _text(value: object, field: str, *, required: bool) -> str:
@@ -119,9 +151,16 @@ def _text(value: object, field: str, *, required: bool) -> str:
     if required and not value.strip():
         message = f"{field} must not be empty"
         raise ValueError(message)
+    return _recordable(value, field)
+
+
+def _recordable(value: str, field: str) -> str:
     limit = _TEXT_LIMITS[field]
     if len(value) > limit:
         message = f"{field} must be at most {limit} characters"
+        raise ValueError(message)
+    if _NUL in value:
+        message = f"{field} must not contain NUL characters"
         raise ValueError(message)
     return value
 
@@ -185,15 +224,21 @@ def _attempt(url: str, content: bytes, timeout: float) -> None:
     # httpx times each network read on its own, restarting with every chunk,
     # so only cancelling the request bounds the attempt as a whole; its own
     # timeouts still keep any one phase within it. The runtime calls the
-    # submitter on a thread without an event loop.
+    # submitter on a thread without an event loop. asyncio.run() would wait on
+    # its way out for a host lookup that cancelling leaves running in the
+    # loop's executor; closing the loop leaves it behind instead.
     client = httpx.AsyncClient(timeout=timeout)
+    loop = asyncio.new_event_loop()
     try:
-        response = asyncio.run(
+        response = loop.run_until_complete(
             asyncio.wait_for(invoke_async(_exchange, client, url, content), timeout)
         )
     except TimeoutError as error:
         message = f"Volcano did not answer within {timeout:g} seconds"
         raise TransportError(message) from error
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
     if response.status_code == HTTP_CREATED:
         return
     try:
