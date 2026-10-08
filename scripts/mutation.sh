@@ -85,6 +85,17 @@ fi
 
 if ! mutmut run --max-children 1 "${patterns[@]}"; then
   printf '%s\0' 'mutation run' >> "$failed"
+  for attempt in 1 2 3; do
+    echo "::group::diagnostic stats run $attempt"
+    (cd mutants && MUTANT_UNDER_TEST=stats python - <<'PY' || true
+import os, sys
+import pytest
+sys.path.insert(0, os.path.abspath("src"))
+sys.exit(int(pytest.main(["--rootdir=.", "--tb=long", "-rfE", "-p", "no:randomly", "-p", "no:random-order", "tests/unit", "src/volcano_sdk/_tests", "-c", "pyproject.toml", "-q"])))
+PY
+    )
+    echo "::endgroup::"
+  done
 fi
 
 python -m scripts.mutation_results "$targets" "$failed"
