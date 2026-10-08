@@ -90,9 +90,9 @@ def sync_detailed(
 ) -> Response[Any | EmailTemplate | Error]:
     """ Update email template
 
-     Updates a custom email template. Custom email templates are a SUPERAGENT-plan
-    feature: requests from a HOBBY-plan project owner are rejected with 403
-    (including after a SUPERAGENT→HOBBY downgrade), so a HOBBY project cannot modify
+     Updates a custom email template. Custom email templates are a SUPERAGENT
+    feature: requests from a HOBBY project owner are rejected with 403
+    (including after a downgrade), so a HOBBY project cannot modify
     templates and always sends the built-in defaults.
 
     Args:
@@ -132,9 +132,9 @@ def sync(
 ) -> Any | EmailTemplate | Error | None:
     """ Update email template
 
-     Updates a custom email template. Custom email templates are a SUPERAGENT-plan
-    feature: requests from a HOBBY-plan project owner are rejected with 403
-    (including after a SUPERAGENT→HOBBY downgrade), so a HOBBY project cannot modify
+     Updates a custom email template. Custom email templates are a SUPERAGENT
+    feature: requests from a HOBBY project owner are rejected with 403
+    (including after a downgrade), so a HOBBY project cannot modify
     templates and always sends the built-in defaults.
 
     Args:
@@ -169,9 +169,9 @@ async def asyncio_detailed(
 ) -> Response[Any | EmailTemplate | Error]:
     """ Update email template
 
-     Updates a custom email template. Custom email templates are a SUPERAGENT-plan
-    feature: requests from a HOBBY-plan project owner are rejected with 403
-    (including after a SUPERAGENT→HOBBY downgrade), so a HOBBY project cannot modify
+     Updates a custom email template. Custom email templates are a SUPERAGENT
+    feature: requests from a HOBBY project owner are rejected with 403
+    (including after a downgrade), so a HOBBY project cannot modify
     templates and always sends the built-in defaults.
 
     Args:
@@ -211,9 +211,9 @@ async def asyncio(
 ) -> Any | EmailTemplate | Error | None:
     """ Update email template
 
-     Updates a custom email template. Custom email templates are a SUPERAGENT-plan
-    feature: requests from a HOBBY-plan project owner are rejected with 403
-    (including after a SUPERAGENT→HOBBY downgrade), so a HOBBY project cannot modify
+     Updates a custom email template. Custom email templates are a SUPERAGENT
+    feature: requests from a HOBBY project owner are rejected with 403
+    (including after a downgrade), so a HOBBY project cannot modify
     templates and always sends the built-in defaults.
 
     Args:

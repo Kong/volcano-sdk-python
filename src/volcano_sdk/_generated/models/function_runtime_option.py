@@ -26,6 +26,7 @@ class FunctionRuntimeOption:
     """ 
         Attributes:
             name (str): Runtime identifier accepted by function APIs. Example: nodejs24.x.
+            label (str): Human-readable runtime label suitable for display in pickers. Example: Node.js 24.
             language (str): Runtime language family used by the CLI to choose defaults from source files. Example: nodejs.
             default (bool): Whether this runtime is the CLI default for its language.
             durable_capable (bool): Whether a durable function can be authored on this runtime. Only runtimes with a durable
@@ -34,6 +35,7 @@ class FunctionRuntimeOption:
      """
 
     name: str
+    label: str
     language: str
     default: bool
     durable_capable: bool
@@ -48,6 +50,8 @@ class FunctionRuntimeOption:
         from ..models.function_runtime_deployment import FunctionRuntimeDeployment # noqa: PLC0415
         name = self.name
 
+        label = self.label
+
         language = self.language
 
         default = self.default
@@ -61,6 +65,7 @@ class FunctionRuntimeOption:
         field_dict.update(self.additional_properties)
         field_dict.update({
             "name": name,
+            "label": label,
             "language": language,
             "default": default,
             "durable_capable": durable_capable,
@@ -77,6 +82,8 @@ class FunctionRuntimeOption:
         d = dict(src_dict)
         name = d.pop("name")
 
+        label = d.pop("label")
+
         language = d.pop("language")
 
         default = d.pop("default")
@@ -90,6 +97,7 @@ class FunctionRuntimeOption:
 
         function_runtime_option = cls(
             name=name,
+            label=label,
             language=language,
             default=default,
             durable_capable=durable_capable,

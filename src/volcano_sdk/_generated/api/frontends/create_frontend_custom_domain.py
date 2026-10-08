@@ -132,22 +132,26 @@ def sync_detailed(
     body: CreateFrontendCustomDomainRequest,
 
 ) -> Response[Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse]:
-    """ Configure frontend custom domain (SUPERAGENT)
+    """ Configure frontend custom domain
 
      Configures one custom domain for a frontend.
     The default Volcano-generated frontend URL remains active.
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
-    Managed TLS returns the DNS records currently required for setup. Volcano may require a tenant-
-    specific TXT ownership challenge before returning the certificate authority's validation record.
-    After ownership verification succeeds, Volcano permanently assigns the hostname to the account,
-    including after the domain is deleted. A required but unverified ownership reservation expires after
-    72 hours.
+    The account must own the hostname: it must have verified the hostname or a domain above it (see
+    `POST /user/domains`). A certificate does not prove ownership.
+    When the account owns no domain covering the hostname, Volcano asks for a TXT record at
+    `_volcano.<registrable domain>`, such as `_volcano.example.com`. Publishing it verifies the whole
+    domain, so later subdomains need no record. A managed TLS request reserves the hostname and returns
+    that record in `verification_records`; the reservation expires after 72 hours unless the record is
+    published. A BYOC request gets `409` with `code: ownership_verification_required` and the record in
+    `required_record`; publish it and send the same request again.
+    Managed TLS then returns the CNAME that authorizes certificate issuance and renewal.
     An unverified reservation does not block an account that proves ownership. When another account
-    holds one, a managed TLS request gets `409` with `code: ownership_verification_required` and the
-    caller's own `required_record`; after publishing it, the same request takes over the reservation. A
-    BYOC request with a publicly trusted certificate and key for the hostname also takes it over; other
-    BYOC requests get a `409` without `code`. Hostnames claimed through ownership verification and BYOC
-    domains are never taken over.
+    holds one, a request gets `409` with `code: ownership_verification_required` and the caller's own
+    `required_record`; after publishing it, the same request takes over the reservation. When another
+    account verified the domain, the same `409` names the record that moves the domain to the caller
+    once the other account's record is no longer published. A hostname below a domain another account
+    owns otherwise returns `409` without `code`.
 
     Args:
         id (UUID):
@@ -184,22 +188,26 @@ def sync(
     body: CreateFrontendCustomDomainRequest,
 
 ) -> Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse | None:
-    """ Configure frontend custom domain (SUPERAGENT)
+    """ Configure frontend custom domain
 
      Configures one custom domain for a frontend.
     The default Volcano-generated frontend URL remains active.
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
-    Managed TLS returns the DNS records currently required for setup. Volcano may require a tenant-
-    specific TXT ownership challenge before returning the certificate authority's validation record.
-    After ownership verification succeeds, Volcano permanently assigns the hostname to the account,
-    including after the domain is deleted. A required but unverified ownership reservation expires after
-    72 hours.
+    The account must own the hostname: it must have verified the hostname or a domain above it (see
+    `POST /user/domains`). A certificate does not prove ownership.
+    When the account owns no domain covering the hostname, Volcano asks for a TXT record at
+    `_volcano.<registrable domain>`, such as `_volcano.example.com`. Publishing it verifies the whole
+    domain, so later subdomains need no record. A managed TLS request reserves the hostname and returns
+    that record in `verification_records`; the reservation expires after 72 hours unless the record is
+    published. A BYOC request gets `409` with `code: ownership_verification_required` and the record in
+    `required_record`; publish it and send the same request again.
+    Managed TLS then returns the CNAME that authorizes certificate issuance and renewal.
     An unverified reservation does not block an account that proves ownership. When another account
-    holds one, a managed TLS request gets `409` with `code: ownership_verification_required` and the
-    caller's own `required_record`; after publishing it, the same request takes over the reservation. A
-    BYOC request with a publicly trusted certificate and key for the hostname also takes it over; other
-    BYOC requests get a `409` without `code`. Hostnames claimed through ownership verification and BYOC
-    domains are never taken over.
+    holds one, a request gets `409` with `code: ownership_verification_required` and the caller's own
+    `required_record`; after publishing it, the same request takes over the reservation. When another
+    account verified the domain, the same `409` names the record that moves the domain to the caller
+    once the other account's record is no longer published. A hostname below a domain another account
+    owns otherwise returns `409` without `code`.
 
     Args:
         id (UUID):
@@ -231,22 +239,26 @@ async def asyncio_detailed(
     body: CreateFrontendCustomDomainRequest,
 
 ) -> Response[Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse]:
-    """ Configure frontend custom domain (SUPERAGENT)
+    """ Configure frontend custom domain
 
      Configures one custom domain for a frontend.
     The default Volcano-generated frontend URL remains active.
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
-    Managed TLS returns the DNS records currently required for setup. Volcano may require a tenant-
-    specific TXT ownership challenge before returning the certificate authority's validation record.
-    After ownership verification succeeds, Volcano permanently assigns the hostname to the account,
-    including after the domain is deleted. A required but unverified ownership reservation expires after
-    72 hours.
+    The account must own the hostname: it must have verified the hostname or a domain above it (see
+    `POST /user/domains`). A certificate does not prove ownership.
+    When the account owns no domain covering the hostname, Volcano asks for a TXT record at
+    `_volcano.<registrable domain>`, such as `_volcano.example.com`. Publishing it verifies the whole
+    domain, so later subdomains need no record. A managed TLS request reserves the hostname and returns
+    that record in `verification_records`; the reservation expires after 72 hours unless the record is
+    published. A BYOC request gets `409` with `code: ownership_verification_required` and the record in
+    `required_record`; publish it and send the same request again.
+    Managed TLS then returns the CNAME that authorizes certificate issuance and renewal.
     An unverified reservation does not block an account that proves ownership. When another account
-    holds one, a managed TLS request gets `409` with `code: ownership_verification_required` and the
-    caller's own `required_record`; after publishing it, the same request takes over the reservation. A
-    BYOC request with a publicly trusted certificate and key for the hostname also takes it over; other
-    BYOC requests get a `409` without `code`. Hostnames claimed through ownership verification and BYOC
-    domains are never taken over.
+    holds one, a request gets `409` with `code: ownership_verification_required` and the caller's own
+    `required_record`; after publishing it, the same request takes over the reservation. When another
+    account verified the domain, the same `409` names the record that moves the domain to the caller
+    once the other account's record is no longer published. A hostname below a domain another account
+    owns otherwise returns `409` without `code`.
 
     Args:
         id (UUID):
@@ -283,22 +295,26 @@ async def asyncio(
     body: CreateFrontendCustomDomainRequest,
 
 ) -> Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse | None:
-    """ Configure frontend custom domain (SUPERAGENT)
+    """ Configure frontend custom domain
 
      Configures one custom domain for a frontend.
     The default Volcano-generated frontend URL remains active.
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
-    Managed TLS returns the DNS records currently required for setup. Volcano may require a tenant-
-    specific TXT ownership challenge before returning the certificate authority's validation record.
-    After ownership verification succeeds, Volcano permanently assigns the hostname to the account,
-    including after the domain is deleted. A required but unverified ownership reservation expires after
-    72 hours.
+    The account must own the hostname: it must have verified the hostname or a domain above it (see
+    `POST /user/domains`). A certificate does not prove ownership.
+    When the account owns no domain covering the hostname, Volcano asks for a TXT record at
+    `_volcano.<registrable domain>`, such as `_volcano.example.com`. Publishing it verifies the whole
+    domain, so later subdomains need no record. A managed TLS request reserves the hostname and returns
+    that record in `verification_records`; the reservation expires after 72 hours unless the record is
+    published. A BYOC request gets `409` with `code: ownership_verification_required` and the record in
+    `required_record`; publish it and send the same request again.
+    Managed TLS then returns the CNAME that authorizes certificate issuance and renewal.
     An unverified reservation does not block an account that proves ownership. When another account
-    holds one, a managed TLS request gets `409` with `code: ownership_verification_required` and the
-    caller's own `required_record`; after publishing it, the same request takes over the reservation. A
-    BYOC request with a publicly trusted certificate and key for the hostname also takes it over; other
-    BYOC requests get a `409` without `code`. Hostnames claimed through ownership verification and BYOC
-    domains are never taken over.
+    holds one, a request gets `409` with `code: ownership_verification_required` and the caller's own
+    `required_record`; after publishing it, the same request takes over the reservation. When another
+    account verified the domain, the same `409` names the record that moves the domain to the caller
+    once the other account's record is no longer published. A hostname below a domain another account
+    owns otherwise returns `409` without `code`.
 
     Args:
         id (UUID):

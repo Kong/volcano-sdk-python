@@ -23,7 +23,7 @@ T = TypeVar("T", bound="ListDatabaseRegionsResponse200Item")
 class ListDatabaseRegionsResponse200Item:
     """ 
         Attributes:
-            id (str | Unset): Region identifier for API usage Example: aws-us-east-1.
+            id (str | Unset): Region identifier for API usage Example: us-east-1.
             name (str | Unset): Human-readable region location Example: US East (N. Virginia).
      """
 

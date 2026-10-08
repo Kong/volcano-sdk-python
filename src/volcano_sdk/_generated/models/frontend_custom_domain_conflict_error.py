@@ -24,17 +24,17 @@ T = TypeVar("T", bound="FrontendCustomDomainConflictError")
 
 @_attrs_define
 class FrontendCustomDomainConflictError:
-    """ Custom domain create conflict. With `code: ownership_verification_required`, another account holds an unverified
-    managed TLS reservation for the hostname: publish `required_record` in DNS and send the same request again. The
-    retry succeeds once Volcano can see the record. Other conflicts omit both fields.
+    """ Domain ownership conflict. With `code: ownership_verification_required`, the account has not proven it owns the
+    domain: publish `required_record` in DNS and send the same request again. The retry succeeds once Volcano can see
+    the record. Other conflicts omit both fields.
 
         Attributes:
             error (str):
             code (str | Unset): Stable machine-readable error code when a specific recovery path is available.
-            required_record (FrontendDomainVerificationRecord | Unset): The DNS records currently required for managed TLS.
-                Volcano may require a tenant-specific TXT ownership record before returning a CNAME that authorizes certificate
-                issuance and renewal. Clients must follow the records returned for the current lifecycle state instead of
-                assuming a fixed sequence.
+            required_record (FrontendDomainVerificationRecord | Unset): The DNS records currently required. Volcano may
+                require an account-specific TXT ownership record for the hostname's domain before returning a CNAME that
+                authorizes managed certificate issuance and renewal. Clients must follow the records returned for the current
+                lifecycle state instead of assuming a fixed sequence.
      """
 
     error: str

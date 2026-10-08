@@ -27,8 +27,10 @@ class DatabaseUpdateRequest:
     """ 
         Attributes:
             table (str): Table name Example: posts.
-            values (DatabaseUpdateRequestValues): Column values to update Example: {'title': 'Updated Title', 'status':
-                'published'}.
+            values (DatabaseUpdateRequestValues): Column values to update. JSON objects and arrays are stored as JSON,
+                so send them to `json` or `jsonb` columns. For a Postgres array
+                column, send an array literal string such as `"{a,b}"`.
+                 Example: {'title': 'Updated Title', 'status': 'published'}.
             filters (list[DatabaseQueryFilter]): WHERE conditions for which rows to update. At least one filter is
                 required; a filterless update is rejected to avoid rewriting every
                 row.

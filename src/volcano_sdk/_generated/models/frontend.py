@@ -14,11 +14,15 @@ from ..models.frontend_framework import check_frontend_framework
 from ..models.frontend_framework import FrontendFramework
 from ..models.frontend_status import check_frontend_status
 from ..models.frontend_status import FrontendStatus
+from ..models.frontend_variable_scope import check_frontend_variable_scope
+from ..models.frontend_variable_scope import FrontendVariableScope
 from ..types import UNSET, Unset
 from typing import cast
 from uuid import UUID
 import datetime
 
+if TYPE_CHECKING:
+  from ..models.frontend_function_route import FrontendFunctionRoute
 
 
 
@@ -44,8 +48,16 @@ class Frontend:
                 frontend stays `active` on the previous deployment, so `failed` means no
                 deployment is serving.
             deployed_regions (list[str]):
+            function_routes (list[FrontendFunctionRoute]): Paths on this frontend that forward to a public function, ordered
+                from most to least specific. Anyone who can load the frontend can
+                reach the target function at these paths without a credential.
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
+            variable_scope (FrontendVariableScope | Unset): All preserves access to all project variables. Shared includes
+                the project frontend shared-variable list. Scoped includes only explicitly declared variables in builds and
+                runtime. Omission preserves the stored selection.
+            declared_variables (list[str] | Unset): Names selected when variable_scope is scoped. Missing declared values
+                reject deployment. Omission preserves the stored list; an empty list clears it.
             app_root (str | Unset): Optional relative POSIX path from the uploaded archive root to the Next.js app that is
                 deployed.
             provisioning_started_at (datetime.datetime | Unset): Timestamp when the current provisioning phase started
@@ -63,8 +75,11 @@ class Frontend:
     framework: FrontendFramework
     status: FrontendStatus
     deployed_regions: list[str]
+    function_routes: list[FrontendFunctionRoute]
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    variable_scope: FrontendVariableScope | Unset = UNSET
+    declared_variables: list[str] | Unset = UNSET
     app_root: str | Unset = UNSET
     provisioning_started_at: datetime.datetime | Unset = UNSET
     current_deployment_id: UUID | Unset = UNSET
@@ -80,6 +95,7 @@ class Frontend:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.frontend_function_route import FrontendFunctionRoute # noqa: PLC0415
         id = str(self.id)
 
         project_id = str(self.project_id)
@@ -94,9 +110,27 @@ class Frontend:
 
 
 
+        function_routes = []
+        for function_routes_item_data in self.function_routes:
+            function_routes_item = function_routes_item_data.to_dict()
+            function_routes.append(function_routes_item)
+
+
+
         created_at = self.created_at.isoformat()
 
         updated_at = self.updated_at.isoformat()
+
+        variable_scope: str | Unset = UNSET
+        if not isinstance(self.variable_scope, Unset):
+            variable_scope = self.variable_scope
+
+
+        declared_variables: list[str] | Unset = UNSET
+        if not isinstance(self.declared_variables, Unset):
+            declared_variables = self.declared_variables
+
+
 
         app_root = self.app_root
 
@@ -135,9 +169,14 @@ class Frontend:
             "framework": framework,
             "status": status,
             "deployed_regions": deployed_regions,
+            "function_routes": function_routes,
             "created_at": created_at,
             "updated_at": updated_at,
         })
+        if variable_scope is not UNSET:
+            field_dict["variable_scope"] = variable_scope
+        if declared_variables is not UNSET:
+            field_dict["declared_variables"] = declared_variables
         if app_root is not UNSET:
             field_dict["app_root"] = app_root
         if provisioning_started_at is not UNSET:
@@ -161,6 +200,7 @@ class Frontend:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.frontend_function_route import FrontendFunctionRoute # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 
@@ -187,6 +227,16 @@ class Frontend:
         deployed_regions = cast(list[str], d.pop("deployed_regions"))
 
 
+        function_routes = []
+        _function_routes = d.pop("function_routes")
+        for function_routes_item_data in (_function_routes):
+            function_routes_item = FrontendFunctionRoute.from_dict(function_routes_item_data)
+
+
+
+            function_routes.append(function_routes_item)
+
+
         created_at = datetime.datetime.fromisoformat(d.pop("created_at"))
 
 
@@ -195,6 +245,19 @@ class Frontend:
         updated_at = datetime.datetime.fromisoformat(d.pop("updated_at"))
 
 
+
+
+        _variable_scope = d.pop("variable_scope", UNSET)
+        variable_scope: FrontendVariableScope | Unset
+        if isinstance(_variable_scope,  Unset):
+            variable_scope = UNSET
+        else:
+            variable_scope = check_frontend_variable_scope(_variable_scope)
+
+
+
+
+        declared_variables = cast(list[str], d.pop("declared_variables", UNSET))
 
 
         app_root = d.pop("app_root", UNSET)
@@ -260,8 +323,11 @@ class Frontend:
             framework=framework,
             status=status,
             deployed_regions=deployed_regions,
+            function_routes=function_routes,
             created_at=created_at,
             updated_at=updated_at,
+            variable_scope=variable_scope,
+            declared_variables=declared_variables,
             app_root=app_root,
             provisioning_started_at=provisioning_started_at,
             current_deployment_id=current_deployment_id,

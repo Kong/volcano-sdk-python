@@ -35,3 +35,8 @@ CI retains the Python 3.11–3.14 check names and selects exact patch versions
 listed by the native [setup-python manifest](https://github.com/actions/python-versions/blob/main/versions-manifest.json).
 `UV_PYTHON` selects each matrix interpreter; `.python-version` pins the local
 3.12 environment. The isolated coverage command pins the same 3.12 patch.
+
+The `ProjectPlan` literal-enum template retains the legacy response values
+`FREE` and `PRO` for earlier Hosting releases. This compatibility applies only
+to the response-only `Project.plan` model; the vendored producer contract and
+all other enum constraints stay unchanged.

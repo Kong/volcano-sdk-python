@@ -62,8 +62,9 @@ def sync_detailed(
 ) -> Response[FunctionRuntimesResponse]:
     """ List supported function runtimes
 
-     Returns the public function runtime catalog used by CLI clients to select supported runtimes,
-    language defaults, and local source packaging metadata for deployments.
+     Returns the public function runtime catalog: every runtime a deploy accepts, its display
+    label for runtime pickers, language defaults, durable capability, and local source packaging
+    metadata for deployments.
     This is a public endpoint that doesn't require authentication.
 
     Raises:
@@ -92,8 +93,9 @@ def sync(
 ) -> FunctionRuntimesResponse | None:
     """ List supported function runtimes
 
-     Returns the public function runtime catalog used by CLI clients to select supported runtimes,
-    language defaults, and local source packaging metadata for deployments.
+     Returns the public function runtime catalog: every runtime a deploy accepts, its display
+    label for runtime pickers, language defaults, durable capability, and local source packaging
+    metadata for deployments.
     This is a public endpoint that doesn't require authentication.
 
     Raises:
@@ -117,8 +119,9 @@ async def asyncio_detailed(
 ) -> Response[FunctionRuntimesResponse]:
     """ List supported function runtimes
 
-     Returns the public function runtime catalog used by CLI clients to select supported runtimes,
-    language defaults, and local source packaging metadata for deployments.
+     Returns the public function runtime catalog: every runtime a deploy accepts, its display
+    label for runtime pickers, language defaults, durable capability, and local source packaging
+    metadata for deployments.
     This is a public endpoint that doesn't require authentication.
 
     Raises:
@@ -147,8 +150,9 @@ async def asyncio(
 ) -> FunctionRuntimesResponse | None:
     """ List supported function runtimes
 
-     Returns the public function runtime catalog used by CLI clients to select supported runtimes,
-    language defaults, and local source packaging metadata for deployments.
+     Returns the public function runtime catalog: every runtime a deploy accepts, its display
+    label for runtime pickers, language defaults, durable capability, and local source packaging
+    metadata for deployments.
     This is a public endpoint that doesn't require authentication.
 
     Raises:

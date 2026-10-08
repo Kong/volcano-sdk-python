@@ -23,15 +23,17 @@ T = TypeVar("T", bound="ListPostgresVersionsResponse200Item")
 class ListPostgresVersionsResponse200Item:
     """ 
         Attributes:
-            version (str | Unset): PostgreSQL major version number Example: 16.
-            name (str | Unset): Human-readable version name Example: PostgreSQL 16.
-            default (bool | Unset): Whether this is the default version (recommended)
+            version (str | Unset): PostgreSQL major version number Example: 18.
+            name (str | Unset): Human-readable version name Example: PostgreSQL 18.
+            default (bool | Unset): True on the version to preselect for a new database; absent on the others
+            recommended (bool | Unset): True on the version recommended for new databases; absent on the others
             deprecated (bool | Unset): Whether this version is deprecated (approaching EOL)
      """
 
     version: str | Unset = UNSET
     name: str | Unset = UNSET
     default: bool | Unset = UNSET
+    recommended: bool | Unset = UNSET
     deprecated: bool | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -46,6 +48,8 @@ class ListPostgresVersionsResponse200Item:
 
         default = self.default
 
+        recommended = self.recommended
+
         deprecated = self.deprecated
 
 
@@ -59,6 +63,8 @@ class ListPostgresVersionsResponse200Item:
             field_dict["name"] = name
         if default is not UNSET:
             field_dict["default"] = default
+        if recommended is not UNSET:
+            field_dict["recommended"] = recommended
         if deprecated is not UNSET:
             field_dict["deprecated"] = deprecated
 
@@ -75,12 +81,15 @@ class ListPostgresVersionsResponse200Item:
 
         default = d.pop("default", UNSET)
 
+        recommended = d.pop("recommended", UNSET)
+
         deprecated = d.pop("deprecated", UNSET)
 
         list_postgres_versions_response_200_item = cls(
             version=version,
             name=name,
             default=default,
+            recommended=recommended,
             deprecated=deprecated,
         )
 

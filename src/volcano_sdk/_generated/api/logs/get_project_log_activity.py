@@ -108,10 +108,12 @@ def sync_detailed(
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to count deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT-plan feature; `resource.type=database`
-    from a HOBBY-plan project owner returns 403. The activity window is limited
+    databases. Database logs are a SUPERAGENT feature; `resource.type=database`
+    from a HOBBY project owner returns 403. The activity window is limited
     to the plan's retention window (HOBBY: 1 day, SUPERAGENT: 30 days); older start
-    times are clamped to that window.
+    times are clamped to that window. Buckets are aligned to UTC clock
+    intervals and count events in the half-open window
+    `[start_time, end_time)`.
 
     Args:
         id (UUID):
@@ -152,10 +154,12 @@ def sync(
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to count deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT-plan feature; `resource.type=database`
-    from a HOBBY-plan project owner returns 403. The activity window is limited
+    databases. Database logs are a SUPERAGENT feature; `resource.type=database`
+    from a HOBBY project owner returns 403. The activity window is limited
     to the plan's retention window (HOBBY: 1 day, SUPERAGENT: 30 days); older start
-    times are clamped to that window.
+    times are clamped to that window. Buckets are aligned to UTC clock
+    intervals and count events in the half-open window
+    `[start_time, end_time)`.
 
     Args:
         id (UUID):
@@ -191,10 +195,12 @@ async def asyncio_detailed(
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to count deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT-plan feature; `resource.type=database`
-    from a HOBBY-plan project owner returns 403. The activity window is limited
+    databases. Database logs are a SUPERAGENT feature; `resource.type=database`
+    from a HOBBY project owner returns 403. The activity window is limited
     to the plan's retention window (HOBBY: 1 day, SUPERAGENT: 30 days); older start
-    times are clamped to that window.
+    times are clamped to that window. Buckets are aligned to UTC clock
+    intervals and count events in the half-open window
+    `[start_time, end_time)`.
 
     Args:
         id (UUID):
@@ -235,10 +241,12 @@ async def asyncio(
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to count deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT-plan feature; `resource.type=database`
-    from a HOBBY-plan project owner returns 403. The activity window is limited
+    databases. Database logs are a SUPERAGENT feature; `resource.type=database`
+    from a HOBBY project owner returns 403. The activity window is limited
     to the plan's retention window (HOBBY: 1 day, SUPERAGENT: 30 days); older start
-    times are clamped to that window.
+    times are clamped to that window. Buckets are aligned to UTC clock
+    intervals and count events in the half-open window
+    `[start_time, end_time)`.
 
     Args:
         id (UUID):

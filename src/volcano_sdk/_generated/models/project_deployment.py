@@ -44,7 +44,6 @@ class ProjectDeployment:
             deploy_source (ProjectDeploymentDeploySource): What initiated this deployment.
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
-            artifact_version (str | Unset):
             error_message (str | Unset):
             completed_at (datetime.datetime | Unset):
             progress (DeploymentProgress | Unset): Normalized live progress derived from the deployment workflow and build
@@ -59,7 +58,6 @@ class ProjectDeployment:
     deploy_source: ProjectDeploymentDeploySource
     created_at: datetime.datetime
     updated_at: datetime.datetime
-    artifact_version: str | Unset = UNSET
     error_message: str | Unset = UNSET
     completed_at: datetime.datetime | Unset = UNSET
     progress: DeploymentProgress | Unset = UNSET
@@ -88,8 +86,6 @@ class ProjectDeployment:
 
         updated_at = self.updated_at.isoformat()
 
-        artifact_version = self.artifact_version
-
         error_message = self.error_message
 
         completed_at: str | Unset = UNSET
@@ -113,8 +109,6 @@ class ProjectDeployment:
             "created_at": created_at,
             "updated_at": updated_at,
         })
-        if artifact_version is not UNSET:
-            field_dict["artifact_version"] = artifact_version
         if error_message is not UNSET:
             field_dict["error_message"] = error_message
         if completed_at is not UNSET:
@@ -171,8 +165,6 @@ class ProjectDeployment:
 
 
 
-        artifact_version = d.pop("artifact_version", UNSET)
-
         error_message = d.pop("error_message", UNSET)
 
         _completed_at = d.pop("completed_at", UNSET)
@@ -204,7 +196,6 @@ class ProjectDeployment:
             deploy_source=deploy_source,
             created_at=created_at,
             updated_at=updated_at,
-            artifact_version=artifact_version,
             error_message=error_message,
             completed_at=completed_at,
             progress=progress,

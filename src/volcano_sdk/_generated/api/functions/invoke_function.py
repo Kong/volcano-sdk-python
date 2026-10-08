@@ -119,15 +119,22 @@ def sync_detailed(
 ) -> Response[Error | FunctionInvocationResponse]:
     """ Invoke a function
 
-     Invoke a serverless function.
+     Invoke a function. The function's `visibility` decides which credentials
+    may call it, and the function does not run for any other. A `private`
+    function answers every credential but a service key exactly as a
+    missing one, with 404, so its name and id cannot be discovered; an anon
+    key on an `authenticated` function gets 403. An SDK calling by name
+    resolves it first through `GET /functions/resolve`, which answers that
+    anon key with 404 instead.
 
-    **With Service Key** (admin/background operations):
+    **With Service Key** (admin/background operations, every visibility):
     - Use for background jobs, webhooks, cron, admin operations
     - Function receives payload only (no user context)
     - Database queries bypass RLS (admin access)
 
-    **With Auth User Token** (user-facing):
+    **With Auth User Token** (user-facing, `authenticated` or `public` functions):
     - Use for user-initiated actions
+    - Includes users from anonymous sign-ins
     - Function receives payload + `__volcano_auth` context:
       ```javascript
       {
@@ -139,16 +146,17 @@ def sync_detailed(
       ```
     - Database queries enforce RLS (user-scoped data)
 
-    **With Anon Key** (public function only):
+    **With Anon Key** (`public` functions only):
     - Requires anon key permission: `functions.invoke`
-    - Function must have `is_public: true`
+    - Function must have `visibility: public`
     - Function receives payload only (no `__volcano_auth`)
 
     **Transport and CORS:**
     - This operation is the authenticated direct RPC endpoint and always uses the
       POST `{payload: ...}` contract, including for functions whose DNS ingress is
       configured in HTTP mode.
-    - The geo-routed DNS ingress is `https://{functionId}.functions.<domain>/`.
+    - The geo-routed DNS ingress is the function's `invoke_url`. It is on a
+      different domain from this API, so it cannot be derived from the API host.
     - RPC-mode DNS ingress accepts POST at `/`. HTTP-mode DNS ingress accepts GET,
       HEAD, POST, PUT, PATCH, and DELETE at `/` and nested paths.
     - Direct and RPC-mode CORS preflight advertises `POST, OPTIONS`. HTTP-mode DNS
@@ -196,15 +204,22 @@ def sync(
 ) -> Error | FunctionInvocationResponse | None:
     """ Invoke a function
 
-     Invoke a serverless function.
+     Invoke a function. The function's `visibility` decides which credentials
+    may call it, and the function does not run for any other. A `private`
+    function answers every credential but a service key exactly as a
+    missing one, with 404, so its name and id cannot be discovered; an anon
+    key on an `authenticated` function gets 403. An SDK calling by name
+    resolves it first through `GET /functions/resolve`, which answers that
+    anon key with 404 instead.
 
-    **With Service Key** (admin/background operations):
+    **With Service Key** (admin/background operations, every visibility):
     - Use for background jobs, webhooks, cron, admin operations
     - Function receives payload only (no user context)
     - Database queries bypass RLS (admin access)
 
-    **With Auth User Token** (user-facing):
+    **With Auth User Token** (user-facing, `authenticated` or `public` functions):
     - Use for user-initiated actions
+    - Includes users from anonymous sign-ins
     - Function receives payload + `__volcano_auth` context:
       ```javascript
       {
@@ -216,16 +231,17 @@ def sync(
       ```
     - Database queries enforce RLS (user-scoped data)
 
-    **With Anon Key** (public function only):
+    **With Anon Key** (`public` functions only):
     - Requires anon key permission: `functions.invoke`
-    - Function must have `is_public: true`
+    - Function must have `visibility: public`
     - Function receives payload only (no `__volcano_auth`)
 
     **Transport and CORS:**
     - This operation is the authenticated direct RPC endpoint and always uses the
       POST `{payload: ...}` contract, including for functions whose DNS ingress is
       configured in HTTP mode.
-    - The geo-routed DNS ingress is `https://{functionId}.functions.<domain>/`.
+    - The geo-routed DNS ingress is the function's `invoke_url`. It is on a
+      different domain from this API, so it cannot be derived from the API host.
     - RPC-mode DNS ingress accepts POST at `/`. HTTP-mode DNS ingress accepts GET,
       HEAD, POST, PUT, PATCH, and DELETE at `/` and nested paths.
     - Direct and RPC-mode CORS preflight advertises `POST, OPTIONS`. HTTP-mode DNS
@@ -268,15 +284,22 @@ async def asyncio_detailed(
 ) -> Response[Error | FunctionInvocationResponse]:
     """ Invoke a function
 
-     Invoke a serverless function.
+     Invoke a function. The function's `visibility` decides which credentials
+    may call it, and the function does not run for any other. A `private`
+    function answers every credential but a service key exactly as a
+    missing one, with 404, so its name and id cannot be discovered; an anon
+    key on an `authenticated` function gets 403. An SDK calling by name
+    resolves it first through `GET /functions/resolve`, which answers that
+    anon key with 404 instead.
 
-    **With Service Key** (admin/background operations):
+    **With Service Key** (admin/background operations, every visibility):
     - Use for background jobs, webhooks, cron, admin operations
     - Function receives payload only (no user context)
     - Database queries bypass RLS (admin access)
 
-    **With Auth User Token** (user-facing):
+    **With Auth User Token** (user-facing, `authenticated` or `public` functions):
     - Use for user-initiated actions
+    - Includes users from anonymous sign-ins
     - Function receives payload + `__volcano_auth` context:
       ```javascript
       {
@@ -288,16 +311,17 @@ async def asyncio_detailed(
       ```
     - Database queries enforce RLS (user-scoped data)
 
-    **With Anon Key** (public function only):
+    **With Anon Key** (`public` functions only):
     - Requires anon key permission: `functions.invoke`
-    - Function must have `is_public: true`
+    - Function must have `visibility: public`
     - Function receives payload only (no `__volcano_auth`)
 
     **Transport and CORS:**
     - This operation is the authenticated direct RPC endpoint and always uses the
       POST `{payload: ...}` contract, including for functions whose DNS ingress is
       configured in HTTP mode.
-    - The geo-routed DNS ingress is `https://{functionId}.functions.<domain>/`.
+    - The geo-routed DNS ingress is the function's `invoke_url`. It is on a
+      different domain from this API, so it cannot be derived from the API host.
     - RPC-mode DNS ingress accepts POST at `/`. HTTP-mode DNS ingress accepts GET,
       HEAD, POST, PUT, PATCH, and DELETE at `/` and nested paths.
     - Direct and RPC-mode CORS preflight advertises `POST, OPTIONS`. HTTP-mode DNS
@@ -345,15 +369,22 @@ async def asyncio(
 ) -> Error | FunctionInvocationResponse | None:
     """ Invoke a function
 
-     Invoke a serverless function.
+     Invoke a function. The function's `visibility` decides which credentials
+    may call it, and the function does not run for any other. A `private`
+    function answers every credential but a service key exactly as a
+    missing one, with 404, so its name and id cannot be discovered; an anon
+    key on an `authenticated` function gets 403. An SDK calling by name
+    resolves it first through `GET /functions/resolve`, which answers that
+    anon key with 404 instead.
 
-    **With Service Key** (admin/background operations):
+    **With Service Key** (admin/background operations, every visibility):
     - Use for background jobs, webhooks, cron, admin operations
     - Function receives payload only (no user context)
     - Database queries bypass RLS (admin access)
 
-    **With Auth User Token** (user-facing):
+    **With Auth User Token** (user-facing, `authenticated` or `public` functions):
     - Use for user-initiated actions
+    - Includes users from anonymous sign-ins
     - Function receives payload + `__volcano_auth` context:
       ```javascript
       {
@@ -365,16 +396,17 @@ async def asyncio(
       ```
     - Database queries enforce RLS (user-scoped data)
 
-    **With Anon Key** (public function only):
+    **With Anon Key** (`public` functions only):
     - Requires anon key permission: `functions.invoke`
-    - Function must have `is_public: true`
+    - Function must have `visibility: public`
     - Function receives payload only (no `__volcano_auth`)
 
     **Transport and CORS:**
     - This operation is the authenticated direct RPC endpoint and always uses the
       POST `{payload: ...}` contract, including for functions whose DNS ingress is
       configured in HTTP mode.
-    - The geo-routed DNS ingress is `https://{functionId}.functions.<domain>/`.
+    - The geo-routed DNS ingress is the function's `invoke_url`. It is on a
+      different domain from this API, so it cannot be derived from the API host.
     - RPC-mode DNS ingress accepts POST at `/`. HTTP-mode DNS ingress accepts GET,
       HEAD, POST, PUT, PATCH, and DELETE at `/` and nested paths.
     - Direct and RPC-mode CORS preflight advertises `POST, OPTIONS`. HTTP-mode DNS

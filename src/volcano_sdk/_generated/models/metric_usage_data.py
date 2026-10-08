@@ -28,7 +28,7 @@ class MetricUsageData:
         Attributes:
             metric (str): Metric name (for example, "Function & Frontend Invocations", "Frontend Requests",
                 "Durable Executions", "Durable Operations", "Durable Compute (MB-Seconds)",
-                "CodeBuild Build Seconds",
+                "Build Seconds",
                 "Bandwidth Ingress (Bytes)", "Bandwidth Egress (Bytes)",
                 "Bandwidth Total (Bytes)", or "Database Storage (Bytes)"). Byte-based metrics are
                 reported in bytes. "Bandwidth Total (Bytes)" is derived (ingress + egress) and
@@ -39,6 +39,13 @@ class MetricUsageData:
                 started in. "Durable Compute (MB-Seconds)" reports the memory the execution ran
                 at times the time it spent running, in megabyte-seconds; the allowance for it is
                 published in gigabyte-seconds, which is 1024 of these.
+                "Sandbox Running (MiB-Seconds)", "Sandbox Suspended (Seconds)", and
+                "Sandbox Uncertain (MiB-Seconds)" are preview-only usage; they do not
+                debit credits. Running reports configured memory times observed runtime,
+                not measured CPU or elastic memory consumption. Uncertain includes
+                observation gaps and unconfirmed state transitions. Suspended reports
+                duration, not snapshot size. Local sessions do not contribute.
+                Totals are rounded down after aggregating millisecond measurements.
                 "Database Storage (Bytes)" is a current observed gauge,
                 not a cumulative counter. It is the sum of the latest samples exposed as
                 `storage_bytes` by the project's database list, so it includes what each

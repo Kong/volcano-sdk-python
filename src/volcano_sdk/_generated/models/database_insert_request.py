@@ -26,8 +26,10 @@ class DatabaseInsertRequest:
     """ 
         Attributes:
             table (str): Table name Example: posts.
-            values (DatabaseInsertRequestValues): Column values to insert Example: {'title': 'My New Post', 'content': 'This
-                is the content', 'status': 'draft'}.
+            values (DatabaseInsertRequestValues): Column values to insert. JSON objects and arrays are stored as JSON,
+                so send them to `json` or `jsonb` columns. For a Postgres array
+                column, send an array literal string such as `"{a,b}"`.
+                 Example: {'title': 'My New Post', 'content': 'This is the content', 'status': 'draft'}.
      """
 
     table: str

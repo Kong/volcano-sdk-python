@@ -20,7 +20,9 @@ T = TypeVar("T", bound="DatabaseUpdateRequestValues")
 
 @_attrs_define
 class DatabaseUpdateRequestValues:
-    """ Column values to update
+    """ Column values to update. JSON objects and arrays are stored as JSON,
+    so send them to `json` or `jsonb` columns. For a Postgres array
+    column, send an array literal string such as `"{a,b}"`.
 
         Example:
             {'title': 'Updated Title', 'status': 'published'}

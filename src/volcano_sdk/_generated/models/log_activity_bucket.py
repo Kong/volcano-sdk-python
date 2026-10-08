@@ -24,11 +24,12 @@ T = TypeVar("T", bound="LogActivityBucket")
 
 @_attrs_define
 class LogActivityBucket:
-    """ Log-event counts for one activity time bucket.
+    """ Log-event counts for one activity time bucket. The first and last buckets can extend past the requested window; they
+    count only events inside it.
 
         Attributes:
-            start_time (datetime.datetime): Bucket start time.
-            end_time (datetime.datetime): Bucket end time.
+            start_time (datetime.datetime): Bucket start time, inclusive.
+            end_time (datetime.datetime): Bucket end time, exclusive.
             counts (LogActivityBucketCounts): Counts grouped by activity dimension.
             total (int): Total events in this bucket.
      """

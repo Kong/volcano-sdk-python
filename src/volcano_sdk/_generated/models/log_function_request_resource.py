@@ -8,6 +8,8 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.function_kind_filter import check_function_kind_filter
+from ..models.function_kind_filter import FunctionKindFilter
 from ..models.log_function_request_resource_type import check_log_function_request_resource_type
 from ..models.log_function_request_resource_type import LogFunctionRequestResourceType
 from ..types import UNSET, Unset
@@ -33,11 +35,14 @@ class LogFunctionRequestResource:
             type_ (LogFunctionRequestResourceType): Resource type to read logs for.
             ids (list[UUID] | Unset): Optional function identifiers. Omit or send an empty array to include every function
                 in the project.
+            kind (FunctionKindFilter | Unset): A function kind to filter a list by. Unlike `FunctionKind` it has no
+                default: omitting the filter includes both kinds.
             deployments (LogDeploymentRequestSelector | Unset): Deployment log selector for deployable resources.
      """
 
     type_: LogFunctionRequestResourceType
     ids: list[UUID] | Unset = UNSET
+    kind: FunctionKindFilter | Unset = UNSET
     deployments: LogDeploymentRequestSelector | Unset = UNSET
 
 
@@ -57,6 +62,11 @@ class LogFunctionRequestResource:
 
 
 
+        kind: str | Unset = UNSET
+        if not isinstance(self.kind, Unset):
+            kind = self.kind
+
+
         deployments: dict[str, Any] | Unset = UNSET
         if not isinstance(self.deployments, Unset):
             deployments = self.deployments.to_dict()
@@ -69,6 +79,8 @@ class LogFunctionRequestResource:
         })
         if ids is not UNSET:
             field_dict["ids"] = ids
+        if kind is not UNSET:
+            field_dict["kind"] = kind
         if deployments is not UNSET:
             field_dict["deployments"] = deployments
 
@@ -97,6 +109,16 @@ class LogFunctionRequestResource:
                 ids.append(ids_item)
 
 
+        _kind = d.pop("kind", UNSET)
+        kind: FunctionKindFilter | Unset
+        if isinstance(_kind,  Unset):
+            kind = UNSET
+        else:
+            kind = check_function_kind_filter(_kind)
+
+
+
+
         _deployments = d.pop("deployments", UNSET)
         deployments: LogDeploymentRequestSelector | Unset
         if isinstance(_deployments,  Unset):
@@ -110,6 +132,7 @@ class LogFunctionRequestResource:
         log_function_request_resource = cls(
             type_=type_,
             ids=ids,
+            kind=kind,
             deployments=deployments,
         )
 

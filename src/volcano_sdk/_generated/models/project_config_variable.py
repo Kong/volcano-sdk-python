@@ -23,7 +23,8 @@ T = TypeVar("T", bound="ProjectConfigVariable")
 class ProjectConfigVariable:
     """ 
         Attributes:
-            name (str):
+            name (str): Project variable name. Function runtime names such as AWS_REGION are reserved and fail validation;
+                see the environment variables guide for the full list.
             value (str):
             shared (bool | Unset): Include this name in the project's shared function variables. Omission preserves existing
                 membership; new variables default to true for legacy clients. Send false explicitly to create a non-shared

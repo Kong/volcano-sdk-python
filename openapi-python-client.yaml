@@ -8,6 +8,7 @@ post_hooks:
   - ruff check --isolated --no-cache --preview --select W291,W293,W391 --fix --unsafe-fixes api/sandboxes models/*sandbox*.py
 # Parse binary bodies without changing their wire Content-Type.
 content_type_overrides:
+  application/gzip: application/octet-stream
   application/yaml: application/octet-stream
   image/png: application/octet-stream
   image/jpeg: application/octet-stream

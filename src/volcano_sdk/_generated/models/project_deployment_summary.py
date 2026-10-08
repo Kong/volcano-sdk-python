@@ -29,7 +29,7 @@ class ProjectDeploymentSummary:
             failed_count (int): Attempts that reached failed or degraded.
             canceled_count (int): Superseded attempts, excluded from success rate and duration.
             success_rate (float | None): Successful attempts divided by successful plus failed attempts.
-            median_build_duration_seconds (float | None): Median CodeBuild duration across eligible completed attempts.
+            median_build_duration_seconds (float | None): Median build duration across eligible completed attempts.
      """
 
     deployment_count: int

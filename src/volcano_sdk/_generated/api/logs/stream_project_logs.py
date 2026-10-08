@@ -125,8 +125,8 @@ def sync_detailed(
     resource selector plus `q`, `start_time`, and `limit`,
     including runtime logs and function/frontend deployment logs selected
     with `resource.deployments`. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT-plan feature; `resource.type=database`
-    from a HOBBY-plan project owner returns 403. The `q` field uses the same
+    databases. Database logs are a SUPERAGENT feature; `resource.type=database`
+    from a HOBBY project owner returns 403. The `q` field uses the same
     syntax as search and activity requests. Do not send `cursor` or
     `end_time`; use `/logs/search` for range backfills.
     Explicit historical `start_time` values are limited to the plan's
@@ -186,8 +186,8 @@ def sync(
     resource selector plus `q`, `start_time`, and `limit`,
     including runtime logs and function/frontend deployment logs selected
     with `resource.deployments`. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT-plan feature; `resource.type=database`
-    from a HOBBY-plan project owner returns 403. The `q` field uses the same
+    databases. Database logs are a SUPERAGENT feature; `resource.type=database`
+    from a HOBBY project owner returns 403. The `q` field uses the same
     syntax as search and activity requests. Do not send `cursor` or
     `end_time`; use `/logs/search` for range backfills.
     Explicit historical `start_time` values are limited to the plan's
@@ -242,8 +242,8 @@ async def asyncio_detailed(
     resource selector plus `q`, `start_time`, and `limit`,
     including runtime logs and function/frontend deployment logs selected
     with `resource.deployments`. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT-plan feature; `resource.type=database`
-    from a HOBBY-plan project owner returns 403. The `q` field uses the same
+    databases. Database logs are a SUPERAGENT feature; `resource.type=database`
+    from a HOBBY project owner returns 403. The `q` field uses the same
     syntax as search and activity requests. Do not send `cursor` or
     `end_time`; use `/logs/search` for range backfills.
     Explicit historical `start_time` values are limited to the plan's
@@ -303,8 +303,8 @@ async def asyncio(
     resource selector plus `q`, `start_time`, and `limit`,
     including runtime logs and function/frontend deployment logs selected
     with `resource.deployments`. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT-plan feature; `resource.type=database`
-    from a HOBBY-plan project owner returns 403. The `q` field uses the same
+    databases. Database logs are a SUPERAGENT feature; `resource.type=database`
+    from a HOBBY project owner returns 403. The `q` field uses the same
     syntax as search and activity requests. Do not send `cursor` or
     `end_time`; use `/logs/search` for range backfills.
     Explicit historical `start_time` values are limited to the plan's

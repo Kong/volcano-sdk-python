@@ -12,6 +12,8 @@ from ..models.function_http_auth_mode import check_function_http_auth_mode
 from ..models.function_http_auth_mode import FunctionHTTPAuthMode
 from ..models.function_invocation_mode import check_function_invocation_mode
 from ..models.function_invocation_mode import FunctionInvocationMode
+from ..models.function_visibility import check_function_visibility
+from ..models.function_visibility import FunctionVisibility
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -30,19 +32,30 @@ T = TypeVar("T", bound="UpdateFunctionRequest")
 class UpdateFunctionRequest:
     """ 
         Attributes:
-            is_public (bool | Unset): Function visibility for anon-key invocation.
-                - `false` (default): private function
-                - `true`: public function (anon keys with `functions.invoke` can invoke)
+            visibility (FunctionVisibility | Unset): Who can invoke the function. Each level admits everything the one
+                before it does.
+                - `private`: service keys and the project's schedulers only. The
+                  default for a new function. To any other credential the function
+                  does not exist: it answers 404, like a missing one.
+                - `authenticated`: also any signed-in user of the project, including
+                  anonymous sign-ins. The function receives their auth context.
+                - `public`: also anon keys holding `functions.invoke`, and Frontend
+                  Function routes, which forward requests without a credential.
+            is_public (bool | Unset): Deprecated alias for `visibility`: `true` means `public` and
+                `false` means `authenticated`. Sending both with different meanings
+                returns 400.
             invocation_mode (FunctionInvocationMode | Unset): Invocation contract. `rpc` preserves the existing POST
                 `{payload: ...}` contract;
                 `http` forwards HTTP request semantics to the function runtime.
             http_auth_mode (FunctionHTTPAuthMode | Unset): Authentication applied by the HTTP ingress. `none` is valid only
-                for public
-                HTTP-mode functions and is intended for externally signed webhooks.
+                for
+                HTTP-mode functions with `visibility: public` and is intended for
+                externally signed webhooks.
             openapi_spec (None | Unset | UpdateFunctionRequestOpenapiSpecType0): OpenAPI 3.0 or 3.1 metadata for HTTP mode.
                 Send null to clear it.
      """
 
+    visibility: FunctionVisibility | Unset = UNSET
     is_public: bool | Unset = UNSET
     invocation_mode: FunctionInvocationMode | Unset = UNSET
     http_auth_mode: FunctionHTTPAuthMode | Unset = UNSET
@@ -54,6 +67,11 @@ class UpdateFunctionRequest:
 
     def to_dict(self) -> dict[str, Any]:
         from ..models.update_function_request_openapi_spec_type_0 import UpdateFunctionRequestOpenapiSpecType0 # noqa: PLC0415
+        visibility: str | Unset = UNSET
+        if not isinstance(self.visibility, Unset):
+            visibility = self.visibility
+
+
         is_public = self.is_public
 
         invocation_mode: str | Unset = UNSET
@@ -79,6 +97,8 @@ class UpdateFunctionRequest:
 
         field_dict.update({
         })
+        if visibility is not UNSET:
+            field_dict["visibility"] = visibility
         if is_public is not UNSET:
             field_dict["is_public"] = is_public
         if invocation_mode is not UNSET:
@@ -96,6 +116,16 @@ class UpdateFunctionRequest:
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.update_function_request_openapi_spec_type_0 import UpdateFunctionRequestOpenapiSpecType0 # noqa: PLC0415
         d = dict(src_dict)
+        _visibility = d.pop("visibility", UNSET)
+        visibility: FunctionVisibility | Unset
+        if isinstance(_visibility,  Unset):
+            visibility = UNSET
+        else:
+            visibility = check_function_visibility(_visibility)
+
+
+
+
         is_public = d.pop("is_public", UNSET)
 
         _invocation_mode = d.pop("invocation_mode", UNSET)
@@ -139,6 +169,7 @@ class UpdateFunctionRequest:
 
 
         update_function_request = cls(
+            visibility=visibility,
             is_public=is_public,
             invocation_mode=invocation_mode,
             http_auth_mode=http_auth_mode,

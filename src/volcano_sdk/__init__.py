@@ -108,9 +108,15 @@ __all__ = [
     "RealtimeErrorContext",
     "RealtimePresenceInfo",
     "SandboxAccess",
+    "SandboxBuildLog",
+    "SandboxBuildLogOptions",
+    "SandboxBuildLogPage",
     "SandboxCommandOptions",
     "SandboxCommandResult",
     "SandboxCreateOptions",
+    "SandboxDeployOptions",
+    "SandboxDeployment",
+    "SandboxDeploymentPage",
     "SandboxExecOptions",
     "SandboxExecutionResult",
     "SandboxPreset",
@@ -136,6 +142,14 @@ __all__ = [
     "database_connection_string",
 ]
 
+from .sandbox_deployment_models import (
+    SandboxBuildLog,
+    SandboxBuildLogOptions,
+    SandboxBuildLogPage,
+    SandboxDeployment,
+    SandboxDeploymentPage,
+    SandboxDeployOptions,
+)
 from .sandbox_models import (
     SandboxAccess,
     SandboxCommandOptions,
