@@ -791,7 +791,7 @@ class ControlledCentrifugeFactory:
         return self.client
 
     async def command(self) -> dict[str, object]:
-        return await asyncio.wait_for(self.commands.get(), timeout=0.2)
+        return await asyncio.wait_for(self.commands.get(), timeout=2)
 
     def subscription(self, channel: str) -> SDKNativeSubscription:
         subscription = self.client.get_subscription(channel)
