@@ -105,7 +105,8 @@ def sync_detailed(
     `subject` field is ignored. Sending `subject` alone (no
     bodies) is rejected with 400 to avoid a silently-dropped
     subject or a blank message. Also rejects with 400 if
-    `email_enabled=false` or `smtp_host` is empty.
+    `email_enabled=false`, `smtp_host` is empty, or the saved
+    `smtp_password` can't be read and must be set again.
 
     Args:
         id (UUID):
@@ -159,7 +160,8 @@ def sync(
     `subject` field is ignored. Sending `subject` alone (no
     bodies) is rejected with 400 to avoid a silently-dropped
     subject or a blank message. Also rejects with 400 if
-    `email_enabled=false` or `smtp_host` is empty.
+    `email_enabled=false`, `smtp_host` is empty, or the saved
+    `smtp_password` can't be read and must be set again.
 
     Args:
         id (UUID):
@@ -208,7 +210,8 @@ async def asyncio_detailed(
     `subject` field is ignored. Sending `subject` alone (no
     bodies) is rejected with 400 to avoid a silently-dropped
     subject or a blank message. Also rejects with 400 if
-    `email_enabled=false` or `smtp_host` is empty.
+    `email_enabled=false`, `smtp_host` is empty, or the saved
+    `smtp_password` can't be read and must be set again.
 
     Args:
         id (UUID):
@@ -262,7 +265,8 @@ async def asyncio(
     `subject` field is ignored. Sending `subject` alone (no
     bodies) is rejected with 400 to avoid a silently-dropped
     subject or a blank message. Also rejects with 400 if
-    `email_enabled=false` or `smtp_host` is empty.
+    `email_enabled=false`, `smtp_host` is empty, or the saved
+    `smtp_password` can't be read and must be set again.
 
     Args:
         id (UUID):

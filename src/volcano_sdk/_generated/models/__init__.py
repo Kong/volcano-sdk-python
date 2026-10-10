@@ -111,6 +111,9 @@ from .call_o_auth_provider_api_body_method import CallOAuthProviderApiBodyMethod
 from .call_o_auth_provider_api_provider import CallOAuthProviderApiProvider
 from .call_o_auth_provider_api_response_200 import CallOAuthProviderApiResponse200
 from .call_o_auth_provider_api_response_200_provider import CallOAuthProviderApiResponse200Provider
+from .capability import Capability
+from .capability_list import CapabilityList
+from .capability_status import CapabilityStatus
 from .complete_upload_session_response import CompleteUploadSessionResponse
 from .configure_auth_methods_body import ConfigureAuthMethodsBody
 from .configure_auth_methods_body_oauth_providers_item import ConfigureAuthMethodsBodyOauthProvidersItem
@@ -152,6 +155,7 @@ from .create_storage_policy_request import CreateStoragePolicyRequest
 from .create_storage_policy_request_operation import CreateStoragePolicyRequestOperation
 from .create_upload_session_request import CreateUploadSessionRequest
 from .create_upload_session_response import CreateUploadSessionResponse
+from .create_variable_environment_request import CreateVariableEnvironmentRequest
 from .create_variable_request import CreateVariableRequest
 from .created_project_access_token import CreatedProjectAccessToken
 from .database import Database
@@ -519,6 +523,7 @@ from .realtime_plan_limits import RealtimePlanLimits
 from .realtime_stats import RealtimeStats
 from .refresh_o_auth_provider_token_provider import RefreshOAuthProviderTokenProvider
 from .refresh_o_auth_provider_token_response_200 import RefreshOAuthProviderTokenResponse200
+from .rename_variable_environment_request import RenameVariableEnvironmentRequest
 from .render_default_managed_auth_page_action import RenderDefaultManagedAuthPageAction
 from .replace_frontend_shared_variables_body import ReplaceFrontendSharedVariablesBody
 from .replace_shared_variables_body import ReplaceSharedVariablesBody
@@ -607,6 +612,8 @@ from .upload_storage_object_x_upload_complete import UploadStorageObjectXUploadC
 from .usage_data_point import UsageDataPoint
 from .variable import Variable
 from .variable_deploy_source import VariableDeploySource
+from .variable_environment import VariableEnvironment
+from .variable_environment_list import VariableEnvironmentList
 from .variable_status import VariableStatus
 from .verified_domain import VerifiedDomain
 from .verified_domains_response import VerifiedDomainsResponse
@@ -724,6 +731,9 @@ __all__ = (
     "CallOAuthProviderApiProvider",
     "CallOAuthProviderApiResponse200",
     "CallOAuthProviderApiResponse200Provider",
+    "Capability",
+    "CapabilityList",
+    "CapabilityStatus",
     "CompleteUploadSessionResponse",
     "ConfigureAuthMethodsBody",
     "ConfigureAuthMethodsBodyOauthProvidersItem",
@@ -766,6 +776,7 @@ __all__ = (
     "CreateStoragePolicyRequestOperation",
     "CreateUploadSessionRequest",
     "CreateUploadSessionResponse",
+    "CreateVariableEnvironmentRequest",
     "CreateVariableRequest",
     "Database",
     "DatabaseBackup",
@@ -1132,6 +1143,7 @@ __all__ = (
     "RealtimeStats",
     "RefreshOAuthProviderTokenProvider",
     "RefreshOAuthProviderTokenResponse200",
+    "RenameVariableEnvironmentRequest",
     "RenderDefaultManagedAuthPageAction",
     "ReplaceFrontendSharedVariablesBody",
     "ReplaceSharedVariablesBody",
@@ -1220,6 +1232,8 @@ __all__ = (
     "UsageDataPoint",
     "Variable",
     "VariableDeploySource",
+    "VariableEnvironment",
+    "VariableEnvironmentList",
     "VariableStatus",
     "VerifiedDomain",
     "VerifiedDomainsResponse",

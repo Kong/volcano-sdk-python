@@ -30,14 +30,13 @@ class ProjectConfigSandbox:
             memory_mb (ProjectConfigSandboxMemoryMb | Unset): Immutable deployed memory profile; config apply asserts it and
                 Git deploy builds it.
             ports (list[int] | Unset): Service readiness ports; config apply asserts them and Git deploy builds them.
-            idle_timeout_seconds (int | Unset): Default idle timeout for new sessions when the caller omits it.
-            ttl_seconds (int | Unset): Default absolute lifetime for new sessions when the caller omits it.
+            ttl_seconds (int | Unset): Default absolute lifetime for new sessions when the caller omits it. Cloud accepts
+                30–28800 seconds; local accepts 0 for unlimited or a positive lifetime.
      """
 
     name: str
     memory_mb: ProjectConfigSandboxMemoryMb | Unset = UNSET
     ports: list[int] | Unset = UNSET
-    idle_timeout_seconds: int | Unset = UNSET
     ttl_seconds: int | Unset = UNSET
 
 
@@ -58,8 +57,6 @@ class ProjectConfigSandbox:
 
 
 
-        idle_timeout_seconds = self.idle_timeout_seconds
-
         ttl_seconds = self.ttl_seconds
 
 
@@ -72,8 +69,6 @@ class ProjectConfigSandbox:
             field_dict["memory_mb"] = memory_mb
         if ports is not UNSET:
             field_dict["ports"] = ports
-        if idle_timeout_seconds is not UNSET:
-            field_dict["idle_timeout_seconds"] = idle_timeout_seconds
         if ttl_seconds is not UNSET:
             field_dict["ttl_seconds"] = ttl_seconds
 
@@ -99,15 +94,12 @@ class ProjectConfigSandbox:
         ports = cast(list[int], d.pop("ports", UNSET))
 
 
-        idle_timeout_seconds = d.pop("idle_timeout_seconds", UNSET)
-
         ttl_seconds = d.pop("ttl_seconds", UNSET)
 
         project_config_sandbox = cls(
             name=name,
             memory_mb=memory_mb,
             ports=ports,
-            idle_timeout_seconds=idle_timeout_seconds,
             ttl_seconds=ttl_seconds,
         )
 
