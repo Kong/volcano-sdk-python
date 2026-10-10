@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.14.0](https://github.com/Kong/volcano-sdk-python/compare/v0.13.5...v0.14.0) (2026-10-08)
+
+
+### Features
+
+* **api:** add managed custom-domain TLS types ([#12](https://github.com/Kong/volcano-sdk-python/issues/12)) ([cfd160b](https://github.com/Kong/volcano-sdk-python/commit/cfd160bd259beecaabf12f215d1bf732789e794d))
+* **durable:** add wait_for_approval and the approvals client ([#389](https://github.com/Kong/volcano-sdk-python/issues/389)) ([4a590b4](https://github.com/Kong/volcano-sdk-python/commit/4a590b4cf6430cd48c276fea051fbd235672663d))
+* **sandboxes:** add Python session and execution facade ([#372](https://github.com/Kong/volcano-sdk-python/issues/372)) ([0a41830](https://github.com/Kong/volcano-sdk-python/commit/0a41830aa9dc8dcfae58e0e9a3f8a31d480d47c2))
+* **sandboxes:** expose custom deployments and build logs ([#388](https://github.com/Kong/volcano-sdk-python/issues/388)) ([b9f40bb](https://github.com/Kong/volcano-sdk-python/commit/b9f40bbc1fb33323fa42c42b0d90577d010a1300))
+
+
+### Bug Fixes
+
+* **deps:** bump aws-durable-execution-sdk-python ([#380](https://github.com/Kong/volcano-sdk-python/issues/380)) ([6c05d56](https://github.com/Kong/volcano-sdk-python/commit/6c05d56865ce098a5e62d18117309e6d9add5060))
+* **deps:** bump openapi-python-client to 0.29.1 past advisory ([#377](https://github.com/Kong/volcano-sdk-python/issues/377)) ([eecb0c6](https://github.com/Kong/volcano-sdk-python/commit/eecb0c603a683888f669fea190671f13c6d47d3c))
+
 ## [0.13.5](https://github.com/Kong/volcano-sdk-python/compare/v0.13.4...v0.13.5) (2026-09-28)
 
 
