@@ -44,7 +44,12 @@ if TYPE_CHECKING:
     from ._generated.models.refresh_o_auth_provider_token_provider import (
         RefreshOAuthProviderTokenProvider,
     )
-    from .models import DurableApprovalStatus, DurableExecutionStatus, JSONValue
+    from .models import (
+        DurableApprovalStatus,
+        DurableExecutionStatus,
+        DurableMessageDirection,
+        JSONValue,
+    )
 
 
 HTTP_CREATED = 201
@@ -181,6 +186,37 @@ class DurableApprovalStatsRequest:
     function: str | None = None
     from_: datetime | None = None
     to: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DurableMessageTarget:
+    """The execution a message request addresses, and through which route."""
+
+    function_id: str
+    execution_id: str
+    # The project route when set; the application route otherwise.
+    project_id: str | None = None
+    # Only the application route reads it.
+    client_token: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DurableMessageSendRequest:
+    """A message to send to a durable execution."""
+
+    name: str
+    data: JSONValue = None
+    idempotency_key: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DurableMessageListRequest:
+    """Filters and paging for a durable execution's messages."""
+
+    direction: DurableMessageDirection | None = None
+    name: str | None = None
+    after: int | None = None
+    limit: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

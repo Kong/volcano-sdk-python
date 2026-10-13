@@ -184,6 +184,23 @@ def test_start_falls_back_to_the_anon_key() -> None:
     assert transport.calls[0][1]["authorization"] == anon_key
 
 
+def test_start_returns_the_client_token_the_message_routes_take() -> None:
+    transport = FakeDurableTransport()
+    transport.start_response = FakeResponse(
+        202, running_execution(client_token="client-token"), {}
+    )
+
+    execution = durable_client(transport, session=False).durable.start("order-pipeline")
+
+    assert execution.client_token == "client-token"
+    assert (
+        durable_client(transport)
+        .durable.get(PROJECT_ID, "order-pipeline", EXECUTION_ID)
+        .client_token
+        is None
+    )
+
+
 def test_get_returns_the_result_of_a_succeeded_execution() -> None:
     transport = FakeDurableTransport()
 
@@ -614,3 +631,14 @@ def test_execution_rejects_non_boolean_expiration(value: object) -> None:
         _ = durable_client(transport).durable.get(
             PROJECT_ID, "order-pipeline", EXECUTION_ID
         )
+
+
+@pytest.mark.parametrize("value", ["", 7, ["client-token"]])
+def test_execution_rejects_an_invalid_client_token(value: object) -> None:
+    transport = FakeDurableTransport()
+    transport.start_response = FakeResponse(
+        202, running_execution(client_token=value), {}
+    )
+
+    with pytest.raises(TypeError, match="complete durable execution"):
+        _ = durable_client(transport).durable.start("order-pipeline")

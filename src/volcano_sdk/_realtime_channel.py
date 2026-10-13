@@ -33,7 +33,7 @@ from ._realtime_messages import (
     POSTGRES_QUEUE_LIMIT,
     CallbackDelivery,
     CentrifugeSubscription,
-    ChannelType,
+    ChannelKind,
     PostgresChange,
     PostgresChangeCallback,
     PostgresDelivery,
@@ -139,6 +139,8 @@ class ChannelEvents(SubscriptionEventHandler):
         await self.channel.begin_postgres_epoch()
         if self.channel.type == "presence":
             self.channel.presence.schedule_presence_sync()
+        if self.channel.resubscribed is not None:
+            self.channel.resubscribed()
 
     @override
     async def on_unsubscribed(self, ctx: object) -> None:
@@ -179,9 +181,10 @@ class ChannelState:
         self,
         realtime: RealtimeOperations,
         name: str,
-        channel_type: ChannelType,
+        channel_type: ChannelKind,
         *,
         fetch_config: PostgresFetchConfig,
+        subscribe_data: Mapping[str, str] | None = None,
     ) -> None:
         """Create a channel managed by a realtime facade."""
         self.realtime: RealtimeOperations = realtime
@@ -189,8 +192,13 @@ class ChannelState:
             self, lambda: realtime.sync_presence(self)
         )
         self.wire_name: str = name
-        self.type: ChannelType = channel_type
+        self.type: ChannelKind = channel_type
         self.fetch_config: PostgresFetchConfig = fetch_config
+        # Sent with every subscribe request, resubscribes included.
+        self.subscribe_data: Mapping[str, str] | None = subscribe_data
+        # Called each time the subscription is established once it is set,
+        # after the subscribed state and callbacks are in place.
+        self.resubscribed: Callable[[], None] | None = None
         self.callbacks: dict[str, list[DynamicCallback]] = {}
         self.presence_state: dict[str, RealtimePresenceInfo] = {}
         self.presence_events: list[tuple[str, RealtimePresenceInfo]] = []
@@ -258,6 +266,7 @@ class ChannelState:
             "broadcast": {"message"},
             "presence": {"message", "join", "leave", "presence_sync"},
             "postgres": {"*"},
+            "durable": {"message"},
         }[self.type]
         if event not in allowed_events:
             message = f"unsupported realtime event: {event}"

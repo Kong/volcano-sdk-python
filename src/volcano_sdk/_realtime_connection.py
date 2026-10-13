@@ -48,6 +48,7 @@ from ._realtime_messages import (
     POSTGRES_QUERY_UNAVAILABLE,
     CentrifugeFactory,
     CentrifugeSubscription,
+    ChannelKind,
     ChannelType,
     RealtimeConnectContext,
     RealtimeContext,
@@ -382,10 +383,9 @@ class RealtimeState(Generic[FacadeT]):
         self,
         name: str,
         *,
-        channel_type: ChannelType = "broadcast",
+        channel_type: ChannelKind = "broadcast",
     ) -> None:
-        """Unsubscribe and forget one broadcast or presence channel."""
-        channel_type = validate_channel_type(channel_type)
+        """Unsubscribe and forget one channel."""
         wire_name = f"{channel_type}:{name}"
         async with self.connection_lock:
             entry = self.channels.get(wire_name)
@@ -593,7 +593,9 @@ class RealtimeState(Generic[FacadeT]):
                 channel.name,
                 events=channel.subscription_events,
                 join_leave=channel.type == "presence",
-                recoverable=channel.type != "postgres",
+                # Postgres and durable deliveries are read back from the API.
+                recoverable=channel.type in {"broadcast", "presence"},
+                data=channel.subscribe_data,
             )
         return channel.subscription
 

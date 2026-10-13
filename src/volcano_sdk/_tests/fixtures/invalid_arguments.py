@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import BinaryIO
 
+    from volcano_sdk._durable_messages import DurableMessages
     from volcano_sdk.auth import Auth
     from volcano_sdk.durable import DurableApprovals
     from volcano_sdk.durable_authoring import DurableContext
@@ -146,6 +147,19 @@ async def remove_unsupported_realtime_channel_type(realtime: Realtime) -> None:
     )
 
 
+def durable_realtime_channel(realtime: Realtime, execution_id: str) -> None:
+    _ = realtime.channel(execution_id, channel_type="durable")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+
+
+async def remove_durable_realtime_channel(
+    realtime: Realtime, execution_id: str
+) -> None:
+    await realtime.remove_channel(
+        execution_id,
+        channel_type="durable",  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+    )
+
+
 def assign_session_page(page: SessionPage) -> None:
     page.page = 3  # type: ignore[misc]  # pyright: ignore[reportAttributeAccessIssue]
 
@@ -199,6 +213,40 @@ def non_string_approval_title(context: DurableContext) -> None:
     _ = context.wait_for_approval("ship", title=None)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
 
 
+def non_string_message_name(context: DurableContext) -> None:
+    _ = context.wait_for_message(1)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+
+
+def non_json_message_data(context: DurableContext) -> None:
+    _ = context.publish("progress", {"at": {1}})  # type: ignore[dict-item]  # pyright: ignore[reportArgumentType]
+
+
 def unknown_approval_option(approvals: DurableApprovals) -> None:
     project_id = "00000000-0000-4000-8000-000000000001"
     approvals.stats(project_id, state="pending", sort="asc")  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
+
+
+def non_string_sent_message_name(messages: DurableMessages, execution_id: str) -> None:
+    _ = messages.send("checkout", execution_id, 5)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+
+
+def unknown_sent_message_option(messages: DurableMessages, execution_id: str) -> None:
+    messages.send("checkout", execution_id, "ping", retries=3)  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
+
+
+def unknown_listed_message_direction(
+    messages: DurableMessages, execution_id: str
+) -> None:
+    _ = messages.list("checkout", execution_id, direction="both")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+
+
+async def non_callable_message_handler(
+    messages: DurableMessages, execution_id: str
+) -> None:
+    _ = await messages.subscribe("checkout", execution_id, "print")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+
+
+async def unknown_subscription_option(
+    messages: DurableMessages, execution_id: str
+) -> None:
+    await messages.subscribe("checkout", execution_id, print, after=3)  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]

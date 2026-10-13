@@ -55,6 +55,7 @@ class Client:
         /,
         events: object | None = None,
         *,
+        data: object | None = None,
         recoverable: bool = False,
         join_leave: bool = False,
     ) -> Subscription: ...

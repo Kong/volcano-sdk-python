@@ -170,7 +170,16 @@ def durable_execution(payload: object) -> DurableExecution:
         result_expired=result_expired,
         error=_durable_error(values.get("error")),
         completed_at=optional_datetime(values.get("completed_at")),
+        client_token=_client_token(values.get("client_token")),
     )
+
+
+def _client_token(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise TypeError(_INVALID_EXECUTION_PAYLOAD)
+    return value
 
 
 def _durable_error(payload: object) -> DurableExecutionFailure | None:

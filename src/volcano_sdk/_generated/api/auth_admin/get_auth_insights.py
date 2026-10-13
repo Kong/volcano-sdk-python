@@ -134,14 +134,22 @@ def sync_detailed(
     """ Get auth user insights
 
      Returns current and deleted auth-user totals, rolling 24-hour and 30-day
-    active users, and zero-filled signup, deletion, net-growth, and successful
-    sign-in counts for an inclusive UTC date range. Weeks start on Monday.
-    Signups remain counted after deletion; net growth is signups minus
-    deletions. Deleted users contribute to active counts until their last
-    activity leaves the rolling window. Token refreshes affect active users
-    but not the sign-in series. Collection starts at deployment, with signup
-    history backfilled from accounts still present then. Earlier hard-deleted
-    accounts cannot be recovered.
+    active users, and zero-filled daily activity and account-retention counts
+    for an inclusive UTC date range. Weeks start on Monday.
+    The existing deletions series counts accounts by deletion date; net_growth
+    remains signups minus deletions and is not affected by bans.
+    The banned_users, deleted_users, and available_users fields describe the
+    current state of users registered in each bucket. Banned users exclude
+    deleted users and expired bans. Available users are signups minus
+    banned_users minus deleted_users. Unban and expiry restore availability in
+    the original signup bucket. These current-state cohorts can change after
+    the requested dates have passed, without rewriting activity counts.
+    Sign-in counts remain grouped by session creation date. Deleted users
+    contribute to active counts until their last activity leaves the rolling
+    window. Token refreshes affect active users but not the sign-in series.
+    Signup history is backfilled from accounts present when collection was
+    deployed. Accounts hard-deleted before deletion-history collection cannot
+    be recovered. Current bans require no separate event-history collection.
 
     Args:
         id (UUID):
@@ -184,14 +192,22 @@ def sync(
     """ Get auth user insights
 
      Returns current and deleted auth-user totals, rolling 24-hour and 30-day
-    active users, and zero-filled signup, deletion, net-growth, and successful
-    sign-in counts for an inclusive UTC date range. Weeks start on Monday.
-    Signups remain counted after deletion; net growth is signups minus
-    deletions. Deleted users contribute to active counts until their last
-    activity leaves the rolling window. Token refreshes affect active users
-    but not the sign-in series. Collection starts at deployment, with signup
-    history backfilled from accounts still present then. Earlier hard-deleted
-    accounts cannot be recovered.
+    active users, and zero-filled daily activity and account-retention counts
+    for an inclusive UTC date range. Weeks start on Monday.
+    The existing deletions series counts accounts by deletion date; net_growth
+    remains signups minus deletions and is not affected by bans.
+    The banned_users, deleted_users, and available_users fields describe the
+    current state of users registered in each bucket. Banned users exclude
+    deleted users and expired bans. Available users are signups minus
+    banned_users minus deleted_users. Unban and expiry restore availability in
+    the original signup bucket. These current-state cohorts can change after
+    the requested dates have passed, without rewriting activity counts.
+    Sign-in counts remain grouped by session creation date. Deleted users
+    contribute to active counts until their last activity leaves the rolling
+    window. Token refreshes affect active users but not the sign-in series.
+    Signup history is backfilled from accounts present when collection was
+    deployed. Accounts hard-deleted before deletion-history collection cannot
+    be recovered. Current bans require no separate event-history collection.
 
     Args:
         id (UUID):
@@ -229,14 +245,22 @@ async def asyncio_detailed(
     """ Get auth user insights
 
      Returns current and deleted auth-user totals, rolling 24-hour and 30-day
-    active users, and zero-filled signup, deletion, net-growth, and successful
-    sign-in counts for an inclusive UTC date range. Weeks start on Monday.
-    Signups remain counted after deletion; net growth is signups minus
-    deletions. Deleted users contribute to active counts until their last
-    activity leaves the rolling window. Token refreshes affect active users
-    but not the sign-in series. Collection starts at deployment, with signup
-    history backfilled from accounts still present then. Earlier hard-deleted
-    accounts cannot be recovered.
+    active users, and zero-filled daily activity and account-retention counts
+    for an inclusive UTC date range. Weeks start on Monday.
+    The existing deletions series counts accounts by deletion date; net_growth
+    remains signups minus deletions and is not affected by bans.
+    The banned_users, deleted_users, and available_users fields describe the
+    current state of users registered in each bucket. Banned users exclude
+    deleted users and expired bans. Available users are signups minus
+    banned_users minus deleted_users. Unban and expiry restore availability in
+    the original signup bucket. These current-state cohorts can change after
+    the requested dates have passed, without rewriting activity counts.
+    Sign-in counts remain grouped by session creation date. Deleted users
+    contribute to active counts until their last activity leaves the rolling
+    window. Token refreshes affect active users but not the sign-in series.
+    Signup history is backfilled from accounts present when collection was
+    deployed. Accounts hard-deleted before deletion-history collection cannot
+    be recovered. Current bans require no separate event-history collection.
 
     Args:
         id (UUID):
@@ -279,14 +303,22 @@ async def asyncio(
     """ Get auth user insights
 
      Returns current and deleted auth-user totals, rolling 24-hour and 30-day
-    active users, and zero-filled signup, deletion, net-growth, and successful
-    sign-in counts for an inclusive UTC date range. Weeks start on Monday.
-    Signups remain counted after deletion; net growth is signups minus
-    deletions. Deleted users contribute to active counts until their last
-    activity leaves the rolling window. Token refreshes affect active users
-    but not the sign-in series. Collection starts at deployment, with signup
-    history backfilled from accounts still present then. Earlier hard-deleted
-    accounts cannot be recovered.
+    active users, and zero-filled daily activity and account-retention counts
+    for an inclusive UTC date range. Weeks start on Monday.
+    The existing deletions series counts accounts by deletion date; net_growth
+    remains signups minus deletions and is not affected by bans.
+    The banned_users, deleted_users, and available_users fields describe the
+    current state of users registered in each bucket. Banned users exclude
+    deleted users and expired bans. Available users are signups minus
+    banned_users minus deleted_users. Unban and expiry restore availability in
+    the original signup bucket. These current-state cohorts can change after
+    the requested dates have passed, without rewriting activity counts.
+    Sign-in counts remain grouped by session creation date. Deleted users
+    contribute to active counts until their last activity leaves the rolling
+    window. Token refreshes affect active users but not the sign-in series.
+    Signup history is backfilled from accounts present when collection was
+    deployed. Accounts hard-deleted before deletion-history collection cannot
+    be recovered. Current bans require no separate event-history collection.
 
     Args:
         id (UUID):

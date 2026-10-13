@@ -44,11 +44,22 @@ from ._durable_approval_registration import (
     approval_body,
     approval_decision,
     check_size,
-    platform_api_url,
     register_approval,
 )
+from ._durable_callback import operation_name
 from ._durable_duration import to_seconds
 from ._durable_engine import DurableRuntimeMissingError, load_engine
+from ._durable_message import (
+    SESSION_NAME,
+    message_data,
+    open_session,
+    publish_key,
+    publish_message,
+    published_message,
+    received_message,
+    register_wait,
+    session_token,
+)
 from ._durable_options import (
     BatchOptions,
     Duration,
@@ -56,13 +67,21 @@ from ._durable_options import (
     RetryOptions,
     WaitUntilOptions,
 )
+from ._durable_platform_request import platform_api_url
 from ._durable_protocols import (
     DurableEngine,
     DurableLogger,
     OperationScope,
     RuntimeContext,
 )
-from ._durable_results import ApprovalDecision, BatchFailure, BatchItem, BatchResult
+from ._durable_results import (
+    ApprovalDecision,
+    BatchFailure,
+    BatchItem,
+    BatchResult,
+    PublishedMessage,
+    ReceivedMessage,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -83,6 +102,8 @@ __all__ = [
     "Duration",
     "FunctionHandler",
     "ParallelBranch",
+    "PublishedMessage",
+    "ReceivedMessage",
     "Retry",
     "RetryOptions",
     "StepScope",
@@ -156,16 +177,27 @@ class DurableContext:
     durations be written as `"30s"` rather than `Duration.from_seconds(30)`.
 
     Raw callbacks are the deliberate omission: completing one takes a call
-    nothing in a project can make. `wait_for_approval` is the callback Volcano
-    completes, when a person decides.
+    nothing in a project can make. `wait_for_approval` and `wait_for_message`
+    are the callbacks Volcano completes, when a person decides or a message
+    arrives.
     """
 
-    __slots__: tuple[str, ...] = ("_context", "_engine", "log")
+    __slots__: tuple[str, ...] = (
+        "_context",
+        "_engine",
+        "_published",
+        "_session",
+        "log",
+    )
 
     def __init__(self, context: RuntimeContext, engine: DurableEngine) -> None:
         """Wrap an engine context."""
         self._context: RuntimeContext = context
         self._engine: DurableEngine = engine
+        # Publishes so far in this context, as a replay reaches them again.
+        self._published: int = 0
+        # The token this context publishes with, once its session is open.
+        self._session: str | None = None
         # Logs, suppressed while an operation is being replayed.
         self.log: DurableLogger = context.logger
 
@@ -396,7 +428,7 @@ class DurableContext:
         """
         body = approval_body(name, title, description, details)
         seconds = None if timeout is None else self._approval_timeout(timeout)
-        api_url = platform_api_url()
+        api_url = platform_api_url("wait_for_approval()")
         body["execution_ref"] = self._context.execution_context.durable_execution_arn
         check_size(body)
 
@@ -412,6 +444,105 @@ class DurableContext:
         except self._engine.callback_timeout_error:
             return EXPIRED
         return approval_decision(result)
+
+    def wait_for_message(
+        self, name: str, *, timeout: Duration | None = None
+    ) -> ReceivedMessage | None:
+        """Suspend until a message of this name arrives, or the timeout passes.
+
+        Whoever the function's visibility admits can send one: a webhook,
+        another function, or a user of your app, through
+        `client.durable.messages.send`. A message already queued under the
+        name is taken at once, oldest first. The execution is not running, and
+        not billed, while it waits.
+
+        Without a timeout the wait lasts as long as the execution. A timeout
+        that passes first returns None rather than raising.
+
+        The name is also the operation's name in the execution's history: up
+        to 237 printable ASCII characters. It, the timeout, and
+        `VOLCANO_PLATFORM_API_URL` are checked before the callback opens.
+        Registering the wait is retried for up to 30 seconds; a refusal, such
+        as too many open waits, raises the runtime's `CallbackSubmitterError`
+        with the SDK error's message.
+
+        Returns:
+            The message, or None once the timeout passes, restored from its
+            checkpoint during replay.
+
+        """
+        message_name = operation_name(name)
+        seconds = None if timeout is None else self._approval_timeout(timeout)
+        api_url = platform_api_url("wait_for_message()")
+        execution_ref = self._context.execution_context.durable_execution_arn
+
+        # Runs inside the runtime's checkpointed submitter step, so a replay
+        # does not register the wait again.
+        def submit(callback_id: str, _context: object) -> None:
+            register_wait(api_url, execution_ref, callback_id, message_name)
+
+        try:
+            result = self._context.wait_for_callback(
+                submit, message_name, self._engine.callback_options(seconds)
+            )
+        except self._engine.callback_timeout_error:
+            return None
+        return received_message(result)
+
+    def publish(self, name: str, data: JSONValue = None) -> PublishedMessage:
+        """Record a message for applications to list, or receive live.
+
+        Clients subscribed with `client.durable.messages.subscribe` get it at
+        once; anyone allowed to read the execution's messages can list it.
+        `data` is any JSON value up to 64 KiB.
+
+        Publishing is a step that is never retried, keyed so a step that runs
+        again returns the message it already published. The first publish in
+        each context -- the root, a `child`, a `parallel` branch, or a `map`
+        item -- first opens a messages session, a callback named
+        `volcano:messages-session` that Volcano completes with the token
+        publishes carry.
+
+        Returns:
+            The message's id and seq, restored from its checkpoint during
+            replay.
+
+        """
+        message_name = operation_name(name)
+        message: dict[str, JSONValue] = {
+            "name": message_name,
+            "data": message_data(data),
+        }
+        api_url = platform_api_url("publish()")
+        # Counted before the session opens, as the runtime numbers operations,
+        # so a replay gives every publish the position it had before.
+        self._published += 1
+        key_position = self._published
+        token = self._session_token(api_url)
+        key = publish_key(token, key_position)
+
+        def run(_scope: OperationScope) -> dict[str, JSONValue]:
+            return publish_message(api_url, token, key, message)
+
+        recorded = self._context.step(
+            run,
+            message_name,
+            self._engine.step_options(retry=False, at_most_once=False),
+        )
+        return published_message(recorded)
+
+    def _session_token(self, api_url: str) -> str:
+        if self._session is None:
+            execution_ref = self._context.execution_context.durable_execution_arn
+
+            def submit(callback_id: str, _context: object) -> None:
+                open_session(api_url, execution_ref, callback_id)
+
+            result = self._context.wait_for_callback(
+                submit, SESSION_NAME, self._engine.callback_options(None)
+            )
+            self._session = session_token(result)
+        return self._session
 
     @staticmethod
     def _approval_timeout(value: object) -> int:

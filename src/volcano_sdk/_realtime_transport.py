@@ -143,6 +143,7 @@ class CentrifugeConnection(Protocol):
         events: object,
         join_leave: bool,
         recoverable: bool,
+        data: Mapping[str, str] | None,
     ) -> CentrifugeSubscription:
         """Create a subscription for a remote channel."""
         ...
@@ -268,12 +269,14 @@ class VolcanoCentrifugeConnection:
         events: object,
         join_leave: bool,
         recoverable: bool,
+        data: Mapping[str, str] | None,
     ) -> CentrifugeSubscription:
         return self._connection.new_subscription(
             name,
             events=events,
             join_leave=join_leave,
             recoverable=recoverable,
+            data=data,
         )
 
     def remove_subscription(self, subscription: CentrifugeSubscription) -> None:

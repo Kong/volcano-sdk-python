@@ -47,7 +47,11 @@ class FrontendCustomDomainResponse:
             failure_reason (str | Unset): Failure category, present only when managed TLS setup has failed. Current values
                 are provider, certificate, ownership, and internal; ownership means another account has already claimed the
                 hostname through ownership verification. Treat unrecognized values as internal.
-            verification_records (list[FrontendDomainVerificationRecord] | Unset):
+            verification_records (list[FrontendDomainVerificationRecord] | Unset): DNS records to publish now. For a managed
+                domain whose hostname the account already owns, the create response names the `_acme-challenge` CNAME that
+                authorizes certificate issuance and renewal. Otherwise it names the `_volcano` TXT record that proves ownership
+                of the hostname's registrable domain, and reads return the CNAME once Volcano sees that record. Usually empty
+                for BYOC.
             required_routing_record (FrontendDomainRoutingRecord | Unset):
             routing_target_hostname (str | Unset): DNS routing target hostname for this frontend. The DNS record type
                 depends on whether the custom domain is a zone apex.
