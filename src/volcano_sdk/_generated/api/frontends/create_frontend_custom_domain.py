@@ -146,6 +146,13 @@ def sync_detailed(
     published. A BYOC request gets `409` with `code: ownership_verification_required` and the record in
     `required_record`; publish it and send the same request again.
     Managed TLS then returns the CNAME that authorizes certificate issuance and renewal.
+    To move an active BYOC domain to managed TLS without downtime, send `tls.mode: managed` for the same
+    hostname. The response is `200` with the CNAME to publish; the uploaded certificate keeps serving
+    until Volcano issues the managed one, and `serving_certificate` changes from `uploaded` to
+    `managed`.
+    To move an active managed domain to BYOC without downtime, send `tls.mode: byoc` with the
+    certificate for the same hostname. The response is `200`; the uploaded certificate replaces the
+    managed one at once, and Volcano stops renewing the managed certificate.
     An unverified reservation does not block an account that proves ownership. When another account
     holds one, a request gets `409` with `code: ownership_verification_required` and the caller's own
     `required_record`; after publishing it, the same request takes over the reservation. When another
@@ -202,6 +209,13 @@ def sync(
     published. A BYOC request gets `409` with `code: ownership_verification_required` and the record in
     `required_record`; publish it and send the same request again.
     Managed TLS then returns the CNAME that authorizes certificate issuance and renewal.
+    To move an active BYOC domain to managed TLS without downtime, send `tls.mode: managed` for the same
+    hostname. The response is `200` with the CNAME to publish; the uploaded certificate keeps serving
+    until Volcano issues the managed one, and `serving_certificate` changes from `uploaded` to
+    `managed`.
+    To move an active managed domain to BYOC without downtime, send `tls.mode: byoc` with the
+    certificate for the same hostname. The response is `200`; the uploaded certificate replaces the
+    managed one at once, and Volcano stops renewing the managed certificate.
     An unverified reservation does not block an account that proves ownership. When another account
     holds one, a request gets `409` with `code: ownership_verification_required` and the caller's own
     `required_record`; after publishing it, the same request takes over the reservation. When another
@@ -253,6 +267,13 @@ async def asyncio_detailed(
     published. A BYOC request gets `409` with `code: ownership_verification_required` and the record in
     `required_record`; publish it and send the same request again.
     Managed TLS then returns the CNAME that authorizes certificate issuance and renewal.
+    To move an active BYOC domain to managed TLS without downtime, send `tls.mode: managed` for the same
+    hostname. The response is `200` with the CNAME to publish; the uploaded certificate keeps serving
+    until Volcano issues the managed one, and `serving_certificate` changes from `uploaded` to
+    `managed`.
+    To move an active managed domain to BYOC without downtime, send `tls.mode: byoc` with the
+    certificate for the same hostname. The response is `200`; the uploaded certificate replaces the
+    managed one at once, and Volcano stops renewing the managed certificate.
     An unverified reservation does not block an account that proves ownership. When another account
     holds one, a request gets `409` with `code: ownership_verification_required` and the caller's own
     `required_record`; after publishing it, the same request takes over the reservation. When another
@@ -309,6 +330,13 @@ async def asyncio(
     published. A BYOC request gets `409` with `code: ownership_verification_required` and the record in
     `required_record`; publish it and send the same request again.
     Managed TLS then returns the CNAME that authorizes certificate issuance and renewal.
+    To move an active BYOC domain to managed TLS without downtime, send `tls.mode: managed` for the same
+    hostname. The response is `200` with the CNAME to publish; the uploaded certificate keeps serving
+    until Volcano issues the managed one, and `serving_certificate` changes from `uploaded` to
+    `managed`.
+    To move an active managed domain to BYOC without downtime, send `tls.mode: byoc` with the
+    certificate for the same hostname. The response is `200`; the uploaded certificate replaces the
+    managed one at once, and Volcano stops renewing the managed certificate.
     An unverified reservation does not block an account that proves ownership. When another account
     holds one, a request gets `409` with `code: ownership_verification_required` and the caller's own
     `required_record`; after publishing it, the same request takes over the reservation. When another

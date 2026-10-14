@@ -13,6 +13,7 @@ from ..models.auth_config_allowed_email_domains_mode import check_auth_config_al
 from ..types import UNSET, Unset
 from typing import cast
 from uuid import UUID
+import datetime
 
 if TYPE_CHECKING:
   from ..models.auth_password_policy import AuthPasswordPolicy
@@ -33,6 +34,9 @@ class AuthConfig:
             project_id (UUID | Unset):
             access_token_lifetime (int | Unset): Access token lifetime in seconds Default: 3600.
             refresh_token_lifetime (int | Unset): Refresh token lifetime in seconds Default: 2592000.
+            refresh_token_reuse_interval (int | Unset): A refresh within this many seconds of the refresh token being issued
+                returns the same refresh token instead of rotating it, so concurrent refreshes from several tabs all succeed
+                Default: 10.
             inactivity_timeout (int | Unset): Force re-login after inactivity (seconds, 0=never) Default: 0.
             max_session_duration (int | Unset): Force re-login after duration (seconds, 0=never) Default: 0.
             min_password_length (int | Unset): Configured minimum password length in Unicode characters. Default: 15.
@@ -45,6 +49,8 @@ class AuthConfig:
             rate_limit_signup (int | Unset): Signups per hour per IP Default: 100.
             rate_limit_signin (int | Unset): Signins per hour per IP Default: 100.
             rate_limit_token_refresh (int | Unset): Refreshes per hour per IP Default: 1000.
+            rate_limit_password_reset (int | Unset): Password reset requests per hour per IP. Unlike the other limits, 0
+                applies the default of 10 instead of turning the limit off. Default: 10.
             cors_enabled (bool | Unset):  Default: False.
             cors_allowed_origins (list[str] | Unset):  Example: ['https://myapp.com', 'http://localhost:3000'].
             enable_anonymous_signins (bool | Unset): Allow creating users without email/password Default: False.
@@ -105,12 +111,15 @@ class AuthConfig:
                 the built-in managed device page. Lets a CLI surface the project's
                 own RFC 8628 approval page. Empty falls back to the managed page.
                  Example: https://app.acme.com/device.
+            created_at (datetime.datetime | Unset):
+            updated_at (datetime.datetime | Unset):
      """
 
     password_policy: AuthPasswordPolicy
     project_id: UUID | Unset = UNSET
     access_token_lifetime: int | Unset = 3600
     refresh_token_lifetime: int | Unset = 2592000
+    refresh_token_reuse_interval: int | Unset = 10
     inactivity_timeout: int | Unset = 0
     max_session_duration: int | Unset = 0
     min_password_length: int | Unset = 15
@@ -123,6 +132,7 @@ class AuthConfig:
     rate_limit_signup: int | Unset = 100
     rate_limit_signin: int | Unset = 100
     rate_limit_token_refresh: int | Unset = 1000
+    rate_limit_password_reset: int | Unset = 10
     cors_enabled: bool | Unset = False
     cors_allowed_origins: list[str] | Unset = UNSET
     enable_anonymous_signins: bool | Unset = False
@@ -153,6 +163,8 @@ class AuthConfig:
     allowed_redirect_urls: list[str] | Unset = UNSET
     post_logout_redirect_url: str | Unset = UNSET
     device_verification_url: str | Unset = UNSET
+    created_at: datetime.datetime | Unset = UNSET
+    updated_at: datetime.datetime | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -170,6 +182,8 @@ class AuthConfig:
         access_token_lifetime = self.access_token_lifetime
 
         refresh_token_lifetime = self.refresh_token_lifetime
+
+        refresh_token_reuse_interval = self.refresh_token_reuse_interval
 
         inactivity_timeout = self.inactivity_timeout
 
@@ -194,6 +208,8 @@ class AuthConfig:
         rate_limit_signin = self.rate_limit_signin
 
         rate_limit_token_refresh = self.rate_limit_token_refresh
+
+        rate_limit_password_reset = self.rate_limit_password_reset
 
         cors_enabled = self.cors_enabled
 
@@ -270,6 +286,14 @@ class AuthConfig:
 
         device_verification_url = self.device_verification_url
 
+        created_at: str | Unset = UNSET
+        if not isinstance(self.created_at, Unset):
+            created_at = self.created_at.isoformat()
+
+        updated_at: str | Unset = UNSET
+        if not isinstance(self.updated_at, Unset):
+            updated_at = self.updated_at.isoformat()
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -282,6 +306,8 @@ class AuthConfig:
             field_dict["access_token_lifetime"] = access_token_lifetime
         if refresh_token_lifetime is not UNSET:
             field_dict["refresh_token_lifetime"] = refresh_token_lifetime
+        if refresh_token_reuse_interval is not UNSET:
+            field_dict["refresh_token_reuse_interval"] = refresh_token_reuse_interval
         if inactivity_timeout is not UNSET:
             field_dict["inactivity_timeout"] = inactivity_timeout
         if max_session_duration is not UNSET:
@@ -306,6 +332,8 @@ class AuthConfig:
             field_dict["rate_limit_signin"] = rate_limit_signin
         if rate_limit_token_refresh is not UNSET:
             field_dict["rate_limit_token_refresh"] = rate_limit_token_refresh
+        if rate_limit_password_reset is not UNSET:
+            field_dict["rate_limit_password_reset"] = rate_limit_password_reset
         if cors_enabled is not UNSET:
             field_dict["cors_enabled"] = cors_enabled
         if cors_allowed_origins is not UNSET:
@@ -366,6 +394,10 @@ class AuthConfig:
             field_dict["post_logout_redirect_url"] = post_logout_redirect_url
         if device_verification_url is not UNSET:
             field_dict["device_verification_url"] = device_verification_url
+        if created_at is not UNSET:
+            field_dict["created_at"] = created_at
+        if updated_at is not UNSET:
+            field_dict["updated_at"] = updated_at
 
         return field_dict
 
@@ -394,6 +426,8 @@ class AuthConfig:
 
         refresh_token_lifetime = d.pop("refresh_token_lifetime", UNSET)
 
+        refresh_token_reuse_interval = d.pop("refresh_token_reuse_interval", UNSET)
+
         inactivity_timeout = d.pop("inactivity_timeout", UNSET)
 
         max_session_duration = d.pop("max_session_duration", UNSET)
@@ -417,6 +451,8 @@ class AuthConfig:
         rate_limit_signin = d.pop("rate_limit_signin", UNSET)
 
         rate_limit_token_refresh = d.pop("rate_limit_token_refresh", UNSET)
+
+        rate_limit_password_reset = d.pop("rate_limit_password_reset", UNSET)
 
         cors_enabled = d.pop("cors_enabled", UNSET)
 
@@ -489,11 +525,32 @@ class AuthConfig:
 
         device_verification_url = d.pop("device_verification_url", UNSET)
 
+        _created_at = d.pop("created_at", UNSET)
+        created_at: datetime.datetime | Unset
+        if isinstance(_created_at,  Unset):
+            created_at = UNSET
+        else:
+            created_at = datetime.datetime.fromisoformat(_created_at)
+
+
+
+
+        _updated_at = d.pop("updated_at", UNSET)
+        updated_at: datetime.datetime | Unset
+        if isinstance(_updated_at,  Unset):
+            updated_at = UNSET
+        else:
+            updated_at = datetime.datetime.fromisoformat(_updated_at)
+
+
+
+
         auth_config = cls(
             password_policy=password_policy,
             project_id=project_id,
             access_token_lifetime=access_token_lifetime,
             refresh_token_lifetime=refresh_token_lifetime,
+            refresh_token_reuse_interval=refresh_token_reuse_interval,
             inactivity_timeout=inactivity_timeout,
             max_session_duration=max_session_duration,
             min_password_length=min_password_length,
@@ -506,6 +563,7 @@ class AuthConfig:
             rate_limit_signup=rate_limit_signup,
             rate_limit_signin=rate_limit_signin,
             rate_limit_token_refresh=rate_limit_token_refresh,
+            rate_limit_password_reset=rate_limit_password_reset,
             cors_enabled=cors_enabled,
             cors_allowed_origins=cors_allowed_origins,
             enable_anonymous_signins=enable_anonymous_signins,
@@ -536,6 +594,8 @@ class AuthConfig:
             allowed_redirect_urls=allowed_redirect_urls,
             post_logout_redirect_url=post_logout_redirect_url,
             device_verification_url=device_verification_url,
+            created_at=created_at,
+            updated_at=updated_at,
         )
 
 

@@ -43,8 +43,9 @@ class ProjectConfigFrontend:
                 domain, omitting `tls` or sending only `tls.mode` keeps the stored
                 certificate; new BYOC material for the same domain rotates the
                 certificate in place (zero downtime). Changing `tls.mode` for the same
-                hostname, or the hostname of a managed domain, requires deleting the
-                domain first. BYOC TLS material is write-only; exports render only
+                hostname switches an active domain in place (zero downtime); a domain
+                that is not yet active, or a managed domain changing hostname, must be
+                deleted first. BYOC TLS material is write-only; exports render only
                 `tls.mode`.
             function_routes (list[ProjectConfigFrontendFunctionRoute] | Unset): Complete set of same-origin Function path
                 mappings when declared. Omission preserves existing mappings; an empty list deletes all mappings.

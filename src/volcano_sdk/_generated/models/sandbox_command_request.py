@@ -27,12 +27,15 @@ class SandboxCommandRequest:
     """
         Attributes:
             command (str):
-            timeout_seconds (int | Unset):  Default: 60.
+            timeout_seconds (int | Unset): Command execution time from process start. Cloud defaults to 60 seconds and
+                accepts 1–28800; local defaults to 0 (unlimited) and accepts nonnegative values. VM expiry always takes
+                precedence. Cloud synchronous requests must return within the public connection idle limit (1000 seconds); use a
+                session with a background process and short polling requests for longer work.
             environment (SandboxCommandRequestEnvironment | Unset):
      """
 
     command: str
-    timeout_seconds: int | Unset = 60
+    timeout_seconds: int | Unset = UNSET
     environment: SandboxCommandRequestEnvironment | Unset = UNSET
 
 

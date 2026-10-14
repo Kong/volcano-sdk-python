@@ -15,6 +15,7 @@ from typing import cast
 
 if TYPE_CHECKING:
   from ..models.project_config_auth import ProjectConfigAuth
+  from ..models.project_config_autofix import ProjectConfigAutofix
   from ..models.project_config_bucket import ProjectConfigBucket
   from ..models.project_config_database import ProjectConfigDatabase
   from ..models.project_config_frontend import ProjectConfigFrontend
@@ -58,6 +59,9 @@ class ProjectConfig:
                 are deleted.
             buckets (list[ProjectConfigBucket] | Unset):
             realtime (ProjectConfigRealtime | Unset):
+            autofix (ProjectConfigAutofix | Unset): AI diagnosis and fix settings. Omitted fields keep their current value.
+                Your API key is never part of the manifest, and an apply never sets or deletes it: set it with `PUT
+                /projects/{id}/autofix` before turning on a provider that runs on your own key.
             auth (ProjectConfigAuth | Unset): Authentication settings, grouped like the dashboard auth-settings tabs.
             functions (list[ProjectConfigFunction] | Unset):
             frontends (list[ProjectConfigFrontend] | Unset):
@@ -73,6 +77,7 @@ class ProjectConfig:
     variables: list[ProjectConfigVariable] | Unset = UNSET
     buckets: list[ProjectConfigBucket] | Unset = UNSET
     realtime: ProjectConfigRealtime | Unset = UNSET
+    autofix: ProjectConfigAutofix | Unset = UNSET
     auth: ProjectConfigAuth | Unset = UNSET
     functions: list[ProjectConfigFunction] | Unset = UNSET
     frontends: list[ProjectConfigFrontend] | Unset = UNSET
@@ -84,6 +89,7 @@ class ProjectConfig:
 
     def to_dict(self) -> dict[str, Any]:
         from ..models.project_config_auth import ProjectConfigAuth # noqa: PLC0415
+        from ..models.project_config_autofix import ProjectConfigAutofix # noqa: PLC0415
         from ..models.project_config_bucket import ProjectConfigBucket # noqa: PLC0415
         from ..models.project_config_database import ProjectConfigDatabase # noqa: PLC0415
         from ..models.project_config_frontend import ProjectConfigFrontend # noqa: PLC0415
@@ -141,6 +147,10 @@ class ProjectConfig:
         if not isinstance(self.realtime, Unset):
             realtime = self.realtime.to_dict()
 
+        autofix: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.autofix, Unset):
+            autofix = self.autofix.to_dict()
+
         auth: dict[str, Any] | Unset = UNSET
         if not isinstance(self.auth, Unset):
             auth = self.auth.to_dict()
@@ -192,6 +202,8 @@ class ProjectConfig:
             field_dict["buckets"] = buckets
         if realtime is not UNSET:
             field_dict["realtime"] = realtime
+        if autofix is not UNSET:
+            field_dict["autofix"] = autofix
         if auth is not UNSET:
             field_dict["auth"] = auth
         if functions is not UNSET:
@@ -208,6 +220,7 @@ class ProjectConfig:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.project_config_auth import ProjectConfigAuth # noqa: PLC0415
+        from ..models.project_config_autofix import ProjectConfigAutofix # noqa: PLC0415
         from ..models.project_config_bucket import ProjectConfigBucket # noqa: PLC0415
         from ..models.project_config_database import ProjectConfigDatabase # noqa: PLC0415
         from ..models.project_config_frontend import ProjectConfigFrontend # noqa: PLC0415
@@ -284,6 +297,16 @@ class ProjectConfig:
 
 
 
+        _autofix = d.pop("autofix", UNSET)
+        autofix: ProjectConfigAutofix | Unset
+        if isinstance(_autofix,  Unset):
+            autofix = UNSET
+        else:
+            autofix = ProjectConfigAutofix.from_dict(_autofix)
+
+
+
+
         _auth = d.pop("auth", UNSET)
         auth: ProjectConfigAuth | Unset
         if isinstance(_auth,  Unset):
@@ -339,6 +362,7 @@ class ProjectConfig:
             variables=variables,
             buckets=buckets,
             realtime=realtime,
+            autofix=autofix,
             auth=auth,
             functions=functions,
             frontends=frontends,

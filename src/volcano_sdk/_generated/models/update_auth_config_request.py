@@ -30,8 +30,11 @@ class UpdateAuthConfigRequest:
         Attributes:
             access_token_lifetime (int | Unset):
             refresh_token_lifetime (int | Unset):
+            refresh_token_reuse_interval (int | Unset):
             inactivity_timeout (int | Unset):
             max_session_duration (int | Unset):
+            platform_token_ttl (int | Unset): TTL in seconds for platform tokens minted via `/auth/platform/exchange`. From
+                3600 (1 hour) to 31536000 (365 days).
             min_password_length (int | Unset):
             require_uppercase (bool | Unset):
             require_lowercase (bool | Unset):
@@ -42,6 +45,11 @@ class UpdateAuthConfigRequest:
             rate_limit_signup (int | Unset):
             rate_limit_signin (int | Unset):
             rate_limit_token_refresh (int | Unset):
+            rate_limit_password_reset (int | Unset): Password reset requests per hour per IP. Unlike the other limits, 0
+                applies the default of 10 instead of turning the limit off.
+            cors_enabled (bool | Unset):
+            cors_allowed_origins (list[str] | Unset): Replaces the allowed origins list. Example: ['https://myapp.com',
+                'http://localhost:3000'].
             cors_allow_credentials (bool | Unset):
             cors_max_age (int | Unset):
             enable_anonymous_signins (bool | Unset):
@@ -94,8 +102,10 @@ class UpdateAuthConfigRequest:
 
     access_token_lifetime: int | Unset = UNSET
     refresh_token_lifetime: int | Unset = UNSET
+    refresh_token_reuse_interval: int | Unset = UNSET
     inactivity_timeout: int | Unset = UNSET
     max_session_duration: int | Unset = UNSET
+    platform_token_ttl: int | Unset = UNSET
     min_password_length: int | Unset = UNSET
     require_uppercase: bool | Unset = UNSET
     require_lowercase: bool | Unset = UNSET
@@ -106,6 +116,9 @@ class UpdateAuthConfigRequest:
     rate_limit_signup: int | Unset = UNSET
     rate_limit_signin: int | Unset = UNSET
     rate_limit_token_refresh: int | Unset = UNSET
+    rate_limit_password_reset: int | Unset = UNSET
+    cors_enabled: bool | Unset = UNSET
+    cors_allowed_origins: list[str] | Unset = UNSET
     cors_allow_credentials: bool | Unset = UNSET
     cors_max_age: int | Unset = UNSET
     enable_anonymous_signins: bool | Unset = UNSET
@@ -144,9 +157,13 @@ class UpdateAuthConfigRequest:
 
         refresh_token_lifetime = self.refresh_token_lifetime
 
+        refresh_token_reuse_interval = self.refresh_token_reuse_interval
+
         inactivity_timeout = self.inactivity_timeout
 
         max_session_duration = self.max_session_duration
+
+        platform_token_ttl = self.platform_token_ttl
 
         min_password_length = self.min_password_length
 
@@ -167,6 +184,16 @@ class UpdateAuthConfigRequest:
         rate_limit_signin = self.rate_limit_signin
 
         rate_limit_token_refresh = self.rate_limit_token_refresh
+
+        rate_limit_password_reset = self.rate_limit_password_reset
+
+        cors_enabled = self.cors_enabled
+
+        cors_allowed_origins: list[str] | Unset = UNSET
+        if not isinstance(self.cors_allowed_origins, Unset):
+            cors_allowed_origins = self.cors_allowed_origins
+
+
 
         cors_allow_credentials = self.cors_allow_credentials
 
@@ -242,10 +269,14 @@ class UpdateAuthConfigRequest:
             field_dict["access_token_lifetime"] = access_token_lifetime
         if refresh_token_lifetime is not UNSET:
             field_dict["refresh_token_lifetime"] = refresh_token_lifetime
+        if refresh_token_reuse_interval is not UNSET:
+            field_dict["refresh_token_reuse_interval"] = refresh_token_reuse_interval
         if inactivity_timeout is not UNSET:
             field_dict["inactivity_timeout"] = inactivity_timeout
         if max_session_duration is not UNSET:
             field_dict["max_session_duration"] = max_session_duration
+        if platform_token_ttl is not UNSET:
+            field_dict["platform_token_ttl"] = platform_token_ttl
         if min_password_length is not UNSET:
             field_dict["min_password_length"] = min_password_length
         if require_uppercase is not UNSET:
@@ -266,6 +297,12 @@ class UpdateAuthConfigRequest:
             field_dict["rate_limit_signin"] = rate_limit_signin
         if rate_limit_token_refresh is not UNSET:
             field_dict["rate_limit_token_refresh"] = rate_limit_token_refresh
+        if rate_limit_password_reset is not UNSET:
+            field_dict["rate_limit_password_reset"] = rate_limit_password_reset
+        if cors_enabled is not UNSET:
+            field_dict["cors_enabled"] = cors_enabled
+        if cors_allowed_origins is not UNSET:
+            field_dict["cors_allowed_origins"] = cors_allowed_origins
         if cors_allow_credentials is not UNSET:
             field_dict["cors_allow_credentials"] = cors_allow_credentials
         if cors_max_age is not UNSET:
@@ -332,9 +369,13 @@ class UpdateAuthConfigRequest:
 
         refresh_token_lifetime = d.pop("refresh_token_lifetime", UNSET)
 
+        refresh_token_reuse_interval = d.pop("refresh_token_reuse_interval", UNSET)
+
         inactivity_timeout = d.pop("inactivity_timeout", UNSET)
 
         max_session_duration = d.pop("max_session_duration", UNSET)
+
+        platform_token_ttl = d.pop("platform_token_ttl", UNSET)
 
         min_password_length = d.pop("min_password_length", UNSET)
 
@@ -355,6 +396,13 @@ class UpdateAuthConfigRequest:
         rate_limit_signin = d.pop("rate_limit_signin", UNSET)
 
         rate_limit_token_refresh = d.pop("rate_limit_token_refresh", UNSET)
+
+        rate_limit_password_reset = d.pop("rate_limit_password_reset", UNSET)
+
+        cors_enabled = d.pop("cors_enabled", UNSET)
+
+        cors_allowed_origins = cast(list[str], d.pop("cors_allowed_origins", UNSET))
+
 
         cors_allow_credentials = d.pop("cors_allow_credentials", UNSET)
 
@@ -423,8 +471,10 @@ class UpdateAuthConfigRequest:
         update_auth_config_request = cls(
             access_token_lifetime=access_token_lifetime,
             refresh_token_lifetime=refresh_token_lifetime,
+            refresh_token_reuse_interval=refresh_token_reuse_interval,
             inactivity_timeout=inactivity_timeout,
             max_session_duration=max_session_duration,
+            platform_token_ttl=platform_token_ttl,
             min_password_length=min_password_length,
             require_uppercase=require_uppercase,
             require_lowercase=require_lowercase,
@@ -435,6 +485,9 @@ class UpdateAuthConfigRequest:
             rate_limit_signup=rate_limit_signup,
             rate_limit_signin=rate_limit_signin,
             rate_limit_token_refresh=rate_limit_token_refresh,
+            rate_limit_password_reset=rate_limit_password_reset,
+            cors_enabled=cors_enabled,
+            cors_allowed_origins=cors_allowed_origins,
             cors_allow_credentials=cors_allow_credentials,
             cors_max_age=cors_max_age,
             enable_anonymous_signins=enable_anonymous_signins,

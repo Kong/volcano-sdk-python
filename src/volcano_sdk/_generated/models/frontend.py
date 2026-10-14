@@ -66,6 +66,9 @@ class Frontend:
             site_url (str | Unset):
             custom_domain (str | Unset): Active custom domain hostname when configured
             custom_domain_status (FrontendCustomDomainStatus | Unset): Current custom domain lifecycle status
+            last_deployed_at (datetime.datetime | Unset): Recorded completion time of the most recent deploy or redeploy
+                with status active. Omitted when no such deployment has a recorded completion time. Site traffic, pending
+                deployments, degraded deployments, failed deployments, and deletion do not change this value.
             last_invoked_at (datetime.datetime | Unset):
      """
 
@@ -87,6 +90,7 @@ class Frontend:
     site_url: str | Unset = UNSET
     custom_domain: str | Unset = UNSET
     custom_domain_status: FrontendCustomDomainStatus | Unset = UNSET
+    last_deployed_at: datetime.datetime | Unset = UNSET
     last_invoked_at: datetime.datetime | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -155,6 +159,10 @@ class Frontend:
             custom_domain_status = self.custom_domain_status
 
 
+        last_deployed_at: str | Unset = UNSET
+        if not isinstance(self.last_deployed_at, Unset):
+            last_deployed_at = self.last_deployed_at.isoformat()
+
         last_invoked_at: str | Unset = UNSET
         if not isinstance(self.last_invoked_at, Unset):
             last_invoked_at = self.last_invoked_at.isoformat()
@@ -191,6 +199,8 @@ class Frontend:
             field_dict["custom_domain"] = custom_domain
         if custom_domain_status is not UNSET:
             field_dict["custom_domain_status"] = custom_domain_status
+        if last_deployed_at is not UNSET:
+            field_dict["last_deployed_at"] = last_deployed_at
         if last_invoked_at is not UNSET:
             field_dict["last_invoked_at"] = last_invoked_at
 
@@ -306,6 +316,16 @@ class Frontend:
 
 
 
+        _last_deployed_at = d.pop("last_deployed_at", UNSET)
+        last_deployed_at: datetime.datetime | Unset
+        if isinstance(_last_deployed_at,  Unset):
+            last_deployed_at = UNSET
+        else:
+            last_deployed_at = datetime.datetime.fromisoformat(_last_deployed_at)
+
+
+
+
         _last_invoked_at = d.pop("last_invoked_at", UNSET)
         last_invoked_at: datetime.datetime | Unset
         if isinstance(_last_invoked_at,  Unset):
@@ -335,6 +355,7 @@ class Frontend:
             site_url=site_url,
             custom_domain=custom_domain,
             custom_domain_status=custom_domain_status,
+            last_deployed_at=last_deployed_at,
             last_invoked_at=last_invoked_at,
         )
 
