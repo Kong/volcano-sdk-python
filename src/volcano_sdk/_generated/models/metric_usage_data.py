@@ -40,12 +40,19 @@ class MetricUsageData:
                 at times the time it spent running, in megabyte-seconds; the allowance for it is
                 published in gigabyte-seconds, which is 1024 of these.
                 "Sandbox Running (MiB-Seconds)", "Sandbox Suspended (Seconds)", and
-                "Sandbox Uncertain (MiB-Seconds)" are preview-only usage; they do not
-                debit credits. Running reports configured memory times observed runtime,
-                not measured CPU or elastic memory consumption. Uncertain includes
-                observation gaps and unconfirmed state transitions. Suspended reports
-                duration, not snapshot size. Local sessions do not contribute.
-                Totals are rounded down after aggregating millisecond measurements.
+                "Sandbox Uncertain (MiB-Seconds)" report cloud Sandbox usage. Running
+                reports configured baseline memory times confirmed runtime, not measured
+                CPU or elastic memory consumption. For sessions admitted after the pricing
+                release, confirmed running time consumes the account's runtime allowance;
+                SUPERAGENT overage debits credits according to the account's pricing terms.
+                Suspended time and uncertain usage do not consume runtime allowance or
+                debit credits. Uncertain includes observation gaps and unconfirmed state
+                transitions. Suspended reports duration, not snapshot size; snapshot costs
+                are included in runtime pricing. Local and platform image-validation
+                sessions do not contribute. Existing preview sessions remain unbilled,
+                and preview history is never charged retroactively. Displayed totals are
+                rounded down after aggregating millisecond measurements; billing uses
+                unrounded measurements in the monthly account billing cycle.
                 "Database Storage (Bytes)" is a current observed gauge,
                 not a cumulative counter. It is the sum of the latest samples exposed as
                 `storage_bytes` by the project's database list, so it includes what each

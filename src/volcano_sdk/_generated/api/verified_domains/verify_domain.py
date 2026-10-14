@@ -129,13 +129,15 @@ def sync_detailed(
     Publish a TXT record named `_volcano.<domain>`, then send this request.
     Without the record, the response is `409` with
     `code: ownership_verification_required` and the `required_record` to
-    publish. Its value is the same on every request. The record must be
-    served at that name itself; a record reached through a CNAME does not
-    count.
+    publish. Its value stays the same until Volcano rotates the key it is
+    derived from. The record must be served at that name itself; a record
+    reached through a CNAME does not count.
 
     When another account verified the domain, publishing your record moves
     the domain to your account once that account's record is no longer
-    published. Keep your record published so the domain stays yours.
+    published. Keep your record published so the domain stays yours. After
+    Volcano rotates the key the value is derived from, only a record with
+    the new value counts.
 
     Verifying a domain the account already verified returns `200`.
 
@@ -177,13 +179,15 @@ def sync(
     Publish a TXT record named `_volcano.<domain>`, then send this request.
     Without the record, the response is `409` with
     `code: ownership_verification_required` and the `required_record` to
-    publish. Its value is the same on every request. The record must be
-    served at that name itself; a record reached through a CNAME does not
-    count.
+    publish. Its value stays the same until Volcano rotates the key it is
+    derived from. The record must be served at that name itself; a record
+    reached through a CNAME does not count.
 
     When another account verified the domain, publishing your record moves
     the domain to your account once that account's record is no longer
-    published. Keep your record published so the domain stays yours.
+    published. Keep your record published so the domain stays yours. After
+    Volcano rotates the key the value is derived from, only a record with
+    the new value counts.
 
     Verifying a domain the account already verified returns `200`.
 
@@ -220,13 +224,15 @@ async def asyncio_detailed(
     Publish a TXT record named `_volcano.<domain>`, then send this request.
     Without the record, the response is `409` with
     `code: ownership_verification_required` and the `required_record` to
-    publish. Its value is the same on every request. The record must be
-    served at that name itself; a record reached through a CNAME does not
-    count.
+    publish. Its value stays the same until Volcano rotates the key it is
+    derived from. The record must be served at that name itself; a record
+    reached through a CNAME does not count.
 
     When another account verified the domain, publishing your record moves
     the domain to your account once that account's record is no longer
-    published. Keep your record published so the domain stays yours.
+    published. Keep your record published so the domain stays yours. After
+    Volcano rotates the key the value is derived from, only a record with
+    the new value counts.
 
     Verifying a domain the account already verified returns `200`.
 
@@ -268,13 +274,15 @@ async def asyncio(
     Publish a TXT record named `_volcano.<domain>`, then send this request.
     Without the record, the response is `409` with
     `code: ownership_verification_required` and the `required_record` to
-    publish. Its value is the same on every request. The record must be
-    served at that name itself; a record reached through a CNAME does not
-    count.
+    publish. Its value stays the same until Volcano rotates the key it is
+    derived from. The record must be served at that name itself; a record
+    reached through a CNAME does not count.
 
     When another account verified the domain, publishing your record moves
     the domain to your account once that account's record is no longer
-    published. Keep your record published so the domain stays yours.
+    published. Keep your record published so the domain stays yours. After
+    Volcano rotates the key the value is derived from, only a record with
+    the new value counts.
 
     Verifying a domain the account already verified returns `200`.
 

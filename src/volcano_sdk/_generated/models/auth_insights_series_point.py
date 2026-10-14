@@ -28,14 +28,25 @@ class AuthInsightsSeriesPoint:
             signups (int): Registrations during the bucket. Subsequent deletion does not subtract from this count.
                 Historical counts removed before deletion-history collection cannot be reconstructed.
             signins (int): Successful session creations during the bucket.
+            banned_users (int): Users registered in this bucket who are currently banned. Excludes deleted users, lifted
+                bans, expired temporary bans, and internal test identities.
+            deleted_users (int): Users registered in this bucket who are now deleted, counted once across soft and hard
+                deletion. Grouped by signup date, not deletion date.
+            available_users (int): Currently available users registered in this bucket (signups minus banned_users minus
+                deleted_users). Unban or expiry restores availability in the original signup bucket. This measures account
+                availability, not return activity.
             deletions (int): Accounts deleted during this bucket, counted once across soft and hard deletion.
-            net_growth (int): Registrations minus deletions during this bucket. May be negative.
+            net_growth (int): Registrations minus deletions during this bucket. May be negative. Bans do not affect this
+                value.
             is_partial (bool): Whether the requested window or observation time clips this bucket.
      """
 
     bucket_start: datetime.date
     signups: int
     signins: int
+    banned_users: int
+    deleted_users: int
+    available_users: int
     deletions: int
     net_growth: int
     is_partial: bool
@@ -51,6 +62,12 @@ class AuthInsightsSeriesPoint:
 
         signins = self.signins
 
+        banned_users = self.banned_users
+
+        deleted_users = self.deleted_users
+
+        available_users = self.available_users
+
         deletions = self.deletions
 
         net_growth = self.net_growth
@@ -64,6 +81,9 @@ class AuthInsightsSeriesPoint:
             "bucket_start": bucket_start,
             "signups": signups,
             "signins": signins,
+            "banned_users": banned_users,
+            "deleted_users": deleted_users,
+            "available_users": available_users,
             "deletions": deletions,
             "net_growth": net_growth,
             "is_partial": is_partial,
@@ -85,6 +105,12 @@ class AuthInsightsSeriesPoint:
 
         signins = d.pop("signins")
 
+        banned_users = d.pop("banned_users")
+
+        deleted_users = d.pop("deleted_users")
+
+        available_users = d.pop("available_users")
+
         deletions = d.pop("deletions")
 
         net_growth = d.pop("net_growth")
@@ -95,6 +121,9 @@ class AuthInsightsSeriesPoint:
             bucket_start=bucket_start,
             signups=signups,
             signins=signins,
+            banned_users=banned_users,
+            deleted_users=deleted_users,
+            available_users=available_users,
             deletions=deletions,
             net_growth=net_growth,
             is_partial=is_partial,

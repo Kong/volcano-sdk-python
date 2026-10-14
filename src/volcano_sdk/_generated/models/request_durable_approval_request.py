@@ -28,8 +28,11 @@ class RequestDurableApprovalRequest:
             name (str):
             title (str):
             description (str | Unset):
-            details (Any | Unset): Any JSON value to show the person deciding. The whole request is
-                limited to 64 KiB.
+            details (Any | Unset): Any JSON value to show the person deciding. A number's exponent must
+                be between -324 and 324, and a number too large or too precise to
+                store is refused with `400`. Numbers are read back written out in
+                full, so the exponents' absolute values may total at most 65,536.
+                The whole request is limited to 64 KiB.
      """
 
     execution_ref: str
