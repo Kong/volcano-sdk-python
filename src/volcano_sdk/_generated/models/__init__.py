@@ -90,6 +90,10 @@ from .auth_user import AuthUser
 from .auth_user_app_metadata import AuthUserAppMetadata
 from .auth_user_status import AuthUserStatus
 from .auth_user_user_metadata import AuthUserUserMetadata
+from .autofix_model import AutofixModel
+from .autofix_provider import AutofixProvider
+from .autofix_settings import AutofixSettings
+from .autofix_stage import AutofixStage
 from .ban_auth_user_body import BanAuthUserBody
 from .ban_user_response import BanUserResponse
 from .ban_user_response_status import BanUserResponseStatus
@@ -251,6 +255,7 @@ from .frontend import Frontend
 from .frontend_custom_domain_conflict_error import FrontendCustomDomainConflictError
 from .frontend_custom_domain_response import FrontendCustomDomainResponse
 from .frontend_custom_domain_response_domain_status import FrontendCustomDomainResponseDomainStatus
+from .frontend_custom_domain_response_serving_certificate import FrontendCustomDomainResponseServingCertificate
 from .frontend_custom_domain_response_tls_mode import FrontendCustomDomainResponseTlsMode
 from .frontend_custom_domain_response_verification_status import FrontendCustomDomainResponseVerificationStatus
 from .frontend_custom_domain_status import FrontendCustomDomainStatus
@@ -324,6 +329,8 @@ from .import_connections_response import ImportConnectionsResponse
 from .import_provider import ImportProvider
 from .import_source import ImportSource
 from .import_sources_response import ImportSourcesResponse
+from .issue import Issue
+from .issue_status import IssueStatus
 from .list_anon_keys_response_200 import ListAnonKeysResponse200
 from .list_auth_users_status import ListAuthUsersStatus
 from .list_available_o_auth_providers_response_200 import ListAvailableOAuthProvidersResponse200
@@ -385,6 +392,7 @@ from .paginated_frontend_deployments import PaginatedFrontendDeployments
 from .paginated_frontends import PaginatedFrontends
 from .paginated_function_deployments import PaginatedFunctionDeployments
 from .paginated_functions import PaginatedFunctions
+from .paginated_issues import PaginatedIssues
 from .paginated_project_access_tokens import PaginatedProjectAccessTokens
 from .paginated_project_custom_domains import PaginatedProjectCustomDomains
 from .paginated_project_deployments import PaginatedProjectDeployments
@@ -427,6 +435,7 @@ from .project_config_auth_sessions import ProjectConfigAuthSessions
 from .project_config_auth_signup import ProjectConfigAuthSignup
 from .project_config_auth_signup_allowed_email_domains_mode import ProjectConfigAuthSignupAllowedEmailDomainsMode
 from .project_config_auth_tokens import ProjectConfigAuthTokens
+from .project_config_autofix import ProjectConfigAutofix
 from .project_config_bucket import ProjectConfigBucket
 from .project_config_bucket_policy import ProjectConfigBucketPolicy
 from .project_config_bucket_policy_operation import ProjectConfigBucketPolicyOperation
@@ -601,6 +610,7 @@ from .update_auth_config_request_allowed_email_domains_mode import UpdateAuthCon
 from .update_auth_hosted_page_request import UpdateAuthHostedPageRequest
 from .update_auth_page_layout_request import UpdateAuthPageLayoutRequest
 from .update_auth_page_theme_request import UpdateAuthPageThemeRequest
+from .update_autofix_settings_request import UpdateAutofixSettingsRequest
 from .update_database_branch_request import UpdateDatabaseBranchRequest
 from .update_database_type_request import UpdateDatabaseTypeRequest
 from .update_database_type_request_database_type import UpdateDatabaseTypeRequestDatabaseType
@@ -610,6 +620,7 @@ from .update_function_request import UpdateFunctionRequest
 from .update_function_request_openapi_spec_type_0 import UpdateFunctionRequestOpenapiSpecType0
 from .update_function_scheduler_request import UpdateFunctionSchedulerRequest
 from .update_function_scheduler_request_payload import UpdateFunctionSchedulerRequestPayload
+from .update_issue_request import UpdateIssueRequest
 from .update_o_auth_config_provider import UpdateOAuthConfigProvider
 from .update_o_auth_config_request import UpdateOAuthConfigRequest
 from .update_project_git_deploy_settings_request import UpdateProjectGitDeploySettingsRequest
@@ -725,6 +736,10 @@ __all__ = (
     "AuthUserAppMetadata",
     "AuthUserStatus",
     "AuthUserUserMetadata",
+    "AutofixModel",
+    "AutofixProvider",
+    "AutofixSettings",
+    "AutofixStage",
     "BanAuthUserBody",
     "BanUserResponse",
     "BanUserResponseStatus",
@@ -886,6 +901,7 @@ __all__ = (
     "FrontendCustomDomainConflictError",
     "FrontendCustomDomainResponse",
     "FrontendCustomDomainResponseDomainStatus",
+    "FrontendCustomDomainResponseServingCertificate",
     "FrontendCustomDomainResponseTlsMode",
     "FrontendCustomDomainResponseVerificationStatus",
     "FrontendCustomDomainStatus",
@@ -959,6 +975,8 @@ __all__ = (
     "ImportProvider",
     "ImportSource",
     "ImportSourcesResponse",
+    "Issue",
+    "IssueStatus",
     "ListAnonKeysResponse200",
     "ListAuthUsersStatus",
     "ListAvailableOAuthProvidersResponse200",
@@ -1020,6 +1038,7 @@ __all__ = (
     "PaginatedFrontends",
     "PaginatedFunctionDeployments",
     "PaginatedFunctions",
+    "PaginatedIssues",
     "PaginatedProjectAccessTokens",
     "PaginatedProjectCustomDomains",
     "PaginatedProjectDeployments",
@@ -1062,6 +1081,7 @@ __all__ = (
     "ProjectConfigAuthSignup",
     "ProjectConfigAuthSignupAllowedEmailDomainsMode",
     "ProjectConfigAuthTokens",
+    "ProjectConfigAutofix",
     "ProjectConfigBucket",
     "ProjectConfigBucketPolicy",
     "ProjectConfigBucketPolicyOperation",
@@ -1236,6 +1256,7 @@ __all__ = (
     "UpdateAuthHostedPageRequest",
     "UpdateAuthPageLayoutRequest",
     "UpdateAuthPageThemeRequest",
+    "UpdateAutofixSettingsRequest",
     "UpdateDatabaseBranchRequest",
     "UpdateDatabaseTypeRequest",
     "UpdateDatabaseTypeRequestDatabaseType",
@@ -1245,6 +1266,7 @@ __all__ = (
     "UpdateFunctionRequestOpenapiSpecType0",
     "UpdateFunctionSchedulerRequest",
     "UpdateFunctionSchedulerRequestPayload",
+    "UpdateIssueRequest",
     "UpdateOAuthConfigProvider",
     "UpdateOAuthConfigRequest",
     "UpdateProjectGitDeploySettingsRequest",

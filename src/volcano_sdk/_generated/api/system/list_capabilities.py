@@ -71,6 +71,10 @@ def sync_detailed(
     | `sandboxes.sessions` | Starting and resuming sessions, and one-shot executions |
     | `sandboxes.custom_templates` | Deploying a custom template; its validation waits while
     `sandboxes.sessions` is unavailable |
+    | `issues` | The Issues API: listing, reading, and updating grouped runtime errors |
+    | `autofix` | The Autofix API: a project's AI diagnosis and fix settings |
+    | `autofix.managed_models` | Turning autofix on with Volcano-managed models instead of your own API
+    key |
 
     A capability missing from the list is unavailable, and a capability under
     another, such as `sandboxes.sessions`, is unavailable whenever its parent is.
@@ -115,6 +119,10 @@ def sync(
     | `sandboxes.sessions` | Starting and resuming sessions, and one-shot executions |
     | `sandboxes.custom_templates` | Deploying a custom template; its validation waits while
     `sandboxes.sessions` is unavailable |
+    | `issues` | The Issues API: listing, reading, and updating grouped runtime errors |
+    | `autofix` | The Autofix API: a project's AI diagnosis and fix settings |
+    | `autofix.managed_models` | Turning autofix on with Volcano-managed models instead of your own API
+    key |
 
     A capability missing from the list is unavailable, and a capability under
     another, such as `sandboxes.sessions`, is unavailable whenever its parent is.
@@ -154,6 +162,10 @@ async def asyncio_detailed(
     | `sandboxes.sessions` | Starting and resuming sessions, and one-shot executions |
     | `sandboxes.custom_templates` | Deploying a custom template; its validation waits while
     `sandboxes.sessions` is unavailable |
+    | `issues` | The Issues API: listing, reading, and updating grouped runtime errors |
+    | `autofix` | The Autofix API: a project's AI diagnosis and fix settings |
+    | `autofix.managed_models` | Turning autofix on with Volcano-managed models instead of your own API
+    key |
 
     A capability missing from the list is unavailable, and a capability under
     another, such as `sandboxes.sessions`, is unavailable whenever its parent is.
@@ -198,6 +210,10 @@ async def asyncio(
     | `sandboxes.sessions` | Starting and resuming sessions, and one-shot executions |
     | `sandboxes.custom_templates` | Deploying a custom template; its validation waits while
     `sandboxes.sessions` is unavailable |
+    | `issues` | The Issues API: listing, reading, and updating grouped runtime errors |
+    | `autofix` | The Autofix API: a project's AI diagnosis and fix settings |
+    | `autofix.managed_models` | Turning autofix on with Volcano-managed models instead of your own API
+    key |
 
     A capability missing from the list is unavailable, and a capability under
     another, such as `sandboxes.sessions`, is unavailable whenever its parent is.

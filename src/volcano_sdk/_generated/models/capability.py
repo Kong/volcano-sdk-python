@@ -26,8 +26,8 @@ class Capability:
     """ A product capability and whether it accepts new work in this environment.
 
         Attributes:
-            id (str): Stable capability ID, such as `sandboxes`, `sandboxes.sessions`, or `sandboxes.custom_templates`. New
-                IDs may appear at any time. Example: sandboxes.sessions.
+            id (str): Stable capability ID, such as `sandboxes`, `sandboxes.sessions`, `sandboxes.custom_templates`,
+                `issues`, or `autofix`. New IDs may appear at any time. Example: sandboxes.sessions.
             status (CapabilityStatus): `available` means the capability accepts new work; a temporary outage still answers
                 `503`. `unavailable` means requests that start new work answer `404` or `400` with code `feature_unavailable`.
                 Treat any other value as `unavailable`.
