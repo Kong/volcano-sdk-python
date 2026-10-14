@@ -117,6 +117,17 @@ def durable_message(payload: object) -> DurableMessage:
     )
 
 
+def broadcast_prev_seq(payload: object) -> int:
+    """Read the `seq` a broadcast says the execution published before it.
+
+    Returns:
+        That `seq`, or 0, naming no gap, when the broadcast has none.
+
+    """
+    prev_seq = payload.get("prev_seq") if _is_mapping(payload) else None
+    return prev_seq if type(prev_seq) is int else 0
+
+
 def durable_message_page(payload: object) -> DurableMessagePage:
     """Validate and snapshot a page of messages.
 

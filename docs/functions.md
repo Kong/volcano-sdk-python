@@ -290,7 +290,7 @@ for published in page.messages:
 
 A `DurableMessage` has `id`, `execution_id`, `direction` (`"in"` or `"out"`), `seq`, `name`, `data`, `sender`, `status`, `sent_at`, and `delivered_at`. `seq` orders both directions and can skip numbers; read the next page with `after` set to the last `seq`. A send repeating an `idempotency_key` the execution has seen returns the first message and sends nothing. The key is up to 255 characters.
 
-`subscribe()` calls the handler, which may be a coroutine function, with each message the execution publishes, in `seq` order and once each. The messages published before the call are delivered before it returns, and after a reconnect the ones published meanwhile are read back before live delivery resumes. It follows the execution on the client's realtime connection, which needs a signed-in session. One client subscribes to an execution once at a time:
+`subscribe()` calls the handler, which may be a coroutine function, with each message the execution publishes, in `seq` order and once each. The messages published before the call are delivered before it returns. After a reconnect, or a live message that shows an earlier one was lost, the missing ones are read back before live delivery resumes. It follows the execution on the client's realtime connection, which needs a signed-in session: a client holding only an anonymous or service key gets `RuntimeError`, even with the `client_token`, and can poll `list()` with `after` instead. One client subscribes to an execution once at a time:
 
 ```python
 async def follow(client, execution):

@@ -32,6 +32,10 @@ if TYPE_CHECKING:
 
 _INVALID_TRANSPORT = "Transport does not support durable messages"
 _NO_REALTIME = "subscribe() needs a VolcanoClient, which owns the realtime connection"
+_NO_SESSION = (
+    "subscribe() needs a signed-in session to open the realtime connection; "
+    "a client token or service key alone cannot"
+)
 _ALREADY_SUBSCRIBED = (
     "This client already subscribes to the execution's messages; unsubscribe first"
 )
@@ -269,7 +273,8 @@ class DurableMessages:
         not callable raises `TypeError`.
 
         Follows the execution on the client's realtime connection, which needs
-        a signed-in session.
+        a signed-in session; a client token or service key alone cannot open
+        it.
 
         Returns
         -------
@@ -279,7 +284,8 @@ class DurableMessages:
         Raises
         ------
         RuntimeError
-            If this client already subscribes to the execution.
+            If the client has no signed-in session, or already subscribes to
+            the execution.
 
         """
         known_options(options, _TARGET_OPTIONS)
@@ -288,6 +294,10 @@ class DurableMessages:
         realtime = self._realtime
         if realtime is None:
             raise RuntimeError(_NO_REALTIME)
+        try:
+            _ = self._client.session_token()
+        except RuntimeError as error:
+            raise RuntimeError(_NO_SESSION) from error
         list_after = self._reader(target)
         channel = realtime.durable_channel(target.execution_id, target.client_token)
         if channel is None:

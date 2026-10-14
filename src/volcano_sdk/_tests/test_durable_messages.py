@@ -110,10 +110,12 @@ class FakeMessageTransport(RejectingTransport):
         self.list_response: FakeResponse = FakeResponse(
             200, {"data": [published(1), sent()], "has_more": False}, {}
         )
-        # Answers subscription reads from the execution's published messages.
+        # Answers subscription reads from the execution's published messages,
+        # after any canned answers. Each canned answer is given once, so a
+        # read that goes on gets the published pages instead of spinning.
         self.published: list[int] = []
         self.page_size: int = 100
-        self.read_answer: FakeResponse | None = None
+        self.read_answers: list[FakeResponse] = []
         self.next_read_gate: asyncio.Event | None = None
         self.read_arrivals: Arrivals = Arrivals()
 
@@ -132,7 +134,11 @@ class FakeMessageTransport(RejectingTransport):
         # A catch-up read without its cursor would page from the start forever.
         assert request.after is not None
         # Read before waiting, as a list racing a publish would.
-        answer = self.read_answer or self.page_after(request.after)
+        answer = (
+            self.read_answers.pop(0)
+            if self.read_answers
+            else self.page_after(request.after)
+        )
         self.read_arrivals.arrive()
         gate, self.next_read_gate = self.next_read_gate, None
         if gate is not None:
@@ -250,8 +256,10 @@ def subscription_of(native: FakeCentrifugeClient) -> FakeSubscription:
 async def dispatched(client: VolcanoClient) -> None:
     """Wait until the channel has handed its queued publications on."""
     task = realtime_state(client.realtime).channels[CHANNEL].state.callback_task
+    # Not wait_for: cancelling the dispatcher from a handler it is running
+    # would leave both cancelling forever instead of failing the test.
     if task is not None:
-        await asyncio.wait_for(task, timeout=2)
+        _ = await asyncio.wait({task}, timeout=2)
 
 
 SEND_AND_LIST: dict[str, Callable[[DurableMessages], object]] = {
@@ -1075,7 +1083,7 @@ async def test_subscribe_reads_every_page() -> None:
 
 async def test_an_empty_page_ends_the_read() -> None:
     transport = FakeMessageTransport()
-    transport.read_answer = FakeResponse(200, {"data": [], "has_more": True}, {})
+    transport.read_answers = [FakeResponse(200, {"data": [], "has_more": True}, {})]
     client, _native = subscriber(transport)
     try:
         _ = await client.durable.messages.subscribe(
@@ -1084,6 +1092,90 @@ async def test_an_empty_page_ends_the_read() -> None:
 
         assert transport.read_after() == [0]
     finally:
+        await client.realtime.disconnect()
+
+
+async def test_a_page_that_delivers_nothing_new_ends_the_read() -> None:
+    transport = FakeMessageTransport()
+    unchanged = FakeResponse(200, {"data": [published(1)], "has_more": True}, {})
+    transport.read_answers = [unchanged, unchanged]
+    client, _native = subscriber(transport)
+    received = Received()
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+
+        assert received.seqs == [1]
+        assert transport.read_after() == [0, 1]
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_a_broadcast_naming_a_missed_publish_reads_it_back() -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    client, native = subscriber(transport)
+    received = Received()
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        channel = subscription_of(native)
+
+        transport.published += [2, 3]
+        await channel.emit(published(3, prev_seq=2))
+        assert await received.until(3) == [1, 2, 3]
+        await channel.emit(published(2, prev_seq=1))
+        await channel.emit(published(4, prev_seq=3))
+        await channel.emit(published(5, prev_seq="9"))
+        await channel.emit(published(6, prev_seq=True))
+        await channel.emit(published(7))
+
+        assert await received.until(7) == [1, 2, 3, 4, 5, 6, 7]
+        assert transport.read_after() == [0, 1]
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_a_first_broadcast_without_prev_seq_is_delivered_without_a_read() -> None:
+    transport = FakeMessageTransport()
+    client, native = subscriber(transport)
+    received = Received()
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        await subscription_of(native).emit(published(1))
+
+        assert await received.until(1) == [1]
+        assert transport.read_after() == [0]
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_a_failed_read_after_a_gap_still_delivers_the_broadcast() -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    client, native = subscriber(transport)
+    received = Received()
+    errors: list[dict[str, object]] = []
+    reported = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    previous = loop.get_exception_handler()
+
+    def report(_loop: asyncio.AbstractEventLoop, context: dict[str, object]) -> None:
+        errors.append(context)
+        reported.set()
+
+    loop.set_exception_handler(report)
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        transport.read_answers = [FakeResponse(500, {"error": "list failed"}, {})]
+        await subscription_of(native).emit(published(3, prev_seq=2))
+        _ = await asyncio.wait_for(reported.wait(), timeout=2)
+
+        assert received.seqs == [1, 3]
+        assert transport.read_after() == [0, 1]
+        assert [error["message"] for error in errors] == [
+            "Volcano durable message catch-up failed"
+        ]
+    finally:
+        loop.set_exception_handler(previous)
         await client.realtime.disconnect()
 
 
@@ -1210,7 +1302,7 @@ async def test_an_old_subscription_leaves_a_replacement_alone() -> None:
 
 async def test_a_failed_first_read_fails_subscribe_and_leaves_the_channel() -> None:
     transport = FakeMessageTransport()
-    transport.read_answer = FakeResponse(404, {"error": "execution not found"}, {})
+    transport.read_answers = [FakeResponse(404, {"error": "execution not found"}, {})]
     client, native = subscriber(transport)
     try:
         with pytest.raises(NotFoundError, match="execution not found"):
@@ -1219,7 +1311,6 @@ async def test_a_failed_first_read_fails_subscribe_and_leaves_the_channel() -> N
             )
 
         assert CHANNEL not in native.subscriptions
-        transport.read_answer = None
         _ = await client.durable.messages.subscribe(
             "checkout", EXECUTION_ID, Received()
         )
@@ -1246,21 +1337,26 @@ async def test_a_failing_handler_fails_subscribe_and_leaves_the_channel() -> Non
         await client.realtime.disconnect()
 
 
-async def test_subscribe_needs_a_signed_in_session() -> None:
+@pytest.mark.parametrize("service_key", [None, "service-key"])
+async def test_subscribe_needs_a_signed_in_session(service_key: str | None) -> None:
     native = FakeCentrifugeClient()
+    transport = FakeMessageTransport()
     client = VolcanoClient(
         anon_key="anon-key",
-        _transport=FakeMessageTransport(),
+        service_key=service_key,
+        _transport=transport,
         _realtime_client_factory=FakeCentrifugeFactory(native),
     )
     try:
         for _attempt in range(2):
-            with pytest.raises(RuntimeError, match="No active session"):
+            with pytest.raises(RuntimeError, match=r"^subscribe\(\) needs a signed-in"):
                 _ = await client.durable.messages.subscribe(
-                    "checkout", EXECUTION_ID, Received()
+                    "checkout", EXECUTION_ID, Received(), client_token="client-token"
                 )
 
         assert CHANNEL not in realtime_state(client.realtime).channels
+        assert native.subscriptions == {}
+        assert transport.reads() == []
     finally:
         await client.realtime.disconnect()
 
@@ -1282,7 +1378,7 @@ async def test_a_failed_read_after_a_resubscription_is_reported() -> None:
     try:
         _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
         channel = subscription_of(native)
-        transport.read_answer = FakeResponse(500, {"error": "list failed"}, {})
+        transport.read_answers = [FakeResponse(500, {"error": "list failed"}, {})]
         await channel.emit_subscribing()
         await channel.emit_subscribed()
         _ = await asyncio.wait_for(reported.wait(), timeout=2)

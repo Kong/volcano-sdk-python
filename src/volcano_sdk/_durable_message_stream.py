@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from ._durable_message_response import durable_message
+from ._durable_message_response import broadcast_prev_seq, durable_message
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -39,6 +39,8 @@ class DurableMessageStream:
 
     The channel itself drops publications while it is not subscribed, and
     reports each resubscription, which starts a catch-up of what it dropped.
+    A broadcast naming a publish not yet delivered starts one too, since the
+    broadcast before it was lost or has yet to arrive.
     """
 
     def __init__(
@@ -65,12 +67,19 @@ class DurableMessageStream:
         if not self._started or self._catch_ups > 0:
             self._held.append(message)
             return
+        if broadcast_prev_seq(data) > self._last_seq:
+            self._held.append(message)
+            self._catch_up_in_background()
+            return
         await self._deliver(message)
 
     def resubscribed(self) -> None:
         """Catch up on what the channel dropped while it was not subscribed."""
-        # A failed catch-up leaves the gap until the next one; live delivery
-        # goes on.
+        self._catch_up_in_background()
+
+    def _catch_up_in_background(self) -> None:
+        # A failed catch-up leaves the gap until the next one; the held
+        # messages are still released and live delivery goes on.
         self.catch_up().add_done_callback(_report_failed_catch_up)
 
     def catch_up(self) -> asyncio.Task[None]:
@@ -115,10 +124,12 @@ class DurableMessageStream:
 
     async def _read_pages(self) -> None:
         while not self._closed:
-            page = await self._list_after(self._last_seq)
+            after = self._last_seq
+            page = await self._list_after(after)
             for message in page.messages:
                 await self._deliver(message)
-            if not page.has_more or not page.messages:
+            # A page that delivered nothing would be asked for again unchanged.
+            if not page.has_more or self._last_seq == after:
                 return
 
     async def _release(self) -> None:
