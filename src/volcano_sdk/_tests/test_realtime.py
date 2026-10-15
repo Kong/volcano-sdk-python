@@ -564,7 +564,7 @@ class FakeCentrifugeClient:
         self.presence_entered: asyncio.Event | None = None
         self.presence_release: asyncio.Event | None = None
         self.disconnect_probe: Callable[[], None] | None = None
-        self.disconnect_error: Exception | None = None
+        self.disconnect_error: BaseException | None = None
         self.subscription: FakeSubscription | None = None
         self._subs: MutableMapping[str, FakeSubscription] = {}
 
