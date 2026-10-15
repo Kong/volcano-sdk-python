@@ -570,8 +570,9 @@ class DurableMessageTargetOptions(TypedDict, total=False):
     """Which route reaches an execution's messages, and with what."""
 
     # The execution's `client_token`. The application route needs it for an
-    # anon key, or a signed-in user who did not start the execution.
-    client_token: str
+    # anon key, or a signed-in user who did not start the execution. None,
+    # as `DurableExecution.client_token` is when not from the start, sends none.
+    client_token: str | None
     # Use the owner's project route instead, with the session's platform token.
     project_id: str
 
@@ -579,7 +580,8 @@ class DurableMessageTargetOptions(TypedDict, total=False):
 class DurableMessageSendOptions(DurableMessageTargetOptions, total=False):
     """Route and idempotency for sending a durable message."""
 
-    # A repeat with the same key returns the message the first send stored.
+    # A repeat of the same key by the same sender returns the message the
+    # first send stored.
     idempotency_key: str
 
 
