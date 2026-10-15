@@ -208,12 +208,14 @@ class DurableMessages:
         It is queued until a `ctx.wait_for_message(name)` takes it. A send with
         an `idempotency_key` the same sender has used on the execution returns
         the message the first one stored, and sends nothing. A send to an
-        execution that has ended raises `ConflictError`.
+        execution that has ended, or that already holds 100 untaken messages,
+        raises `ConflictError`.
 
         Returns
         -------
         DurableMessage
-            The stored message, `queued` or already `delivered`.
+            The stored message: `queued`, `delivered`, or `delivering` while
+            its handover to a wait is still being confirmed.
 
         """
         known_options(options, _SEND_OPTIONS)

@@ -284,7 +284,7 @@ for published in page.messages:
 
 | Method | Returns |
 |---|---|
-| `send(function_name, execution_id, name, data=None, idempotency_key=..., client_token=..., project_id=...)` | The stored `DurableMessage`, `queued` or already `delivered`. |
+| `send(function_name, execution_id, name, data=None, idempotency_key=..., client_token=..., project_id=...)` | The stored `DurableMessage`: `queued`, `delivered`, or `delivering` while its handover to a wait is still being confirmed. |
 | `list(function_name, execution_id, direction=..., name=..., after=..., limit=..., client_token=..., project_id=...)` | `DurableMessagePage` with `messages`, oldest first, and `has_more`. |
 | `await subscribe(function_name, execution_id, handler, client_token=..., project_id=...)` | A `DurableMessageSubscription` with `await unsubscribe()`. |
 
@@ -304,7 +304,7 @@ async def follow(client, execution):
     await subscription.unsubscribe()
 ```
 
-Pass `project_id` to use the owner's project route with the session's platform token or a project access token instead; a `read_only` project access token can list but not send. A send to an execution that has ended raises `ConflictError` with `code` set to `execution_not_running`. An execution the caller may not reach raises `NotFoundError`, as an unknown one does.
+Pass `project_id` to use the owner's project route with the session's platform token or a project access token instead; a `read_only` project access token can list but not send. A send to an execution that has ended raises `ConflictError` with `code` set to `execution_not_running`, and one to an execution already holding 100 messages nothing has taken raises it with `too_many_queued_messages`. An execution the caller may not reach raises `NotFoundError`, as an unknown one does.
 
 ## Run durable functions locally
 
