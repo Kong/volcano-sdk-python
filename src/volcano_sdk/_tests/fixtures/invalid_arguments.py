@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from datetime import datetime
     from typing import BinaryIO
 
     from volcano_sdk.auth import Auth
@@ -37,6 +38,15 @@ def one_shot_max_duration(sandboxes: Sandboxes) -> None:
 
 def one_shot_idle_timeout(sandboxes: Sandboxes) -> None:
     sandboxes.exec("project", "run", region="r", idle_timeout_seconds=60)  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
+
+
+def session_idle_timeout(sandboxes: Sandboxes) -> None:
+    project_id = "00000000-0000-4000-8000-000000000001"
+    sandboxes.create(project_id, region="r", preset="p", idle_timeout_seconds=60)  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
+
+
+def session_expiry_is_optional(session: SandboxSession) -> datetime:
+    return session.expires_at  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
 
 def non_datetime_sandbox_grant(sandboxes: Sandboxes, value: object) -> None:
