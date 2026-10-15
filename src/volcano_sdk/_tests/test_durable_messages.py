@@ -27,6 +27,8 @@ from volcano_sdk._durable_message_response import (
     durable_message,
     durable_message_page,
 )
+from volcano_sdk._durable_message_stream import retry_delay
+from volcano_sdk._realtime_durable import DurableChannels
 from volcano_sdk._transport import (
     DurableMessageListRequest,
     DurableMessageSendRequest,
@@ -50,7 +52,7 @@ from .test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory, FakeSubs
 from .transport_fixtures import RejectingTransport
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import AsyncIterator, Callable, Mapping
 
     from volcano_sdk._durable_messages import DurableMessages
 
@@ -588,6 +590,20 @@ def test_send_goes_over_the_application_route() -> None:
     assert json.loads(requests[0].content) == {
         "name": "address-confirmed",
         "data": {"street": "Main St"},
+    }
+
+
+def test_send_accepts_the_data_of_a_message_it_read() -> None:
+    client, requests = wire_client(lambda _r: httpx.Response(201, json=sent()))
+    received = durable_message(sent())
+
+    _ = client.durable.messages.send(
+        "checkout", EXECUTION_ID, "address-confirmed", received.data
+    )
+
+    assert json.loads(requests[0].content) == {
+        "name": "address-confirmed",
+        "data": {"street": "Main St", "lines": [1, 2]},
     }
 
 
@@ -1148,34 +1164,316 @@ async def test_a_first_broadcast_without_prev_seq_is_delivered_without_a_read() 
         await client.realtime.disconnect()
 
 
-async def test_a_failed_read_after_a_gap_still_delivers_the_broadcast() -> None:
+class Retries:
+    """Stand in for the retry backoff, noting each call."""
+
+    def __init__(self) -> None:
+        self.failures: list[int] = []
+        self.delay: float = 0.0
+
+    def __call__(self, failures: int) -> float:
+        self.failures.append(failures)
+        return self.delay
+
+
+@pytest.fixture
+def retries(monkeypatch: pytest.MonkeyPatch) -> Retries:
+    fake = Retries()
+    monkeypatch.setattr("volcano_sdk._durable_message_stream.retry_delay", fake)
+    return fake
+
+
+class Reports:
+    """Collect what the event loop's exception handler is given."""
+
+    def __init__(self) -> None:
+        self.contexts: list[dict[str, object]] = []
+        self.arrivals: Arrivals = Arrivals()
+
+    def __call__(
+        self, _loop: asyncio.AbstractEventLoop, context: dict[str, object]
+    ) -> None:
+        self.contexts.append(context)
+        self.arrivals.arrive()
+
+    @property
+    def messages(self) -> list[object]:
+        return [context["message"] for context in self.contexts]
+
+
+@pytest.fixture
+async def reports() -> AsyncIterator[Reports]:
+    loop = asyncio.get_running_loop()
+    previous = loop.get_exception_handler()
+    fake = Reports()
+    loop.set_exception_handler(fake)
+    try:
+        yield fake
+    finally:
+        # Deliver queued loop callbacks before restoring the test handler.
+        await asyncio.sleep(0)
+        loop.set_exception_handler(previous)
+
+
+def test_retries_back_off_from_half_a_second_to_thirty() -> None:
+    assert [retry_delay(failures) for failures in range(9)] == [
+        0.5,
+        1.0,
+        2.0,
+        4.0,
+        8.0,
+        16.0,
+        30.0,
+        30.0,
+        30.0,
+    ]
+
+
+async def test_a_failed_read_after_a_gap_holds_the_broadcast_until_a_retry(
+    retries: Retries, reports: Reports
+) -> None:
     transport = FakeMessageTransport()
     transport.published = [1]
     client, native = subscriber(transport)
     received = Received()
-    errors: list[dict[str, object]] = []
-    reported = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    previous = loop.get_exception_handler()
-
-    def report(_loop: asyncio.AbstractEventLoop, context: dict[str, object]) -> None:
-        errors.append(context)
-        reported.set()
-
-    loop.set_exception_handler(report)
     try:
         _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        channel = subscription_of(native)
         transport.read_answers = [FakeResponse(500, {"error": "list failed"}, {})]
-        await subscription_of(native).emit(published(3, prev_seq=2))
-        _ = await asyncio.wait_for(reported.wait(), timeout=2)
+        transport.published += [2, 3]
+        await channel.emit(published(3, prev_seq=2))
+        await channel.emit(published(4))
 
-        assert received.seqs == [1, 3]
-        assert transport.read_after() == [0, 1]
-        assert [error["message"] for error in errors] == [
-            "Volcano durable message catch-up failed"
-        ]
+        assert await received.until(4) == [1, 2, 3, 4]
+        assert transport.read_after() == [0, 1, 1]
+        assert retries.failures == [0]
+        assert reports.messages == ["Volcano durable message catch-up failed"]
+        assert isinstance(reports.contexts[0]["exception"], ServerError)
     finally:
-        loop.set_exception_handler(previous)
+        await client.realtime.disconnect()
+
+
+async def test_a_failed_read_still_releases_what_follows_on(
+    retries: Retries, reports: Reports
+) -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    gate = asyncio.Event()
+    client, native = subscriber(transport)
+    received = Received()
+    retries.delay = 60.0
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        channel = subscription_of(native)
+        transport.read_answers = [FakeResponse(500, {"error": "list failed"}, {})]
+        transport.next_read_gate = gate
+        await channel.emit_subscribing()
+        await channel.emit_subscribed()
+        await transport.read_arrivals.wait_for(2)
+        await channel.emit(published(2, prev_seq=1))
+        await channel.emit(published(4, prev_seq=3))
+        await dispatched(client)
+        gate.set()
+        await reports.arrivals.wait_for(1)
+
+        assert received.seqs == [1, 2]
+        assert retries.failures == [0]
+        assert reports.messages == ["Volcano durable message catch-up failed"]
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_a_failed_read_with_nothing_held_is_retried(
+    retries: Retries, reports: Reports
+) -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    client, native = subscriber(transport)
+    received = Received()
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        channel = subscription_of(native)
+        transport.read_answers = [FakeResponse(500, {"error": "list failed"}, {})]
+        transport.published += [2]
+        await channel.emit_subscribing()
+        await channel.emit_subscribed()
+
+        assert await received.until(2) == [1, 2]
+        assert transport.read_after() == [0, 1, 1]
+        assert retries.failures == [0]
+        assert reports.messages == ["Volcano durable message catch-up failed"]
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_a_handler_raising_with_nothing_held_is_retried_after_it(
+    retries: Retries, reports: Reports
+) -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    client, native = subscriber(transport)
+    received = Received()
+    failure = RuntimeError("handler failed")
+
+    def handle(message: DurableMessage) -> None:
+        received(message)
+        if message.seq == 2:
+            raise failure
+
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, handle)
+        channel = subscription_of(native)
+        transport.published += [2, 3]
+        await channel.emit_subscribing()
+        await channel.emit_subscribed()
+
+        assert await received.until(3) == [1, 2, 3]
+        assert transport.read_after() == [0, 1, 2]
+        assert reports.contexts[0]["exception"] is failure
+        assert retries.failures == [0]
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_a_read_that_stops_short_of_a_held_broadcast_reads_again(
+    retries: Retries,
+) -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    gate = asyncio.Event()
+    transport.next_read_gate = gate
+    client, native = subscriber(transport)
+    received = Received()
+    try:
+        subscribing = asyncio.create_task(
+            client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        )
+        await transport.read_arrivals.wait_for(1)
+        transport.published += [2, 3]
+        await subscription_of(native).emit(published(3, prev_seq=2))
+        await dispatched(client)
+        gate.set()
+        _ = await subscribing
+
+        assert await received.until(3) == [1, 2, 3]
+        assert transport.read_after() == [0, 1]
+        assert retries.failures == [0]
+    finally:
+        await client.realtime.disconnect()
+
+
+@pytest.mark.usefixtures("reports")
+async def test_the_backoff_starts_over_once_a_read_catches_up(
+    retries: Retries,
+) -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    client, native = subscriber(transport)
+    received = Received()
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        channel = subscription_of(native)
+        failed = FakeResponse(500, {"error": "list failed"}, {})
+        transport.read_answers = [failed, failed, failed]
+        transport.published += [2, 3, 4]
+        await channel.emit(published(4, prev_seq=3))
+        assert await received.until(4) == [1, 2, 3, 4]
+
+        transport.read_answers = [failed]
+        transport.published += [5, 6]
+        await channel.emit(published(6, prev_seq=5))
+        assert await received.until(6) == [1, 2, 3, 4, 5, 6]
+
+        assert retries.failures == [0, 1, 2, 0]
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_a_later_read_resumes_after_the_message_a_handler_raised_on(
+    retries: Retries, reports: Reports
+) -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    client, native = subscriber(transport)
+    received = Received()
+    failure = RuntimeError("handler failed")
+
+    def handle(message: DurableMessage) -> None:
+        received(message)
+        if message.seq == 2:
+            raise failure
+
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, handle)
+        transport.published += [2, 3, 4]
+        await subscription_of(native).emit(published(5, prev_seq=4))
+
+        assert await received.until(5) == [1, 2, 3, 4, 5]
+        assert transport.read_after() == [0, 1, 2]
+        assert reports.contexts[0]["exception"] is failure
+        assert retries.failures == [0]
+    finally:
+        await client.realtime.disconnect()
+
+
+@pytest.mark.parametrize("end", ["remove_all_channels", "disconnect"])
+async def test_ending_the_realtime_channels_ends_the_subscription(
+    end: str, retries: Retries
+) -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    client, native = subscriber(transport)
+    received = Received()
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        channel = subscription_of(native)
+        gate = asyncio.Event()
+        transport.next_read_gate = gate
+        transport.published += [2]
+        await channel.emit(published(3, prev_seq=2))
+        await transport.read_arrivals.wait_for(2)
+        await getattr(client.realtime, end)()
+        transport.published += [3]
+        gate.set()
+        await asyncio.sleep(0.05)
+
+        assert received.seqs == [1]
+        assert transport.read_after() == [0, 1]
+        assert retries.failures == []
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_leaving_after_a_removal_spares_the_channel_that_replaced_it() -> None:
+    transport = FakeMessageTransport()
+    client, native = subscriber(transport)
+    state = realtime_state(client.realtime)
+    try:
+        stale = await client.durable.messages.subscribe(
+            "checkout", EXECUTION_ID, Received()
+        )
+        channel = subscription_of(native)
+        channel.unsubscribe_entered = asyncio.Event()
+        channel.unsubscribe_release = asyncio.Event()
+        removing = asyncio.create_task(client.realtime.remove_all_channels())
+        _ = await asyncio.wait_for(channel.unsubscribe_entered.wait(), timeout=2)
+
+        async def replace() -> object:
+            async with state.connection_lock:
+                return DurableChannels(state).durable_channel(EXECUTION_ID, None)
+
+        replacing = asyncio.create_task(replace())
+        await asyncio.sleep(0)
+        leaving = asyncio.create_task(stale.unsubscribe())
+        await asyncio.sleep(0)
+        channel.unsubscribe_release.set()
+        await removing
+        replacement = await replacing
+        await leaving
+
+        assert replacement is not None
+        assert state.channels[CHANNEL].state is replacement
+    finally:
         await client.realtime.disconnect()
 
 

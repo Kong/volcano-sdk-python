@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import TYPE_CHECKING, Protocol
 
@@ -30,8 +31,8 @@ if TYPE_CHECKING:
 
 API_URL = "https://api.volcano.test"
 TOKEN = "session-token"
-# sha256("session-token"), as every SDK keys a publish.
-TOKEN_DIGEST = "c101e911469c969171040b50d70543313cf968fdef5bacc780776f8fb399ab36"
+# Every SDK keys a publish with the session token's SHA-256.
+TOKEN_DIGEST = hashlib.sha256(TOKEN.encode()).hexdigest()
 UNREADABLE_MESSAGE = (
     "Volcano resumed the message wait with a message this SDK cannot read"
 )

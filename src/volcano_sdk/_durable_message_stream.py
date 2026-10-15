@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from bisect import insort
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ._durable_message_response import broadcast_prev_seq, durable_message
@@ -12,13 +14,24 @@ if TYPE_CHECKING:
 
     from .models import DurableMessage, DurableMessagePage
 
+_FIRST_RETRY_SECONDS = 0.5
+_MAX_RETRY_SECONDS = 30.0
 
-def _published(data: object) -> DurableMessage | None:
+
+@dataclass(frozen=True)
+class _Held:
+    message: DurableMessage
+    prev_seq: int
+
+
+def _published(data: object) -> _Held | None:
     try:
         message = durable_message(data)
     except TypeError:
         return None
-    return message if message.direction == "out" else None
+    if message.direction != "out":
+        return None
+    return _Held(message, broadcast_prev_seq(data))
 
 
 def _report_failed_catch_up(task: asyncio.Task[None]) -> None:
@@ -29,18 +42,34 @@ def _report_failed_catch_up(task: asyncio.Task[None]) -> None:
     )
 
 
+def retry_delay(failures: int) -> float:
+    """Wait half a second after the first failure, doubling to 30 seconds.
+
+    Returns
+    -------
+    float
+        Seconds to wait before the next catch-up.
+
+    """
+    delay = _FIRST_RETRY_SECONDS
+    for _ in range(failures):
+        delay = min(delay * 2, _MAX_RETRY_SECONDS)
+    return delay
+
+
 class DurableMessageStream:
     """Deliver messages in `seq` order, once each, from the channel and the list.
 
-    A live message can only be delivered once everything before it has been
-    listed, or the missed ones would fall below the last delivered `seq` and be
-    skipped. So live messages are held until the first catch-up starts, and
-    while any catch-up is reading, then released in order.
+    A live message can only be delivered once everything before it has been,
+    or the missed ones would fall below the last delivered `seq` and be
+    skipped. Each broadcast names the publish before it, so a live message is
+    held, with that name, until the first catch-up starts, while any catch-up
+    is reading, while it does not follow the last delivered `seq`, and behind
+    any message already held. A catch-up that fails, or that leaves a held
+    message still short of its predecessor, is tried again until one reads it.
 
     The channel itself drops publications while it is not subscribed, and
     reports each resubscription, which starts a catch-up of what it dropped.
-    A broadcast naming a publish not yet delivered starts one too, since the
-    broadcast before it was lost or has yet to arrive.
     """
 
     def __init__(
@@ -54,36 +83,40 @@ class DurableMessageStream:
         self._last_seq: int = 0
         self._started: bool = False
         self._catch_ups: int = 0
-        self._held: list[DurableMessage] = []
+        self._held: list[_Held] = []
+        self._failures: int = 0
+        self._retry: asyncio.TimerHandle | None = None
         self._closed: bool = False
         self._reads: asyncio.Lock = asyncio.Lock()
         self._tasks: set[asyncio.Task[None]] = set()
 
     async def live(self, data: object) -> None:
         """Deliver a channel publication, or hold it until a catch-up releases it."""
-        message = _published(data)
-        if message is None:
+        held = _published(data)
+        if held is None:
             return
-        if not self._started or self._catch_ups > 0:
-            self._held.append(message)
+        if not self._started or self._catch_ups > 0 or self._held:
+            self._hold(held)
             return
-        if broadcast_prev_seq(data) > self._last_seq:
-            self._held.append(message)
+        if held.prev_seq > self._last_seq:
+            self._hold(held)
             self._catch_up_in_background()
             return
-        await self._deliver(message)
+        await self._deliver(held.message)
+
+    def _hold(self, held: _Held) -> None:
+        insort(self._held, held, key=lambda each: each.message.seq)
 
     def resubscribed(self) -> None:
         """Catch up on what the channel dropped while it was not subscribed."""
         self._catch_up_in_background()
 
     def _catch_up_in_background(self) -> None:
-        # A failed catch-up leaves the gap until the next one; the held
-        # messages are still released and live delivery goes on.
+        # The stream retries a failed catch-up itself; each failure is reported.
         self.catch_up().add_done_callback(_report_failed_catch_up)
 
     def catch_up(self) -> asyncio.Task[None]:
-        """Read what was missed, then release the held messages.
+        """Read what was missed, then release the held messages that follow on.
 
         Counted before the task starts, so nothing is delivered live while a
         read waits its turn.
@@ -95,6 +128,7 @@ class DurableMessageStream:
 
         """
         self._started = True
+        self._cancel_retry()
         self._catch_ups += 1
         task = asyncio.create_task(self._read_missed())
         self._tasks.add(task)
@@ -107,20 +141,26 @@ class DurableMessageStream:
         Not cancelled: the handler a catch-up is running may be what closed it.
         """
         self._closed = True
+        self._cancel_retry()
 
     async def _read_missed(self) -> None:
         try:
             async with self._reads:
                 try:
                     await self._read_pages()
-                finally:
-                    # Released by the last catch-up only, and while still
-                    # counted, so a live message that arrives meanwhile is
-                    # held behind the ones being released.
-                    if self._catch_ups == 1:
-                        await self._release()
+                except BaseException:
+                    await self._release_if_last(read=False)
+                    raise
+                await self._release_if_last(read=True)
         finally:
             self._catch_ups -= 1
+
+    async def _release_if_last(self, *, read: bool) -> None:
+        # Released by the last catch-up only, and while still counted, so a
+        # live message that arrives meanwhile is held behind the ones being
+        # released.
+        if self._catch_ups == 1:
+            await self._release(read=read)
 
     async def _read_pages(self) -> None:
         while not self._closed:
@@ -132,12 +172,33 @@ class DurableMessageStream:
             if not page.has_more or self._last_seq == after:
                 return
 
-    async def _release(self) -> None:
-        while self._held:
-            held = sorted(self._held, key=lambda message: message.seq)
-            self._held = []
-            for message in held:
-                await self._deliver(message)
+    async def _release(self, *, read: bool) -> None:
+        # One a handler raises on is already delivered, so a retry resumes
+        # after it.
+        try:
+            while self._held and self._held[0].prev_seq <= self._last_seq:
+                await self._deliver(self._held.pop(0).message)
+        finally:
+            if read and not self._held:
+                self._failures = 0
+            else:
+                self._retry_later()
+
+    def _retry_later(self) -> None:
+        if self._closed:
+            return
+        delay = retry_delay(self._failures)
+        self._failures += 1
+        self._retry = asyncio.get_running_loop().call_later(delay, self._retry_now)
+
+    def _retry_now(self) -> None:
+        self._retry = None
+        self._catch_up_in_background()
+
+    def _cancel_retry(self) -> None:
+        if self._retry is not None:
+            self._retry.cancel()
+            self._retry = None
 
     async def _deliver(self, message: DurableMessage) -> None:
         if self._closed or message.seq <= self._last_seq:

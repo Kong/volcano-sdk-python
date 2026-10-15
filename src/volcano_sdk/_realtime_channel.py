@@ -199,6 +199,9 @@ class ChannelState:
         # Called each time the subscription is established once it is set,
         # after the subscribed state and callbacks are in place.
         self.resubscribed: Callable[[], None] | None = None
+        # Called when removal or disconnect resets the channel, which then
+        # subscribes again only when asked to.
+        self.ended: Callable[[], None] | None = None
         self.callbacks: dict[str, list[DynamicCallback]] = {}
         self.presence_state: dict[str, RealtimePresenceInfo] = {}
         self.presence_events: list[tuple[str, RealtimePresenceInfo]] = []
@@ -638,6 +641,8 @@ class ChannelState:
             await result
 
     async def reset(self) -> None:
+        if self.ended is not None:
+            self.ended()
         self.invalidate()
         await self._end_postgres_epoch()
         await self.presence.cancel_presence_sync()

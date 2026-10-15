@@ -384,12 +384,16 @@ class RealtimeState(Generic[FacadeT]):
         name: str,
         *,
         channel_type: ChannelKind = "broadcast",
+        current: object | None = None,
     ) -> None:
-        """Unsubscribe and forget one channel."""
+        """Unsubscribe and forget one channel.
+
+        Given `current`, it is left alone when another channel has replaced it.
+        """
         wire_name = f"{channel_type}:{name}"
         async with self.connection_lock:
             entry = self.channels.get(wire_name)
-            if entry is None:
+            if entry is None or (current is not None and current is not entry.state):
                 return
             channel = entry.state
             self.removing_channels.add(wire_name)

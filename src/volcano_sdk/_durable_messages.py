@@ -102,6 +102,8 @@ class DurableChannel(Protocol):
 
     # Called each time the channel is subscribed again after a drop.
     resubscribed: Callable[[], None] | None
+    # Called when the client's realtime facade removes or disconnects it.
+    ended: Callable[[], None] | None
 
     @property
     def name(self) -> str:
@@ -331,6 +333,7 @@ async def _follow(
 ) -> DurableMessageSubscription:
     subscription = DurableMessageSubscription(stream, channel, realtime)
     _ = channel.on("message", stream.live)
+    channel.ended = stream.close
     try:
         await channel.subscribe()
         channel.resubscribed = stream.resubscribed

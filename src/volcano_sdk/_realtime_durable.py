@@ -65,11 +65,10 @@ class DurableChannels(Generic[FacadeT]):
 
     async def remove_durable_channel(self, channel: DurableChannel) -> None:
         """Unsubscribe and forget a channel, unless another has replaced it."""
-        entry = self._state.channels.get(channel.name)
-        if entry is None or entry.state is not channel:
-            return
         await self._state.remove_channel(
-            channel.name.removeprefix(_CHANNEL_PREFIX), channel_type="durable"
+            channel.name.removeprefix(_CHANNEL_PREFIX),
+            channel_type="durable",
+            current=channel,
         )
 
 

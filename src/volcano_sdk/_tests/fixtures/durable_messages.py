@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 from typing import TYPE_CHECKING
@@ -23,8 +24,8 @@ WAITS = "/durable-messages/waits"
 SESSIONS = "/durable-messages/sessions"
 PUBLISH = "/durable-messages/publish"
 SESSION = "volcano:messages-session"
-# sha256 of "token-1", the first token the fake hands out.
-FIRST_TOKEN_DIGEST = "3f08aace122ee2368432c1ca23a049bc640bafbf00fdf33a52429f38ba12dbf9"
+# Keys hash "token-1", the first token the fake hands out.
+FIRST_TOKEN_DIGEST = hashlib.sha256(b"token-1").hexdigest()
 _INVOCATION_TIMEOUT_SECONDS = 30
 
 Answer = tuple[str, bytes]

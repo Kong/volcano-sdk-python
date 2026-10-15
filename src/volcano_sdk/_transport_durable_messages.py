@@ -14,7 +14,7 @@ from ._generated.api.durable_functions import (
 from ._generated.models.send_durable_message_request import SendDurableMessageRequest
 from ._generated.types import UNSET, Unset
 from ._transport_base import TransportBase
-from ._transport_response import parsed_response
+from ._transport_response import parsed_response, plain_json
 
 if TYPE_CHECKING:
     from ._generated.client import AuthenticatedClient
@@ -58,7 +58,10 @@ class DurableMessageTransport(TransportBase):
         target: DurableMessageTarget,
         request: DurableMessageSendRequest,
     ) -> TransportResponse:
-        body = SendDurableMessageRequest(name=request.name, data=request.data)
+        # Data read from a message is frozen, which the request cannot encode.
+        body = SendDurableMessageRequest(
+            name=request.name, data=plain_json(request.data)
+        )
         key = _unset(request.idempotency_key)
         execution_id = UUID(target.execution_id)
         with self._client(authorization) as client:
