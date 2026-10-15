@@ -3650,6 +3650,7 @@ def test_realtime_opens_one_connection_when_first_used_concurrently(
         entered.set()
         _ = await asyncio.wait_for(release.wait(), timeout=2)
         official.calls.append("connect")
+        official.state = FakeConnectionState(value="connected")
 
     monkeypatch.setattr(official, "connect", connect)
 
@@ -3783,6 +3784,7 @@ def test_realtime_disconnect_excludes_a_concurrent_first_connect(
         entered.set()
         _ = await asyncio.wait_for(release.wait(), timeout=2)
         official.calls.append("connect")
+        official.state = FakeConnectionState(value="connected")
 
     monkeypatch.setattr(official, "connect", connect)
     client = VolcanoClient(

@@ -42,6 +42,25 @@ Channel names receive their type prefix, so `updates` becomes `broadcast:updates
 Use the same event loop for a client's realtime operations.
 The following channel examples belong inside an async function with an authenticated `client`.
 
+## Connection failures
+
+An auth-only public key cannot connect to realtime. Include `realtime.connect`
+and `realtime.subscribe` on the key. A terminal disconnect during startup rejects
+the pending subscription promptly with `RealtimeConnectionError`, preserving the
+server's reason and optional numeric code. Failed and cancelled starts release
+their transport and session binding so another attempt can use fresh credentials.
+Connection startup is bounded to ten seconds; retryable interruptions can still
+recover within that deadline.
+
+```python
+from volcano_sdk import RealtimeConnectionError
+
+try:
+    await channel.subscribe()
+except RealtimeConnectionError as error:
+    print(str(error), error.code)  # code: int | None
+```
+
 ## Pause or remove channels
 
 ```python

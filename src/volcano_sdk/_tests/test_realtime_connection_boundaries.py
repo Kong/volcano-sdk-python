@@ -9,6 +9,7 @@ from typing_extensions import override
 
 from volcano_sdk import (
     RealtimeConnectContext,
+    RealtimeConnectionError,
     RealtimeDisconnectContext,
     RealtimeErrorContext,
     Session,
@@ -70,6 +71,7 @@ async def test_failed_connect_clears_credentials_before_retry(
         await channel.subscribe()
 
     assert caught.value is failure
+    assert native.calls == ["disconnect"]
     assert realtime_state(client.realtime).connection is None
     assert realtime_state(client.realtime).connection_session_lineage is None
     assert realtime_state(client.realtime).connection_access_token is None
@@ -80,6 +82,38 @@ async def test_failed_connect_clears_credentials_before_retry(
         assert native.attempts == 2
         assert client.realtime.is_connected
         assert await realtime_state(client.realtime).token() == "new-access"
+    finally:
+        await client.realtime.disconnect()
+
+
+class RejectedConnection(FakeCentrifugeClient):
+    @override
+    async def connect(self) -> None:
+        assert self.events is not None
+        await self.events.on_disconnected(
+            SimpleNamespace(code=3507, reason="permission denied")
+        )
+
+
+@pytest.mark.parametrize("cleanup_failure", [None, RuntimeError("cleanup failed")])
+async def test_terminal_connection_failure_preserves_reason_and_stops_transport(
+    cleanup_failure: Exception | None,
+) -> None:
+    native = RejectedConnection()
+    native.disconnect_error = cleanup_failure
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    try:
+        with pytest.raises(
+            RealtimeConnectionError, match="permission denied"
+        ) as caught:
+            await asyncio.wait_for(client.realtime.channel("room").subscribe(), 0.2)
+        assert caught.value.code == 3507
+        assert native.calls == ["disconnect"]
+        assert realtime_state(client.realtime).connection is None
     finally:
         await client.realtime.disconnect()
 

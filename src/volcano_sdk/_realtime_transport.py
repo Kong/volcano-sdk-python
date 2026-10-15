@@ -261,6 +261,10 @@ class VolcanoCentrifugeConnection:
         state = self._connection.state
         return native_attribute(state, "value") == "connected"
 
+    @property
+    def is_disconnected(self) -> bool:
+        return native_attribute(self._connection.state, "value") == "disconnected"
+
     def new_subscription(
         self,
         name: str,
