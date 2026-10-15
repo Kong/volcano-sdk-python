@@ -489,17 +489,25 @@ INVALID_ARGUMENTS: dict[str, tuple[Callable[[DurableMessages], object], str]] = 
         lambda m: m.send("checkout", EXECUTION_ID, "ping", client_token=""),
         "client_token must be a non-empty string",
     ),
+    "long client token": (
+        lambda m: m.send("checkout", EXECUTION_ID, "ping", client_token="t" * 129),
+        "client_token must be at most 128 characters",
+    ),
     "empty name": (
         lambda m: m.send("checkout", EXECUTION_ID, ""),
-        "name must be a non-empty string",
+        "name must not be empty",
     ),
     "blank name": (
         lambda m: m.send("checkout", EXECUTION_ID, "  "),
-        "name must be a non-empty string",
+        "name must not be empty",
     ),
-    "non-string name": (
-        lambda m: non_string_sent_message_name(m, EXECUTION_ID),
-        "name must be a non-empty string",
+    "long name": (
+        lambda m: m.send("checkout", EXECUTION_ID, "n" * 238),
+        "name must be at most 237 characters",
+    ),
+    "unprintable name": (
+        lambda m: m.send("checkout", EXECUTION_ID, "pi\tng"),
+        "name must be printable ASCII",
     ),
     "empty idempotency key": (
         lambda m: m.send("checkout", EXECUTION_ID, "ping", idempotency_key=""),
@@ -525,9 +533,37 @@ INVALID_ARGUMENTS: dict[str, tuple[Callable[[DurableMessages], object], str]] = 
         lambda m: m.list("checkout", EXECUTION_ID, client_token=""),
         "client_token must be a non-empty string",
     ),
+    "list long client token": (
+        lambda m: m.list("checkout", EXECUTION_ID, client_token="t" * 129),
+        "client_token must be at most 128 characters",
+    ),
     "list direction": (
         lambda m: unknown_listed_message_direction(m, EXECUTION_ID),
         "direction must be 'in' or 'out'",
+    ),
+    "list name": (
+        lambda m: m.list("checkout", EXECUTION_ID, name="n" * 238),
+        "name must be at most 237 characters",
+    ),
+    "negative after": (
+        lambda m: m.list("checkout", EXECUTION_ID, after=-1),
+        "after must be a non-negative integer",
+    ),
+    "boolean after": (
+        lambda m: m.list("checkout", EXECUTION_ID, after=True),
+        "after must be a non-negative integer",
+    ),
+    "zero limit": (
+        lambda m: m.list("checkout", EXECUTION_ID, limit=0),
+        "limit must be an integer between 1 and 500",
+    ),
+    "limit over a page": (
+        lambda m: m.list("checkout", EXECUTION_ID, limit=501),
+        "limit must be an integer between 1 and 500",
+    ),
+    "boolean limit": (
+        lambda m: m.list("checkout", EXECUTION_ID, limit=True),
+        "limit must be an integer between 1 and 500",
     ),
 }
 
@@ -547,16 +583,42 @@ def test_invalid_arguments_are_refused_before_transport(
     assert transport.calls == []
 
 
-def test_an_idempotency_key_may_use_the_whole_length() -> None:
+def test_a_sent_message_name_must_be_a_string() -> None:
     transport = FakeMessageTransport()
-    key = "k" * 255
+
+    with pytest.raises(TypeError, match=r"^name must be a string$"):
+        non_string_sent_message_name(
+            messages_client(transport).durable.messages, EXECUTION_ID
+        )
+    assert transport.calls == []
+
+
+def test_a_send_may_use_the_whole_length_of_each_bound() -> None:
+    transport = FakeMessageTransport()
+    name, key, token = "n" * 237, "k" * 255, "t" * 128
 
     _ = messages_client(transport).durable.messages.send(
-        "checkout", EXECUTION_ID, "ping", idempotency_key=key
+        "checkout", EXECUTION_ID, name, idempotency_key=key, client_token=token
     )
 
     assert transport.calls[0][1]["request"] == DurableMessageSendRequest(
-        name="ping", idempotency_key=key
+        name=name, idempotency_key=key
+    )
+    assert transport.calls[0][1]["target"] == DurableMessageTarget(
+        function_id="checkout", execution_id=EXECUTION_ID, client_token=token
+    )
+
+
+@pytest.mark.parametrize(("after", "limit"), [(0, 1), (7, 500)])
+def test_a_list_may_page_from_the_start_and_up_to_500(after: int, limit: int) -> None:
+    transport = FakeMessageTransport()
+
+    _ = messages_client(transport).durable.messages.list(
+        "checkout", EXECUTION_ID, after=after, limit=limit
+    )
+
+    assert transport.calls[0][1]["request"] == DurableMessageListRequest(
+        after=after, limit=limit
     )
 
 

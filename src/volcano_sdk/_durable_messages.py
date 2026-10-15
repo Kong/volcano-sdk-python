@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Protocol, Unpack, runtime_checkable
 
 from ._callbacks import require_callable
 from ._durable_arguments import identifier, known_options
+from ._durable_callback import operation_name
 from ._durable_message_response import durable_message, durable_message_page
 from ._durable_message_stream import DurableMessageStream
 from ._transport import HTTP_CREATED, HTTP_OK, invoke, invoke_async, response_payload
@@ -39,8 +40,10 @@ _NO_SESSION = (
 _ALREADY_SUBSCRIBED = (
     "This client already subscribes to the execution's messages; unsubscribe first"
 )
-# The spec's maxLength on Idempotency-Key.
+# The spec's bounds on Idempotency-Key, X-Volcano-Client-Token, and a page.
 _MAX_IDEMPOTENCY_KEY_LENGTH = 255
+_MAX_CLIENT_TOKEN_LENGTH = 128
+_MAX_LIST_LIMIT = 500
 _TARGET_OPTIONS = frozenset({"client_token", "project_id"})
 _SEND_OPTIONS = _TARGET_OPTIONS | {"idempotency_key"}
 _LIST_OPTIONS = _TARGET_OPTIONS | {"direction", "name", "after", "limit"}
@@ -216,9 +219,13 @@ class DurableMessages:
         known_options(options, _SEND_OPTIONS)
         target = _target(function_name, execution_id, options)
         request = DurableMessageSendRequest(
-            name=_message_name(name),
+            name=operation_name(name),
             data=data,
-            idempotency_key=_idempotency_key(options.get("idempotency_key")),
+            idempotency_key=_bounded_text(
+                options.get("idempotency_key"),
+                "idempotency_key",
+                _MAX_IDEMPOTENCY_KEY_LENGTH,
+            ),
         )
         response = invoke(
             self._transport().send_durable_message,
@@ -251,11 +258,12 @@ class DurableMessages:
         known_options(options, _LIST_OPTIONS)
         target = _target(function_name, execution_id, options)
         direction = options.get("direction")
+        name = options.get("name")
         request = DurableMessageListRequest(
             direction=None if direction is None else _direction(direction),
-            name=options.get("name"),
-            after=options.get("after"),
-            limit=options.get("limit"),
+            name=None if name is None else operation_name(name),
+            after=_after(options.get("after")),
+            limit=_limit(options.get("limit")),
         )
         response = invoke(
             self._transport().list_durable_messages,
@@ -376,34 +384,40 @@ def _target(
         function_id=identifier(function_name, "function_name"),
         execution_id=identifier(execution_id, "execution_id"),
         project_id=None if project_id is None else identifier(project_id, "project_id"),
-        client_token=_optional_text(options.get("client_token"), "client_token"),
+        client_token=_bounded_text(
+            options.get("client_token"), "client_token", _MAX_CLIENT_TOKEN_LENGTH
+        ),
     )
 
 
-def _optional_text(value: object, field: str) -> str | None:
+def _bounded_text(value: object, field: str, limit: int) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str) or not value:
         message = f"{field} must be a non-empty string"
         raise ValueError(message)
-    return value
-
-
-def _message_name(value: object) -> str:
-    if not isinstance(value, str) or not value.strip():
-        message = "name must be a non-empty string"
+    if len(value) > limit:
+        message = f"{field} must be at most {limit} characters"
         raise ValueError(message)
     return value
 
 
-def _idempotency_key(value: object) -> str | None:
-    key = _optional_text(value, "idempotency_key")
-    if key is not None and len(key) > _MAX_IDEMPOTENCY_KEY_LENGTH:
-        message = (
-            f"idempotency_key must be at most {_MAX_IDEMPOTENCY_KEY_LENGTH} characters"
-        )
+def _after(value: object) -> int | None:
+    if value is None:
+        return None
+    if type(value) is not int or value < 0:
+        message = "after must be a non-negative integer"
         raise ValueError(message)
-    return key
+    return value
+
+
+def _limit(value: object) -> int | None:
+    if value is None:
+        return None
+    if type(value) is not int or not 1 <= value <= _MAX_LIST_LIMIT:
+        message = f"limit must be an integer between 1 and {_MAX_LIST_LIMIT}"
+        raise ValueError(message)
+    return value
 
 
 def _direction(value: object) -> DurableMessageDirection:
