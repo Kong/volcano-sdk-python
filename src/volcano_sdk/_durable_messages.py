@@ -203,9 +203,9 @@ class DurableMessages:
         """Send a message to a running execution.
 
         It is queued until a `ctx.wait_for_message(name)` takes it. A send with
-        an `idempotency_key` the execution has seen returns the message the
-        first one stored, and sends nothing. A send to an execution that has
-        ended raises `ConflictError`.
+        an `idempotency_key` the same sender has used on the execution returns
+        the message the first one stored, and sends nothing. A send to an
+        execution that has ended raises `ConflictError`.
 
         Returns
         -------
