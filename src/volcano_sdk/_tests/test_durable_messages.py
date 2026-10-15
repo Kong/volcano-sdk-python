@@ -1704,14 +1704,13 @@ async def test_a_read_the_session_changed_during_delivers_nothing_it_read(
         _ = client.auth.set_session(other_user())
         gate.set()
         await reports.arrivals.wait_for(1)
-        await channel.emit(published(3, prev_seq=2))
-        await dispatched(client)
 
         assert received.seqs == [1]
         assert transport.read_after() == [0, 1]
         assert reports.messages == ["Volcano durable message catch-up failed"]
         assert session_changed(reports.contexts[0])
         assert retries.failures == []
+        assert CHANNEL not in native.subscriptions
     finally:
         await client.realtime.disconnect()
 
@@ -1758,9 +1757,30 @@ async def test_a_session_change_stops_live_delivery(reports: Reports) -> None:
         await client.realtime.disconnect()
 
 
-async def test_a_session_change_during_the_first_read_fails_subscribe() -> None:
+async def test_a_session_change_leaves_the_channel(reports: Reports) -> None:
     transport = FakeMessageTransport()
-    transport.published = [1]
+    client, native = subscriber(transport)
+    try:
+        _ = await client.durable.messages.subscribe(
+            "checkout", EXECUTION_ID, Received()
+        )
+        channel = subscription_of(native)
+        _ = client.auth.set_session(other_user())
+        await channel.emit(published(1))
+        await reports.arrivals.wait_for(1)
+
+        assert CHANNEL not in native.subscriptions
+        assert session_changed(reports.contexts[0])
+    finally:
+        await client.realtime.disconnect()
+
+
+@pytest.mark.parametrize("listed", [[], [1]])
+async def test_a_session_change_during_the_first_read_fails_subscribe(
+    listed: list[int],
+) -> None:
+    transport = FakeMessageTransport()
+    transport.published = listed
     gate = asyncio.Event()
     transport.next_read_gate = gate
     client, native = subscriber(transport)

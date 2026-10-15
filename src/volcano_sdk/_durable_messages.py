@@ -283,7 +283,7 @@ class DurableMessages:
         Follows the execution on the client's realtime connection, which needs
         a signed-in session; a client token or service key alone cannot open
         it. Signing out, signing in again, or setting another session ends the
-        subscription; a token refresh does not.
+        subscription and leaves the channel; a token refresh does not.
 
         Returns
         -------
@@ -349,6 +349,7 @@ async def _follow(
     except BaseException:
         await subscription.unsubscribe()
         raise
+    stream.end_with(subscription.unsubscribe)
     return subscription
 
 

@@ -98,6 +98,7 @@ class DurableMessageStream:
         self._handler: Callable[[DurableMessage], Awaitable[None]] = deliver
         self._list_after: Callable[[int], Awaitable[DurableMessagePage]] = list_after
         self._in_session: Callable[[], bool] = in_session
+        self._leave: Callable[[], Awaitable[None]] | None = None
         self._last_seq: int = 0
         self._started: bool = False
         self._catch_ups: int = 0
@@ -173,6 +174,13 @@ class DurableMessageStream:
         task.add_done_callback(self._tasks.discard)
         return task
 
+    def end_with(self, leave: Callable[[], Awaitable[None]]) -> None:
+        """Call `leave` too once the session changes.
+
+        Until then, leaving the channel is up to whoever subscribes.
+        """
+        self._leave = leave
+
     def close(self) -> None:
         """Deliver nothing more; a catch-up still reading stops after its page.
 
@@ -211,9 +219,11 @@ class DurableMessageStream:
 
     async def _read_pages(self, *, report: bool) -> None:
         while not self._closed:
-            self._require_session()
+            await self._require_session()
             after = self._last_seq
             page = await self._list_after(after)
+            # An empty page delivers nothing that would check it.
+            await self._require_session()
             for message in page.messages:
                 await self._deliver(message, report=report)
             # A page that delivered nothing would be asked for again unchanged.
@@ -255,7 +265,7 @@ class DurableMessageStream:
         async with self._handling:
             if self._closed or message.seq <= self._last_seq:
                 return
-            self._require_session()
+            await self._require_session()
             self._last_seq = message.seq
             if not report:
                 await self._handler(message)
@@ -268,7 +278,9 @@ class DurableMessageStream:
                     {"message": _HANDLER_FAILED, "exception": error}
                 )
 
-    def _require_session(self) -> None:
+    async def _require_session(self) -> None:
         if not self._in_session():
             self.close()
+            if self._leave is not None:
+                await self._leave()
             raise RuntimeError(_SESSION_CHANGED)
