@@ -396,6 +396,10 @@ def _bounded_text(value: object, field: str, limit: int) -> str | None:
     if not isinstance(value, str) or not value:
         message = f"{field} must be a non-empty string"
         raise ValueError(message)
+    # Sent as a header, which carries printable ASCII only.
+    if not (value.isascii() and value.isprintable()):
+        message = f"{field} must be printable ASCII"
+        raise ValueError(message)
     if len(value) > limit:
         message = f"{field} must be at most {limit} characters"
         raise ValueError(message)

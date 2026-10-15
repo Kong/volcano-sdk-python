@@ -493,6 +493,10 @@ INVALID_ARGUMENTS: dict[str, tuple[Callable[[DurableMessages], object], str]] = 
         lambda m: m.send("checkout", EXECUTION_ID, "ping", client_token="t" * 129),
         "client_token must be at most 128 characters",
     ),
+    "non-ASCII client token": (
+        lambda m: m.send("checkout", EXECUTION_ID, "ping", client_token="tök"),
+        "client_token must be printable ASCII",
+    ),
     "empty name": (
         lambda m: m.send("checkout", EXECUTION_ID, ""),
         "name must not be empty",
@@ -516,6 +520,16 @@ INVALID_ARGUMENTS: dict[str, tuple[Callable[[DurableMessages], object], str]] = 
     "long idempotency key": (
         lambda m: m.send("checkout", EXECUTION_ID, "ping", idempotency_key="k" * 256),
         "idempotency_key must be at most 255 characters",
+    ),
+    "non-ASCII idempotency key": (
+        lambda m: m.send(
+            "checkout", EXECUTION_ID, "ping", idempotency_key="confirm-café"
+        ),
+        "idempotency_key must be printable ASCII",
+    ),
+    "unprintable idempotency key": (
+        lambda m: m.send("checkout", EXECUTION_ID, "ping", idempotency_key="a\nb"),
+        "idempotency_key must be printable ASCII",
     ),
     "list function": (
         lambda m: m.list(" ", EXECUTION_ID),
