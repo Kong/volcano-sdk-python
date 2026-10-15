@@ -35,7 +35,7 @@ def identifier(value: object, field: str) -> str:
     Returns
     -------
     str
-        The trimmed identifier, preserving its UUID spelling.
+        The trimmed identifier, with a UUID in its canonical form.
 
     Raises
     ------
@@ -46,12 +46,12 @@ def identifier(value: object, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(_INVALID_IDENTIFIERS[field])
     trimmed = value.strip()
-    if field in _UUID_IDENTIFIERS:
-        try:
-            _ = UUID(trimmed)
-        except ValueError as exc:
-            raise ValueError(_UUID_IDENTIFIERS[field]) from exc
-    return trimmed
+    if field not in _UUID_IDENTIFIERS:
+        return trimmed
+    try:
+        return str(UUID(trimmed))
+    except ValueError as exc:
+        raise ValueError(_UUID_IDENTIFIERS[field]) from exc
 
 
 def known_options(options: Mapping[str, object], known: frozenset[str]) -> None:

@@ -24,6 +24,7 @@ from volcano_sdk import (
     VolcanoClient,
 )
 from volcano_sdk._durable_message_response import (
+    broadcast_prev_seq,
     durable_message,
     durable_message_page,
 )
@@ -37,6 +38,7 @@ from volcano_sdk._transport import (
 )
 from volcano_sdk.durable import Durable
 
+from .client_inspection import InspectedClient
 from .fixtures.invalid_arguments import (
     assign_snapshot_value,
     durable_realtime_channel,
@@ -844,6 +846,25 @@ def test_a_page_must_be_complete(payload: object) -> None:
         _ = durable_message_page(payload)
 
 
+@pytest.mark.parametrize(
+    ("payload", "prev_seq"),
+    [
+        ({"prev_seq": 4}, 4),
+        ({"prev_seq": 0}, 0),
+        ({}, 0),
+        ({"prev_seq": "4"}, 0),
+        ({"prev_seq": True}, 0),
+        ({"prev_seq": 4.0}, 0),
+        ([("prev_seq", 4)], 0),
+        (None, 0),
+    ],
+)
+def test_a_broadcast_names_the_publish_before_it_only_as_an_integer(
+    payload: object, prev_seq: int
+) -> None:
+    assert broadcast_prev_seq(payload) == prev_seq
+
+
 async def test_subscribe_delivers_what_was_published_then_live_messages() -> None:
     transport = FakeMessageTransport()
     transport.published = [1, 2]
@@ -1048,6 +1069,33 @@ async def test_an_earlier_read_does_not_release_messages_a_later_one_must_preced
         gate.set()
 
         assert await received.until(4) == [1, 2, 3, 4]
+        assert transport.read_after() == [0, 1, 1]
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_resubscriptions_during_a_read_wait_for_one_more_read() -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    client, native = subscriber(transport)
+    received = Received()
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        channel = subscription_of(native)
+        gate = asyncio.Event()
+        transport.next_read_gate = gate
+        await channel.emit_subscribing()
+        await channel.emit_subscribed()
+        await transport.read_arrivals.wait_for(2)
+
+        for _resubscription in range(2):
+            await channel.emit_subscribing()
+            await channel.emit_subscribed()
+        transport.published += [2]
+        await channel.emit(published(3, prev_seq=2))
+        gate.set()
+
+        assert await received.until(3) == [1, 2, 3]
         assert transport.read_after() == [0, 1, 1]
     finally:
         await client.realtime.disconnect()
@@ -1452,6 +1500,179 @@ async def test_a_later_read_resumes_after_the_message_a_handler_raised_on(
         await client.realtime.disconnect()
 
 
+async def test_publications_a_full_callback_queue_drops_are_read_back_once(
+    reports: Reports,
+) -> None:
+    transport = FakeMessageTransport()
+    client, native = subscriber(transport)
+    received = Received()
+    handling = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def handle(message: DurableMessage) -> None:
+        received(message)
+        if message.seq == 1:
+            handling.set()
+            _ = await finish.wait()
+
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, handle)
+        channel = subscription_of(native)
+        await channel.emit(published(1))
+        _ = await handling.wait()
+        state = realtime_state(client.realtime).channels[CHANNEL].state
+        # The queue is empty while the handler runs; the last two overflow it.
+        last = state.callback_queue.maxsize + 3
+        transport.published = list(range(1, last + 1))
+        transport.page_size = last
+        for seq in range(2, last + 1):
+            await channel.emit(published(seq))
+        await transport.read_arrivals.wait_for(2)
+        finish.set()
+
+        assert await received.until(last) == list(range(1, last + 1))
+        await dispatched(client)
+        # Waits behind a second catch-up, if one were started.
+        await channel.emit(published(last + 1, prev_seq=last))
+        assert await received.until(last + 1) == list(range(1, last + 2))
+        assert transport.read_after() == [0, 1]
+        assert (
+            reports.messages
+            == ["Volcano realtime callback queue is full; publication dropped"] * 2
+        )
+    finally:
+        await client.realtime.disconnect()
+
+
+def test_a_subscription_s_session_outlives_only_a_token_refresh() -> None:
+    client = InspectedClient(anon_key="anon-key")
+    _ = client.auth.set_session(Session("access-token", "refresh-token", USER_ID))
+    channels = DurableChannels(realtime_state(client.realtime))
+    refreshed = channels.session_check()
+    generation, _session = client.capture_session()
+    assert client.set_session_if_current(
+        Session("access-2", "refresh-2", USER_ID), generation, event="TOKEN_REFRESHED"
+    )
+
+    assert refreshed()
+
+    replaced = channels.session_check()
+    _ = client.auth.set_session(Session("access-3", "refresh-3", USER_ID))
+    signed_out = channels.session_check()
+    generation, _session = client.capture_session()
+    assert client.clear_session_if_current(generation, event="SIGNED_OUT")
+
+    assert not replaced()
+    assert not signed_out()
+
+
+def other_user() -> Session:
+    return Session(
+        access_token="other-access-token",
+        refresh_token="other-refresh-token",
+        user_id="00000000-0000-4000-8000-0000000000b8",
+    )
+
+
+def session_changed(context: dict[str, object]) -> bool:
+    error = context["exception"]
+    return isinstance(error, RuntimeError) and "session that subscribed" in str(error)
+
+
+async def test_a_read_the_session_changed_during_delivers_nothing_it_read(
+    retries: Retries, reports: Reports
+) -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    client, native = subscriber(transport)
+    received = Received()
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        channel = subscription_of(native)
+        gate = asyncio.Event()
+        transport.next_read_gate = gate
+        transport.published += [2]
+        await channel.emit_subscribing()
+        await channel.emit_subscribed()
+        await transport.read_arrivals.wait_for(2)
+        _ = client.auth.set_session(other_user())
+        gate.set()
+        await reports.arrivals.wait_for(1)
+        await channel.emit(published(3, prev_seq=2))
+        await dispatched(client)
+
+        assert received.seqs == [1]
+        assert transport.read_after() == [0, 1]
+        assert reports.messages == ["Volcano durable message catch-up failed"]
+        assert session_changed(reports.contexts[0])
+        assert retries.failures == []
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_a_session_change_stops_the_next_read(
+    retries: Retries, reports: Reports
+) -> None:
+    transport = FakeMessageTransport()
+    client, native = subscriber(transport)
+    try:
+        _ = await client.durable.messages.subscribe(
+            "checkout", EXECUTION_ID, Received()
+        )
+        channel = subscription_of(native)
+        _ = client.auth.set_session(other_user())
+        await channel.emit_subscribing()
+        await channel.emit_subscribed()
+        await reports.arrivals.wait_for(1)
+
+        assert transport.read_after() == [0]
+        assert reports.messages == ["Volcano durable message catch-up failed"]
+        assert session_changed(reports.contexts[0])
+        assert retries.failures == []
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_a_session_change_stops_live_delivery(reports: Reports) -> None:
+    transport = FakeMessageTransport()
+    client, native = subscriber(transport)
+    received = Received()
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        channel = subscription_of(native)
+        _ = client.auth.set_session(other_user())
+        await channel.emit(published(1))
+        await channel.emit(published(2))
+        await dispatched(client)
+
+        assert received.seqs == []
+        assert reports.messages == ["Volcano realtime callback failed"]
+        assert session_changed(reports.contexts[0])
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_a_session_change_during_the_first_read_fails_subscribe() -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    gate = asyncio.Event()
+    transport.next_read_gate = gate
+    client, native = subscriber(transport)
+    try:
+        subscribing = asyncio.create_task(
+            client.durable.messages.subscribe("checkout", EXECUTION_ID, Received())
+        )
+        await transport.read_arrivals.wait_for(1)
+        _ = client.auth.set_session(other_user())
+        gate.set()
+
+        with pytest.raises(RuntimeError, match="session that subscribed"):
+            _ = await subscribing
+        assert CHANNEL not in native.subscriptions
+    finally:
+        await client.realtime.disconnect()
+
+
 @pytest.mark.parametrize("end", ["remove_all_channels", "disconnect"])
 async def test_ending_the_realtime_channels_ends_the_subscription(
     end: str, retries: Retries
@@ -1586,6 +1807,26 @@ async def test_one_client_subscribes_to_an_execution_once() -> None:
         await subscription_of(native).emit(published(1))
 
         assert await received.until(1) == [1]
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_subscribe_follows_the_canonical_execution_id() -> None:
+    transport = FakeMessageTransport()
+    client, native = subscriber(transport)
+    try:
+        _ = await client.durable.messages.subscribe(
+            "checkout", EXECUTION_ID.upper(), Received()
+        )
+
+        assert list(native.subscriptions) == [CHANNEL]
+        assert transport.calls[0][1]["target"] == DurableMessageTarget(
+            function_id="checkout", execution_id=EXECUTION_ID
+        )
+        with pytest.raises(RuntimeError, match="already subscribes"):
+            _ = await client.durable.messages.subscribe(
+                "checkout", EXECUTION_ID.replace("-", ""), Received()
+            )
     finally:
         await client.realtime.disconnect()
 

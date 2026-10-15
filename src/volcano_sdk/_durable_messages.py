@@ -104,6 +104,8 @@ class DurableChannel(Protocol):
     resubscribed: Callable[[], None] | None
     # Called when the client's realtime facade removes or disconnects it.
     ended: Callable[[], None] | None
+    # Called each time a full callback queue drops a publication.
+    dropped: Callable[[], None] | None
 
     @property
     def name(self) -> str:
@@ -130,6 +132,10 @@ class DurableMessageChannels(Protocol):
 
     async def remove_durable_channel(self, channel: DurableChannel) -> None:
         """Unsubscribe and forget the execution's channel."""
+        ...
+
+    def session_check(self) -> Callable[[], bool]:
+        """Return whether the client still has the session signed in now."""
         ...
 
 
@@ -276,7 +282,8 @@ class DurableMessages:
 
         Follows the execution on the client's realtime connection, which needs
         a signed-in session; a client token or service key alone cannot open
-        it.
+        it. Signing out, signing in again, or setting another session ends the
+        subscription; a token refresh does not.
 
         Returns
         -------
@@ -300,13 +307,13 @@ class DurableMessages:
             _ = self._client.session_token()
         except RuntimeError as error:
             raise RuntimeError(_NO_SESSION) from error
-        list_after = self._reader(target)
+        stream = DurableMessageStream(
+            deliver, self._reader(target), realtime.session_check()
+        )
         channel = realtime.durable_channel(target.execution_id, target.client_token)
         if channel is None:
             raise RuntimeError(_ALREADY_SUBSCRIBED)
-        return await _follow(
-            DurableMessageStream(deliver, list_after), channel, realtime
-        )
+        return await _follow(stream, channel, realtime)
 
     def _reader(
         self, target: DurableMessageTarget
@@ -337,6 +344,7 @@ async def _follow(
     try:
         await channel.subscribe()
         channel.resubscribed = stream.resubscribed
+        channel.dropped = stream.dropped
         await stream.catch_up()
     except BaseException:
         await subscription.unsubscribe()

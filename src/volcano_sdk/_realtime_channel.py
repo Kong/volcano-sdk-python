@@ -202,6 +202,8 @@ class ChannelState:
         # Called when removal or disconnect resets the channel, which then
         # subscribes again only when asked to.
         self.ended: Callable[[], None] | None = None
+        # Called after a full callback queue drops a publication.
+        self.dropped: Callable[[], None] | None = None
         self.callbacks: dict[str, list[DynamicCallback]] = {}
         self.presence_state: dict[str, RealtimePresenceInfo] = {}
         self.presence_events: list[tuple[str, RealtimePresenceInfo]] = []
@@ -548,6 +550,8 @@ class ChannelState:
                     "channel": self.name,
                 }
             )
+            if self.dropped is not None:
+                self.dropped()
         return True
 
     def _start_callback_dispatcher(self) -> None:

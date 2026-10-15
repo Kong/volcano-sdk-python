@@ -16,6 +16,10 @@ if TYPE_CHECKING:
 
 _FIRST_RETRY_SECONDS = 0.5
 _MAX_RETRY_SECONDS = 30.0
+_SESSION_CHANGED = (
+    "The session that subscribed to the execution's messages has changed; "
+    "the subscription has ended"
+)
 
 
 @dataclass(frozen=True)
@@ -68,18 +72,26 @@ class DurableMessageStream:
     any message already held. A catch-up that fails, or that leaves a held
     message still short of its predecessor, is tried again until one reads it.
 
-    The channel itself drops publications while it is not subscribed, and
-    reports each resubscription, which starts a catch-up of what it dropped.
+    The channel itself drops publications while it is not subscribed, or
+    while its callback queue is full, and reports each resubscription and
+    each drop, which start a catch-up of what it dropped.
     """
 
     def __init__(
         self,
         deliver: Callable[[DurableMessage], Awaitable[None]],
         list_after: Callable[[int], Awaitable[DurableMessagePage]],
+        in_session: Callable[[], bool],
     ) -> None:
-        """Deliver through `deliver`, reading missed messages with `list_after`."""
+        """Deliver through `deliver`, reading missed messages with `list_after`.
+
+        `in_session` says whether the session that subscribed is still the
+        client's. Once it is not, the stream closes rather than read or
+        deliver another user's messages.
+        """
         self._handler: Callable[[DurableMessage], Awaitable[None]] = deliver
         self._list_after: Callable[[int], Awaitable[DurableMessagePage]] = list_after
+        self._in_session: Callable[[], bool] = in_session
         self._last_seq: int = 0
         self._started: bool = False
         self._catch_ups: int = 0
@@ -112,7 +124,17 @@ class DurableMessageStream:
         """Catch up on what the channel dropped while it was not subscribed."""
         self._catch_up_in_background()
 
+    def dropped(self) -> None:
+        """Catch up on a publication the channel's full callback queue dropped."""
+        self._catch_up_in_background()
+
     def _catch_up_in_background(self) -> None:
+        # One catch-up waiting its turn reads whatever more are asked for
+        # meanwhile, so a burst of dropped publications reads once. Of those
+        # counted, only the one reading holds `_reads`.
+        reading = 1 if self._reads.locked() else 0
+        if self._catch_ups > reading:
+            return
         # The stream retries a failed catch-up itself; each failure is reported.
         self.catch_up().add_done_callback(_report_failed_catch_up)
 
@@ -165,6 +187,7 @@ class DurableMessageStream:
 
     async def _read_pages(self) -> None:
         while not self._closed:
+            self._require_session()
             after = self._last_seq
             page = await self._list_after(after)
             for message in page.messages:
@@ -207,5 +230,11 @@ class DurableMessageStream:
         async with self._handling:
             if self._closed or message.seq <= self._last_seq:
                 return
+            self._require_session()
             self._last_seq = message.seq
             await self._handler(message)
+
+    def _require_session(self) -> None:
+        if not self._in_session():
+            self.close()
+            raise RuntimeError(_SESSION_CHANGED)

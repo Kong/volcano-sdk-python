@@ -14,6 +14,8 @@ from ._realtime_messages import (
 from .realtime import Channel, Realtime
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ._durable_messages import DurableChannel
     from ._realtime_connection import RealtimeState
 
@@ -62,6 +64,26 @@ class DurableChannels(Generic[FacadeT]):
         )
         state.channels[wire_name] = ManagedChannel(channel, state.factory(channel))
         return channel
+
+    def session_check(self) -> Callable[[], bool]:
+        """Bind to the session signed in now, as Postgres delivery does.
+
+        Returns
+        -------
+        Callable[[], bool]
+            Whether the client still has that session. Signing out, signing
+            in again, or setting another session ends it; refreshing its
+            token does not.
+
+        """
+        capture = self._state.client_context.capture_session_binding
+        _generation, lineage, _session = capture()
+
+        def in_session() -> bool:
+            _generation, current, session = capture()
+            return session is not None and current is lineage
+
+        return in_session
 
     async def remove_durable_channel(self, channel: DurableChannel) -> None:
         """Unsubscribe and forget a channel, unless another has replaced it."""
