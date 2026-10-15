@@ -1082,6 +1082,42 @@ async def test_a_message_arriving_during_release_follows_the_held_ones() -> None
         await client.realtime.disconnect()
 
 
+async def test_a_read_waits_for_the_handler_still_running_on_a_live_message() -> None:
+    transport = FakeMessageTransport()
+    client, native = subscriber(transport)
+    calls: list[tuple[str, int]] = []
+    handling = asyncio.Event()
+    finish = asyncio.Event()
+    second = asyncio.Event()
+
+    async def handle(message: DurableMessage) -> None:
+        calls.append(("start", message.seq))
+        if message.seq == 1:
+            handling.set()
+            _ = await finish.wait()
+        calls.append(("end", message.seq))
+        if message.seq == 2:
+            second.set()
+
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, handle)
+        channel = subscription_of(native)
+        await channel.emit(published(1))
+        _ = await handling.wait()
+        await channel.emit_subscribing()
+        transport.published += [1, 2]
+        await channel.emit_subscribed()
+        await transport.read_arrivals.wait_for(2)
+        await asyncio.sleep(0)
+
+        assert calls == [("start", 1)]
+        finish.set()
+        _ = await second.wait()
+        assert calls == [("start", 1), ("end", 1), ("start", 2), ("end", 2)]
+    finally:
+        await client.realtime.disconnect()
+
+
 async def test_subscribe_reads_every_page() -> None:
     transport = FakeMessageTransport()
     transport.published = [1, 2, 3]

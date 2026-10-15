@@ -88,6 +88,7 @@ class DurableMessageStream:
         self._retry: asyncio.TimerHandle | None = None
         self._closed: bool = False
         self._reads: asyncio.Lock = asyncio.Lock()
+        self._handling: asyncio.Lock = asyncio.Lock()
         self._tasks: set[asyncio.Task[None]] = set()
 
     async def live(self, data: object) -> None:
@@ -201,7 +202,10 @@ class DurableMessageStream:
             self._retry = None
 
     async def _deliver(self, message: DurableMessage) -> None:
-        if self._closed or message.seq <= self._last_seq:
-            return
-        self._last_seq = message.seq
-        await self._handler(message)
+        # Live messages and catch-ups are delivered from different tasks, so a
+        # catch-up waits for a handler still running on a live message.
+        async with self._handling:
+            if self._closed or message.seq <= self._last_seq:
+                return
+            self._last_seq = message.seq
+            await self._handler(message)
