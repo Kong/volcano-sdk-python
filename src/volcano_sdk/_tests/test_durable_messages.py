@@ -28,7 +28,7 @@ from volcano_sdk._durable_message_response import (
     durable_message,
     durable_message_page,
 )
-from volcano_sdk._durable_message_stream import retry_delay
+from volcano_sdk._durable_message_stream import DurableMessageStream, retry_delay
 from volcano_sdk._realtime_durable import DurableChannels
 from volcano_sdk._transport import (
     DurableMessageListRequest,
@@ -49,7 +49,7 @@ from .fixtures.invalid_arguments import (
     unknown_sent_message_option,
     unknown_subscription_option,
 )
-from .realtime_probes import realtime_state
+from .realtime_probes import completed_operation, realtime_state
 from .test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory, FakeSubscription
 from .transport_fixtures import RejectingTransport
 
@@ -1833,6 +1833,51 @@ async def test_a_session_change_stops_live_delivery(reports: Reports) -> None:
         await client.realtime.disconnect()
 
 
+async def started_stream(
+    received: Received, in_session: Callable[[], bool]
+) -> DurableMessageStream:
+    async def deliver(message: DurableMessage) -> None:
+        received(await completed_operation(message))
+
+    async def list_after(_after: int) -> DurableMessagePage:
+        return await completed_operation(
+            DurableMessagePage(messages=(), has_more=False)
+        )
+
+    stream = DurableMessageStream(deliver, list_after, in_session)
+    await stream.catch_up()
+    return stream
+
+
+async def live_interrupted(
+    stream: DurableMessageStream, interrupt: Callable[[], None]
+) -> None:
+    delivering = asyncio.create_task(stream.live(published(1)))
+    # Runs once live() has checked the stream, before the handler's task starts.
+    _ = asyncio.get_running_loop().call_soon(interrupt)
+    await delivering
+
+
+async def test_an_unsubscribe_before_a_live_handler_starts_skips_it() -> None:
+    received = Received()
+    stream = await started_stream(received, lambda: True)
+
+    await live_interrupted(stream, stream.close)
+
+    assert received.seqs == []
+
+
+async def test_a_session_change_before_a_live_handler_starts_skips_it() -> None:
+    received = Received()
+    signed_in = asyncio.Event()
+    signed_in.set()
+    stream = await started_stream(received, signed_in.is_set)
+
+    await live_interrupted(stream, signed_in.clear)
+
+    assert received.seqs == []
+
+
 async def test_a_session_change_leaves_the_channel(reports: Reports) -> None:
     transport = FakeMessageTransport()
     client, native = subscriber(transport)
@@ -2142,6 +2187,37 @@ async def test_a_handler_raising_in_the_first_read_delivers_nothing_it_held() ->
         assert received.seqs == [1]
     finally:
         await client.realtime.disconnect()
+
+
+async def test_a_handler_raising_on_a_message_the_first_read_held_ends_delivery() -> (
+    None
+):
+    received = Received()
+    failure = RuntimeError("handler failed")
+    gate = asyncio.Event()
+
+    async def deliver(message: DurableMessage) -> None:
+        received(await completed_operation(message))
+        if message.seq == 2:
+            raise failure
+
+    async def list_after(_after: int) -> DurableMessagePage:
+        _ = await gate.wait()
+        return DurableMessagePage(
+            messages=(durable_message(published(1)),), has_more=False
+        )
+
+    stream = DurableMessageStream(deliver, list_after, lambda: True)
+    reading = stream.catch_up()
+    await stream.live(published(2, prev_seq=1))
+    gate.set()
+    with pytest.raises(RuntimeError) as caught:
+        await reading
+    # Arrives before subscribe has left the channel.
+    await stream.live(published(3, prev_seq=2))
+
+    assert caught.value is failure
+    assert received.seqs == [1, 2]
 
 
 async def test_a_failed_first_read_delivers_nothing_it_held() -> None:

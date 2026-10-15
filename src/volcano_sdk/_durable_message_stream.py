@@ -199,12 +199,12 @@ class DurableMessageStream:
             async with self._reads:
                 try:
                     await self._read_pages(report=report)
+                    await self._release_if_last(read=True, report=report)
                 except BaseException:
                     if first:
                         self.close()
                     await self._release_if_last(read=False, report=report)
                     raise
-                await self._release_if_last(read=True, report=report)
                 if first and self._closed:
                     raise RuntimeError(_ENDED)
         finally:
@@ -271,12 +271,18 @@ class DurableMessageStream:
                 await self._handler(message)
                 return
             (error,) = await asyncio.gather(
-                self._handler(message), return_exceptions=True
+                self._handle_if_current(message), return_exceptions=True
             )
             if isinstance(error, BaseException):
                 asyncio.get_running_loop().call_exception_handler(
                     {"message": _HANDLER_FAILED, "exception": error}
                 )
+
+    async def _handle_if_current(self, message: DurableMessage) -> None:
+        # Runs as a task of its own, which an unsubscribe or a session change
+        # can get to first. The next delivery or read ends a changed session.
+        if not self._closed and self._in_session():
+            await self._handler(message)
 
     async def _require_session(self) -> None:
         if not self._in_session():
