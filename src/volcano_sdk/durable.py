@@ -361,9 +361,9 @@ class Durable:
 
         A durable function is never invoked synchronously: it can run for
         hours, so the platform accepts the start and answers with an execution
-        to follow. Starting is the only durable operation an application
-        credential may perform -- reading a result or stopping an execution is
-        owner-scoped.
+        to follow. Besides messaging an execution through `durable.messages`,
+        starting is the only durable operation an application credential may
+        perform -- reading a result or stopping an execution is owner-scoped.
 
         Passing `execution_name` makes the start idempotent: starting again
         under the same name returns the execution that already exists rather

@@ -85,7 +85,7 @@ page = owner_client.durable.list(project_id, "charge-order", status="running")
 owner_client.durable.stop(project_id, "charge-order", handle.id)
 ```
 
-`start()` accepts the same active session, service key, or anonymous key as `functions.invoke()`. It is the only durable operation available to application credentials. An execution name makes a start idempotent.
+`start()` accepts the same active session, service key, or anonymous key as `functions.invoke()`. Besides [sending and following messages](#send-and-follow-messages), it is the only durable operation available to application credentials. An execution name makes a start idempotent.
 
 `get()`, `list()`, and `stop()` are owner-scoped. Call them from a trusted backend with the project owner's platform user token. Auth-user sessions, anonymous keys, service keys, and project access tokens are not accepted. `stop()` returns after the stop request is accepted, so poll `get()` until `is_terminal` is true.
 

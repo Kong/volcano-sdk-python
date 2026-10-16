@@ -246,7 +246,8 @@ Anonymous and service keys do not refresh.
 `durable.start()` begins an execution of a deployed durable function and returns
 a handle rather than a result: an execution can run for up to 366 days, so its
 result is read back with `durable.get()`. It takes the credential `functions.invoke()`
-takes, and is the only durable operation an application credential may perform.
+takes, and is, with `durable.messages`, the only durable operation an
+application credential may perform.
 An `execution_name` makes the start idempotent — starting again under the same
 name returns the execution that already exists rather than beginning a second
 one, and is charged once.
