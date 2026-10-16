@@ -433,6 +433,8 @@ class RealtimeState(Generic[FacadeT]):
 
     async def _remove_channel_state(self, channel: ChannelState) -> None:
         channel.supersede_subscribe_intent()
+        # Before the native unsubscribe, whose failure skips the reset.
+        channel.end()
         await self._discard_subscription(channel)
         await channel.reset()
 

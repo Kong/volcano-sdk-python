@@ -2130,6 +2130,35 @@ async def test_ending_the_realtime_channels_ends_the_subscription(
         await client.realtime.disconnect()
 
 
+async def test_a_removal_whose_unsubscribe_fails_still_ends_the_subscription(
+    retries: Retries,
+) -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    client, native = subscriber(transport)
+    received = Received()
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        channel = subscription_of(native)
+        gate = asyncio.Event()
+        transport.next_read_gate = gate
+        transport.published += [2]
+        await channel.emit(published(3, prev_seq=2))
+        await transport.read_arrivals.wait_for(2)
+        channel.unsubscribe_error = CentrifugeError("unsubscribe failed")
+        with pytest.raises(CentrifugeError, match=r"^unsubscribe failed$"):
+            await client.realtime.remove_all_channels()
+        transport.published += [3]
+        gate.set()
+        await asyncio.sleep(0.05)
+
+        assert received.seqs == [1]
+        assert transport.read_after() == [0, 1]
+        assert retries.failures == []
+    finally:
+        await client.realtime.disconnect()
+
+
 async def test_leaving_after_a_removal_spares_the_channel_that_replaced_it() -> None:
     transport = FakeMessageTransport()
     client, native = subscriber(transport)
