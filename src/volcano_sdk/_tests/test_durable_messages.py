@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+from centrifuge import CentrifugeError
 from typing_extensions import override
 
 from volcano_sdk import (
@@ -241,9 +242,10 @@ def wire_client(
 
 
 def subscriber(
-    transport: FakeMessageTransport,
+    transport: FakeMessageTransport, native: FakeCentrifugeClient | None = None
 ) -> tuple[VolcanoClient, FakeCentrifugeClient]:
-    native = FakeCentrifugeClient()
+    if native is None:
+        native = FakeCentrifugeClient()
     client = VolcanoClient(
         anon_key="anon-key",
         access_token="access-token",
@@ -1944,10 +1946,36 @@ class EndedOnceReady(FakeSubscription):
         )
 
 
-class EndedOnceReadyClient(FakeCentrifugeClient):
-    """End the first subscription once it is ready."""
+class UnreadySubscription(FakeSubscription):
+    """Never ready, and never ended by the server."""
 
-    ended: bool = False
+    @override
+    async def subscribe(self) -> None:
+        self.calls.append(("subscribe", None))
+        await self.emit_subscribing()
+
+    @override
+    async def ready(self) -> None:
+        message = "timeout waiting for subscription to be ready"
+        raise CentrifugeError(message)
+
+
+class RefusedSubscription(UnreadySubscription):
+    """Refused by the server, which ends it before readiness fails."""
+
+    @override
+    async def ready(self) -> None:
+        await self.emit_unsubscribed(103, "permission denied")
+        message = "subscription unsubscribed"
+        raise CentrifugeError(message)
+
+
+class FirstSubscriptionClient(FakeCentrifugeClient):
+    """Make the first subscription a given kind, and later ones ordinary."""
+
+    def __init__(self, first: type[FakeSubscription]) -> None:
+        super().__init__()
+        self.first: type[FakeSubscription] | None = first
 
     @override
     def new_subscription(
@@ -1959,7 +1987,8 @@ class EndedOnceReadyClient(FakeCentrifugeClient):
         recoverable: bool = False,
         data: Mapping[str, str] | None = None,
     ) -> FakeSubscription:
-        if self.ended:
+        first = self.first
+        if first is None:
             return super().new_subscription(
                 name,
                 events=events,
@@ -1967,8 +1996,8 @@ class EndedOnceReadyClient(FakeCentrifugeClient):
                 recoverable=recoverable,
                 data=data,
             )
-        self.ended = True
-        subscription = EndedOnceReady(
+        self.first = None
+        subscription = first(
             name, events, join_leave=join_leave, recoverable=recoverable, data=data
         )
         self.subscriptions[name] = subscription
@@ -1978,13 +2007,7 @@ class EndedOnceReadyClient(FakeCentrifugeClient):
 async def test_an_end_after_the_channel_is_ready_fails_subscribe() -> None:
     transport = FakeMessageTransport()
     transport.published = [1]
-    native = EndedOnceReadyClient()
-    client = VolcanoClient(
-        anon_key="anon-key",
-        access_token="access-token",
-        _transport=transport,
-        _realtime_client_factory=FakeCentrifugeFactory(native),
-    )
+    client, native = subscriber(transport, FirstSubscriptionClient(EndedOnceReady))
     received = Received()
     try:
         with pytest.raises(RuntimeError, match=r"^server unsubscribe$"):
@@ -1997,6 +2020,41 @@ async def test_an_end_after_the_channel_is_ready_fails_subscribe() -> None:
         again = Received()
         _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, again)
         assert again.seqs == [1]
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_a_refused_subscribe_fails_with_the_server_s_reason() -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    client, native = subscriber(transport, FirstSubscriptionClient(RefusedSubscription))
+    try:
+        with pytest.raises(RuntimeError, match=r"^permission denied$") as raised:
+            _ = await client.durable.messages.subscribe(
+                "checkout", EXECUTION_ID, Received()
+            )
+
+        assert isinstance(raised.value.__cause__, CentrifugeError)
+        assert CHANNEL not in native.subscriptions
+        again = Received()
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, again)
+        assert again.seqs == [1]
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_a_subscribe_that_never_becomes_ready_fails_with_its_error() -> None:
+    transport = FakeMessageTransport()
+    client, native = subscriber(transport, FirstSubscriptionClient(UnreadySubscription))
+    try:
+        with pytest.raises(
+            CentrifugeError, match=r"^timeout waiting for subscription to be ready$"
+        ):
+            _ = await client.durable.messages.subscribe(
+                "checkout", EXECUTION_ID, Received()
+            )
+
+        assert CHANNEL not in native.subscriptions
     finally:
         await client.realtime.disconnect()
 

@@ -376,7 +376,14 @@ async def _subscribe(channel: DurableChannel) -> None:
     # kept until then.
     ended: list[str] = []
     channel.server_ended = ended.append
-    await channel.subscribe()
+    try:
+        await channel.subscribe()
+    except Exception as error:
+        # A refusal ends the subscription before readiness fails, so its reason
+        # is already here.
+        if ended:
+            raise RuntimeError(ended[0]) from error
+        raise
     if ended:
         raise RuntimeError(ended[0])
 
