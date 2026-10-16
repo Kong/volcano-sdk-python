@@ -68,6 +68,9 @@ class DurableExecution:
                 unset, so it reads like a function that returned nothing.
             error (DurableExecutionError | Unset): Why a failed or timed-out execution ended.
             completed_at (datetime.datetime | Unset): Present once the execution has reached a terminal status.
+            client_token (str | Unset): Lets a browser read and send the execution's messages. Returned only
+                by the start that created the execution, never by a repeat under the
+                same name or by a read. Send it as `X-Volcano-Client-Token`.
      """
 
     id: UUID
@@ -80,6 +83,7 @@ class DurableExecution:
     result_expired: bool | Unset = UNSET
     error: DurableExecutionError | Unset = UNSET
     completed_at: datetime.datetime | Unset = UNSET
+    client_token: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -112,6 +116,8 @@ class DurableExecution:
         if not isinstance(self.completed_at, Unset):
             completed_at = self.completed_at.isoformat()
 
+        client_token = self.client_token
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -131,6 +137,8 @@ class DurableExecution:
             field_dict["error"] = error
         if completed_at is not UNSET:
             field_dict["completed_at"] = completed_at
+        if client_token is not UNSET:
+            field_dict["client_token"] = client_token
 
         return field_dict
 
@@ -188,6 +196,8 @@ class DurableExecution:
 
 
 
+        client_token = d.pop("client_token", UNSET)
+
         durable_execution = cls(
             id=id,
             function_id=function_id,
@@ -199,6 +209,7 @@ class DurableExecution:
             result_expired=result_expired,
             error=error,
             completed_at=completed_at,
+            client_token=client_token,
         )
 
 

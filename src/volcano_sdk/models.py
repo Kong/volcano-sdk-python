@@ -48,6 +48,18 @@ DurableApprovalStatus: TypeAlias = Literal[
     "expired",
     "cancelled",
 ]
+# "in" is a message sent to the execution; "out" is one it published.
+DurableMessageDirection: TypeAlias = Literal["in", "out"]
+# An "in" message is "queued" until a wait for its name takes it, "delivering"
+# while it is handed over, and "delivered" once the execution has it; "dropped"
+# if the execution ended first. Every "out" message is "published".
+DurableMessageStatus: TypeAlias = Literal[
+    "queued",
+    "delivering",
+    "delivered",
+    "dropped",
+    "published",
+]
 
 
 def _freeze_metadata(
@@ -369,6 +381,10 @@ class DurableExecution:
     result_expired: bool | None = None
     error: DurableExecutionFailure | None = None
     completed_at: datetime | None = None
+    # Lets whoever started the execution send it messages and read what it
+    # publishes. Returned only by the start that created the execution, so
+    # keep it with the execution id.
+    client_token: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         """Defensively freeze the function's own result."""
@@ -500,6 +516,83 @@ class DurableApprovalPage:
     def __post_init__(self) -> None:
         """Defensively snapshot the approvals in this page."""
         object.__setattr__(self, "approvals", tuple(self.approvals))
+
+
+@dataclass(frozen=True, slots=True)
+class DurableMessageSender:
+    """Who sent a durable message."""
+
+    # The credential it was sent with: "service_key", "user", "anon", or
+    # "project" (the owner or an access token), or "execution" for one the
+    # execution published.
+    type: str
+    # The auth user who sent it; None unless `type` is "user".
+    user_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DurableMessage:
+    """A message sent to a durable execution, or one it published."""
+
+    id: str
+    execution_id: str
+    direction: DurableMessageDirection
+    # Orders the execution's messages in both directions. It increases with
+    # every message but can skip numbers; list the ones after it with `after`.
+    seq: int
+    name: str
+    data: JSONValue = field(repr=False, hash=False)
+    sender: DurableMessageSender
+    status: DurableMessageStatus
+    sent_at: datetime
+    # When the execution received it; None until then, and for "out" messages.
+    delivered_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        """Defensively freeze the message's data."""
+        object.__setattr__(self, "data", freeze_json(self.data))
+
+
+@dataclass(frozen=True, slots=True)
+class DurableMessagePage:
+    """Messages after a `seq`, oldest first."""
+
+    messages: tuple[DurableMessage, ...]
+    # Whether more follow; read them with `after` set to the last `seq`.
+    has_more: bool
+
+    def __post_init__(self) -> None:
+        """Defensively snapshot the messages in this page."""
+        object.__setattr__(self, "messages", tuple(self.messages))
+
+
+class DurableMessageTargetOptions(TypedDict, total=False):
+    """Which route reaches an execution's messages, and with what."""
+
+    # The execution's `client_token`. The application route needs it for an
+    # anon key, or a signed-in user who did not start the execution. None,
+    # as `DurableExecution.client_token` is when not from the start, sends none.
+    client_token: str | None
+    # Use the owner's project route instead, with the session's platform token.
+    project_id: str
+
+
+class DurableMessageSendOptions(DurableMessageTargetOptions, total=False):
+    """Route and idempotency for sending a durable message."""
+
+    # A repeat of the same key by the same sender returns the message the
+    # first send stored.
+    idempotency_key: str
+
+
+class DurableMessageListOptions(DurableMessageTargetOptions, total=False):
+    """Route, filters, and paging for listing durable messages."""
+
+    direction: DurableMessageDirection
+    name: str
+    # Only messages with a greater `seq`.
+    after: int
+    limit: int
 
 
 @dataclass(frozen=True, slots=True)

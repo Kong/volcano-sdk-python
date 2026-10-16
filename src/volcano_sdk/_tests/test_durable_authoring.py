@@ -48,6 +48,7 @@ from volcano_sdk import ValidationError
 from volcano_sdk._durable_duration import to_seconds
 from volcano_sdk._durable_engine import Engine, load_engine
 from volcano_sdk._durable_results import completion_reason
+from volcano_sdk._transport_types import decode_json
 from volcano_sdk.durable_authoring import (
     ApprovalDecision,
     BatchFailure,
@@ -58,12 +59,13 @@ from volcano_sdk.durable_authoring import (
     DurableRuntimeMissingError,
     FunctionHandler,
     ParallelBranch,
+    ReceivedMessage,
     RetryOptions,
     StepScope,
     WaitUntilOptions,
     durable,
 )
-from volcano_sdk.models import DurableApprovalDecider
+from volcano_sdk.models import DurableApprovalDecider, DurableMessageSender
 
 from .fixtures.durable_context import (
     RecordedBatch,
@@ -76,6 +78,16 @@ from .fixtures.durable_inspection import (
     InspectedDurableContext,
     InspectedEngine,
 )
+from .fixtures.durable_messages import (
+    FIRST_TOKEN_DIGEST,
+    PUBLISH,
+    SESSION,
+    WAITS,
+    MessagePlatform,
+    Suspensions,
+    message_payload,
+)
+from .fixtures.durable_platform import PLATFORM_REQUEST
 from .fixtures.invalid_arguments import non_string_approval_title
 from .fixtures.invalid_callbacks import (
     decorate_non_callable,
@@ -89,6 +101,10 @@ from .fixtures.invalid_wait_options import invalid_wait_duration, non_callable_p
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterator
+
+    from aws_durable_execution_sdk_python_testing.runner import (
+        DurableFunctionTestResult,
+    )
 
     from volcano_sdk._durable_protocols import RuntimeContext
     from volcano_sdk.models import JSONValue
@@ -414,8 +430,11 @@ def run_handler(handler: FunctionHandler, event: object = None) -> object:
     Raises:
         AssertionError: If the handler fails.
     """
+    # A step retried with backoff would otherwise run to the 15-minute default.
     with local_runner(handler) as runner:
-        result = runner.run(input=json.dumps({} if event is None else event))
+        result = runner.run(
+            input=json.dumps({} if event is None else event), timeout=15
+        )
     if result.error is not None:
         raise AssertionError(result.error.message)
     return None if result.result is None else json.loads(result.result)
@@ -431,7 +450,9 @@ def failing_handler(handler: FunctionHandler, event: object = None) -> str:
         AssertionError: If the handler succeeds.
     """
     with local_runner(handler) as runner:
-        result = runner.run(input=json.dumps({} if event is None else event))
+        result = runner.run(
+            input=json.dumps({} if event is None else event), timeout=15
+        )
     if result.error is None:
         raise AssertionError(_EXPECTED_FAILURE)
     return str(result.error.message or "")
@@ -488,7 +509,7 @@ def test_operations_are_recorded_under_their_names() -> None:
         return ctx.child("fulfil", lambda child: child.step("ship", lambda _s: "ok"))
 
     with local_runner(handler) as runner:
-        result = runner.run(input=json.dumps({}))
+        result = runner.run(input=json.dumps({}), timeout=15)
 
     assert result.error is None
     assert result.get_step("charge").name == "charge"
@@ -1696,7 +1717,7 @@ def test_an_approval_closed_before_it_registered_resumes_expired(
         return real_client(transport=httpx.MockTransport(closed), timeout=timeout)
 
     monkeypatch.setattr(
-        "volcano_sdk._durable_approval_registration.httpx.AsyncClient", client
+        "volcano_sdk._durable_platform_request.httpx.AsyncClient", client
     )
     monkeypatch.setenv("VOLCANO_PLATFORM_API_URL", PLATFORM_API_URL)
 
@@ -1748,7 +1769,9 @@ def test_a_missing_platform_api_url_fails_before_opening_a_callback(
     runtime = RecordingContext()
     context = DurableContext(runtime, Engine())
 
-    with pytest.raises(RuntimeError, match="needs VOLCANO_PLATFORM_API_URL"):
+    with pytest.raises(
+        RuntimeError, match=r"^wait_for_approval\(\) needs VOLCANO_PLATFORM_API_URL"
+    ):
         _ = context.wait_for_approval("ship-order", title="Ship?")
     assert runtime.submitter is None
 
@@ -1963,3 +1986,285 @@ def test_one_runtime_wrapper_serves_every_invocation_with_its_own_execution(
     assert first != second
     assert [body["execution_ref"] for body in registrations.bodies] == [first]
     assert [body["execution_ref"] for body in later.bodies] == [second]
+
+
+@pytest.fixture
+def message_platform(monkeypatch: pytest.MonkeyPatch) -> MessagePlatform:
+    fake = MessagePlatform()
+    monkeypatch.setattr(f"{PLATFORM_REQUEST}.httpx.AsyncClient", fake.client)
+    monkeypatch.setenv("VOLCANO_PLATFORM_API_URL", PLATFORM_API_URL)
+    return fake
+
+
+def exchange(
+    handler: FunctionHandler, platform: MessagePlatform
+) -> tuple[str, DurableFunctionTestResult]:
+    """Run a handler, answering every session it opens and message it waits for.
+
+    Returns:
+        The execution reference and the runner's result.
+
+    """
+    suspensions = Suspensions(handler)
+    with local_runner(suspensions) as runner:
+        execution_ref = runner.run_async(input=json.dumps({}))
+        while answers := suspensions.next(platform.unanswered):
+            for callback, answer in answers:
+                runner.send_callback_success(callback, answer)
+        return execution_ref, runner.wait_for_result(execution_ref, timeout=60)
+
+
+def succeeded(result: DurableFunctionTestResult) -> object:
+    if result.error is not None:
+        raise AssertionError(result.error.message)
+    assert result.result is not None
+    return decode_json(result.result.encode())
+
+
+def received(value: ReceivedMessage | None) -> object:
+    if value is None:
+        return None
+    return {
+        "id": value.id,
+        "name": value.name,
+        "data": value.data,
+        "sender": [value.sender.type, value.sender.user_id],
+        "sent_at": value.sent_at,
+    }
+
+
+def test_a_message_wait_registers_and_resumes_with_the_message(
+    message_platform: MessagePlatform,
+) -> None:
+    message_platform.messages["approve"] = message_payload("approve", {"ok": True})
+
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        return received(ctx.wait_for_message("approve", timeout="1h"))
+
+    execution_ref, result = exchange(handler, message_platform)
+
+    assert succeeded(result) == {
+        "id": "message-for-approve",
+        "name": "approve",
+        "data": {"ok": True},
+        "sender": ["user", "user-7"],
+        "sent_at": "2026-10-12T09:00:00Z",
+    }
+    [body] = message_platform.waits
+    assert body == {
+        "execution_ref": execution_ref,
+        "callback_id": callback_id(body),
+        "name": "approve",
+    }
+    assert message_platform.sessions == []
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        None,
+        httpx.Response(
+            409, json={"error": "callback is closed", "code": "callback_closed"}
+        ),
+    ],
+)
+def test_a_message_wait_that_times_out_or_closes_returns_none(
+    message_platform: MessagePlatform, refusal: httpx.Response | None
+) -> None:
+    if refusal is not None:
+        message_platform.refusals[WAITS] = refusal
+
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        return {"message": received(ctx.wait_for_message("approve", timeout="1s"))}
+
+    # A lost timeout would otherwise leave the runner waiting for 15 minutes.
+    with local_runner(handler) as runner:
+        result = runner.run(input=json.dumps({}), timeout=15)
+
+    assert succeeded(result) == {"message": None}
+    assert len(message_platform.waits) == 1
+
+
+def test_a_refused_message_wait_fails_the_execution(
+    message_platform: MessagePlatform,
+) -> None:
+    message_platform.refusals[WAITS] = httpx.Response(
+        409,
+        json={"error": "too many open message waits", "code": "too_many_message_waits"},
+    )
+
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        return received(ctx.wait_for_message("approve"))
+
+    _, result = exchange(handler, message_platform)
+
+    assert result.error is not None
+    assert "too many open message waits" in str(result.error.message)
+    assert len(message_platform.waits) == 1
+
+
+def test_a_replay_does_not_register_the_message_wait_again(
+    message_platform: MessagePlatform,
+) -> None:
+    message_platform.messages["approve"] = message_payload("approve", "yes")
+
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        approval = ctx.wait_for_message("approve")
+        ctx.wait("after", "1s")
+        return ctx.step("ship", lambda _scope: received(approval))
+
+    _, result = exchange(handler, message_platform)
+
+    assert succeeded(result) == received(
+        ReceivedMessage(
+            id="message-for-approve",
+            name="approve",
+            data="yes",
+            sender=DurableMessageSender(type="user", user_id="user-7"),
+            sent_at="2026-10-12T09:00:00Z",
+        )
+    )
+    assert len(message_platform.waits) == 1
+
+
+def test_a_publish_opens_a_session_and_returns_the_message_id_and_seq(
+    message_platform: MessagePlatform,
+) -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        published = ctx.publish("progress", {"done": 1})
+        return [published.id, published.seq]
+
+    execution_ref, result = exchange(handler, message_platform)
+
+    assert succeeded(result) == ["message-1", 1]
+    [session] = message_platform.sessions
+    assert session == {
+        "execution_ref": execution_ref,
+        "callback_id": callback_id(session),
+    }
+    [request] = message_platform.publishes
+    assert str(request.url) == f"{PLATFORM_API_URL}{PUBLISH}"
+    assert request.headers["X-Volcano-Durable-Session"] == "token-1"
+    assert request.headers["Idempotency-Key"] == f"{FIRST_TOKEN_DIGEST}:1"
+    assert json.loads(request.content) == {"name": "progress", "data": {"done": 1}}
+    assert [operation.name for operation in result.operations] == [
+        SESSION,
+        "progress",
+    ]
+
+
+def test_publishes_in_one_context_share_its_session(
+    message_platform: MessagePlatform,
+) -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        first = ctx.publish("progress", 1)
+        second = ctx.publish("progress")
+        return [first.seq, second.seq]
+
+    _, result = exchange(handler, message_platform)
+
+    assert succeeded(result) == [1, 2]
+    assert len(message_platform.sessions) == 1
+    assert message_platform.idempotency_keys() == [
+        f"{FIRST_TOKEN_DIGEST}:1",
+        f"{FIRST_TOKEN_DIGEST}:2",
+    ]
+    assert [json.loads(request.content) for request in message_platform.publishes] == [
+        {"name": "progress", "data": 1},
+        {"name": "progress", "data": None},
+    ]
+
+
+def test_a_replay_does_not_publish_again(message_platform: MessagePlatform) -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        published = ctx.publish("progress", "started")
+        ctx.wait("after", "1s")
+        later = ctx.publish("progress", "finished")
+        return [published.seq, later.seq]
+
+    _, result = exchange(handler, message_platform)
+
+    assert succeeded(result) == [1, 2]
+    assert len(message_platform.sessions) == 1
+    assert message_platform.idempotency_keys() == [
+        f"{FIRST_TOKEN_DIGEST}:1",
+        f"{FIRST_TOKEN_DIGEST}:2",
+    ]
+
+
+def test_every_child_context_publishes_with_its_own_session(
+    message_platform: MessagePlatform,
+) -> None:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        root = ctx.publish("progress", "root")
+        child = ctx.child(
+            "review", lambda child: child.publish("progress", "child").seq
+        )
+        batch = ctx.map(
+            ["a", "b"],
+            lambda item, child, _index: child.publish("progress", item).seq,
+            "items",
+        )
+        return [root.seq, child, sorted(batch.results)]
+
+    _, result = exchange(handler, message_platform)
+
+    assert succeeded(result) == [1, 2, [3, 4]]
+    assert len(message_platform.sessions) == 4
+    assert sorted(message_platform.sessions_used()) == [
+        "token-1",
+        "token-2",
+        "token-3",
+        "token-4",
+    ]
+    keys = message_platform.idempotency_keys()
+    assert len(set(keys)) == 4
+    assert all(key.endswith(":1") for key in keys)
+
+
+def test_a_message_can_be_received_and_answered(
+    message_platform: MessagePlatform,
+) -> None:
+    message_platform.messages["question"] = message_payload("question", "how far?")
+
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        question = ctx.wait_for_message("question")
+        assert question is not None
+        return ctx.publish("answer", {"to": question.id, "done": 3}).seq
+
+    _, result = exchange(handler, message_platform)
+
+    assert succeeded(result) == 1
+    [request] = message_platform.publishes
+    assert json.loads(request.content) == {
+        "name": "answer",
+        "data": {"to": "message-for-question", "done": 3},
+    }
+
+
+def test_a_refused_publish_fails_the_execution_without_retrying(
+    message_platform: MessagePlatform,
+) -> None:
+    message_platform.refusals[PUBLISH] = httpx.Response(
+        409,
+        json={"error": "execution is not running", "code": "execution_not_running"},
+    )
+
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        return ctx.publish("progress").seq
+
+    _, result = exchange(handler, message_platform)
+
+    assert result.error is not None
+    assert "execution is not running" in str(result.error.message)
+    assert len(message_platform.publishes) == 1

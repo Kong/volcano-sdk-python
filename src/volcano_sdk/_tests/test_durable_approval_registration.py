@@ -6,7 +6,7 @@ import socket
 import threading
 import time
 from types import MappingProxyType
-from typing import TYPE_CHECKING, NoReturn, Protocol, TypeAlias
+from typing import TYPE_CHECKING, NoReturn, Protocol
 
 import httpx
 import pytest
@@ -25,11 +25,21 @@ from volcano_sdk._durable_approval_registration import (
     approval_body,
     approval_decision,
     check_size,
-    platform_api_url,
     register_approval,
 )
+from volcano_sdk._durable_platform_request import platform_api_url
 from volcano_sdk.durable_authoring import ApprovalDecision
 from volcano_sdk.models import DurableApprovalDecider
+
+from .fixtures.durable_platform import (
+    GIVE_UP_SECONDS,
+    PLATFORM_REQUEST,
+    Answer,
+    Platform,
+    Stall,
+    install_platform,
+    refused,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -44,33 +54,13 @@ BODY: dict[str, JSONValue] = {
     "title": "Ship order 1234?",
 }
 RETRY_DELAYS = [0.5, 1.0, 2.0, 4.0, 5.0, 5.0, 5.0, 5.0]
-# The fixture replaces httpx.AsyncClient for the module under test, which is
-# the same attribute everywhere.
-REAL_CLIENT = httpx.AsyncClient
-REGISTRATION = "volcano_sdk._durable_approval_registration"
+# The largest answer read: a published message with 64 KiB of data, escaped.
+MAX_ANSWER_BYTES = 524288
 INVALID_DETAILS = (
     "details must be JSON-serializable: mappings with string keys, lists, "
     "tuples, strings, finite numbers, booleans, and None"
 )
-# Long past any attempt's deadline: a slow answer still running by then was
-# never cut off, and ends rather than hang the suite.
-_GIVE_UP_SECONDS = 10.0
 _TRICKLE_INTERVAL = 0.01
-_NEVER_CANCELLED = "the attempt outlived its deadline"
-
-
-class Stall:
-    """Accept the request and never answer it."""
-
-    def __init__(self) -> None:
-        self.released: bool = False
-
-    async def hold(self) -> NoReturn:
-        try:
-            await asyncio.sleep(_GIVE_UP_SECONDS)
-        finally:
-            self.released = True
-        raise AssertionError(_NEVER_CANCELLED)
 
 
 class Trickle(httpx.AsyncByteStream):
@@ -82,7 +72,7 @@ class Trickle(httpx.AsyncByteStream):
 
     @override
     async def __aiter__(self) -> AsyncIterator[bytes]:
-        for _ in range(int(_GIVE_UP_SECONDS / _TRICKLE_INTERVAL)):
+        for _ in range(int(GIVE_UP_SECONDS / _TRICKLE_INTERVAL)):
             await asyncio.sleep(_TRICKLE_INTERVAL)
             self.sent += 1
             yield b" "
@@ -117,59 +107,6 @@ class Pieces(httpx.AsyncByteStream):
             yield piece
 
 
-Answer: TypeAlias = "httpx.Response | Exception | Stall"
-
-
-class Platform:
-    """Answer registrations in order and record what was sent.
-
-    Time is the platform's own: it passes while the registration sleeps and
-    while a request runs into its timeout, and nowhere else. An attempt that
-    is cancelled at its deadline takes real time, not platform time.
-    """
-
-    def __init__(self, *answers: Answer) -> None:
-        self.answers: list[Answer] = list(answers)
-        self.requests: list[httpx.Request] = []
-        self.timeouts: list[float] = []
-        self.sleeps: list[float] = []
-        self.now: float = 0.0
-        # How much longer than asked each sleep takes.
-        self.oversleep: float = 0.0
-        self.clock_runs: bool = True
-
-    async def handle(self, request: httpx.Request) -> httpx.Response:
-        self.requests.append(request)
-        match request.extensions:
-            case {"timeout": {"read": float(timeout)}}:
-                self.timeouts.append(timeout)
-            case _:
-                message = f"expected a read timeout, got {request.extensions}"
-                raise AssertionError(message)
-        answer = self.answers[0] if len(self.answers) == 1 else self.answers.pop(0)
-        if isinstance(answer, Stall):
-            await answer.hold()
-        if isinstance(answer, httpx.TimeoutException):
-            self.advance(timeout)
-        if isinstance(answer, Exception):
-            raise answer
-        return answer
-
-    def client(self, *, timeout: float) -> httpx.AsyncClient:
-        return REAL_CLIENT(transport=httpx.MockTransport(self.handle), timeout=timeout)
-
-    def monotonic(self) -> float:
-        return self.now
-
-    def sleep(self, delay: float) -> None:
-        self.sleeps.append(delay)
-        self.advance(delay + self.oversleep)
-
-    def advance(self, seconds: float) -> None:
-        if self.clock_runs:
-            self.now += seconds
-
-
 class InstallPlatform(Protocol):
     def __call__(self, *answers: Answer) -> Platform: ...
 
@@ -177,11 +114,7 @@ class InstallPlatform(Protocol):
 @pytest.fixture
 def platform(monkeypatch: pytest.MonkeyPatch) -> InstallPlatform:
     def install(*answers: Answer) -> Platform:
-        fake = Platform(*answers)
-        monkeypatch.setattr(f"{REGISTRATION}.httpx.AsyncClient", fake.client)
-        monkeypatch.setattr(f"{REGISTRATION}.monotonic", fake.monotonic)
-        monkeypatch.setattr(f"{REGISTRATION}.sleep", fake.sleep)
-        return fake
+        return install_platform(monkeypatch, *answers)
 
     return install
 
@@ -191,13 +124,6 @@ def registered(status: int = 201) -> httpx.Response:
         status,
         json={"id": "approval-1", "status": "pending", "expires_at": None},
     )
-
-
-def refused(status: int, code: str | None = None) -> httpx.Response:
-    body = {"error": f"refused with {status}"}
-    if code is not None:
-        body["code"] = code
-    return httpx.Response(status, json=body)
 
 
 def test_registration_posts_the_body_without_credentials(
@@ -439,15 +365,15 @@ def test_an_attempt_ends_by_its_deadline_while_the_host_lookup_stalls(
     # whose host lookup runs on a thread that cancelling cannot stop.
     fake = Platform()
     fake.oversleep = _WAKE_LATE
-    monkeypatch.setattr(f"{REGISTRATION}.monotonic", fake.monotonic)
-    monkeypatch.setattr(f"{REGISTRATION}.sleep", fake.sleep)
+    monkeypatch.setattr(f"{PLATFORM_REQUEST}.monotonic", fake.monotonic)
+    monkeypatch.setattr(f"{PLATFORM_REQUEST}.sleep", fake.sleep)
     released = threading.Event()
     lookups: list[object] = []
 
     def lookup(host: object, *_args: object, **_kwargs: object) -> NoReturn:
         lookups.append(host)
         if len(lookups) > 1:
-            _ = released.wait(_GIVE_UP_SECONDS)
+            _ = released.wait(GIVE_UP_SECONDS)
         raise socket.gaierror(socket.EAI_NONAME, "unknown host")
 
     monkeypatch.setattr(socket, "getaddrinfo", lookup)
@@ -485,8 +411,8 @@ def test_a_stalled_loop_still_reports_the_attempts_deadline(
     # connect timeout in one pass, while the host lookup is still running.
     fake = Platform()
     fake.oversleep = _WAKE_LATE
-    monkeypatch.setattr(f"{REGISTRATION}.monotonic", fake.monotonic)
-    monkeypatch.setattr(f"{REGISTRATION}.sleep", fake.sleep)
+    monkeypatch.setattr(f"{PLATFORM_REQUEST}.monotonic", fake.monotonic)
+    monkeypatch.setattr(f"{PLATFORM_REQUEST}.sleep", fake.sleep)
     released = threading.Event()
     lookups: list[object] = []
     new_event_loop = asyncio.new_event_loop
@@ -494,7 +420,7 @@ def test_a_stalled_loop_still_reports_the_attempts_deadline(
     def lookup(host: object, *_args: object, **_kwargs: object) -> NoReturn:
         lookups.append(host)
         if len(lookups) > 1:
-            _ = released.wait(_GIVE_UP_SECONDS)
+            _ = released.wait(GIVE_UP_SECONDS)
         raise socket.gaierror(socket.EAI_NONAME, "unknown host")
 
     def stalling_loop() -> asyncio.AbstractEventLoop:
@@ -503,7 +429,7 @@ def test_a_stalled_loop_still_reports_the_attempts_deadline(
         return loop
 
     monkeypatch.setattr(socket, "getaddrinfo", lookup)
-    monkeypatch.setattr(f"{REGISTRATION}.asyncio.new_event_loop", stalling_loop)
+    monkeypatch.setattr(f"{PLATFORM_REQUEST}.asyncio.new_event_loop", stalling_loop)
 
     try:
         with pytest.raises(TransportError) as caught:
@@ -525,13 +451,13 @@ def test_an_answer_too_large_to_be_volcanos_is_not_read_to_the_end(
         register_approval(API_URL, BODY)
 
     assert caught.value.code is None
-    assert flood.sent <= 65536 + 4096
+    assert flood.sent <= MAX_ANSWER_BYTES + 4096
     assert len(fake.requests) == 1
 
 
 def test_an_answer_at_the_size_limit_is_read(platform: InstallPlatform) -> None:
     closed = refused(409, "approval_closed").content
-    fake = platform(httpx.Response(409, content=closed.ljust(65536)))
+    fake = platform(httpx.Response(409, content=closed.ljust(MAX_ANSWER_BYTES)))
 
     register_approval(API_URL, BODY)
 
@@ -609,7 +535,7 @@ def test_the_platform_api_url_comes_from_the_environment(
 ) -> None:
     monkeypatch.setenv("VOLCANO_PLATFORM_API_URL", f" {API_URL} ")
 
-    assert platform_api_url() == API_URL
+    assert platform_api_url("wait_for_approval()") == API_URL
 
 
 @pytest.mark.parametrize("value", [None, "", "  "])
@@ -622,7 +548,7 @@ def test_a_missing_platform_api_url_is_explained(
         monkeypatch.setenv("VOLCANO_PLATFORM_API_URL", value)
 
     with pytest.raises(RuntimeError) as caught:
-        _ = platform_api_url()
+        _ = platform_api_url("wait_for_approval()")
 
     assert str(caught.value) == (
         "wait_for_approval() needs VOLCANO_PLATFORM_API_URL. Volcano sets it on "

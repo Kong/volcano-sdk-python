@@ -269,12 +269,21 @@ class Realtime:
         channel_type: ChannelType = "broadcast",
     ) -> None:
         """Unsubscribe and forget one broadcast or presence channel."""
-        await self._state.remove_channel(name, channel_type=channel_type)
+        await self._state.remove_channel(
+            name, channel_type=_messages.validate_channel_type(channel_type)
+        )
 
     async def remove_all_channels(self) -> None:
-        """Unsubscribe and forget every managed channel."""
+        """Unsubscribe and forget every managed channel.
+
+        Ends the client's durable message subscriptions too.
+        """
         await self._state.remove_all_channels()
 
     async def disconnect(self) -> None:
-        """Disconnect and reset every channel managed by this facade."""
+        """Disconnect and reset every channel managed by this facade.
+
+        Ends the client's durable message subscriptions too; unsubscribe one
+        before subscribing to its execution again.
+        """
         await self._state.disconnect()

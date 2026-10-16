@@ -12,6 +12,7 @@ from volcano_sdk import client as client_module
 from volcano_sdk import realtime as realtime_module
 from volcano_sdk._realtime_channel import ChannelState
 from volcano_sdk._realtime_connection import RealtimeState
+from volcano_sdk._realtime_durable import ClientRealtime
 from volcano_sdk._realtime_fetch_worker import PostgresFetchWorker
 from volcano_sdk.realtime import Channel, Realtime
 
@@ -46,7 +47,7 @@ class InspectableChannel(Channel):
         return state
 
 
-class InspectableRealtime(Realtime):
+class InspectableRealtime(ClientRealtime):
     @property
     def state(self) -> RealtimeState[Channel]:
         return self._state
@@ -72,7 +73,7 @@ def realtime_state(realtime: Realtime) -> InspectedRealtimeState:
 
 @pytest.fixture(autouse=True)
 def realtime_state_probes(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(client_module, "Realtime", InspectableRealtime)
+    monkeypatch.setattr(client_module, "ClientRealtime", InspectableRealtime)
     monkeypatch.setattr(realtime_module, "Channel", InspectableChannel)
     monkeypatch.setattr(realtime_module, "RealtimeState", InspectedRealtimeState)
     monkeypatch.setattr(connection_module, "ChannelState", InspectedChannelState)

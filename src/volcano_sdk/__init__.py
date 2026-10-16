@@ -1,5 +1,6 @@
 """Public Volcano SDK facade."""
 
+from ._durable_messages import DurableMessageSubscription
 from ._lock_guard import LockGuard
 from .client import VolcanoClient
 from .connection_string import database_connection_string
@@ -37,6 +38,14 @@ from .models import (
     DurableExecutionFailure,
     DurableExecutionPage,
     DurableExecutionStatus,
+    DurableMessage,
+    DurableMessageDirection,
+    DurableMessageListOptions,
+    DurableMessagePage,
+    DurableMessageSender,
+    DurableMessageSendOptions,
+    DurableMessageStatus,
+    DurableMessageTargetOptions,
     EmailChangeResult,
     FunctionResponse,
     LinkedOAuthProvider,
@@ -89,6 +98,15 @@ __all__ = [
     "DurableExecutionFailure",
     "DurableExecutionPage",
     "DurableExecutionStatus",
+    "DurableMessage",
+    "DurableMessageDirection",
+    "DurableMessageListOptions",
+    "DurableMessagePage",
+    "DurableMessageSendOptions",
+    "DurableMessageSender",
+    "DurableMessageStatus",
+    "DurableMessageSubscription",
+    "DurableMessageTargetOptions",
     "EmailChangeResult",
     "FunctionResponse",
     "LinkedOAuthProvider",

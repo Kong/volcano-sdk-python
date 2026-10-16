@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Protocol, Unpack, runtime_checkable
-from uuid import UUID
 
 from ._client_context import ClientContextSource, facade_context
 from ._durable_approval_response import (
@@ -13,6 +12,8 @@ from ._durable_approval_response import (
     durable_approval_page,
     durable_approval_stats,
 )
+from ._durable_arguments import identifier, known_options
+from ._durable_messages import DurableMessageChannels, DurableMessages
 from ._durable_response import durable_execution, durable_execution_page
 from ._transport import (
     DurableApprovalListRequest,
@@ -25,8 +26,6 @@ from ._transport import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from .models import (
         DurableApproval,
         DurableApprovalListOptions,
@@ -53,23 +52,6 @@ _STATS_OPTIONS = frozenset({"function", "from_", "to"})
 # over-long name is refused before a request is spent on it, the way the
 # JavaScript SDK refuses it.
 _MAX_EXECUTION_NAME_LENGTH = 255
-
-_INVALID_IDENTIFIERS = {
-    "function_name": "function_name must be a non-empty string",
-    "execution_name": "execution_name must be a non-empty string",
-    "project_id": "project_id must be a non-empty string",
-    "execution_id": "execution_id must be a non-empty string",
-    "approval_id": "approval_id must be a non-empty string",
-}
-# The two identifiers the transport converts to a UUID before sending. Checked
-# here so a malformed one is a facade ValidationError rather than a
-# `badly formed hexadecimal UUID string` raised from inside the transport,
-# outside the error hierarchy this package documents.
-_UUID_IDENTIFIERS = {
-    "project_id": "project_id must be a UUID",
-    "execution_id": "execution_id must be a UUID",
-    "approval_id": "approval_id must be a UUID",
-}
 _HTTP_ACCEPTED = 202
 _HTTP_OK = 200
 
@@ -228,7 +210,7 @@ class DurableApprovals:
             Approvals and pagination metadata.
 
         """
-        project = _identifier(project_id, "project_id")
+        project = identifier(project_id, "project_id")
         request = _list_request(options)
         transport = self._transport()
         response = invoke(
@@ -249,8 +231,8 @@ class DurableApprovals:
             The approval.
 
         """
-        project = _identifier(project_id, "project_id")
-        approval = _identifier(approval_id, "approval_id")
+        project = identifier(project_id, "project_id")
+        approval = identifier(approval_id, "approval_id")
         transport = self._transport()
         response = invoke(
             transport.get_durable_approval,
@@ -274,7 +256,7 @@ class DurableApprovals:
             Counts, approval rate, and decision times over the window.
 
         """
-        project = _identifier(project_id, "project_id")
+        project = identifier(project_id, "project_id")
         request = _stats_request(options)
         transport = self._transport()
         response = invoke(
@@ -325,8 +307,8 @@ class DurableApprovals:
         approval_id: str,
         comment: object,
     ) -> DurableApproval:
-        project = _identifier(project_id, "project_id")
-        approval = _identifier(approval_id, "approval_id")
+        project = identifier(project_id, "project_id")
+        approval = identifier(approval_id, "approval_id")
         note = _comment(comment)
         transport = self._transport()
         operation = (
@@ -348,11 +330,19 @@ class DurableApprovals:
 class Durable:
     """Start and follow executions of deployed durable functions."""
 
-    def __init__(self, client: DurableClientContext | ClientContextSource) -> None:
+    def __init__(
+        self,
+        client: DurableClientContext | ClientContextSource,
+        *,
+        _realtime: DurableMessageChannels | None = None,
+    ) -> None:
         """Bind durable operations to a Volcano client."""
         self._client: DurableClientContext = facade_context(client)
         # Approvals that workflows wait on with `ctx.wait_for_approval`.
         self.approvals: DurableApprovals = DurableApprovals(self._client)
+        # Messages workflows wait on with `ctx.wait_for_message`, and the ones
+        # they publish with `ctx.publish`.
+        self.messages: DurableMessages = DurableMessages(self._client, _realtime)
 
     def _durable_transport(self) -> DurableTransport:
         transport = self._client.transport()
@@ -371,9 +361,9 @@ class Durable:
 
         A durable function is never invoked synchronously: it can run for
         hours, so the platform accepts the start and answers with an execution
-        to follow. Starting is the only durable operation an application
-        credential may perform -- reading a result or stopping an execution is
-        owner-scoped.
+        to follow. Besides messaging an execution through `durable.messages`,
+        starting is the only durable operation an application credential may
+        perform -- reading a result or stopping an execution is owner-scoped.
 
         Passing `execution_name` makes the start idempotent: starting again
         under the same name returns the execution that already exists rather
@@ -385,13 +375,13 @@ class Durable:
             The accepted execution, or the existing execution for an idempotent start.
 
         """
-        identifier = _identifier(function_name, "function_name")
+        function = identifier(function_name, "function_name")
         name = None if execution_name is None else _execution_name(execution_name)
         transport = self._durable_transport()
         response = invoke(
             transport.start_durable_execution_from_application,
             authorization=self._client.function_token(),
-            function_id=identifier,
+            function_id=function,
             payload={} if payload is None else payload,
             execution_name=name,
         )
@@ -419,15 +409,15 @@ class Durable:
             The execution snapshot, including any available result or failure.
 
         """
-        project = _identifier(project_id, "project_id")
-        identifier = _identifier(function_name, "function_name")
-        execution = _identifier(execution_id, "execution_id")
+        project = identifier(project_id, "project_id")
+        function = identifier(function_name, "function_name")
+        execution = identifier(execution_id, "execution_id")
         transport = self._durable_transport()
         response = invoke(
             transport.get_durable_execution,
             authorization=self._client.session_token(),
             project_id=project,
-            function_id=identifier,
+            function_id=function,
             execution_id=execution,
         )
         response_body: object = response_payload(response, _HTTP_OK)
@@ -453,15 +443,15 @@ class Durable:
             Execution summaries and pagination metadata.
 
         """
-        project = _identifier(project_id, "project_id")
-        identifier = _identifier(function_name, "function_name")
+        project = identifier(project_id, "project_id")
+        function = identifier(function_name, "function_name")
         transport = self._durable_transport()
         request = DurableExecutionListRequest(status=status, page=page, limit=limit)
         response = invoke(
             transport.list_durable_executions,
             authorization=self._client.session_token(),
             project_id=project,
-            function_id=identifier,
+            function_id=function,
             request=request,
         )
         response_body: object = response_payload(response, _HTTP_OK)
@@ -487,15 +477,15 @@ class Durable:
             The execution snapshot after the stop request; it may still be running.
 
         """
-        project = _identifier(project_id, "project_id")
-        identifier = _identifier(function_name, "function_name")
-        execution = _identifier(execution_id, "execution_id")
+        project = identifier(project_id, "project_id")
+        function = identifier(function_name, "function_name")
+        execution = identifier(execution_id, "execution_id")
         transport = self._durable_transport()
         response = invoke(
             transport.stop_durable_execution,
             authorization=self._client.session_token(),
             project_id=project,
-            function_id=identifier,
+            function_id=function,
             execution_id=execution,
         )
         response_body: object = response_payload(response, _HTTP_OK)
@@ -520,7 +510,7 @@ def _execution_name(value: object) -> str:
         If the name is empty, is not a string, or exceeds the length limit.
 
     """
-    name = _identifier(value, "execution_name")
+    name = identifier(value, "execution_name")
     if len(name) > _MAX_EXECUTION_NAME_LENGTH:
         message = (
             f"execution_name must be at most {_MAX_EXECUTION_NAME_LENGTH} characters"
@@ -529,50 +519,15 @@ def _execution_name(value: object) -> str:
     return name
 
 
-def _identifier(value: object, field: str) -> str:
-    """Require a non-empty path segment, and a UUID where one is sent as one.
-
-    An empty segment would address the collection instead of the execution,
-    which is a different request rather than a failed one.
-
-    Returns
-    -------
-    str
-        The trimmed identifier, preserving its UUID spelling.
-
-    Raises
-    ------
-    ValueError
-        If the value is empty, is not a string, or requires a valid UUID.
-
-    """
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(_INVALID_IDENTIFIERS[field])
-    trimmed = value.strip()
-    if field in _UUID_IDENTIFIERS:
-        try:
-            _ = UUID(trimmed)
-        except ValueError as exc:
-            raise ValueError(_UUID_IDENTIFIERS[field]) from exc
-    return trimmed
-
-
-def _known_options(options: Mapping[str, object], known: frozenset[str]) -> None:
-    unknown = sorted(options.keys() - known)
-    if unknown:
-        message = f"unexpected option: {', '.join(unknown)}"
-        raise TypeError(message)
-
-
 def _list_request(options: DurableApprovalListOptions) -> DurableApprovalListRequest:
-    _known_options(options, _LIST_OPTIONS)
+    known_options(options, _LIST_OPTIONS)
     status = options.get("status")
     execution_id = options.get("execution_id")
     return DurableApprovalListRequest(
         status=None if status is None else _approval_status(status),
         function=_function_filter(options.get("function")),
         execution_id=(
-            None if execution_id is None else _identifier(execution_id, "execution_id")
+            None if execution_id is None else identifier(execution_id, "execution_id")
         ),
         from_=_moment(options.get("from_"), "from_"),
         to=_moment(options.get("to"), "to"),
@@ -584,7 +539,7 @@ def _list_request(options: DurableApprovalListOptions) -> DurableApprovalListReq
 def _stats_request(
     options: DurableApprovalStatsOptions,
 ) -> DurableApprovalStatsRequest:
-    _known_options(options, _STATS_OPTIONS)
+    known_options(options, _STATS_OPTIONS)
     return DurableApprovalStatsRequest(
         function=_function_filter(options.get("function")),
         from_=_moment(options.get("from_"), "from_"),

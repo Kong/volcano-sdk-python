@@ -12,6 +12,7 @@ from uuid import UUID
 from ._auth_requests import AuthRequests
 from ._client_context import ClientContext
 from ._client_session import BootstrapCredentials, CallbackOutcome, bootstrap_session
+from ._realtime_durable import ClientRealtime
 from ._sandbox import SandboxRequests, SandboxTransport
 from ._session import validate_refresh_identity
 from ._session_operations import SessionOperations
@@ -30,7 +31,6 @@ from .models import (
     JSONValue,
     Session,
 )
-from .realtime import CentrifugeFactory, Realtime
 from .sandboxes import Sandboxes
 from .storage import Storage
 
@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from ._transport_sandbox import SandboxRequest
+    from .realtime import CentrifugeFactory, Realtime
 
 _NO_ACTIVE_SESSION = "No active session"
 _NO_SERVICE_KEY = "No service key configured"
@@ -88,20 +89,25 @@ class VolcanoClient:
         self._auth_requests: AuthRequests = AuthRequests(auth_context)
         self.auth: Auth = Auth(auth_context, _requests=self._auth_requests)
         self._facades: ClientContext = self._facade_context()
-        self.functions: Functions = Functions(self._facades)
-        self.durable: Durable = Durable(self._facades)
-        self.logs: Logs = Logs(self._facades)
-        self.storage: Storage = Storage(self._facades)
-        self.locks: Locks = Locks(self._facades)
-        self.sandboxes: Sandboxes = Sandboxes(SandboxRequests(self._sandbox_request))
-        if _realtime_client_factory is None:
-            self.realtime: Realtime = Realtime(self._facades, api_url=self._api_url)
-        else:
-            self.realtime = Realtime(
+        # One connection serves both channels and durable message subscriptions.
+        realtime = (
+            ClientRealtime(self._facades, api_url=self._api_url)
+            if _realtime_client_factory is None
+            else ClientRealtime(
                 self._facades,
                 api_url=self._api_url,
                 client_factory=_realtime_client_factory,
             )
+        )
+        self.functions: Functions = Functions(self._facades)
+        self.durable: Durable = Durable(
+            self._facades, _realtime=realtime.durable_channels()
+        )
+        self.logs: Logs = Logs(self._facades)
+        self.storage: Storage = Storage(self._facades)
+        self.locks: Locks = Locks(self._facades)
+        self.sandboxes: Sandboxes = Sandboxes(SandboxRequests(self._sandbox_request))
+        self.realtime: Realtime = realtime
 
     def _auth_context(self) -> AuthContext:
         def capture_auth_session_binding() -> tuple[

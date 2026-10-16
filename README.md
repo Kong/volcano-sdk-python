@@ -246,7 +246,8 @@ Anonymous and service keys do not refresh.
 `durable.start()` begins an execution of a deployed durable function and returns
 a handle rather than a result: an execution can run for up to 366 days, so its
 result is read back with `durable.get()`. It takes the credential `functions.invoke()`
-takes, and is the only durable operation an application credential may perform.
+takes, and is, with `durable.messages`, the only durable operation an
+application credential may perform.
 An `execution_name` makes the start idempotent — starting again under the same
 name returns the execution that already exists rather than beginning a second
 one, and is charged once.
@@ -281,6 +282,40 @@ deciding an approval that expired or whose execution ended, raises
 `ConflictError` with `code` set to `approval_decided`, `approval_expired`, or
 `approval_cancelled`. See the
 [functions guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/functions.md#decide-approvals-from-a-backend).
+
+`durable.messages` sends messages to a running execution, lists its messages,
+and follows what it publishes. It takes the credential `durable.start()` takes;
+pass the execution's `client_token` when an anonymous key, or a signed-in user
+who did not start the execution, should reach it:
+
+```python
+message = client.durable.messages.send(
+    "order-pipeline",
+    execution.id,
+    "address-confirmed",
+    {"address_id": "addr_19"},
+    client_token=execution.client_token,
+    idempotency_key="confirm-addr_19",
+)
+page = client.durable.messages.list("order-pipeline", execution.id, direction="out")
+subscription = await client.durable.messages.subscribe(
+    "order-pipeline",
+    execution.id,
+    lambda m: print(m.name, m.data),
+    client_token=execution.client_token,
+)
+```
+
+`subscribe()` delivers what the execution publishes in `seq` order, once each,
+including what it published before the call, and needs a signed-in session for
+the realtime connection. A client holding only an anonymous or service key gets
+`RuntimeError`, even with the `client_token`; it can poll `list()` with `after`
+instead. A subscription the server ends, as when the execution is no longer
+visible to the session, leaves the channel and is reported once to the event
+loop's exception handler. A send to an execution that has ended raises
+`ConflictError` with `code` set to `execution_not_running`. Pass `project_id` to
+use the owner's project route instead. See the
+[functions guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/functions.md#send-and-follow-messages).
 
 ## Write a durable function
 
@@ -351,6 +386,8 @@ the clock or a random value.
 | `ctx.wait(name, duration)` | Suspends the execution. `"30s"`, `"2h"`, `"1m30s"`, a whole number of seconds, or `{"hours": 2}`. |
 | `ctx.wait_until(check, options, name=None)` | Polls your own state until `options.until` holds, suspending between checks. `options.initial_state` is required. |
 | `ctx.wait_for_approval(name, title=..., description=None, details=None, timeout=None)` | Suspends until a person approves or denies, and returns an `ApprovalDecision`. A timeout returns `status="expired"` rather than raising. |
+| `ctx.wait_for_message(name, timeout=None)` | Suspends until a message with that name is sent to the execution, and returns a `ReceivedMessage`, or `None` once the timeout passes. |
+| `ctx.publish(name, data=None)` | Records a message for applications to list or receive live, and returns a `PublishedMessage` with `id` and `seq`. |
 | `ctx.map(items, fn, name=None, options=None)` | Runs the same work over every item, each in its own child context. |
 | `ctx.parallel(branches, name=None, options=None)` | Runs independent branches at the same time. |
 | `ctx.child(name, fn)` | Groups operations under one recorded context. |

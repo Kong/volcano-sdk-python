@@ -57,6 +57,10 @@ UnsubscribeCallback = Callable[[], None]
 ChannelType: TypeAlias = Literal["broadcast", "presence", "postgres"]
 
 
+# Durable channels are opened only by `durable.messages.subscribe`.
+ChannelKind: TypeAlias = ChannelType | Literal["durable"]
+
+
 PostgresEvent: TypeAlias = Literal["INSERT", "UPDATE", "DELETE"]
 
 

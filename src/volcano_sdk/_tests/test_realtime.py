@@ -446,6 +446,7 @@ class FakeSubscription:
         *,
         join_leave: bool,
         recoverable: bool,
+        data: Mapping[str, str] | None = None,
     ) -> None:
         if events is not None and not isinstance(events, ChannelEvents):
             message = "expected SDK channel events"
@@ -454,6 +455,7 @@ class FakeSubscription:
         self.events: ChannelEvents | None = events
         self.join_leave: bool = join_leave
         self.recoverable: bool = recoverable
+        self.data: Mapping[str, str] | None = data
         self.calls: list[tuple[str, object]] = []
         self.presence_clients: dict[str, object] = {}
         self.presence_error: Exception | None = None
@@ -530,6 +532,10 @@ class FakeSubscription:
         await self._events().on_subscribing(
             SimpleNamespace(code=0, reason="reconnecting")
         )
+
+    async def emit_unsubscribed(self, code: int, reason: str) -> None:
+        self.subscribed.clear()
+        await self._events().on_unsubscribed(SimpleNamespace(code=code, reason=reason))
 
     async def emit(self, data: object) -> None:
         await self._events().on_publication(
@@ -608,6 +614,7 @@ class FakeCentrifugeClient:
         events: object,
         join_leave: bool = False,
         recoverable: bool = False,
+        data: Mapping[str, str] | None = None,
     ) -> FakeSubscription:
         if name in self._subs:
             message = f"duplicate subscription: {name}"
@@ -618,6 +625,7 @@ class FakeCentrifugeClient:
             events,
             join_leave=join_leave,
             recoverable=recoverable,
+            data=data,
         )
         self.subscription.presence_clients = self.presence_clients.copy()
         self.subscription.presence_error = self.presence_error
@@ -697,9 +705,14 @@ class SDKNativeClient(NativeClient):
         *,
         join_leave: bool = False,
         recoverable: bool = False,
+        data: object | None = None,
     ) -> SDKNativeSubscription:
         subscription = super().new_subscription(
-            name, events=events, join_leave=join_leave, recoverable=recoverable
+            name,
+            events=events,
+            join_leave=join_leave,
+            recoverable=recoverable,
+            data=data,
         )
         if not isinstance(subscription, SDKNativeSubscription):
             message = "expected instrumented native subscription"
@@ -3924,6 +3937,7 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
         events: object,
         join_leave: bool = False,
         recoverable: bool = False,
+        data: Mapping[str, str] | None = None,
     ) -> FakeSubscription:
         official.calls.append(f"channel:{name}")
         official.subscription = BlockingSubscription(
@@ -3931,6 +3945,7 @@ def test_realtime_disconnect_excludes_subscription_on_an_existing_connection(
             events,
             join_leave=join_leave,
             recoverable=recoverable,
+            data=data,
         )
         official.subscriptions[name] = official.subscription
         return official.subscription

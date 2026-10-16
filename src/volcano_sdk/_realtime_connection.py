@@ -48,6 +48,7 @@ from ._realtime_messages import (
     POSTGRES_QUERY_UNAVAILABLE,
     CentrifugeFactory,
     CentrifugeSubscription,
+    ChannelKind,
     ChannelType,
     RealtimeConnectContext,
     RealtimeContext,
@@ -382,14 +383,17 @@ class RealtimeState(Generic[FacadeT]):
         self,
         name: str,
         *,
-        channel_type: ChannelType = "broadcast",
+        channel_type: ChannelKind = "broadcast",
+        current: object | None = None,
     ) -> None:
-        """Unsubscribe and forget one broadcast or presence channel."""
-        channel_type = validate_channel_type(channel_type)
+        """Unsubscribe and forget one channel.
+
+        Given `current`, it is left alone when another channel has replaced it.
+        """
         wire_name = f"{channel_type}:{name}"
         async with self.connection_lock:
             entry = self.channels.get(wire_name)
-            if entry is None:
+            if entry is None or (current is not None and current is not entry.state):
                 return
             channel = entry.state
             self.removing_channels.add(wire_name)
@@ -429,6 +433,8 @@ class RealtimeState(Generic[FacadeT]):
 
     async def _remove_channel_state(self, channel: ChannelState) -> None:
         channel.supersede_subscribe_intent()
+        # Before the native unsubscribe, whose failure skips the reset.
+        channel.end()
         await self._discard_subscription(channel)
         await channel.reset()
 
@@ -593,7 +599,9 @@ class RealtimeState(Generic[FacadeT]):
                 channel.name,
                 events=channel.subscription_events,
                 join_leave=channel.type == "presence",
-                recoverable=channel.type != "postgres",
+                # Postgres and durable deliveries are read back from the API.
+                recoverable=channel.type in {"broadcast", "presence"},
+                data=channel.subscribe_data,
             )
         return channel.subscription
 

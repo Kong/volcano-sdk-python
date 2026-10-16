@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Generic, Literal
 
 from typing_extensions import TypeVar
 
 if TYPE_CHECKING:
     from ._durable_protocols import RuntimeBatch, RuntimeBatchItem
-    from .models import DurableApprovalDecider
+    from .models import DurableApprovalDecider, DurableMessageSender, JSONValue
 
 T = TypeVar("T", default=object)
 
@@ -33,6 +33,29 @@ class ApprovalDecision:
     # RFC 3339, as Volcano recorded it; None when the approval expired or the
     # decision carries no readable time.
     decided_at: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReceivedMessage:
+    """What `ctx.wait_for_message` resumes with."""
+
+    id: str
+    name: str
+    # The JSON value sent, or None. Plain dicts and lists, so the handler can
+    # return or checkpoint it as it is.
+    data: JSONValue = field(hash=False)
+    sender: DurableMessageSender
+    # RFC 3339, as Volcano recorded it.
+    sent_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class PublishedMessage:
+    """What `ctx.publish` returns."""
+
+    id: str
+    # Orders the execution's messages; list the ones after it with `after`.
+    seq: int
 
 
 @dataclass(frozen=True, slots=True)

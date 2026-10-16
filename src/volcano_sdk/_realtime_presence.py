@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Protocol
 from ._realtime_messages import (
     CHANNEL_NOT_SUBSCRIBED,
     PRESENCE_ONLY,
-    ChannelType,
+    ChannelKind,
     RealtimePresenceInfo,
     freeze_mapping,
     presence_info,
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 
 class PresenceChannel(Protocol):
-    type: ChannelType
+    type: ChannelKind
     subscribed: bool
     presence_state: dict[str, RealtimePresenceInfo]
     presence_events: list[tuple[str, RealtimePresenceInfo]]

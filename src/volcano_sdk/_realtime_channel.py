@@ -33,7 +33,7 @@ from ._realtime_messages import (
     POSTGRES_QUEUE_LIMIT,
     CallbackDelivery,
     CentrifugeSubscription,
-    ChannelType,
+    ChannelKind,
     PostgresChange,
     PostgresChangeCallback,
     PostgresDelivery,
@@ -139,12 +139,21 @@ class ChannelEvents(SubscriptionEventHandler):
         await self.channel.begin_postgres_epoch()
         if self.channel.type == "presence":
             self.channel.presence.schedule_presence_sync()
+        if self.channel.resubscribed is not None:
+            self.channel.resubscribed()
 
     @override
     async def on_unsubscribed(self, ctx: object) -> None:
-        del ctx
-        if self.is_current():
-            await self.channel.transport_lost()
+        if not self.is_current():
+            return
+        # The SDK pauses a channel before it unsubscribes one, so one still
+        # unpaused was ended by the server, by an unsubscribe or by refusing to
+        # subscribe it again.
+        by_server = not self.channel.paused
+        await self.channel.transport_lost()
+        ended = self.channel.server_ended
+        if by_server and ended is not None:
+            ended(str(_native.native_attribute(ctx, "reason", "")))
 
     @override
     async def on_join(self, ctx: object) -> None:
@@ -179,9 +188,10 @@ class ChannelState:
         self,
         realtime: RealtimeOperations,
         name: str,
-        channel_type: ChannelType,
+        channel_type: ChannelKind,
         *,
         fetch_config: PostgresFetchConfig,
+        subscribe_data: Mapping[str, str] | None = None,
     ) -> None:
         """Create a channel managed by a realtime facade."""
         self.realtime: RealtimeOperations = realtime
@@ -189,8 +199,22 @@ class ChannelState:
             self, lambda: realtime.sync_presence(self)
         )
         self.wire_name: str = name
-        self.type: ChannelType = channel_type
+        self.type: ChannelKind = channel_type
         self.fetch_config: PostgresFetchConfig = fetch_config
+        # Sent with every subscribe request, resubscribes included.
+        self.subscribe_data: Mapping[str, str] | None = subscribe_data
+        # Called each time the subscription is established once it is set,
+        # after the subscribed state and callbacks are in place.
+        self.resubscribed: Callable[[], None] | None = None
+        # Called when removal starts or disconnect resets the channel, which
+        # then subscribes again only when asked to. A removal that fails and is
+        # retried calls it again.
+        self.ended: Callable[[], None] | None = None
+        # Called with the server's reason when it ends the subscription, which
+        # is not restored.
+        self.server_ended: Callable[[str], None] | None = None
+        # Called after a full callback queue drops a publication.
+        self.dropped: Callable[[], None] | None = None
         self.callbacks: dict[str, list[DynamicCallback]] = {}
         self.presence_state: dict[str, RealtimePresenceInfo] = {}
         self.presence_events: list[tuple[str, RealtimePresenceInfo]] = []
@@ -258,6 +282,7 @@ class ChannelState:
             "broadcast": {"message"},
             "presence": {"message", "join", "leave", "presence_sync"},
             "postgres": {"*"},
+            "durable": {"message"},
         }[self.type]
         if event not in allowed_events:
             message = f"unsupported realtime event: {event}"
@@ -536,6 +561,8 @@ class ChannelState:
                     "channel": self.name,
                 }
             )
+            if self.dropped is not None:
+                self.dropped()
         return True
 
     def _start_callback_dispatcher(self) -> None:
@@ -628,7 +655,12 @@ class ChannelState:
         if inspect.isawaitable(result):
             await result
 
+    def end(self) -> None:
+        if self.ended is not None:
+            self.ended()
+
     async def reset(self) -> None:
+        self.end()
         self.invalidate()
         await self._end_postgres_epoch()
         await self.presence.cancel_presence_sync()
