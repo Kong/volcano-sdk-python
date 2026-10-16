@@ -1930,6 +1930,77 @@ async def test_a_subscription_the_server_ends_is_left_and_reported_once(
         await client.realtime.disconnect()
 
 
+class EndedOnceReady(FakeSubscription):
+    """End the subscription after it is ready, before subscribe returns."""
+
+    ending: asyncio.Task[None] | None = None
+
+    @override
+    async def ready(self) -> None:
+        await super().ready()
+        # Runs before the task waiting on readiness wakes its caller.
+        self.ending = asyncio.create_task(
+            self.emit_unsubscribed(2000, "server unsubscribe")
+        )
+
+
+class EndedOnceReadyClient(FakeCentrifugeClient):
+    """End the first subscription once it is ready."""
+
+    ended: bool = False
+
+    @override
+    def new_subscription(
+        self,
+        name: str,
+        *,
+        events: object,
+        join_leave: bool = False,
+        recoverable: bool = False,
+        data: Mapping[str, str] | None = None,
+    ) -> FakeSubscription:
+        if self.ended:
+            return super().new_subscription(
+                name,
+                events=events,
+                join_leave=join_leave,
+                recoverable=recoverable,
+                data=data,
+            )
+        self.ended = True
+        subscription = EndedOnceReady(
+            name, events, join_leave=join_leave, recoverable=recoverable, data=data
+        )
+        self.subscriptions[name] = subscription
+        return subscription
+
+
+async def test_an_end_after_the_channel_is_ready_fails_subscribe() -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    native = EndedOnceReadyClient()
+    client = VolcanoClient(
+        anon_key="anon-key",
+        access_token="access-token",
+        _transport=transport,
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    received = Received()
+    try:
+        with pytest.raises(RuntimeError, match=r"^server unsubscribe$"):
+            _ = await client.durable.messages.subscribe(
+                "checkout", EXECUTION_ID, received
+            )
+
+        assert received.seqs == []
+        assert CHANNEL not in native.subscriptions
+        again = Received()
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, again)
+        assert again.seqs == [1]
+    finally:
+        await client.realtime.disconnect()
+
+
 async def test_an_unsubscribe_the_client_makes_is_not_taken_for_the_server_s(
     reports: Reports,
 ) -> None:

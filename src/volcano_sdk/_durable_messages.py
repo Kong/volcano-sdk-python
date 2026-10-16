@@ -309,8 +309,8 @@ class DurableMessages:
         Raises
         ------
         RuntimeError
-            If the client has no signed-in session, or already subscribes to
-            the execution.
+            If the client has no signed-in session, already subscribes to the
+            execution, or the server ends the subscription before it returns.
 
         """
         known_options(options, _TARGET_OPTIONS)
@@ -358,10 +358,9 @@ async def _follow(
     _ = channel.on("message", stream.live)
     channel.ended = stream.close
     try:
-        await channel.subscribe()
+        await _subscribe(channel)
         channel.resubscribed = stream.resubscribed
         channel.dropped = stream.dropped
-        # Before this, subscribe raises the server's refusal instead.
         channel.server_ended = _leave_once_ended(stream, subscription)
         await stream.catch_up()
     except BaseException:
@@ -369,6 +368,17 @@ async def _follow(
         raise
     stream.end_with(subscription.unsubscribe)
     return subscription
+
+
+async def _subscribe(channel: DurableChannel) -> None:
+    # Until subscribe returns, an end is raised rather than reported. One that
+    # lands after the channel is ready does not make subscribe raise, so it is
+    # kept until then.
+    ended: list[str] = []
+    channel.server_ended = ended.append
+    await channel.subscribe()
+    if ended:
+        raise RuntimeError(ended[0])
 
 
 def _leave_once_ended(
