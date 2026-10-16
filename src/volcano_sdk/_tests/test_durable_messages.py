@@ -1008,12 +1008,50 @@ async def test_subscribe_ignores_messages_sent_to_the_execution() -> None:
         channel = subscription_of(native)
 
         await channel.emit(published(1, direction="in"))
-        await channel.emit({"seq": 2})
-        await channel.emit(published(3))
+        await channel.emit(published(2))
 
-        assert await received.until(1) == [3]
+        assert await received.until(1) == [2]
+        assert transport.read_after() == [0]
     finally:
         await client.realtime.disconnect()
+
+
+async def test_an_unreadable_publication_is_read_back() -> None:
+    transport = FakeMessageTransport()
+    client, native = subscriber(transport)
+    received = Received()
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        transport.published = [1]
+        await subscription_of(native).emit({"seq": 1})
+
+        assert await received.until(1) == [1]
+        assert transport.read_after() == [0, 0]
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_an_unreadable_publication_waits_for_the_first_read() -> None:
+    received = Received()
+    reads: list[int] = []
+
+    async def deliver(message: DurableMessage) -> None:
+        received(await completed_operation(message))
+
+    async def list_after(after: int) -> DurableMessagePage:
+        reads.append(after)
+        return await completed_operation(
+            DurableMessagePage(
+                messages=(durable_message(published(1)),), has_more=False
+            )
+        )
+
+    stream = DurableMessageStream(deliver, list_after, lambda: True)
+    await stream.live({"seq": 1})
+    await stream.catch_up()
+
+    assert received.seqs == [1]
+    assert reads == [0]
 
 
 async def test_live_messages_wait_for_the_first_read_and_follow_it_in_order() -> None:

@@ -35,10 +35,7 @@ class _Held:
 
 
 def _published(data: object) -> _Held | None:
-    try:
-        message = durable_message(data)
-    except TypeError:
-        return None
+    message = durable_message(data)
     if message.direction != "out":
         return None
     return _Held(message, broadcast_prev_seq(data))
@@ -80,7 +77,8 @@ class DurableMessageStream:
 
     The channel itself drops publications while it is not subscribed, or
     while its callback queue is full, and reports each resubscription and
-    each drop, which start a catch-up of what it dropped.
+    each drop, which start a catch-up of what it dropped. A publication that
+    does not read as a message starts one too.
     """
 
     def __init__(
@@ -112,8 +110,8 @@ class DurableMessageStream:
 
     async def live(self, data: object) -> None:
         """Deliver a channel publication, or hold it until a catch-up releases it."""
-        held = _published(data)
-        if held is None or self._closed:
+        held = self._readable(data)
+        if held is None:
             return
         if not self._started or self._catch_ups > 0 or self._held:
             self._hold(held)
@@ -123,6 +121,18 @@ class DurableMessageStream:
             self._catch_up_in_background()
             return
         await self._deliver(held.message, report=True)
+
+    def _readable(self, data: object) -> _Held | None:
+        if self._closed:
+            return None
+        try:
+            return _published(data)
+        except TypeError:
+            # Still one the execution published, so the list is read for it,
+            # by the first catch-up when that has yet to start.
+            if self._started:
+                self._catch_up_in_background()
+            return None
 
     def _hold(self, held: _Held) -> None:
         insort(self._held, held, key=lambda each: each.message.seq)
