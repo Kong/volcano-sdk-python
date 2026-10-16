@@ -2004,6 +2004,11 @@ async def test_an_ended_subscription_it_cannot_leave_still_reports_the_end(
             "message": "Volcano could not leave the ended durable message channel",
             "exception": failure,
         }
+        channel.unsubscribe_error = None
+        _ = await client.durable.messages.subscribe(
+            "checkout", EXECUTION_ID, Received()
+        )
+        assert subscription_of(native) is not channel
     finally:
         await client.realtime.disconnect()
 
@@ -2281,7 +2286,7 @@ async def test_leaving_after_a_removal_spares_the_channel_that_replaced_it() -> 
 
         async def replace() -> object:
             async with state.connection_lock:
-                return DurableChannels(state).durable_channel(EXECUTION_ID, None)
+                return await DurableChannels(state).durable_channel(EXECUTION_ID, None)
 
         replacing = asyncio.create_task(replace())
         await asyncio.sleep(0)
@@ -2453,6 +2458,42 @@ async def test_a_failed_first_read_fails_subscribe_and_leaves_the_channel() -> N
         _ = await client.durable.messages.subscribe(
             "checkout", EXECUTION_ID, Received()
         )
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_a_failed_setup_it_cannot_leave_raises_its_own_error_and_is_left_next(
+    reports: Reports,
+) -> None:
+    transport = FakeMessageTransport()
+    transport.read_answers = [FakeResponse(404, {"error": "execution not found"}, {})]
+    gate = asyncio.Event()
+    transport.next_read_gate = gate
+    client, native = subscriber(transport)
+    try:
+        subscribing = asyncio.create_task(
+            client.durable.messages.subscribe("checkout", EXECUTION_ID, Received())
+        )
+        await transport.read_arrivals.wait_for(1)
+        abandoned = subscription_of(native)
+        failure = CentrifugeError("unsubscribe failed")
+        abandoned.unsubscribe_error = failure
+        gate.set()
+        with pytest.raises(NotFoundError, match="execution not found"):
+            _ = await subscribing
+
+        assert reports.contexts == [
+            {
+                "message": "Volcano could not leave the ended durable message channel",
+                "exception": failure,
+            }
+        ]
+        abandoned.unsubscribe_error = None
+        received = Received()
+        transport.published = [1]
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        assert received.seqs == [1]
+        assert subscription_of(native) is not abandoned
     finally:
         await client.realtime.disconnect()
 

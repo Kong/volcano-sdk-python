@@ -134,7 +134,7 @@ class DurableChannel(Protocol):
 class DurableMessageChannels(Protocol):
     """The realtime connection a subscription follows an execution on."""
 
-    def durable_channel(
+    async def durable_channel(
         self, execution_id: str, client_token: str | None
     ) -> DurableChannel | None:
         """Open the execution's channel, or None when it is already open."""
@@ -327,7 +327,9 @@ class DurableMessages:
         stream = DurableMessageStream(
             deliver, self._reader(target), realtime.session_check()
         )
-        channel = realtime.durable_channel(target.execution_id, target.client_token)
+        channel = await realtime.durable_channel(
+            target.execution_id, target.client_token
+        )
         if channel is None:
             raise RuntimeError(_ALREADY_SUBSCRIBED)
         return await _follow(stream, channel, realtime)
@@ -374,11 +376,26 @@ async def _follow(
         channel.dropped = stream.dropped
         await _until_ended(stream.catch_up(), ended)
     except BaseException:
-        await subscription.unsubscribe()
+        await _leave_after_failed_setup(subscription)
         raise
     channel.server_ended = _leave_once_ended(stream, subscription)
     stream.end_with(subscription.unsubscribe)
     return subscription
+
+
+async def _leave_after_failed_setup(subscription: DurableMessageSubscription) -> None:
+    # subscribe raises what failed the setup, so a failure to leave is
+    # reported instead; the next subscription to the execution leaves it.
+    leaving = asyncio.ensure_future(subscription.unsubscribe())
+    leaving.add_done_callback(_report_failed_leave)
+    _ = await asyncio.wait([leaving])
+
+
+def _report_failed_leave(leaving: asyncio.Future[None]) -> None:
+    if not leaving.cancelled() and (error := leaving.exception()) is not None:
+        asyncio.get_running_loop().call_exception_handler(
+            {"message": _LEAVE_FAILED, "exception": error}
+        )
 
 
 async def _until_ended(step: Awaitable[None], ended: list[str]) -> None:
@@ -408,13 +425,6 @@ def _leave_once_ended(
                 {"message": _SERVER_ENDED, "exception": RuntimeError(reason)}
             )
 
-    def left(task: asyncio.Task[None]) -> None:
-        leaving.discard(task)
-        if not task.cancelled() and (error := task.exception()) is not None:
-            asyncio.get_running_loop().call_exception_handler(
-                {"message": _LEAVE_FAILED, "exception": error}
-            )
-
     def ended(reason: str) -> None:
         stream.close()
         # Not awaited by the channel's event: the connection's reader runs it,
@@ -422,7 +432,8 @@ def _leave_once_ended(
         # that reader may hold.
         task = asyncio.create_task(leave(reason))
         leaving.add(task)
-        task.add_done_callback(left)
+        task.add_done_callback(leaving.discard)
+        task.add_done_callback(_report_failed_leave)
 
     return ended
 

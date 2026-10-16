@@ -37,11 +37,17 @@ class DurableChannels(Generic[FacadeT]):
     def __init__(self, state: RealtimeState[FacadeT]) -> None:
         """Register durable channels with a client's realtime state."""
         self._state: RealtimeState[FacadeT] = state
+        # Channels whose subscription closed but which could not be left, by
+        # name. Nothing else would leave them, and they would refuse every
+        # later subscription to their execution.
+        self._abandoned: dict[str, DurableChannel] = {}
 
-    def durable_channel(
+    async def durable_channel(
         self, execution_id: str, client_token: str | None
     ) -> ChannelState | None:
         """Open the channel an execution publishes on.
+
+        A channel an ended subscription could not leave is left first.
 
         Returns
         -------
@@ -51,6 +57,8 @@ class DurableChannels(Generic[FacadeT]):
         """
         state = self._state
         wire_name = _CHANNEL_PREFIX + execution_id
+        if (abandoned := self._abandoned.pop(wire_name, None)) is not None:
+            await self.remove_durable_channel(abandoned)
         if wire_name in state.channels or wire_name in state.removing_channels:
             return None
         channel = ChannelState(
@@ -86,12 +94,20 @@ class DurableChannels(Generic[FacadeT]):
         return in_session
 
     async def remove_durable_channel(self, channel: DurableChannel) -> None:
-        """Unsubscribe and forget a channel, unless another has replaced it."""
-        await self._state.remove_channel(
-            channel.name.removeprefix(_CHANNEL_PREFIX),
-            channel_type="durable",
-            current=channel,
-        )
+        """Unsubscribe and forget a channel, unless another has replaced it.
+
+        One that cannot be left is left again by the next subscription to its
+        execution.
+        """
+        try:
+            await self._state.remove_channel(
+                channel.name.removeprefix(_CHANNEL_PREFIX),
+                channel_type="durable",
+                current=channel,
+            )
+        except BaseException:
+            self._abandoned[channel.name] = channel
+            raise
 
 
 class ClientRealtime(Realtime):
