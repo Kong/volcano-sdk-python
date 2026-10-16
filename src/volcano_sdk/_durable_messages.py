@@ -44,6 +44,7 @@ _ALREADY_SUBSCRIBED = (
 _SERVER_ENDED = (
     "The server ended the durable message subscription; subscribe again to resume"
 )
+_LEAVE_FAILED = "Volcano could not leave the ended durable message channel"
 # The spec's bounds on Idempotency-Key, X-Volcano-Client-Token, and a page.
 _MAX_IDEMPOTENCY_KEY_LENGTH = 255
 _MAX_CLIENT_TOKEN_LENGTH = 128
@@ -400,10 +401,19 @@ def _leave_once_ended(
 
     # Left before it is reported, so the report can follow the execution again.
     async def leave(reason: str) -> None:
-        await subscription.unsubscribe()
-        asyncio.get_running_loop().call_exception_handler(
-            {"message": _SERVER_ENDED, "exception": RuntimeError(reason)}
-        )
+        try:
+            await subscription.unsubscribe()
+        finally:
+            asyncio.get_running_loop().call_exception_handler(
+                {"message": _SERVER_ENDED, "exception": RuntimeError(reason)}
+            )
+
+    def left(task: asyncio.Task[None]) -> None:
+        leaving.discard(task)
+        if not task.cancelled() and (error := task.exception()) is not None:
+            asyncio.get_running_loop().call_exception_handler(
+                {"message": _LEAVE_FAILED, "exception": error}
+            )
 
     def ended(reason: str) -> None:
         stream.close()
@@ -412,7 +422,7 @@ def _leave_once_ended(
         # that reader may hold.
         task = asyncio.create_task(leave(reason))
         leaving.add(task)
-        task.add_done_callback(leaving.discard)
+        task.add_done_callback(left)
 
     return ended
 
@@ -452,14 +462,22 @@ def _bounded_text(value: object, field: str, limit: int) -> str | None:
     if not isinstance(value, str) or not value:
         message = f"{field} must be a non-empty string"
         raise ValueError(message)
-    # Sent as a header, which carries printable ASCII only.
-    if not (value.isascii() and value.isprintable()):
-        message = f"{field} must be printable ASCII"
-        raise ValueError(message)
+    _require_header_value(value, field)
     if len(value) > limit:
         message = f"{field} must be at most {limit} characters"
         raise ValueError(message)
     return value
+
+
+def _require_header_value(value: str, field: str) -> None:
+    # Headers carry printable ASCII only, and the HTTP stack refuses a value
+    # with surrounding whitespace.
+    if not (value.isascii() and value.isprintable()):
+        message = f"{field} must be printable ASCII"
+        raise ValueError(message)
+    if value != value.strip():
+        message = f"{field} must not start or end with whitespace"
+        raise ValueError(message)
 
 
 def _after(value: object) -> int | None:

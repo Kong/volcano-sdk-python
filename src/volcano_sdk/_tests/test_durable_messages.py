@@ -499,6 +499,10 @@ INVALID_ARGUMENTS: dict[str, tuple[Callable[[DurableMessages], object], str]] = 
         lambda m: m.send("checkout", EXECUTION_ID, "ping", client_token="tök"),
         "client_token must be printable ASCII",
     ),
+    "padded client token": (
+        lambda m: m.send("checkout", EXECUTION_ID, "ping", client_token=" token"),
+        "client_token must not start or end with whitespace",
+    ),
     "empty name": (
         lambda m: m.send("checkout", EXECUTION_ID, ""),
         "name must not be empty",
@@ -532,6 +536,12 @@ INVALID_ARGUMENTS: dict[str, tuple[Callable[[DurableMessages], object], str]] = 
     "unprintable idempotency key": (
         lambda m: m.send("checkout", EXECUTION_ID, "ping", idempotency_key="a\nb"),
         "idempotency_key must be printable ASCII",
+    ),
+    "padded idempotency key": (
+        lambda m: m.send(
+            "checkout", EXECUTION_ID, "ping", idempotency_key="confirm-addr "
+        ),
+        "idempotency_key must not start or end with whitespace",
     ),
     "list function": (
         lambda m: m.list(" ", EXECUTION_ID),
@@ -1966,6 +1976,34 @@ async def test_a_subscription_the_server_ends_is_left_and_reported_once(
         assert str(ended).startswith(
             "The server ended the durable message subscription"
         )
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_an_ended_subscription_it_cannot_leave_still_reports_the_end(
+    reports: Reports,
+) -> None:
+    transport = FakeMessageTransport()
+    client, native = subscriber(transport)
+    try:
+        _ = await client.durable.messages.subscribe(
+            "checkout", EXECUTION_ID, Received()
+        )
+        channel = subscription_of(native)
+        failure = CentrifugeError("unsubscribe failed")
+        channel.unsubscribe_error = failure
+        await channel.emit_unsubscribed(2000, "server unsubscribe")
+        await reports.arrivals.wait_for(2)
+
+        ended, left = reports.contexts
+        assert str(ended["message"]).startswith(
+            "The server ended the durable message subscription"
+        )
+        assert str(ended["exception"]) == "server unsubscribe"
+        assert left == {
+            "message": "Volcano could not leave the ended durable message channel",
+            "exception": failure,
+        }
     finally:
         await client.realtime.disconnect()
 
