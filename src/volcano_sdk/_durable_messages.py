@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from typing import TYPE_CHECKING, Protocol, Unpack, runtime_checkable
 
@@ -39,6 +40,9 @@ _NO_SESSION = (
 )
 _ALREADY_SUBSCRIBED = (
     "This client already subscribes to the execution's messages; unsubscribe first"
+)
+_SERVER_ENDED = (
+    "The server ended the durable message subscription; subscribe again to resume"
 )
 # The spec's bounds on Idempotency-Key, X-Volcano-Client-Token, and a page.
 _MAX_IDEMPOTENCY_KEY_LENGTH = 255
@@ -107,6 +111,8 @@ class DurableChannel(Protocol):
     resubscribed: Callable[[], None] | None
     # Called when the client's realtime facade removes or disconnects it.
     ended: Callable[[], None] | None
+    # Called with the server's reason when the server ends the subscription.
+    server_ended: Callable[[str], None] | None
     # Called each time a full callback queue drops a publication.
     dropped: Callable[[], None] | None
 
@@ -355,12 +361,38 @@ async def _follow(
         await channel.subscribe()
         channel.resubscribed = stream.resubscribed
         channel.dropped = stream.dropped
+        # Before this, subscribe raises the server's refusal instead.
+        channel.server_ended = _leave_once_ended(stream, subscription)
         await stream.catch_up()
     except BaseException:
         await subscription.unsubscribe()
         raise
     stream.end_with(subscription.unsubscribe)
     return subscription
+
+
+def _leave_once_ended(
+    stream: DurableMessageStream, subscription: DurableMessageSubscription
+) -> Callable[[str], None]:
+    leaving: set[asyncio.Task[None]] = set()
+
+    # Left before it is reported, so the report can follow the execution again.
+    async def leave(reason: str) -> None:
+        await subscription.unsubscribe()
+        asyncio.get_running_loop().call_exception_handler(
+            {"message": _SERVER_ENDED, "exception": RuntimeError(reason)}
+        )
+
+    def ended(reason: str) -> None:
+        stream.close()
+        # Not awaited by the channel's event: the connection's reader runs it,
+        # and leaving takes the connection lock, which a request waiting on
+        # that reader may hold.
+        task = asyncio.create_task(leave(reason))
+        leaving.add(task)
+        task.add_done_callback(leaving.discard)
+
+    return ended
 
 
 def _deliverer(

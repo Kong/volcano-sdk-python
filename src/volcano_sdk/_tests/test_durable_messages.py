@@ -1896,6 +1896,59 @@ async def test_a_session_change_leaves_the_channel(reports: Reports) -> None:
         await client.realtime.disconnect()
 
 
+@pytest.mark.parametrize(
+    ("code", "reason"), [(2000, "server unsubscribe"), (103, "permission denied")]
+)
+async def test_a_subscription_the_server_ends_is_left_and_reported_once(
+    code: int, reason: str, reports: Reports
+) -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    client, native = subscriber(transport)
+    received = Received()
+    try:
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        channel = subscription_of(native)
+        await channel.emit_unsubscribed(code, reason)
+        await reports.arrivals.wait_for(1)
+        await channel.emit(published(2))
+
+        assert CHANNEL not in native.subscriptions
+        error = reports.contexts[0]["exception"]
+        assert isinstance(error, RuntimeError)
+        assert str(error) == reason
+        transport.published += [2]
+        again = Received()
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, again)
+        assert again.seqs == [1, 2]
+        assert received.seqs == [1]
+        (ended,) = reports.messages
+        assert str(ended).startswith(
+            "The server ended the durable message subscription"
+        )
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_an_unsubscribe_the_client_makes_is_not_taken_for_the_server_s(
+    reports: Reports,
+) -> None:
+    transport = FakeMessageTransport()
+    client, _native = subscriber(transport)
+    state = realtime_state(client.realtime)
+    try:
+        _ = await client.durable.messages.subscribe(
+            "checkout", EXECUTION_ID, Received()
+        )
+        await state.unsubscribe(state.channels[CHANNEL].state)
+        await asyncio.sleep(0.01)
+
+        assert reports.contexts == []
+        assert CHANNEL in state.channels
+    finally:
+        await client.realtime.disconnect()
+
+
 @pytest.mark.parametrize("listed", [[], [1]])
 async def test_a_session_change_during_the_first_read_fails_subscribe(
     listed: list[int],

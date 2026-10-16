@@ -144,9 +144,16 @@ class ChannelEvents(SubscriptionEventHandler):
 
     @override
     async def on_unsubscribed(self, ctx: object) -> None:
-        del ctx
-        if self.is_current():
-            await self.channel.transport_lost()
+        if not self.is_current():
+            return
+        # The SDK pauses a channel before it unsubscribes one, so one still
+        # unpaused was ended by the server, by an unsubscribe or by refusing to
+        # subscribe it again.
+        by_server = not self.channel.paused
+        await self.channel.transport_lost()
+        ended = self.channel.server_ended
+        if by_server and ended is not None:
+            ended(str(_native.native_attribute(ctx, "reason", "")))
 
     @override
     async def on_join(self, ctx: object) -> None:
@@ -202,6 +209,9 @@ class ChannelState:
         # Called when removal or disconnect resets the channel, which then
         # subscribes again only when asked to.
         self.ended: Callable[[], None] | None = None
+        # Called with the server's reason when it ends the subscription, which
+        # is not restored.
+        self.server_ended: Callable[[str], None] | None = None
         # Called after a full callback queue drops a publication.
         self.dropped: Callable[[], None] | None = None
         self.callbacks: dict[str, list[DynamicCallback]] = {}

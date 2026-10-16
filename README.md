@@ -309,7 +309,9 @@ subscription = await client.durable.messages.subscribe(
 including what it published before the call, and needs a signed-in session for
 the realtime connection. A client holding only an anonymous or service key gets
 `RuntimeError`, even with the `client_token`; it can poll `list()` with `after`
-instead. A send to an execution that has ended raises
+instead. A subscription the server ends, as when the execution is no longer
+visible to the session, leaves the channel and is reported once to the event
+loop's exception handler. A send to an execution that has ended raises
 `ConflictError` with `code` set to `execution_not_running`. Pass `project_id` to
 use the owner's project route instead. See the
 [functions guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/functions.md#send-and-follow-messages).

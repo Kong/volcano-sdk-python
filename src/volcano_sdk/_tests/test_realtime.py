@@ -533,6 +533,10 @@ class FakeSubscription:
             SimpleNamespace(code=0, reason="reconnecting")
         )
 
+    async def emit_unsubscribed(self, code: int, reason: str) -> None:
+        self.subscribed.clear()
+        await self._events().on_unsubscribed(SimpleNamespace(code=code, reason=reason))
+
     async def emit(self, data: object) -> None:
         await self._events().on_publication(
             FakePublicationContext(pub=FakePublication(data=data))
