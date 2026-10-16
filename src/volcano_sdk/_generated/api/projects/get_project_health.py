@@ -97,7 +97,8 @@ def sync_detailed(
      Returns a fast control-plane health snapshot for the project and its
     deployed resources. The endpoint does not run live provider probes.
     A successful request returns 200 even when the project status is
-    `unhealthy`; transport and authorization failures use HTTP errors.
+    `degraded` or `critical`; transport and authorization failures use HTTP
+    errors.
 
     Args:
         id (UUID):
@@ -133,7 +134,8 @@ def sync(
      Returns a fast control-plane health snapshot for the project and its
     deployed resources. The endpoint does not run live provider probes.
     A successful request returns 200 even when the project status is
-    `unhealthy`; transport and authorization failures use HTTP errors.
+    `degraded` or `critical`; transport and authorization failures use HTTP
+    errors.
 
     Args:
         id (UUID):
@@ -164,7 +166,8 @@ async def asyncio_detailed(
      Returns a fast control-plane health snapshot for the project and its
     deployed resources. The endpoint does not run live provider probes.
     A successful request returns 200 even when the project status is
-    `unhealthy`; transport and authorization failures use HTTP errors.
+    `degraded` or `critical`; transport and authorization failures use HTTP
+    errors.
 
     Args:
         id (UUID):
@@ -200,7 +203,8 @@ async def asyncio(
      Returns a fast control-plane health snapshot for the project and its
     deployed resources. The endpoint does not run live provider probes.
     A successful request returns 200 even when the project status is
-    `unhealthy`; transport and authorization failures use HTTP errors.
+    `degraded` or `critical`; transport and authorization failures use HTTP
+    errors.
 
     Args:
         id (UUID):
