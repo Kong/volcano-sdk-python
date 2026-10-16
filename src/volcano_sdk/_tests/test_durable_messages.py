@@ -2043,6 +2043,36 @@ async def test_a_refused_subscribe_fails_with_the_server_s_reason() -> None:
         await client.realtime.disconnect()
 
 
+async def test_an_end_during_the_first_read_fails_subscribe_with_the_server_s_reason(
+    reports: Reports,
+) -> None:
+    transport = FakeMessageTransport()
+    transport.published = [1]
+    gate = asyncio.Event()
+    transport.next_read_gate = gate
+    client, native = subscriber(transport)
+    received = Received()
+    try:
+        subscribing = asyncio.create_task(
+            client.durable.messages.subscribe("checkout", EXECUTION_ID, received)
+        )
+        await transport.read_arrivals.wait_for(1)
+        await subscription_of(native).emit_unsubscribed(2000, "server unsubscribe")
+        gate.set()
+        with pytest.raises(RuntimeError, match=r"^server unsubscribe$"):
+            _ = await subscribing
+        await asyncio.sleep(0.05)
+
+        assert received.seqs == []
+        assert reports.messages == []
+        assert CHANNEL not in native.subscriptions
+        again = Received()
+        _ = await client.durable.messages.subscribe("checkout", EXECUTION_ID, again)
+        assert again.seqs == [1]
+    finally:
+        await client.realtime.disconnect()
+
+
 async def test_a_subscribe_that_never_becomes_ready_fails_with_its_error() -> None:
     transport = FakeMessageTransport()
     client, native = subscriber(transport, FirstSubscriptionClient(UnreadySubscription))

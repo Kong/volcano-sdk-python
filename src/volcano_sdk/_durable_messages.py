@@ -357,30 +357,35 @@ async def _follow(
     subscription = DurableMessageSubscription(stream, channel, realtime)
     _ = channel.on("message", stream.live)
     channel.ended = stream.close
+    # Until the first catch-up has read, an end is raised from subscribe
+    # rather than reported. One that lands after the channel is ready, or
+    # after the read, does not make either step raise, so it is kept.
+    ended: list[str] = []
+
+    def end(reason: str) -> None:
+        ended.append(reason)
+        stream.close()
+
+    channel.server_ended = end
     try:
-        await _subscribe(channel)
+        await _until_ended(channel.subscribe(), ended)
         channel.resubscribed = stream.resubscribed
         channel.dropped = stream.dropped
-        channel.server_ended = _leave_once_ended(stream, subscription)
-        await stream.catch_up()
+        await _until_ended(stream.catch_up(), ended)
     except BaseException:
         await subscription.unsubscribe()
         raise
+    channel.server_ended = _leave_once_ended(stream, subscription)
     stream.end_with(subscription.unsubscribe)
     return subscription
 
 
-async def _subscribe(channel: DurableChannel) -> None:
-    # Until subscribe returns, an end is raised rather than reported. One that
-    # lands after the channel is ready does not make subscribe raise, so it is
-    # kept until then.
-    ended: list[str] = []
-    channel.server_ended = ended.append
+async def _until_ended(step: Awaitable[None], ended: list[str]) -> None:
     try:
-        await channel.subscribe()
+        await step
     except Exception as error:
-        # A refusal ends the subscription before readiness fails, so its reason
-        # is already here.
+        # A refusal ends the subscription before readiness fails, and an end
+        # closes the stream a read is on, so its reason is already here.
         if ended:
             raise RuntimeError(ended[0]) from error
         raise
