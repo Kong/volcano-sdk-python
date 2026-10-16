@@ -430,8 +430,11 @@ def run_handler(handler: FunctionHandler, event: object = None) -> object:
     Raises:
         AssertionError: If the handler fails.
     """
+    # A step retried with backoff would otherwise run to the 15-minute default.
     with local_runner(handler) as runner:
-        result = runner.run(input=json.dumps({} if event is None else event))
+        result = runner.run(
+            input=json.dumps({} if event is None else event), timeout=15
+        )
     if result.error is not None:
         raise AssertionError(result.error.message)
     return None if result.result is None else json.loads(result.result)
@@ -447,7 +450,9 @@ def failing_handler(handler: FunctionHandler, event: object = None) -> str:
         AssertionError: If the handler succeeds.
     """
     with local_runner(handler) as runner:
-        result = runner.run(input=json.dumps({} if event is None else event))
+        result = runner.run(
+            input=json.dumps({} if event is None else event), timeout=15
+        )
     if result.error is None:
         raise AssertionError(_EXPECTED_FAILURE)
     return str(result.error.message or "")
@@ -504,7 +509,7 @@ def test_operations_are_recorded_under_their_names() -> None:
         return ctx.child("fulfil", lambda child: child.step("ship", lambda _s: "ok"))
 
     with local_runner(handler) as runner:
-        result = runner.run(input=json.dumps({}))
+        result = runner.run(input=json.dumps({}), timeout=15)
 
     assert result.error is None
     assert result.get_step("charge").name == "charge"
