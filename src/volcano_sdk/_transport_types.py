@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     ParamSpec,
@@ -196,8 +196,9 @@ class DurableMessageTarget:
     execution_id: str
     # The project route when set; the application route otherwise.
     project_id: str | None = None
-    # Only the application route reads it.
-    client_token: str | None = None
+    # Only the application route reads it. A bearer credential, so repr omits
+    # it, as it does from DurableExecution.
+    client_token: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)

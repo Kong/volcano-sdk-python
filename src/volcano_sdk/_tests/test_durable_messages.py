@@ -635,6 +635,20 @@ def test_a_send_may_use_the_whole_length_of_each_bound() -> None:
     )
 
 
+def test_a_message_target_keeps_its_client_token_out_of_its_repr() -> None:
+    transport = FakeMessageTransport()
+
+    _ = messages_client(transport).durable.messages.send(
+        "checkout", EXECUTION_ID, "address-confirmed", client_token="client-token"
+    )
+
+    target = transport.calls[0][1]["target"]
+    assert isinstance(target, DurableMessageTarget)
+    assert target.client_token == "client-token"
+    assert "client-token" not in repr(target)
+    assert EXECUTION_ID in repr(target)
+
+
 @pytest.mark.parametrize(("after", "limit"), [(0, 1), (7, 500)])
 def test_a_list_may_page_from_the_start_and_up_to_500(after: int, limit: int) -> None:
     transport = FakeMessageTransport()
