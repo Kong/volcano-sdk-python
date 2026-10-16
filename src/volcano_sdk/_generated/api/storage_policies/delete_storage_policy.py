@@ -8,6 +8,8 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.error import Error
+from typing import cast
 from uuid import UUID
 
 
@@ -34,9 +36,17 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Error | None:
     if response.status_code == 200:
-        return None
+        response_200 = cast(Any, None)
+        return response_200
+
+    if response.status_code == 404:
+        response_404 = Error.from_dict(response.json())
+
+
+
+        return response_404
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -44,7 +54,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -60,7 +70,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[Any]:
+) -> Response[Any | Error]:
     """ Delete a storage policy
 
     Args:
@@ -73,7 +83,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        Response[Any | Error]
      """
 
 
@@ -90,15 +100,14 @@ policy_id=policy_id,
 
     return build_response(client=client, response=response)
 
-
-async def asyncio_detailed(
+def sync(
     id: UUID | str,
     bucket_name: str,
     policy_id: UUID | str,
     *,
     client: AuthenticatedClient,
 
-) -> Response[Any]:
+) -> Any | Error | None:
     """ Delete a storage policy
 
     Args:
@@ -111,7 +120,39 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        Any | Error
+     """
+
+
+    return sync_detailed(
+        id=id,
+bucket_name=bucket_name,
+policy_id=policy_id,
+client=client,
+
+    ).parsed
+
+async def asyncio_detailed(
+    id: UUID | str,
+    bucket_name: str,
+    policy_id: UUID | str,
+    *,
+    client: AuthenticatedClient,
+
+) -> Response[Any | Error]:
+    """ Delete a storage policy
+
+    Args:
+        id (UUID):
+        bucket_name (str):
+        policy_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[Any | Error]
      """
 
 
@@ -128,3 +169,34 @@ policy_id=policy_id,
 
     return build_response(client=client, response=response)
 
+async def asyncio(
+    id: UUID | str,
+    bucket_name: str,
+    policy_id: UUID | str,
+    *,
+    client: AuthenticatedClient,
+
+) -> Any | Error | None:
+    """ Delete a storage policy
+
+    Args:
+        id (UUID):
+        bucket_name (str):
+        policy_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Any | Error
+     """
+
+
+    return (await asyncio_detailed(
+        id=id,
+bucket_name=bucket_name,
+policy_id=policy_id,
+client=client,
+
+    )).parsed

@@ -90,8 +90,21 @@ from .auth_user import AuthUser
 from .auth_user_app_metadata import AuthUserAppMetadata
 from .auth_user_status import AuthUserStatus
 from .auth_user_user_metadata import AuthUserUserMetadata
+from .autofix_diagnosis import AutofixDiagnosis
+from .autofix_diagnosis_confidence import AutofixDiagnosisConfidence
+from .autofix_edit import AutofixEdit
+from .autofix_evidence import AutofixEvidence
+from .autofix_evidence_kind import AutofixEvidenceKind
 from .autofix_model import AutofixModel
+from .autofix_patch import AutofixPatch
 from .autofix_provider import AutofixProvider
+from .autofix_pull_request import AutofixPullRequest
+from .autofix_pull_request_skipped import AutofixPullRequestSkipped
+from .autofix_pull_request_state import AutofixPullRequestState
+from .autofix_run import AutofixRun
+from .autofix_run_status import AutofixRunStatus
+from .autofix_run_trigger import AutofixRunTrigger
+from .autofix_run_usage import AutofixRunUsage
 from .autofix_settings import AutofixSettings
 from .autofix_stage import AutofixStage
 from .ban_auth_user_body import BanAuthUserBody
@@ -236,6 +249,17 @@ from .durable_execution_status import DurableExecutionStatus
 from .durable_function import DurableFunction
 from .durable_function_config import DurableFunctionConfig
 from .durable_function_status import DurableFunctionStatus
+from .durable_message import DurableMessage
+from .durable_message_direction import DurableMessageDirection
+from .durable_message_list import DurableMessageList
+from .durable_message_sender import DurableMessageSender
+from .durable_message_sender_type import DurableMessageSenderType
+from .durable_message_session_registration import DurableMessageSessionRegistration
+from .durable_message_status import DurableMessageStatus
+from .durable_message_wait import DurableMessageWait
+from .durable_message_wait_list import DurableMessageWaitList
+from .durable_message_wait_registration import DurableMessageWaitRegistration
+from .durable_message_wait_status import DurableMessageWaitStatus
 from .email_template import EmailTemplate
 from .email_template_template_type import EmailTemplateTemplateType
 from .error import Error
@@ -371,7 +395,9 @@ from .o_auth_config import OAuthConfig
 from .o_auth_config_provider import OAuthConfigProvider
 from .o_auth_error_response import OAuthErrorResponse
 from .open_api_spec_document import OpenAPISpecDocument
+from .open_durable_message_session_request import OpenDurableMessageSessionRequest
 from .paginated_auth_users import PaginatedAuthUsers
+from .paginated_autofix_runs import PaginatedAutofixRuns
 from .paginated_databases import PaginatedDatabases
 from .paginated_durable_approvals import PaginatedDurableApprovals
 from .paginated_durable_executions import PaginatedDurableExecutions
@@ -524,6 +550,7 @@ from .project_template_installation import ProjectTemplateInstallation
 from .project_template_installation_phase import ProjectTemplateInstallationPhase
 from .project_template_installation_status import ProjectTemplateInstallationStatus
 from .project_usage_response import ProjectUsageResponse
+from .publish_durable_message_request import PublishDurableMessageRequest
 from .publish_sandbox_preset_request import PublishSandboxPresetRequest
 from .publish_sandbox_preset_request_memory_mb import PublishSandboxPresetRequestMemoryMb
 from .publish_sandbox_preset_request_preset import PublishSandboxPresetRequestPreset
@@ -532,6 +559,7 @@ from .realtime_plan_limits import RealtimePlanLimits
 from .realtime_stats import RealtimeStats
 from .refresh_o_auth_provider_token_provider import RefreshOAuthProviderTokenProvider
 from .refresh_o_auth_provider_token_response_200 import RefreshOAuthProviderTokenResponse200
+from .register_durable_message_wait_request import RegisterDurableMessageWaitRequest
 from .rename_variable_environment_request import RenameVariableEnvironmentRequest
 from .render_default_managed_auth_page_action import RenderDefaultManagedAuthPageAction
 from .replace_frontend_shared_variables_body import ReplaceFrontendSharedVariablesBody
@@ -570,6 +598,7 @@ from .sandbox_template_page import SandboxTemplatePage
 from .sandbox_template_status import SandboxTemplateStatus
 from .schedule_request import ScheduleRequest
 from .schedule_request_kind import ScheduleRequestKind
+from .send_durable_message_request import SendDurableMessageRequest
 from .service_key import ServiceKey
 from .set_project_git_production_branch_request import SetProjectGitProductionBranchRequest
 from .start_git_connect_provider import StartGitConnectProvider
@@ -721,8 +750,21 @@ __all__ = (
     "AuthUserAppMetadata",
     "AuthUserStatus",
     "AuthUserUserMetadata",
+    "AutofixDiagnosis",
+    "AutofixDiagnosisConfidence",
+    "AutofixEdit",
+    "AutofixEvidence",
+    "AutofixEvidenceKind",
     "AutofixModel",
+    "AutofixPatch",
     "AutofixProvider",
+    "AutofixPullRequest",
+    "AutofixPullRequestSkipped",
+    "AutofixPullRequestState",
+    "AutofixRun",
+    "AutofixRunStatus",
+    "AutofixRunTrigger",
+    "AutofixRunUsage",
     "AutofixSettings",
     "AutofixStage",
     "BanAuthUserBody",
@@ -867,6 +909,17 @@ __all__ = (
     "DurableFunction",
     "DurableFunctionConfig",
     "DurableFunctionStatus",
+    "DurableMessage",
+    "DurableMessageDirection",
+    "DurableMessageList",
+    "DurableMessageSender",
+    "DurableMessageSenderType",
+    "DurableMessageSessionRegistration",
+    "DurableMessageStatus",
+    "DurableMessageWait",
+    "DurableMessageWaitList",
+    "DurableMessageWaitRegistration",
+    "DurableMessageWaitStatus",
     "EmailTemplate",
     "EmailTemplateTemplateType",
     "Error",
@@ -1002,7 +1055,9 @@ __all__ = (
     "OAuthConfigProvider",
     "OAuthErrorResponse",
     "OpenAPISpecDocument",
+    "OpenDurableMessageSessionRequest",
     "PaginatedAuthUsers",
+    "PaginatedAutofixRuns",
     "PaginatedDatabases",
     "PaginatedDurableApprovals",
     "PaginatedDurableExecutions",
@@ -1155,6 +1210,7 @@ __all__ = (
     "ProjectTemplateInstallationPhase",
     "ProjectTemplateInstallationStatus",
     "ProjectUsageResponse",
+    "PublishDurableMessageRequest",
     "PublishSandboxPresetRequest",
     "PublishSandboxPresetRequestMemoryMb",
     "PublishSandboxPresetRequestPreset",
@@ -1163,6 +1219,7 @@ __all__ = (
     "RealtimeStats",
     "RefreshOAuthProviderTokenProvider",
     "RefreshOAuthProviderTokenResponse200",
+    "RegisterDurableMessageWaitRequest",
     "RenameVariableEnvironmentRequest",
     "RenderDefaultManagedAuthPageAction",
     "ReplaceFrontendSharedVariablesBody",
@@ -1201,6 +1258,7 @@ __all__ = (
     "SandboxTemplateStatus",
     "ScheduleRequest",
     "ScheduleRequestKind",
+    "SendDurableMessageRequest",
     "ServiceKey",
     "SetProjectGitProductionBranchRequest",
     "StartGitConnectProvider",
