@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.15.0](https://github.com/Kong/volcano-sdk-python/compare/v0.14.0...v0.15.0) (2026-10-16)
+
+
+### Features
+
+* **durable:** wait for, publish, send, and subscribe to durable messages ([#391](https://github.com/Kong/volcano-sdk-python/issues/391)) ([dda9a6a](https://github.com/Kong/volcano-sdk-python/commit/dda9a6a944e15906df028b4e4bf987c75ac5ba88))
+
+
+### Bug Fixes
+
+* **sandboxes:** sync runtime billing API contract ([#392](https://github.com/Kong/volcano-sdk-python/issues/392)) ([8a91a03](https://github.com/Kong/volcano-sdk-python/commit/8a91a032ac4761f60d48961b2ffb6c5e84a0bb76))
+
 ## [0.14.0](https://github.com/Kong/volcano-sdk-python/compare/v0.13.5...v0.14.0) (2026-10-08)
 
 
