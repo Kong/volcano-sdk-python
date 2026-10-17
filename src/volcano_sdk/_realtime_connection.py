@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from contextlib import suppress
 from dataclasses import dataclass
 from itertools import count
 from typing import (
@@ -64,6 +65,7 @@ from ._transport import (
     invoke_async,
     response_payload,
 )
+from .errors import RealtimeConnectionError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
@@ -90,9 +92,13 @@ class ManagedChannel(Generic[FacadeT]):
 class ClientEvents(ClientEventHandler):
     def __init__(self, enqueue: Callable[[ConnectionContext], None]) -> None:
         self.enqueue: Callable[[ConnectionContext], None] = enqueue
+        self.started: asyncio.Event = asyncio.Event()
+        self.failure: RealtimeConnectionError | None = None
+        self.is_terminal: Callable[[], bool] = lambda: False
 
     @override
     async def on_connected(self, ctx: object) -> None:
+        self.started.set()
         client = _native.native_attribute(ctx, "client")
         self.enqueue(
             RealtimeConnectContext(client=client if isinstance(client, str) else None),
@@ -102,12 +108,26 @@ class ClientEvents(ClientEventHandler):
     async def on_disconnected(self, ctx: object) -> None:
         code = _native.native_attribute(ctx, "code")
         reason = _native.native_attribute(ctx, "reason")
+        if self.is_terminal():
+            self.failure = RealtimeConnectionError(
+                reason
+                if isinstance(reason, str) and reason
+                else "Connection disconnected",
+                code=code if isinstance(code, int) else None,
+            )
+            self.started.set()
         self.enqueue(
             RealtimeDisconnectContext(
                 code=code if isinstance(code, int) else None,
                 reason=reason if isinstance(reason, str) else None,
             ),
         )
+
+    async def wait_ready(self, connection: _native.VolcanoCentrifugeConnection) -> None:
+        if not connection.is_connected:
+            _ = await self.started.wait()
+        if self.failure is not None:
+            raise self.failure
 
     @override
     async def on_error(self, ctx: object) -> None:
@@ -495,21 +515,26 @@ class RealtimeState(Generic[FacadeT]):
         _generation, lineage, session = self.client_context.capture_session_binding()
         if session is None:
             raise RuntimeError(NO_ACTIVE_SESSION)
+        events = ClientEvents(self.enqueue_connection_callbacks)
         connection = _native.VolcanoCentrifugeConnection(
             self.client_factory(
                 self._address(),
-                events=ClientEvents(self.enqueue_connection_callbacks),
+                events=events,
                 token=session.access_token,
                 get_token=self._token,
             )
         )
+        events.is_terminal = lambda: connection.is_disconnected
         self.connection_session_lineage = lineage
         self.connection_access_token = session.access_token
         try:
-            await connection.connect()
+            async with asyncio.timeout(10):
+                await connection.connect()
+                await events.wait_ready(connection)
         except BaseException:
             self.connection_session_lineage = None
             self.connection_access_token = None
+            await self._discard_failed_connection(connection)
             raise
         try:
             current_session = self._session_for_lineage(lineage)
@@ -523,6 +548,14 @@ class RealtimeState(Generic[FacadeT]):
         self.connection_access_token = current_session.access_token
         self.connection = connection
         return connection
+
+    @staticmethod
+    async def _discard_failed_connection(
+        connection: _native.VolcanoCentrifugeConnection,
+    ) -> None:
+        # Cleanup must not replace the original connection failure/cancellation.
+        with suppress(Exception, asyncio.CancelledError):
+            await connection.disconnect()
 
     async def subscribe(self, channel: ChannelState) -> None:
         # A later stop supersedes this request, including time spent waiting for locks.
