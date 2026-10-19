@@ -90,8 +90,21 @@ from .auth_user import AuthUser
 from .auth_user_app_metadata import AuthUserAppMetadata
 from .auth_user_status import AuthUserStatus
 from .auth_user_user_metadata import AuthUserUserMetadata
+from .autofix_diagnosis import AutofixDiagnosis
+from .autofix_diagnosis_confidence import AutofixDiagnosisConfidence
+from .autofix_edit import AutofixEdit
+from .autofix_evidence import AutofixEvidence
+from .autofix_evidence_kind import AutofixEvidenceKind
 from .autofix_model import AutofixModel
+from .autofix_patch import AutofixPatch
 from .autofix_provider import AutofixProvider
+from .autofix_pull_request import AutofixPullRequest
+from .autofix_pull_request_skipped import AutofixPullRequestSkipped
+from .autofix_pull_request_state import AutofixPullRequestState
+from .autofix_run import AutofixRun
+from .autofix_run_status import AutofixRunStatus
+from .autofix_run_trigger import AutofixRunTrigger
+from .autofix_run_usage import AutofixRunUsage
 from .autofix_settings import AutofixSettings
 from .autofix_stage import AutofixStage
 from .ban_auth_user_body import BanAuthUserBody
@@ -222,6 +235,10 @@ from .durable_approval_function_counts import DurableApprovalFunctionCounts
 from .durable_approval_registration import DurableApprovalRegistration
 from .durable_approval_stats import DurableApprovalStats
 from .durable_approval_status import DurableApprovalStatus
+from .durable_callback_error import DurableCallbackError
+from .durable_callback_outcome import DurableCallbackOutcome
+from .durable_callback_registration import DurableCallbackRegistration
+from .durable_callback_status import DurableCallbackStatus
 from .durable_execution import DurableExecution
 from .durable_execution_error import DurableExecutionError
 from .durable_execution_invocation import DurableExecutionInvocation
@@ -251,6 +268,7 @@ from .email_template import EmailTemplate
 from .email_template_template_type import EmailTemplateTemplateType
 from .error import Error
 from .export_project_source_request import ExportProjectSourceRequest
+from .fail_durable_callback_request import FailDurableCallbackRequest
 from .frontend import Frontend
 from .frontend_custom_domain_conflict_error import FrontendCustomDomainConflictError
 from .frontend_custom_domain_response import FrontendCustomDomainResponse
@@ -318,6 +336,7 @@ from .git_installation import GitInstallation
 from .git_installations_response import GitInstallationsResponse
 from .git_repositories_response import GitRepositoriesResponse
 from .git_repository import GitRepository
+from .heartbeat_durable_callback_request import HeartbeatDurableCallbackRequest
 from .hosted_auth_page_type import HostedAuthPageType
 from .hosted_login_email_check_request import HostedLoginEmailCheckRequest
 from .hosted_login_email_check_response import HostedLoginEmailCheckResponse
@@ -384,6 +403,7 @@ from .o_auth_error_response import OAuthErrorResponse
 from .open_api_spec_document import OpenAPISpecDocument
 from .open_durable_message_session_request import OpenDurableMessageSessionRequest
 from .paginated_auth_users import PaginatedAuthUsers
+from .paginated_autofix_runs import PaginatedAutofixRuns
 from .paginated_databases import PaginatedDatabases
 from .paginated_durable_approvals import PaginatedDurableApprovals
 from .paginated_durable_executions import PaginatedDurableExecutions
@@ -545,6 +565,7 @@ from .realtime_plan_limits import RealtimePlanLimits
 from .realtime_stats import RealtimeStats
 from .refresh_o_auth_provider_token_provider import RefreshOAuthProviderTokenProvider
 from .refresh_o_auth_provider_token_response_200 import RefreshOAuthProviderTokenResponse200
+from .register_durable_callback_request import RegisterDurableCallbackRequest
 from .register_durable_message_wait_request import RegisterDurableMessageWaitRequest
 from .rename_variable_environment_request import RenameVariableEnvironmentRequest
 from .render_default_managed_auth_page_action import RenderDefaultManagedAuthPageAction
@@ -600,6 +621,7 @@ from .storage_policy import StoragePolicy
 from .storage_policy_operation import StoragePolicyOperation
 from .storage_stats import StorageStats
 from .storage_visibility_request import StorageVisibilityRequest
+from .succeed_durable_callback_request import SucceedDurableCallbackRequest
 from .summarize_project_deployments_resource_type import SummarizeProjectDeploymentsResourceType
 from .test_email_request import TestEmailRequest
 from .test_email_response import TestEmailResponse
@@ -736,8 +758,21 @@ __all__ = (
     "AuthUserAppMetadata",
     "AuthUserStatus",
     "AuthUserUserMetadata",
+    "AutofixDiagnosis",
+    "AutofixDiagnosisConfidence",
+    "AutofixEdit",
+    "AutofixEvidence",
+    "AutofixEvidenceKind",
     "AutofixModel",
+    "AutofixPatch",
     "AutofixProvider",
+    "AutofixPullRequest",
+    "AutofixPullRequestSkipped",
+    "AutofixPullRequestState",
+    "AutofixRun",
+    "AutofixRunStatus",
+    "AutofixRunTrigger",
+    "AutofixRunUsage",
     "AutofixSettings",
     "AutofixStage",
     "BanAuthUserBody",
@@ -868,6 +903,10 @@ __all__ = (
     "DurableApprovalRegistration",
     "DurableApprovalStats",
     "DurableApprovalStatus",
+    "DurableCallbackError",
+    "DurableCallbackOutcome",
+    "DurableCallbackRegistration",
+    "DurableCallbackStatus",
     "DurableExecution",
     "DurableExecutionError",
     "DurableExecutionInvocation",
@@ -897,6 +936,7 @@ __all__ = (
     "EmailTemplateTemplateType",
     "Error",
     "ExportProjectSourceRequest",
+    "FailDurableCallbackRequest",
     "Frontend",
     "FrontendCustomDomainConflictError",
     "FrontendCustomDomainResponse",
@@ -964,6 +1004,7 @@ __all__ = (
     "GitInstallationsResponse",
     "GitRepositoriesResponse",
     "GitRepository",
+    "HeartbeatDurableCallbackRequest",
     "HostedAuthPageType",
     "HostedLoginEmailCheckRequest",
     "HostedLoginEmailCheckResponse",
@@ -1030,6 +1071,7 @@ __all__ = (
     "OpenAPISpecDocument",
     "OpenDurableMessageSessionRequest",
     "PaginatedAuthUsers",
+    "PaginatedAutofixRuns",
     "PaginatedDatabases",
     "PaginatedDurableApprovals",
     "PaginatedDurableExecutions",
@@ -1191,6 +1233,7 @@ __all__ = (
     "RealtimeStats",
     "RefreshOAuthProviderTokenProvider",
     "RefreshOAuthProviderTokenResponse200",
+    "RegisterDurableCallbackRequest",
     "RegisterDurableMessageWaitRequest",
     "RenameVariableEnvironmentRequest",
     "RenderDefaultManagedAuthPageAction",
@@ -1246,6 +1289,7 @@ __all__ = (
     "StoragePolicyOperation",
     "StorageStats",
     "StorageVisibilityRequest",
+    "SucceedDurableCallbackRequest",
     "SummarizeProjectDeploymentsResourceType",
     "TestEmailRequest",
     "TestEmailResponse",

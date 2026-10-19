@@ -126,7 +126,9 @@ def sync_detailed(
 
     The SDK sends an `Idempotency-Key` that a rerun of the publishing step
     repeats, so a step that runs again returns the first message with
-    `200` and publishes nothing.
+    `200` and stores nothing new. That message is delivered live again,
+    and counts again, because the first run may have stopped before
+    subscribers got it. The SDKs deliver it to a subscriber once.
 
     Args:
         x_volcano_durable_session (str):
@@ -174,7 +176,9 @@ def sync(
 
     The SDK sends an `Idempotency-Key` that a rerun of the publishing step
     repeats, so a step that runs again returns the first message with
-    `200` and publishes nothing.
+    `200` and stores nothing new. That message is delivered live again,
+    and counts again, because the first run may have stopped before
+    subscribers got it. The SDKs deliver it to a subscriber once.
 
     Args:
         x_volcano_durable_session (str):
@@ -217,7 +221,9 @@ async def asyncio_detailed(
 
     The SDK sends an `Idempotency-Key` that a rerun of the publishing step
     repeats, so a step that runs again returns the first message with
-    `200` and publishes nothing.
+    `200` and stores nothing new. That message is delivered live again,
+    and counts again, because the first run may have stopped before
+    subscribers got it. The SDKs deliver it to a subscriber once.
 
     Args:
         x_volcano_durable_session (str):
@@ -265,7 +271,9 @@ async def asyncio(
 
     The SDK sends an `Idempotency-Key` that a rerun of the publishing step
     repeats, so a step that runs again returns the first message with
-    `200` and publishes nothing.
+    `200` and stores nothing new. That message is delivered live again,
+    and counts again, because the first run may have stopped before
+    subscribers got it. The SDKs deliver it to a subscriber once.
 
     Args:
         x_volcano_durable_session (str):

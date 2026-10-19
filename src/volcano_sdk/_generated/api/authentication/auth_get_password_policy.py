@@ -10,14 +10,25 @@ from ... import errors
 
 from ...models.auth_password_policy import AuthPasswordPolicy
 from ...models.error import Error
+from ...types import UNSET, Unset
 from typing import cast
 
 
 
 def request_kwargs(
-    
+    *,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
+
 ) -> dict[str, Any]:
-    
+    headers: dict[str, Any] = {}
+    if not isinstance(x_volcano_proxy_authorization, Unset):
+        headers["X-Volcano-Proxy-Authorization"] = x_volcano_proxy_authorization
+
+    if not isinstance(x_volcano_client_ip, Unset):
+        headers["X-Volcano-Client-IP"] = x_volcano_client_ip
+
+
 
     
 
@@ -29,6 +40,7 @@ def request_kwargs(
     }
 
 
+    _kwargs["headers"] = headers
     return _kwargs
 
 
@@ -73,6 +85,8 @@ def build_response(*, client: AuthenticatedClient | Client, response: httpx.Resp
 def sync_detailed(
     *,
     client: AuthenticatedClient,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> Response[AuthPasswordPolicy | Error]:
     """ Get the effective password policy
@@ -80,6 +94,10 @@ def sync_detailed(
      Returns the backend-enforced password bounds and compromised-password
     screening status for the project identified by the anon key. A valid
     anon key is required, but no route-specific auth permission is needed.
+
+    Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -91,7 +109,9 @@ def sync_detailed(
 
 
     kwargs = request_kwargs(
-        
+        x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
+
     )
 
     response = client.get_httpx_client().request(
@@ -103,6 +123,8 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> AuthPasswordPolicy | Error | None:
     """ Get the effective password policy
@@ -110,6 +132,10 @@ def sync(
      Returns the backend-enforced password bounds and compromised-password
     screening status for the project identified by the anon key. A valid
     anon key is required, but no route-specific auth permission is needed.
+
+    Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -122,12 +148,16 @@ def sync(
 
     return sync_detailed(
         client=client,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     ).parsed
 
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> Response[AuthPasswordPolicy | Error]:
     """ Get the effective password policy
@@ -135,6 +165,10 @@ async def asyncio_detailed(
      Returns the backend-enforced password bounds and compromised-password
     screening status for the project identified by the anon key. A valid
     anon key is required, but no route-specific auth permission is needed.
+
+    Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -146,7 +180,9 @@ async def asyncio_detailed(
 
 
     kwargs = request_kwargs(
-        
+        x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
+
     )
 
     response = await client.get_async_httpx_client().request(
@@ -158,6 +194,8 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> AuthPasswordPolicy | Error | None:
     """ Get the effective password policy
@@ -165,6 +203,10 @@ async def asyncio(
      Returns the backend-enforced password bounds and compromised-password
     screening status for the project identified by the anon key. A valid
     anon key is required, but no route-specific auth permission is needed.
+
+    Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -177,5 +219,7 @@ async def asyncio(
 
     return (await asyncio_detailed(
         client=client,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )).parsed

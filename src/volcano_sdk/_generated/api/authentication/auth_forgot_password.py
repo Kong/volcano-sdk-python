@@ -11,6 +11,7 @@ from ... import errors
 from ...models.auth_forgot_password_body import AuthForgotPasswordBody
 from ...models.auth_forgot_password_response_200 import AuthForgotPasswordResponse200
 from ...models.error import Error
+from ...types import UNSET, Unset
 from typing import cast
 
 
@@ -18,9 +19,17 @@ from typing import cast
 def request_kwargs(
     *,
     body: AuthForgotPasswordBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(x_volcano_proxy_authorization, Unset):
+        headers["X-Volcano-Proxy-Authorization"] = x_volcano_proxy_authorization
+
+    if not isinstance(x_volcano_client_ip, Unset):
+        headers["X-Volcano-Client-IP"] = x_volcano_client_ip
+
 
 
     
@@ -48,6 +57,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
         return response_200
+
+    if response.status_code == 401:
+        response_401 = Error.from_dict(response.json())
+
+
+
+        return response_401
 
     if response.status_code == 403:
         response_403 = Error.from_dict(response.json())
@@ -82,6 +98,8 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: AuthForgotPasswordBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> Response[AuthForgotPasswordResponse200 | Error]:
     """ Request password reset
@@ -91,6 +109,8 @@ def sync_detailed(
     Project is identified via the anon key.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthForgotPasswordBody):
 
     Raises:
@@ -104,6 +124,8 @@ def sync_detailed(
 
     kwargs = request_kwargs(
         body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )
 
@@ -117,6 +139,8 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: AuthForgotPasswordBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> AuthForgotPasswordResponse200 | Error | None:
     """ Request password reset
@@ -126,6 +150,8 @@ def sync(
     Project is identified via the anon key.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthForgotPasswordBody):
 
     Raises:
@@ -140,6 +166,8 @@ def sync(
     return sync_detailed(
         client=client,
 body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     ).parsed
 
@@ -147,6 +175,8 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: AuthForgotPasswordBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> Response[AuthForgotPasswordResponse200 | Error]:
     """ Request password reset
@@ -156,6 +186,8 @@ async def asyncio_detailed(
     Project is identified via the anon key.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthForgotPasswordBody):
 
     Raises:
@@ -169,6 +201,8 @@ async def asyncio_detailed(
 
     kwargs = request_kwargs(
         body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )
 
@@ -182,6 +216,8 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: AuthForgotPasswordBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> AuthForgotPasswordResponse200 | Error | None:
     """ Request password reset
@@ -191,6 +227,8 @@ async def asyncio(
     Project is identified via the anon key.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthForgotPasswordBody):
 
     Raises:
@@ -205,5 +243,7 @@ async def asyncio(
     return (await asyncio_detailed(
         client=client,
 body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )).parsed

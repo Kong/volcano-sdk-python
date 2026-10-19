@@ -9,6 +9,7 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.auth_logout_body import AuthLogoutBody
+from ...models.error import Error
 from ...types import UNSET, Unset
 from typing import cast
 
@@ -17,9 +18,17 @@ from typing import cast
 def request_kwargs(
     *,
     body: AuthLogoutBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(x_volcano_proxy_authorization, Unset):
+        headers["X-Volcano-Proxy-Authorization"] = x_volcano_proxy_authorization
+
+    if not isinstance(x_volcano_client_ip, Unset):
+        headers["X-Volcano-Client-IP"] = x_volcano_client_ip
+
 
 
     
@@ -42,9 +51,17 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Error | None:
     if response.status_code == 204:
-        return None
+        response_204 = cast(Any, None)
+        return response_204
+
+    if response.status_code == 401:
+        response_401 = Error.from_dict(response.json())
+
+
+
+        return response_401
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -52,7 +69,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -65,8 +82,10 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: AuthLogoutBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
-) -> Response[Any]:
+) -> Response[Any | Error]:
     """ Logout (revoke refresh token)
 
      Invalidate a refresh token. Requires an anon key.
@@ -76,6 +95,8 @@ def sync_detailed(
     token; logout remains idempotent when the cookie is missing or expired.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthLogoutBody | Unset):
 
     Raises:
@@ -83,12 +104,14 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        Response[Any | Error]
      """
 
 
     kwargs = request_kwargs(
         body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )
 
@@ -98,13 +121,14 @@ def sync_detailed(
 
     return build_response(client=client, response=response)
 
-
-async def asyncio_detailed(
+def sync(
     *,
     client: AuthenticatedClient,
     body: AuthLogoutBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
-) -> Response[Any]:
+) -> Any | Error | None:
     """ Logout (revoke refresh token)
 
      Invalidate a refresh token. Requires an anon key.
@@ -114,6 +138,8 @@ async def asyncio_detailed(
     token; logout remains idempotent when the cookie is missing or expired.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthLogoutBody | Unset):
 
     Raises:
@@ -121,12 +147,52 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any]
+        Any | Error
+     """
+
+
+    return sync_detailed(
+        client=client,
+body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
+
+    ).parsed
+
+async def asyncio_detailed(
+    *,
+    client: AuthenticatedClient,
+    body: AuthLogoutBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
+
+) -> Response[Any | Error]:
+    """ Logout (revoke refresh token)
+
+     Invalidate a refresh token. Requires an anon key.
+
+    Send `refresh_token` for the default flow. An eligible cookie-mode
+    browser request may instead send `session_mode: cookie` with an empty
+    token; logout remains idempotent when the cookie is missing or expired.
+
+    Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
+        body (AuthLogoutBody | Unset):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[Any | Error]
      """
 
 
     kwargs = request_kwargs(
         body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )
 
@@ -136,3 +202,40 @@ async def asyncio_detailed(
 
     return build_response(client=client, response=response)
 
+async def asyncio(
+    *,
+    client: AuthenticatedClient,
+    body: AuthLogoutBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
+
+) -> Any | Error | None:
+    """ Logout (revoke refresh token)
+
+     Invalidate a refresh token. Requires an anon key.
+
+    Send `refresh_token` for the default flow. An eligible cookie-mode
+    browser request may instead send `session_mode: cookie` with an empty
+    token; logout remains idempotent when the cookie is missing or expired.
+
+    Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
+        body (AuthLogoutBody | Unset):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Any | Error
+     """
+
+
+    return (await asyncio_detailed(
+        client=client,
+body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
+
+    )).parsed
