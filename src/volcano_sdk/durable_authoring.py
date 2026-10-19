@@ -47,6 +47,12 @@ from ._durable_approval_registration import (
     register_approval,
 )
 from ._durable_callback import operation_name
+from ._durable_callback_token import (
+    CallbackFailedError,
+    callback_failure,
+    callback_result,
+    token_submitter,
+)
 from ._durable_duration import to_seconds
 from ._durable_engine import DurableRuntimeMissingError, load_engine
 from ._durable_message import (
@@ -95,6 +101,7 @@ __all__ = [
     "BatchItem",
     "BatchOptions",
     "BatchResult",
+    "CallbackFailedError",
     "DurableContext",
     "DurableHandler",
     "DurableLogger",
@@ -130,6 +137,9 @@ _MIN_WAIT_SECONDS = 1
 _MAX_WAIT_SECONDS = 31622400
 _REQUIRES_HANDLER = "durable(handler) requires a callable"
 _REQUIRES_UNTIL = "wait_until() requires an `until` predicate"
+_REQUIRES_SUBMITTER = (
+    "wait_for_callback() requires a submitter function that receives the token"
+)
 # A condition is bounded by how many times it is checked, not by a deadline:
 # the platform holds the wait between checks and has no clock to compare
 # against when it resumes. Refused rather than ignored, because a wait meant to
@@ -176,10 +186,11 @@ class DurableContext:
     the operations Volcano supports, in Volcano's vocabulary, and lets
     durations be written as `"30s"` rather than `Duration.from_seconds(30)`.
 
-    Raw callbacks are the deliberate omission: completing one takes a call
+    Raw callback ids are the deliberate omission: completing one takes a call
     nothing in a project can make. `wait_for_approval` and `wait_for_message`
     are the callbacks Volcano completes, when a person decides or a message
-    arrives.
+    arrives, and `wait_for_callback` hands out a token any system can complete
+    one with.
     """
 
     __slots__: tuple[str, ...] = (
@@ -488,6 +499,75 @@ class DurableContext:
         except self._engine.callback_timeout_error:
             return None
         return received_message(result)
+
+    def wait_for_callback(
+        self,
+        name: str,
+        submitter: Callable[[str], object],
+        *,
+        timeout: Duration | None = None,
+        heartbeat_timeout: Duration | None = None,
+    ) -> JSONValue:
+        """Hand a token to another system and suspend until it answers.
+
+        The submitter receives a `vcb_` token and passes it to whatever does
+        the work: a payment provider, a job queue, a partner's API. That
+        system succeeds the step with a result, fails it, or sends heartbeats,
+        with the token as its only credential. The execution is not running,
+        and not billed, while it waits.
+
+        Without a timeout the wait lasts as long as the execution. With a
+        heartbeat timeout, it also ends once that long passes without a
+        heartbeat. Either timeout returns None rather than raising; a result is
+        never None, so the two cannot be confused.
+
+        The submitter runs inside a checkpointed step that is not retried, so
+        a replay does not run it again. An attempt interrupted before the step
+        is recorded can run it twice, with the same token both times. When it
+        raises, the call raises the runtime's `CallbackSubmitterError`. The
+        name, submitter, timeouts, and `VOLCANO_PLATFORM_API_URL` are checked
+        before the callback opens, and getting the token is retried for up to
+        30 seconds.
+
+        Returns:
+            The result the callback was succeeded with, or None once a timeout
+            passes, restored from its checkpoint during replay.
+
+        Raises:
+            CallbackFailedError: The token's holder failed the callback.
+
+        """
+        callback_name = operation_name(name)
+        require_callable(submitter, _REQUIRES_SUBMITTER)
+        config = self._callback_timeouts(timeout, heartbeat_timeout)
+        api_url = platform_api_url("wait_for_callback()")
+        submit = token_submitter(
+            api_url,
+            self._context.execution_context.durable_execution_arn,
+            callback_name,
+            submitter,
+        )
+        try:
+            result = self._context.wait_for_callback(submit, callback_name, config)
+        except self._engine.callback_timeout_error:
+            return None
+        except self._engine.callback_external_error as error:
+            failure = callback_failure(error.data)
+            if failure is None:
+                raise
+            raise CallbackFailedError(*failure) from error
+        return callback_result(result)
+
+    def _callback_timeouts(
+        self, timeout: Duration | None, heartbeat_timeout: Duration | None
+    ) -> object:
+        seconds = None if timeout is None else self._approval_timeout(timeout)
+        heartbeat = (
+            None
+            if heartbeat_timeout is None
+            else _bounded_seconds(heartbeat_timeout, "heartbeat_timeout")
+        )
+        return self._engine.callback_options(seconds, heartbeat)
 
     def publish(self, name: str, data: JSONValue = None) -> PublishedMessage:
         """Record a message for applications to list, or receive live.

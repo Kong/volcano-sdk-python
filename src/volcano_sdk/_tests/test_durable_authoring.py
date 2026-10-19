@@ -35,6 +35,7 @@ from aws_durable_execution_sdk_python.exceptions import (
     CallbackTimeoutError,
     WaitForConditionError,
 )
+from aws_durable_execution_sdk_python.lambda_service import ErrorObject
 from aws_durable_execution_sdk_python.retries import RetryDecision
 from aws_durable_execution_sdk_python.waits import (
     WaitForConditionConfig,
@@ -55,6 +56,7 @@ from volcano_sdk.durable_authoring import (
     BatchItem,
     BatchOptions,
     BatchResult,
+    CallbackFailedError,
     DurableContext,
     DurableRuntimeMissingError,
     FunctionHandler,
@@ -67,6 +69,9 @@ from volcano_sdk.durable_authoring import (
 )
 from volcano_sdk.models import DurableApprovalDecider, DurableMessageSender
 
+from .fixtures.durable_callbacks import FAILURE_DATA as CALLBACK_FAILURE_DATA
+from .fixtures.durable_callbacks import REGISTER as REGISTER_CALLBACK
+from .fixtures.durable_callbacks import CallbackRegistrations, Handoffs
 from .fixtures.durable_context import (
     RecordedBatch,
     RecordedFailure,
@@ -1759,6 +1764,132 @@ def test_a_failed_callback_is_not_mistaken_for_an_expiry(
 
     assert result.error is not None
     assert result.result is None
+
+
+@pytest.fixture
+def callback_registrations(monkeypatch: pytest.MonkeyPatch) -> CallbackRegistrations:
+    recorder = CallbackRegistrations()
+    monkeypatch.setattr(REGISTER_CALLBACK, recorder.register)
+    monkeypatch.setenv("VOLCANO_PLATFORM_API_URL", PLATFORM_API_URL)
+    return recorder
+
+
+def pay(
+    handoffs: Handoffs,
+    *,
+    timeout: str | None = None,
+    heartbeat_timeout: str | None = None,
+) -> FunctionHandler:
+    @durable
+    def handler(_event: object, ctx: DurableContext) -> object:
+        try:
+            payment = ctx.wait_for_callback(
+                "payment",
+                handoffs,
+                timeout=timeout,
+                heartbeat_timeout=heartbeat_timeout,
+            )
+        except CallbackFailedError as error:
+            return {"declined": error.type, "message": error.message}
+        return {"payment": payment}
+
+    return handler
+
+
+def answer_callback(
+    registrations: CallbackRegistrations,
+    handler: FunctionHandler,
+    respond: Callable[[DurableFunctionTestRunner, str], None],
+) -> object:
+    """Run a handler, answer its callback once it suspends, and return its result.
+
+    As with approvals, the answer goes out once the invocation that registered
+    the callback has suspended.
+
+    Returns:
+        The decoded result.
+
+    Raises:
+        AssertionError: If the handler fails.
+
+    """
+    invocations = Invocations(handler)
+    with local_runner(invocations) as runner:
+        execution_ref = runner.run_async(input=json.dumps({}))
+        invocations.wait_for_one()
+        [callback] = registrations.callback_ids()
+        respond(runner, callback)
+        result = runner.wait_for_result(execution_ref, timeout=60)
+    if result.error is not None:
+        raise AssertionError(result.error.message)
+    return None if result.result is None else json.loads(result.result)
+
+
+def test_a_succeeded_callback_resumes_with_its_result(
+    callback_registrations: CallbackRegistrations,
+) -> None:
+    handoffs = Handoffs()
+
+    def succeed(runner: DurableFunctionTestRunner, callback: str) -> None:
+        runner.send_callback_success(callback, b'{"charge": "ch_1"}')
+
+    result = answer_callback(
+        callback_registrations, pay(handoffs, timeout="1h"), succeed
+    )
+
+    assert result == {"payment": {"charge": "ch_1"}}
+    # The replay that resumed the execution registered nothing again.
+    [callback] = callback_registrations.callback_ids()
+    assert handoffs.tokens == [f"vcb_{callback}"]
+
+
+def test_a_callback_failure_keeps_its_type_through_the_replay(
+    callback_registrations: CallbackRegistrations,
+) -> None:
+    def fail(runner: DurableFunctionTestRunner, callback: str) -> None:
+        runner.send_callback_failure(
+            callback,
+            ErrorObject(
+                message="Insufficient funds",
+                type="CardDeclined",
+                data=CALLBACK_FAILURE_DATA,
+                stack_trace=None,
+            ),
+        )
+
+    result = answer_callback(callback_registrations, pay(Handoffs()), fail)
+
+    assert result == {"declined": "CardDeclined", "message": "Insufficient funds"}
+
+
+def test_a_heartbeat_keeps_the_callback_waiting(
+    callback_registrations: CallbackRegistrations,
+) -> None:
+    def beat_then_succeed(runner: DurableFunctionTestRunner, callback: str) -> None:
+        runner.send_callback_heartbeat(callback)
+        runner.send_callback_success(callback, b'"paid"')
+
+    result = answer_callback(
+        callback_registrations,
+        pay(Handoffs(), heartbeat_timeout="1h"),
+        beat_then_succeed,
+    )
+
+    assert result == {"payment": "paid"}
+
+
+@pytest.mark.usefixtures("callback_registrations")
+@pytest.mark.parametrize(
+    ("timeout", "heartbeat_timeout"),
+    [("1s", None), (None, "1s")],
+    ids=["timeout", "heartbeat-timeout"],
+)
+def test_a_callback_nobody_answers_resumes_with_none(
+    timeout: str | None, heartbeat_timeout: str | None
+) -> None:
+    handler = pay(Handoffs(), timeout=timeout, heartbeat_timeout=heartbeat_timeout)
+
+    assert run_handler(handler) == {"payment": None}
 
 
 @pytest.mark.usefixtures("registrations")

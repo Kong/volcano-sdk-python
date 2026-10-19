@@ -9,6 +9,8 @@ from typing_extensions import TypeVar
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
+    from aws_durable_execution_sdk_python.exceptions import CallbackExternalError
+
     from ._durable_options import BatchOptions, Retry, WaitUntilOptions
 
 T = TypeVar("T", default=object)
@@ -53,10 +55,13 @@ class DurableEngine(Protocol):
     """The operations the Volcano facade needs from the optional runtime."""
 
     callback_timeout_error: type[Exception]
+    callback_external_error: type[CallbackExternalError]
 
     def seconds(self, value: int) -> object: ...
 
-    def callback_options(self, timeout: int | None) -> object: ...
+    def callback_options(
+        self, timeout: int | None, heartbeat_timeout: int | None = None
+    ) -> object: ...
 
     def step_options(self, *, retry: Retry, at_most_once: bool) -> object: ...
 
