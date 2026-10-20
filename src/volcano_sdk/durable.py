@@ -397,11 +397,11 @@ class Durable:
         """Read an execution, including its result once it has succeeded.
 
         Owner-scoped: it takes the project id and the project's own platform
-        token, because an execution is addressed by its id alone and an
-        anonymous key is held by everyone who loads the page. Poll it from a
-        backend, not a browser. Neither an auth-user session from sign-in nor a
-        service key is accepted here -- the route takes a user token, and
-        anything else is answered 401.
+        token or a project access token, because an execution is addressed by
+        its id alone and an anonymous key is held by everyone who loads the
+        page. Poll it from a backend, not a browser. Neither an auth-user
+        session from sign-in nor a service key is accepted here -- the route
+        answers anything else 401.
 
         Returns
         -------
