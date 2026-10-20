@@ -51,6 +51,7 @@ from ._durable_callback_token import (
     CallbackFailedError,
     callback_failure,
     callback_result,
+    require_synchronous,
     token_submitter,
 )
 from ._durable_duration import to_seconds
@@ -521,10 +522,13 @@ class DurableContext:
         heartbeat. Either timeout returns None rather than raising; a result is
         never None, so the two cannot be confused.
 
-        The submitter runs inside a checkpointed step that is not retried, so
-        a replay does not run it again. An attempt interrupted before the step
-        is recorded can run it twice, with the same token both times. When it
-        raises, the call raises the runtime's `CallbackSubmitterError`. The
+        The submitter is synchronous, and what it returns is ignored. It runs
+        inside a checkpointed step that is not retried, so a replay does not
+        run it again. An attempt interrupted before the step is recorded can
+        run it twice, with the same token both times, unless the token was
+        answered or the wait timed out in between. When it raises, or returns
+        an awaitable, the call raises the runtime's `CallbackSubmitterError`;
+        an `async def` submitter raises `TypeError` at once. The
         name, submitter, timeouts, and `VOLCANO_PLATFORM_API_URL` are checked
         before the callback opens, and getting the token is retried for up to
         30 seconds.
@@ -539,6 +543,7 @@ class DurableContext:
         """
         callback_name = operation_name(name)
         require_callable(submitter, _REQUIRES_SUBMITTER)
+        require_synchronous(submitter)
         config = self._callback_timeouts(timeout, heartbeat_timeout)
         api_url = platform_api_url("wait_for_callback()")
         submit = token_submitter(

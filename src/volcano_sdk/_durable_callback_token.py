@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING
 
 from ._durable_callback import is_mapping
@@ -22,6 +23,10 @@ _UNREADABLE_REGISTRATION = (
     "Volcano registered the callback with a token this SDK cannot read"
 )
 _UNREADABLE_RESULT = "Volcano resumed the callback with a result this SDK cannot read"
+SYNCHRONOUS_SUBMITTER = (
+    "wait_for_callback() requires a synchronous submitter; "
+    "nothing would run an async one's hand-off"
+)
 
 
 class CallbackFailedError(Exception):
@@ -57,11 +62,40 @@ def token_submitter(
 
     def submit(callback_id: str, _context: object) -> None:
         token = register_callback(api_url, execution_ref, callback_id, name)
-        # A closed callback already timed out; the wait resumes with that.
+        # A closed callback already timed out or was answered; the wait
+        # resumes as it did.
         if token is not None:
-            _ = hand_off(token)
+            handed_off(hand_off(token))
 
     return submit
+
+
+def require_synchronous(submitter: object) -> None:
+    """Refuse an `async def` submitter before its callback opens.
+
+    Raises:
+        TypeError: The submitter is a coroutine function.
+
+    """
+    if inspect.iscoroutinefunction(submitter):
+        raise TypeError(SYNCHRONOUS_SUBMITTER)
+
+
+def handed_off(result: object) -> None:
+    """Refuse a hand-off that returned an awaitable rather than running.
+
+    The runtime calls the submitter on a thread without an event loop, so an
+    awaitable it returns would never run.
+
+    Raises:
+        TypeError: The submitter returned an awaitable.
+
+    """
+    if not inspect.isawaitable(result):
+        return
+    if inspect.iscoroutine(result):
+        result.close()
+    raise TypeError(SYNCHRONOUS_SUBMITTER)
 
 
 def register_callback(

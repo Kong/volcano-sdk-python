@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
 from typing import TYPE_CHECKING, Protocol
 
@@ -19,14 +21,17 @@ from volcano_sdk._transport_types import decode_json
 from .fixtures.durable_platform import Answer, Platform, install_platform, refused
 
 if TYPE_CHECKING:
+    from collections.abc import Coroutine, Generator
+
     from volcano_sdk.models import JSONValue
 
 API_URL = "https://api.volcano.test"
-TOKEN = "vcb_Zm9yIHRoZSBwYXltZW50IHdvcmtmbG93"
+TOKEN = "vcb_fake-token-for-tests"
 UNREADABLE_REGISTRATION = (
     "Volcano registered the callback with a token this SDK cannot read"
 )
 UNREADABLE_RESULT = "Volcano resumed the callback with a result this SDK cannot read"
+SYNCHRONOUS = r"^wait_for_callback\(\) requires a synchronous submitter"
 
 
 class InstallPlatform(Protocol):
@@ -144,6 +149,64 @@ def test_the_submitter_hands_the_token_on(platform: InstallPlatform) -> None:
         "callback_id": "callback-4",
         "name": "payment",
     }
+
+
+def test_the_submitter_ignores_what_the_hand_off_returns(
+    platform: InstallPlatform,
+) -> None:
+    _ = platform(issued())
+    handed: list[str] = []
+
+    def hand_off(token: str) -> int:
+        handed.append(token)
+        return len(handed)
+
+    token_submitter(API_URL, "arn:execution", "payment", hand_off)("callback-4", None)
+
+    assert handed == [TOKEN]
+
+
+def test_the_submitter_refuses_a_hand_off_that_returns_an_awaitable(
+    platform: InstallPlatform,
+) -> None:
+    _ = platform(issued())
+    handed: list[str] = []
+    started: list[Coroutine[object, object, None]] = []
+
+    async def deliver(token: str) -> None:
+        await asyncio.sleep(0)
+        handed.append(token)
+
+    def hand_off(token: str) -> Coroutine[object, object, None]:
+        started.append(deliver(token))
+        return started[-1]
+
+    submit = token_submitter(API_URL, "arn:execution", "payment", hand_off)
+
+    with pytest.raises(TypeError, match=SYNCHRONOUS):
+        submit("callback-4", None)
+    assert handed == []
+    [coroutine] = started
+    assert inspect.getcoroutinestate(coroutine) == inspect.CORO_CLOSED
+
+
+class Pending:
+    """An awaitable that is not a coroutine, as a future is."""
+
+    def __await__(self) -> Generator[None]:
+        yield
+
+
+def test_the_submitter_refuses_an_awaitable_that_is_not_a_coroutine(
+    platform: InstallPlatform,
+) -> None:
+    _ = platform(issued())
+    submit = token_submitter(
+        API_URL, "arn:execution", "payment", lambda _token: Pending()
+    )
+
+    with pytest.raises(TypeError, match=SYNCHRONOUS):
+        submit("callback-4", None)
 
 
 def test_the_submitter_skips_a_callback_that_already_closed(

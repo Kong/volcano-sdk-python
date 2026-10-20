@@ -5,6 +5,7 @@ The handler tests that run on the local runner are in test_durable_authoring.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import TYPE_CHECKING
 
@@ -198,6 +199,23 @@ def test_a_callback_wait_requires_a_submitter() -> None:
         match=r"^wait_for_callback\(\) requires a submitter function that receives",
     ):
         wait_for_callback_without_submitter(context)
+    assert runtime.submitter is None
+
+
+@pytest.mark.usefixtures("registrations")
+def test_a_callback_wait_refuses_an_async_submitter() -> None:
+    runtime = RecordingContext()
+    context = DurableContext(runtime, Engine())
+    handoffs = Handoffs()
+
+    async def submit(token: str) -> None:
+        await asyncio.sleep(0)
+        handoffs(token)
+
+    with pytest.raises(
+        TypeError, match=r"^wait_for_callback\(\) requires a synchronous submitter"
+    ):
+        _ = context.wait_for_callback("payment", submit)
     assert runtime.submitter is None
 
 
