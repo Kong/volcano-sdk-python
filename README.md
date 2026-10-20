@@ -253,10 +253,11 @@ name returns the execution that already exists rather than beginning a second
 one, and is charged once.
 
 `durable.get()`, `durable.list()` and `durable.stop()` are owner-scoped and need
-the project owner's platform user token, because an execution is addressed by
-its id alone and an anonymous key is held by everyone who loads the page.
-Auth-user sessions from `sign_in()`, anonymous keys, service keys, and project
-access tokens are not accepted. Poll them from a trusted backend.
+the project owner's platform user token or a project access token, because an
+execution is addressed by its id alone and an anonymous key is held by everyone
+who loads the page. A `read_only` project access token can read and list but not
+stop. Auth-user sessions from `sign_in()`, anonymous keys, and service keys are
+not accepted. Poll them from a trusted backend.
 `get()` carries `result` once the execution has succeeded and `error` when it
 failed; `result_expired` separates a result the platform has discarded from a
 function that returned nothing. `is_terminal` reports whether the execution has
