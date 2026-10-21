@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/Kong/volcano-sdk-python/compare/v0.15.0...v0.15.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **deps:** bump certifi to 2026.10.19 ([#402](https://github.com/Kong/volcano-sdk-python/issues/402)) ([b894b8f](https://github.com/Kong/volcano-sdk-python/commit/b894b8fb83369f6abbaed72dc23a0a6f99482e45))
+
 ## [0.15.0](https://github.com/Kong/volcano-sdk-python/compare/v0.14.0...v0.15.0) (2026-10-16)
 
 
