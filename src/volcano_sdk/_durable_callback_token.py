@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 from typing import TYPE_CHECKING
 
@@ -48,12 +49,14 @@ def token_submitter(
     execution_ref: str,
     name: str,
     hand_off: Callable[[str], object],
+    operation_id: str | None = None,
 ) -> Callable[[str, object], None]:
     """Build the runtime's submitter: register the callback, then hand its token on.
 
     It runs inside the runtime's checkpointed submitter step, so a replay does
     not register the callback again, and a step that runs again registers the
-    same callback and gets the same token.
+    same callback and gets the same token. `operation_id` names the operation
+    an earlier invocation opened the callback under; see `replayed_operation`.
 
     Returns:
         The submitter the runtime calls with the callback's id.
@@ -61,13 +64,50 @@ def token_submitter(
     """
 
     def submit(callback_id: str, _context: object) -> None:
-        token = register_callback(api_url, execution_ref, callback_id, name)
+        token = register_callback(
+            api_url, execution_ref, callback_id, name, operation_id
+        )
         # A closed callback already timed out or was answered; the wait
         # resumes as it did.
         if token is not None:
             handed_off(hand_off(token))
 
     return submit
+
+
+def replayed_operation(context: object) -> str | None:
+    """Name the operation an earlier invocation opened the next callback under.
+
+    Volcano then reads back to that callback rather than only through recent
+    history. Call it just before the runtime's `wait_for_callback`: the wait
+    runs in a child context named by the operation about to start, and opens
+    the callback as that context's first operation. Neither the next operation
+    nor the checkpoint is public, so a runtime without them names no operation
+    and the registration reads as a first run's does.
+
+    Returns:
+        The callback's operation id, or None when this invocation opens it.
+
+    """
+    peek = getattr(context, "_peek_next_operation_id", None)
+    checkpoint = getattr(getattr(context, "state", None), "get_checkpoint_result", None)
+    if not callable(peek) or not callable(checkpoint):
+        return None
+    operation_id = callback_operation_id(str(peek()))
+    existent = getattr(checkpoint(operation_id), "is_existent", None)
+    if not callable(existent) or not existent():
+        return None
+    return operation_id
+
+
+def callback_operation_id(child_id: str) -> str:
+    """Name the callback a wait's child context `child_id` opens first.
+
+    Returns:
+        The id the runtime checkpoints the callback under.
+
+    """
+    return hashlib.blake2b(f"{child_id}-1".encode()).hexdigest()[:64]
 
 
 def require_synchronous(submitter: object) -> None:
@@ -99,7 +139,11 @@ def handed_off(result: object) -> None:
 
 
 def register_callback(
-    api_url: str, execution_ref: str, callback_id: str, name: str
+    api_url: str,
+    execution_ref: str,
+    callback_id: str,
+    name: str,
+    operation_id: str | None = None,
 ) -> str | None:
     """Ask Volcano for the token that completes the callback.
 
@@ -118,6 +162,8 @@ def register_callback(
         "callback_id": callback_id,
         "name": name,
     }
+    if operation_id is not None:
+        body["operation_id"] = operation_id
     try:
         answer = post_to_platform(
             api_url, PlatformRequest("/durable-callbacks", body, not_ready=_NOT_READY)

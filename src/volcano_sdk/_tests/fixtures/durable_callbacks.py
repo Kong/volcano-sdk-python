@@ -14,14 +14,21 @@ class CallbackRegistrations:
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str, str]] = []
+        self.operations: list[str | None] = []
         self.closed: bool = False
         self._lock: threading.Lock = threading.Lock()
 
     def register(
-        self, api_url: str, execution_ref: str, callback_id: str, name: str
+        self,
+        api_url: str,
+        execution_ref: str,
+        callback_id: str,
+        name: str,
+        operation_id: str | None = None,
     ) -> str | None:
         with self._lock:
             self.calls.append((api_url, execution_ref, callback_id, name))
+            self.operations.append(operation_id)
         return None if self.closed else f"vcb_{callback_id}"
 
     def callback_ids(self) -> list[str]:

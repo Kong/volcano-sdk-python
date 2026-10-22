@@ -51,6 +51,7 @@ from ._durable_callback_token import (
     CallbackFailedError,
     callback_failure,
     callback_result,
+    replayed_operation,
     require_synchronous,
     token_submitter,
 )
@@ -551,6 +552,7 @@ class DurableContext:
             self._context.execution_context.durable_execution_arn,
             callback_name,
             submitter,
+            replayed_operation(self._context),
         )
         try:
             result = self._context.wait_for_callback(submit, callback_name, config)

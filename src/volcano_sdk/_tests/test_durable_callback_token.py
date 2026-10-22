@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
 import json
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
 import httpx
@@ -14,6 +16,7 @@ from volcano_sdk._durable_callback_token import (
     callback_failure,
     callback_result,
     register_callback,
+    replayed_operation,
     token_submitter,
 )
 from volcano_sdk._transport_types import decode_json
@@ -149,6 +152,94 @@ def test_the_submitter_hands_the_token_on(platform: InstallPlatform) -> None:
         "callback_id": "callback-4",
         "name": "payment",
     }
+
+
+def test_a_replayed_submitter_names_the_callbacks_operation(
+    platform: InstallPlatform,
+) -> None:
+    fake = platform(issued())
+    handed: list[str] = []
+    submit = token_submitter(API_URL, "arn:execution", "payment", handed.append, "ab12")
+
+    submit("callback-4", None)
+
+    assert decode_json(fake.requests[0].content) == {
+        "execution_ref": "arn:execution",
+        "callback_id": "callback-4",
+        "name": "payment",
+        "operation_id": "ab12",
+    }
+
+
+@dataclass(frozen=True)
+class Checkpoint:
+    exists: bool
+
+    def is_existent(self) -> bool:
+        return self.exists
+
+
+@dataclass
+class Checkpoints:
+    recorded: set[str] = field(default_factory=set[str])
+
+    def get_checkpoint_result(self, operation_id: str) -> Checkpoint:
+        return Checkpoint(operation_id in self.recorded)
+
+
+@dataclass
+class OpaqueCheckpoints:
+    result: object
+
+    def get_checkpoint_result(self, operation_id: str) -> object:
+        _ = operation_id
+        return self.result
+
+
+@dataclass
+class RuntimeInternals:
+    """Stand in for the runtime's private operation cursor and checkpoint."""
+
+    next_operation: str
+    state: object
+
+    def _peek_next_operation_id(self) -> str:
+        return self.next_operation
+
+
+@dataclass
+class NoCursor:
+    state: object
+
+
+def callback_of(child_id: str) -> str:
+    return hashlib.blake2b(f"{child_id}-1".encode()).hexdigest()[:64]
+
+
+def test_a_replay_names_the_operation_an_earlier_invocation_opened() -> None:
+    context = RuntimeInternals("child-7", Checkpoints({callback_of("child-7")}))
+
+    assert replayed_operation(context) == callback_of("child-7")
+
+
+def test_the_invocation_that_opens_the_callback_names_no_operation() -> None:
+    context = RuntimeInternals("child-7", Checkpoints({callback_of("child-6")}))
+
+    assert replayed_operation(context) is None
+
+
+@pytest.mark.parametrize(
+    "context",
+    [
+        NoCursor(Checkpoints({callback_of("child-7")})),
+        RuntimeInternals("child-7", None),
+        RuntimeInternals("child-7", OpaqueCheckpoints(object())),
+        object(),
+    ],
+    ids=["no cursor", "no checkpoint", "unreadable checkpoint", "plain object"],
+)
+def test_a_runtime_without_its_internals_names_no_operation(context: object) -> None:
+    assert replayed_operation(context) is None
 
 
 def test_the_submitter_ignores_what_the_hand_off_returns(

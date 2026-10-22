@@ -44,8 +44,13 @@ from aws_durable_execution_sdk_python.waits import (
     create_wait_strategy,
 )
 from aws_durable_execution_sdk_python_testing import DurableFunctionTestRunner
+from aws_durable_execution_sdk_python_testing.runner import CallbackOperation
 
 from volcano_sdk import ValidationError
+from volcano_sdk._durable_callback_token import (
+    callback_operation_id,
+    replayed_operation,
+)
 from volcano_sdk._durable_duration import to_seconds
 from volcano_sdk._durable_engine import Engine, load_engine
 from volcano_sdk._durable_results import completion_reason
@@ -1841,6 +1846,40 @@ def test_a_succeeded_callback_resumes_with_its_result(
     # The replay that resumed the execution registered nothing again.
     [callback] = callback_registrations.callback_ids()
     assert handoffs.tokens == [f"vcb_{callback}"]
+
+
+def test_a_replay_names_the_operation_the_first_invocation_opened_the_callback_under(
+    callback_registrations: CallbackRegistrations,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    named: list[str | None] = []
+
+    def recorded(context: object) -> str | None:
+        operation_id = replayed_operation(context)
+        named.append(operation_id)
+        return operation_id
+
+    monkeypatch.setattr("volcano_sdk.durable_authoring.replayed_operation", recorded)
+    invocations = Invocations(pay(Handoffs(), timeout="1h"))
+    with local_runner(invocations) as runner:
+        execution_ref = runner.run_async(input=json.dumps({}))
+        invocations.wait_for_one()
+        [callback] = callback_registrations.callback_ids()
+        runner.send_callback_success(callback, b'"paid"')
+        result = runner.wait_for_result(execution_ref, timeout=60)
+
+    assert result.error is None
+    wait = result.get_context("payment")
+    [opened] = [
+        operation
+        for operation in wait.child_operations
+        if isinstance(operation, CallbackOperation)
+    ]
+    assert opened.operation_id == callback_operation_id(wait.operation_id)
+    # The first invocation opened the callback; the replay that resumed it
+    # finds it checkpointed.
+    assert named == [None, opened.operation_id]
+    assert callback_registrations.operations == [None]
 
 
 def test_a_callback_failure_keeps_its_type_through_the_replay(
