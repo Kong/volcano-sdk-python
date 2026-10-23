@@ -11,6 +11,7 @@ from ... import errors
 from ...models.auth_signup_body import AuthSignupBody
 from ...models.auth_signup_response import AuthSignupResponse
 from ...models.error import Error
+from ...types import UNSET, Unset
 from typing import cast
 
 
@@ -18,9 +19,17 @@ from typing import cast
 def request_kwargs(
     *,
     body: AuthSignupBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(x_volcano_proxy_authorization, Unset):
+        headers["X-Volcano-Proxy-Authorization"] = x_volcano_proxy_authorization
+
+    if not isinstance(x_volcano_client_ip, Unset):
+        headers["X-Volcano-Client-IP"] = x_volcano_client_ip
+
 
 
     
@@ -91,6 +100,8 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: AuthSignupBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> Response[Any | AuthSignupResponse | Error]:
     """ Sign up a new auth user
@@ -109,6 +120,8 @@ def sync_detailed(
     response cannot be used to discover which emails are registered.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthSignupBody):
 
     Raises:
@@ -122,6 +135,8 @@ def sync_detailed(
 
     kwargs = request_kwargs(
         body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )
 
@@ -135,6 +150,8 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: AuthSignupBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> Any | AuthSignupResponse | Error | None:
     """ Sign up a new auth user
@@ -153,6 +170,8 @@ def sync(
     response cannot be used to discover which emails are registered.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthSignupBody):
 
     Raises:
@@ -167,6 +186,8 @@ def sync(
     return sync_detailed(
         client=client,
 body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     ).parsed
 
@@ -174,6 +195,8 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: AuthSignupBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> Response[Any | AuthSignupResponse | Error]:
     """ Sign up a new auth user
@@ -192,6 +215,8 @@ async def asyncio_detailed(
     response cannot be used to discover which emails are registered.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthSignupBody):
 
     Raises:
@@ -205,6 +230,8 @@ async def asyncio_detailed(
 
     kwargs = request_kwargs(
         body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )
 
@@ -218,6 +245,8 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: AuthSignupBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> Any | AuthSignupResponse | Error | None:
     """ Sign up a new auth user
@@ -236,6 +265,8 @@ async def asyncio(
     response cannot be used to discover which emails are registered.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthSignupBody):
 
     Raises:
@@ -250,5 +281,7 @@ async def asyncio(
     return (await asyncio_detailed(
         client=client,
 body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )).parsed

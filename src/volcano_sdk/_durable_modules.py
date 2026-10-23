@@ -20,7 +20,10 @@ if TYPE_CHECKING:
         StepSemantics,
         WaitForCallbackConfig,
     )
-    from aws_durable_execution_sdk_python.exceptions import CallbackTimeoutError
+    from aws_durable_execution_sdk_python.exceptions import (
+        CallbackExternalError,
+        CallbackTimeoutError,
+    )
     from aws_durable_execution_sdk_python.retries import (
         RetryDecision,
         RetryStrategyConfig,
@@ -97,6 +100,7 @@ class ExceptionsModule(Protocol):
     """Runtime errors the authoring adapter turns into values."""
 
     CallbackTimeoutError: type[CallbackTimeoutError]
+    CallbackExternalError: type[CallbackExternalError]
 
 
 @runtime_checkable

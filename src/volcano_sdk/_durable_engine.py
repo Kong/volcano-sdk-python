@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         WaitForCallbackConfig,
     )
     from aws_durable_execution_sdk_python.config import Duration as EngineDuration
+    from aws_durable_execution_sdk_python.exceptions import CallbackExternalError
     from aws_durable_execution_sdk_python.retries import (
         RetryDecision,
         RetryStrategyConfig,
@@ -121,6 +122,9 @@ class Engine:
             config.WaitForCallbackConfig
         )
         self.callback_timeout_error: type[Exception] = exceptions.CallbackTimeoutError
+        self.callback_external_error: type[CallbackExternalError] = (
+            exceptions.CallbackExternalError
+        )
 
     def seconds(self, value: int) -> EngineDuration:
         """Build the runtime's duration from whole seconds.
@@ -254,7 +258,9 @@ class Engine:
         if options.backoff_rate is not None:
             config.backoff_rate = options.backoff_rate
 
-    def callback_options(self, timeout: int | None) -> WaitForCallbackConfig:
+    def callback_options(
+        self, timeout: int | None, heartbeat_timeout: int | None = None
+    ) -> WaitForCallbackConfig:
         """Build the runtime's callback options.
 
         The submitter is not retried by the runtime: it already retries what is
@@ -264,11 +270,12 @@ class Engine:
             The runtime wait-for-callback configuration.
 
         """
-        if timeout is None:
-            return self.wait_for_callback_config(retry_strategy=self._never_retry())
-        return self.wait_for_callback_config(
-            timeout=self.seconds(timeout), retry_strategy=self._never_retry()
-        )
+        config = self.wait_for_callback_config(retry_strategy=self._never_retry())
+        if timeout is not None:
+            config = replace(config, timeout=self.seconds(timeout))
+        if heartbeat_timeout is not None:
+            config = replace(config, heartbeat_timeout=self.seconds(heartbeat_timeout))
+        return config
 
     def map_options(self, options: BatchOptions | None) -> object:
         """Build the runtime's map options.

@@ -32,7 +32,12 @@ class ProjectHealthResponse:
     """ 
         Attributes:
             project_id (UUID):
-            status (ProjectHealthStatus):
+            status (ProjectHealthStatus): empty means no functions, frontends, databases, storage, Volcano Auth users, or
+                Sandbox resources are listed. needs_attention means an operation needs review without confirmed service
+                impairment, or a serving frontend whose edge recovery gave up needs a redeploy. degraded means a resource is
+                only partly available or is unavailable for an expected, temporary reason, such as a frontend whose edge
+                synchronization did not complete or a database being restored; critical means use is blocked. A failed workflow
+                or deployment record alone does not establish an outage. Findings remain available for empty projects.
             observed_at (datetime.datetime):
             fresh_through (datetime.datetime):
             data_status (ProjectHealthDataStatus):
