@@ -8,8 +8,8 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.autofix_settings import AutofixSettings
 from ...models.error import Error
+from ...models.frontend_custom_domain_response import FrontendCustomDomainResponse
 from typing import cast
 from uuid import UUID
 
@@ -17,6 +17,8 @@ from uuid import UUID
 
 def request_kwargs(
     id: UUID | str,
+    frontend_id: UUID | str,
+    domain: str,
 
 ) -> dict[str, Any]:
     
@@ -26,8 +28,8 @@ def request_kwargs(
     
 
     _kwargs: dict[str, Any] = {
-        "method": "delete",
-        "url": "/projects/{id}/autofix/api-key".format(id=quote(str(id), safe=""),),
+        "method": "get",
+        "url": "/projects/{id}/frontends/{frontend_id}/domains/{domain}".format(id=quote(str(id), safe=""),frontend_id=quote(str(frontend_id), safe=""),domain=quote(str(domain), safe=""),),
     }
 
 
@@ -35,13 +37,20 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> AutofixSettings | Error | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Error | FrontendCustomDomainResponse | None:
     if response.status_code == 200:
-        response_200 = AutofixSettings.from_dict(response.json())
+        response_200 = FrontendCustomDomainResponse.from_dict(response.json())
 
 
 
         return response_200
+
+    if response.status_code == 401:
+        response_401 = Error.from_dict(response.json())
+
+
+
+        return response_401
 
     if response.status_code == 403:
         response_403 = Error.from_dict(response.json())
@@ -57,12 +66,12 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_404
 
-    if response.status_code == 501:
-        response_501 = Error.from_dict(response.json())
+    if response.status_code == 500:
+        response_500 = Error.from_dict(response.json())
 
 
 
-        return response_501
+        return response_500
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -70,7 +79,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[AutofixSettings | Error]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | FrontendCustomDomainResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -81,36 +90,32 @@ def build_response(*, client: AuthenticatedClient | Client, response: httpx.Resp
 
 def sync_detailed(
     id: UUID | str,
+    frontend_id: UUID | str,
+    domain: str,
     *,
     client: AuthenticatedClient,
 
-) -> Response[AutofixSettings | Error]:
-    """ Delete the API key
-
-     Deletes the project's stored API key and returns the settings. Autofix
-    on the key's provider runs on that key, so it turns off; on another
-    provider it stays as it is. Deleting when no key is stored succeeds.
-
-    Turning autofix off or switching providers never deletes the key, and
-    neither does applying a project configuration. This works where
-    autofix is not available, for a project that saved settings.
-
-    Project access tokens are refused.
+) -> Response[Error | FrontendCustomDomainResponse]:
+    """ Get a frontend custom domain
 
     Args:
         id (UUID):
+        frontend_id (UUID):
+        domain (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[AutofixSettings | Error]
+        Response[Error | FrontendCustomDomainResponse]
      """
 
 
     kwargs = request_kwargs(
         id=id,
+frontend_id=frontend_id,
+domain=domain,
 
     )
 
@@ -122,72 +127,64 @@ def sync_detailed(
 
 def sync(
     id: UUID | str,
+    frontend_id: UUID | str,
+    domain: str,
     *,
     client: AuthenticatedClient,
 
-) -> AutofixSettings | Error | None:
-    """ Delete the API key
-
-     Deletes the project's stored API key and returns the settings. Autofix
-    on the key's provider runs on that key, so it turns off; on another
-    provider it stays as it is. Deleting when no key is stored succeeds.
-
-    Turning autofix off or switching providers never deletes the key, and
-    neither does applying a project configuration. This works where
-    autofix is not available, for a project that saved settings.
-
-    Project access tokens are refused.
+) -> Error | FrontendCustomDomainResponse | None:
+    """ Get a frontend custom domain
 
     Args:
         id (UUID):
+        frontend_id (UUID):
+        domain (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        AutofixSettings | Error
+        Error | FrontendCustomDomainResponse
      """
 
 
     return sync_detailed(
         id=id,
+frontend_id=frontend_id,
+domain=domain,
 client=client,
 
     ).parsed
 
 async def asyncio_detailed(
     id: UUID | str,
+    frontend_id: UUID | str,
+    domain: str,
     *,
     client: AuthenticatedClient,
 
-) -> Response[AutofixSettings | Error]:
-    """ Delete the API key
-
-     Deletes the project's stored API key and returns the settings. Autofix
-    on the key's provider runs on that key, so it turns off; on another
-    provider it stays as it is. Deleting when no key is stored succeeds.
-
-    Turning autofix off or switching providers never deletes the key, and
-    neither does applying a project configuration. This works where
-    autofix is not available, for a project that saved settings.
-
-    Project access tokens are refused.
+) -> Response[Error | FrontendCustomDomainResponse]:
+    """ Get a frontend custom domain
 
     Args:
         id (UUID):
+        frontend_id (UUID):
+        domain (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[AutofixSettings | Error]
+        Response[Error | FrontendCustomDomainResponse]
      """
 
 
     kwargs = request_kwargs(
         id=id,
+frontend_id=frontend_id,
+domain=domain,
 
     )
 
@@ -199,36 +196,32 @@ async def asyncio_detailed(
 
 async def asyncio(
     id: UUID | str,
+    frontend_id: UUID | str,
+    domain: str,
     *,
     client: AuthenticatedClient,
 
-) -> AutofixSettings | Error | None:
-    """ Delete the API key
-
-     Deletes the project's stored API key and returns the settings. Autofix
-    on the key's provider runs on that key, so it turns off; on another
-    provider it stays as it is. Deleting when no key is stored succeeds.
-
-    Turning autofix off or switching providers never deletes the key, and
-    neither does applying a project configuration. This works where
-    autofix is not available, for a project that saved settings.
-
-    Project access tokens are refused.
+) -> Error | FrontendCustomDomainResponse | None:
+    """ Get a frontend custom domain
 
     Args:
         id (UUID):
+        frontend_id (UUID):
+        domain (str):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        AutofixSettings | Error
+        Error | FrontendCustomDomainResponse
      """
 
 
     return (await asyncio_detailed(
         id=id,
+frontend_id=frontend_id,
+domain=domain,
 client=client,
 
     )).parsed

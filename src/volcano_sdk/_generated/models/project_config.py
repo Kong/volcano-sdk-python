@@ -20,6 +20,7 @@ if TYPE_CHECKING:
   from ..models.project_config_database import ProjectConfigDatabase
   from ..models.project_config_frontend import ProjectConfigFrontend
   from ..models.project_config_function import ProjectConfigFunction
+  from ..models.project_config_notifications import ProjectConfigNotifications
   from ..models.project_config_project import ProjectConfigProject
   from ..models.project_config_realtime import ProjectConfigRealtime
   from ..models.project_config_sandbox import ProjectConfigSandbox
@@ -59,9 +60,12 @@ class ProjectConfig:
                 are deleted.
             buckets (list[ProjectConfigBucket] | Unset):
             realtime (ProjectConfigRealtime | Unset):
-            autofix (ProjectConfigAutofix | Unset): AI diagnosis and fix settings. Omitted fields keep their current value.
-                Your API key is never part of the manifest, and an apply never sets or deletes it: set it with `PUT
-                /projects/{id}/autofix` before turning on a provider that runs on your own key.
+            autofix (ProjectConfigAutofix | Unset): AI diagnosis and fix settings. Omitted fields keep their current value;
+                a project that never saved settings starts from `max_stage: pull_request` and `auto_trigger: true`.
+            notifications (ProjectConfigNotifications | Unset): Where the project's alerts go and when a failing scheduler
+                is announced. Omitted fields keep their current value. The webhook signing secret is never part of the manifest:
+                setting `webhook.url` on a project without a webhook generates one that is never shown. Rotate it with `POST
+                /projects/{id}/notifications/webhook-secret` to get a secret you can use.
             auth (ProjectConfigAuth | Unset): Authentication settings, grouped like the dashboard auth-settings tabs.
             functions (list[ProjectConfigFunction] | Unset):
             frontends (list[ProjectConfigFrontend] | Unset):
@@ -78,6 +82,7 @@ class ProjectConfig:
     buckets: list[ProjectConfigBucket] | Unset = UNSET
     realtime: ProjectConfigRealtime | Unset = UNSET
     autofix: ProjectConfigAutofix | Unset = UNSET
+    notifications: ProjectConfigNotifications | Unset = UNSET
     auth: ProjectConfigAuth | Unset = UNSET
     functions: list[ProjectConfigFunction] | Unset = UNSET
     frontends: list[ProjectConfigFrontend] | Unset = UNSET
@@ -94,6 +99,7 @@ class ProjectConfig:
         from ..models.project_config_database import ProjectConfigDatabase # noqa: PLC0415
         from ..models.project_config_frontend import ProjectConfigFrontend # noqa: PLC0415
         from ..models.project_config_function import ProjectConfigFunction # noqa: PLC0415
+        from ..models.project_config_notifications import ProjectConfigNotifications # noqa: PLC0415
         from ..models.project_config_project import ProjectConfigProject # noqa: PLC0415
         from ..models.project_config_realtime import ProjectConfigRealtime # noqa: PLC0415
         from ..models.project_config_sandbox import ProjectConfigSandbox # noqa: PLC0415
@@ -151,6 +157,10 @@ class ProjectConfig:
         if not isinstance(self.autofix, Unset):
             autofix = self.autofix.to_dict()
 
+        notifications: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.notifications, Unset):
+            notifications = self.notifications.to_dict()
+
         auth: dict[str, Any] | Unset = UNSET
         if not isinstance(self.auth, Unset):
             auth = self.auth.to_dict()
@@ -204,6 +214,8 @@ class ProjectConfig:
             field_dict["realtime"] = realtime
         if autofix is not UNSET:
             field_dict["autofix"] = autofix
+        if notifications is not UNSET:
+            field_dict["notifications"] = notifications
         if auth is not UNSET:
             field_dict["auth"] = auth
         if functions is not UNSET:
@@ -225,6 +237,7 @@ class ProjectConfig:
         from ..models.project_config_database import ProjectConfigDatabase # noqa: PLC0415
         from ..models.project_config_frontend import ProjectConfigFrontend # noqa: PLC0415
         from ..models.project_config_function import ProjectConfigFunction # noqa: PLC0415
+        from ..models.project_config_notifications import ProjectConfigNotifications # noqa: PLC0415
         from ..models.project_config_project import ProjectConfigProject # noqa: PLC0415
         from ..models.project_config_realtime import ProjectConfigRealtime # noqa: PLC0415
         from ..models.project_config_sandbox import ProjectConfigSandbox # noqa: PLC0415
@@ -307,6 +320,16 @@ class ProjectConfig:
 
 
 
+        _notifications = d.pop("notifications", UNSET)
+        notifications: ProjectConfigNotifications | Unset
+        if isinstance(_notifications,  Unset):
+            notifications = UNSET
+        else:
+            notifications = ProjectConfigNotifications.from_dict(_notifications)
+
+
+
+
         _auth = d.pop("auth", UNSET)
         auth: ProjectConfigAuth | Unset
         if isinstance(_auth,  Unset):
@@ -363,6 +386,7 @@ class ProjectConfig:
             buckets=buckets,
             realtime=realtime,
             autofix=autofix,
+            notifications=notifications,
             auth=auth,
             functions=functions,
             frontends=frontends,

@@ -94,7 +94,9 @@ def sync_detailed(
     """ Create a new project
 
      Creates a project for the authenticated user.
-    Each user can create up to 1,000 projects. Requests over this cap return 403.
+    Projects have no plan limit; usage allowances apply across all of a user's projects.
+    Accounts on an older paid pricing revision keep the project cap that revision set, and
+    requests over it return 403.
 
     Args:
         body (CreateProjectRequest): Request to create a new project
@@ -128,7 +130,9 @@ def sync(
     """ Create a new project
 
      Creates a project for the authenticated user.
-    Each user can create up to 1,000 projects. Requests over this cap return 403.
+    Projects have no plan limit; usage allowances apply across all of a user's projects.
+    Accounts on an older paid pricing revision keep the project cap that revision set, and
+    requests over it return 403.
 
     Args:
         body (CreateProjectRequest): Request to create a new project
@@ -157,7 +161,9 @@ async def asyncio_detailed(
     """ Create a new project
 
      Creates a project for the authenticated user.
-    Each user can create up to 1,000 projects. Requests over this cap return 403.
+    Projects have no plan limit; usage allowances apply across all of a user's projects.
+    Accounts on an older paid pricing revision keep the project cap that revision set, and
+    requests over it return 403.
 
     Args:
         body (CreateProjectRequest): Request to create a new project
@@ -191,7 +197,9 @@ async def asyncio(
     """ Create a new project
 
      Creates a project for the authenticated user.
-    Each user can create up to 1,000 projects. Requests over this cap return 403.
+    Projects have no plan limit; usage allowances apply across all of a user's projects.
+    Accounts on an older paid pricing revision keep the project cap that revision set, and
+    requests over it return 403.
 
     Args:
         body (CreateProjectRequest): Request to create a new project

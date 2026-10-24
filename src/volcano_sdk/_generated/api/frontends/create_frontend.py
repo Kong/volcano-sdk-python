@@ -152,13 +152,13 @@ def sync_detailed(
     22.x or 24.x. The Node.js runtime is inferred from
     `package.json` `engines.node`; if omitted, Volcano uses Node.js 22.x.
     The selected Node.js family must also satisfy the installed Next.js package's
-    `engines.node` constraint. Volcano tests Next 15.5.27 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
-    16.4.0 (`>=20.9.0`).
+    `engines.node` constraint. Volcano tests Next 15.5.28 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
+    16.4.2 (`>=20.9.0`).
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.
-    This operation is limited by plan-based frontend deployment quotas (`FREE_FRONTEND_DEPLOYMENTS`,
-    `PRO_FRONTEND_DEPLOYMENTS`).
+    Plans do not limit how many frontends a project has; usage allowances apply across all of a user's
+    frontends.
     Each project can contain up to 10,000 frontends regardless of plan.
 
     Args:
@@ -216,13 +216,13 @@ def sync(
     22.x or 24.x. The Node.js runtime is inferred from
     `package.json` `engines.node`; if omitted, Volcano uses Node.js 22.x.
     The selected Node.js family must also satisfy the installed Next.js package's
-    `engines.node` constraint. Volcano tests Next 15.5.27 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
-    16.4.0 (`>=20.9.0`).
+    `engines.node` constraint. Volcano tests Next 15.5.28 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
+    16.4.2 (`>=20.9.0`).
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.
-    This operation is limited by plan-based frontend deployment quotas (`FREE_FRONTEND_DEPLOYMENTS`,
-    `PRO_FRONTEND_DEPLOYMENTS`).
+    Plans do not limit how many frontends a project has; usage allowances apply across all of a user's
+    frontends.
     Each project can contain up to 10,000 frontends regardless of plan.
 
     Args:
@@ -275,13 +275,13 @@ async def asyncio_detailed(
     22.x or 24.x. The Node.js runtime is inferred from
     `package.json` `engines.node`; if omitted, Volcano uses Node.js 22.x.
     The selected Node.js family must also satisfy the installed Next.js package's
-    `engines.node` constraint. Volcano tests Next 15.5.27 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
-    16.4.0 (`>=20.9.0`).
+    `engines.node` constraint. Volcano tests Next 15.5.28 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
+    16.4.2 (`>=20.9.0`).
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.
-    This operation is limited by plan-based frontend deployment quotas (`FREE_FRONTEND_DEPLOYMENTS`,
-    `PRO_FRONTEND_DEPLOYMENTS`).
+    Plans do not limit how many frontends a project has; usage allowances apply across all of a user's
+    frontends.
     Each project can contain up to 10,000 frontends regardless of plan.
 
     Args:
@@ -339,13 +339,13 @@ async def asyncio(
     22.x or 24.x. The Node.js runtime is inferred from
     `package.json` `engines.node`; if omitted, Volcano uses Node.js 22.x.
     The selected Node.js family must also satisfy the installed Next.js package's
-    `engines.node` constraint. Volcano tests Next 15.5.27 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
-    16.4.0 (`>=20.9.0`).
+    `engines.node` constraint. Volcano tests Next 15.5.28 (`^18.18.0 || ^19.8.0 || >=20.0.0`) and Next
+    16.4.2 (`>=20.9.0`).
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.
-    This operation is limited by plan-based frontend deployment quotas (`FREE_FRONTEND_DEPLOYMENTS`,
-    `PRO_FRONTEND_DEPLOYMENTS`).
+    Plans do not limit how many frontends a project has; usage allowances apply across all of a user's
+    frontends.
     Each project can contain up to 10,000 frontends regardless of plan.
 
     Args:

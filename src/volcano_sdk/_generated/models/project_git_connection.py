@@ -30,7 +30,9 @@ class ProjectGitConnection:
             root_directory (str):
             production_branch (str): The branch a push must land on to deploy. Follows the repository's GitHub default
                 branch unless the project set its own, which a default-branch rename on GitHub then leaves alone.
-            updated_at (datetime.datetime):
+            updated_at (datetime.datetime): When the connection last changed: its repository, root directory or production
+                branch. Naming the branch it already uses, and other changes to the project, leave it alone. A connection that
+                has not changed since Volcano began tracking this reports the project's last change before then.
      """
 
     repo_installation_id: int

@@ -108,33 +108,26 @@ def sync_detailed(
     body: UpdateAutofixSettingsRequest,
 
 ) -> Response[AutofixSettings | Error]:
-    """ Replace autofix settings
+    """ Save autofix settings
 
-     Replaces the project's autofix settings. Omitted fields take their
-    defaults, except three: an omitted `provider` or `model` keeps its saved
-    value, and an omitted `api_key` keeps the stored key. So
-    `{"enabled": false}` turns autofix off and keeps the key.
+     Saves the project's autofix settings. An omitted `max_stage` or
+    `auto_trigger` keeps its saved value, or takes its default when the
+    project has no saved settings, so `{"enabled": true}` on a new project
+    diagnoses every new or regressed issue and opens a draft pull request
+    with each fix. Set `max_stage` and `auto_trigger` to stop at a diagnosis
+    or to start runs only on request. Volcano picks the models a run uses.
 
     Project access tokens are refused. Autofix opens pull requests in the
-    project's repository, so a person turns it on with a platform token or
-    in the dashboard.
+    project's repository, so a person turns it on with a platform token.
 
-    Turning autofix on needs a plan that includes it. Settings that are
-    already on stay stored after a downgrade, and saving them again is not
-    refused, but no run starts until the plan includes autofix again. Other
-    saves need no plan.
-
-    Provider `anthropic` runs on your own API key. A key belongs to the
-    provider it was saved with, and turning autofix on with a provider that
-    runs on your own key needs one for it. Turning autofix off or switching
-    providers keeps the stored key; only
-    `DELETE /projects/{id}/autofix/api-key` removes it. Turning autofix on
-    with provider `volcano` needs the `autofix.managed_models` capability;
-    without it the request answers `400` with code `feature_unavailable`.
+    During the preview, turning autofix on needs the SUPERAGENT plan, and
+    nothing is charged yet. Settings that are already on stay stored after
+    a downgrade, and saving them again is not refused, but no run starts
+    until the plan allows autofix again. Other saves need no plan.
 
     Where autofix is not available, a project with saved settings can
-    still change them with `enabled: false`. Turning autofix on answers
-    `404` with code `feature_unavailable`.
+    still change them with `enabled: false`. Saving `enabled: true`
+    answers `404` with code `feature_unavailable`.
 
     Args:
         id (UUID):
@@ -168,33 +161,26 @@ def sync(
     body: UpdateAutofixSettingsRequest,
 
 ) -> AutofixSettings | Error | None:
-    """ Replace autofix settings
+    """ Save autofix settings
 
-     Replaces the project's autofix settings. Omitted fields take their
-    defaults, except three: an omitted `provider` or `model` keeps its saved
-    value, and an omitted `api_key` keeps the stored key. So
-    `{"enabled": false}` turns autofix off and keeps the key.
+     Saves the project's autofix settings. An omitted `max_stage` or
+    `auto_trigger` keeps its saved value, or takes its default when the
+    project has no saved settings, so `{"enabled": true}` on a new project
+    diagnoses every new or regressed issue and opens a draft pull request
+    with each fix. Set `max_stage` and `auto_trigger` to stop at a diagnosis
+    or to start runs only on request. Volcano picks the models a run uses.
 
     Project access tokens are refused. Autofix opens pull requests in the
-    project's repository, so a person turns it on with a platform token or
-    in the dashboard.
+    project's repository, so a person turns it on with a platform token.
 
-    Turning autofix on needs a plan that includes it. Settings that are
-    already on stay stored after a downgrade, and saving them again is not
-    refused, but no run starts until the plan includes autofix again. Other
-    saves need no plan.
-
-    Provider `anthropic` runs on your own API key. A key belongs to the
-    provider it was saved with, and turning autofix on with a provider that
-    runs on your own key needs one for it. Turning autofix off or switching
-    providers keeps the stored key; only
-    `DELETE /projects/{id}/autofix/api-key` removes it. Turning autofix on
-    with provider `volcano` needs the `autofix.managed_models` capability;
-    without it the request answers `400` with code `feature_unavailable`.
+    During the preview, turning autofix on needs the SUPERAGENT plan, and
+    nothing is charged yet. Settings that are already on stay stored after
+    a downgrade, and saving them again is not refused, but no run starts
+    until the plan allows autofix again. Other saves need no plan.
 
     Where autofix is not available, a project with saved settings can
-    still change them with `enabled: false`. Turning autofix on answers
-    `404` with code `feature_unavailable`.
+    still change them with `enabled: false`. Saving `enabled: true`
+    answers `404` with code `feature_unavailable`.
 
     Args:
         id (UUID):
@@ -223,33 +209,26 @@ async def asyncio_detailed(
     body: UpdateAutofixSettingsRequest,
 
 ) -> Response[AutofixSettings | Error]:
-    """ Replace autofix settings
+    """ Save autofix settings
 
-     Replaces the project's autofix settings. Omitted fields take their
-    defaults, except three: an omitted `provider` or `model` keeps its saved
-    value, and an omitted `api_key` keeps the stored key. So
-    `{"enabled": false}` turns autofix off and keeps the key.
+     Saves the project's autofix settings. An omitted `max_stage` or
+    `auto_trigger` keeps its saved value, or takes its default when the
+    project has no saved settings, so `{"enabled": true}` on a new project
+    diagnoses every new or regressed issue and opens a draft pull request
+    with each fix. Set `max_stage` and `auto_trigger` to stop at a diagnosis
+    or to start runs only on request. Volcano picks the models a run uses.
 
     Project access tokens are refused. Autofix opens pull requests in the
-    project's repository, so a person turns it on with a platform token or
-    in the dashboard.
+    project's repository, so a person turns it on with a platform token.
 
-    Turning autofix on needs a plan that includes it. Settings that are
-    already on stay stored after a downgrade, and saving them again is not
-    refused, but no run starts until the plan includes autofix again. Other
-    saves need no plan.
-
-    Provider `anthropic` runs on your own API key. A key belongs to the
-    provider it was saved with, and turning autofix on with a provider that
-    runs on your own key needs one for it. Turning autofix off or switching
-    providers keeps the stored key; only
-    `DELETE /projects/{id}/autofix/api-key` removes it. Turning autofix on
-    with provider `volcano` needs the `autofix.managed_models` capability;
-    without it the request answers `400` with code `feature_unavailable`.
+    During the preview, turning autofix on needs the SUPERAGENT plan, and
+    nothing is charged yet. Settings that are already on stay stored after
+    a downgrade, and saving them again is not refused, but no run starts
+    until the plan allows autofix again. Other saves need no plan.
 
     Where autofix is not available, a project with saved settings can
-    still change them with `enabled: false`. Turning autofix on answers
-    `404` with code `feature_unavailable`.
+    still change them with `enabled: false`. Saving `enabled: true`
+    answers `404` with code `feature_unavailable`.
 
     Args:
         id (UUID):
@@ -283,33 +262,26 @@ async def asyncio(
     body: UpdateAutofixSettingsRequest,
 
 ) -> AutofixSettings | Error | None:
-    """ Replace autofix settings
+    """ Save autofix settings
 
-     Replaces the project's autofix settings. Omitted fields take their
-    defaults, except three: an omitted `provider` or `model` keeps its saved
-    value, and an omitted `api_key` keeps the stored key. So
-    `{"enabled": false}` turns autofix off and keeps the key.
+     Saves the project's autofix settings. An omitted `max_stage` or
+    `auto_trigger` keeps its saved value, or takes its default when the
+    project has no saved settings, so `{"enabled": true}` on a new project
+    diagnoses every new or regressed issue and opens a draft pull request
+    with each fix. Set `max_stage` and `auto_trigger` to stop at a diagnosis
+    or to start runs only on request. Volcano picks the models a run uses.
 
     Project access tokens are refused. Autofix opens pull requests in the
-    project's repository, so a person turns it on with a platform token or
-    in the dashboard.
+    project's repository, so a person turns it on with a platform token.
 
-    Turning autofix on needs a plan that includes it. Settings that are
-    already on stay stored after a downgrade, and saving them again is not
-    refused, but no run starts until the plan includes autofix again. Other
-    saves need no plan.
-
-    Provider `anthropic` runs on your own API key. A key belongs to the
-    provider it was saved with, and turning autofix on with a provider that
-    runs on your own key needs one for it. Turning autofix off or switching
-    providers keeps the stored key; only
-    `DELETE /projects/{id}/autofix/api-key` removes it. Turning autofix on
-    with provider `volcano` needs the `autofix.managed_models` capability;
-    without it the request answers `400` with code `feature_unavailable`.
+    During the preview, turning autofix on needs the SUPERAGENT plan, and
+    nothing is charged yet. Settings that are already on stay stored after
+    a downgrade, and saving them again is not refused, but no run starts
+    until the plan allows autofix again. Other saves need no plan.
 
     Where autofix is not available, a project with saved settings can
-    still change them with `enabled: false`. Turning autofix on answers
-    `404` with code `feature_unavailable`.
+    still change them with `enabled: false`. Saving `enabled: true`
+    answers `404` with code `feature_unavailable`.
 
     Args:
         id (UUID):

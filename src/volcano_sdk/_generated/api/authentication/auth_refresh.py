@@ -19,9 +19,17 @@ from typing import cast
 def request_kwargs(
     *,
     body: AuthRefreshBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(x_volcano_proxy_authorization, Unset):
+        headers["X-Volcano-Proxy-Authorization"] = x_volcano_proxy_authorization
+
+    if not isinstance(x_volcano_client_ip, Unset):
+        headers["X-Volcano-Client-IP"] = x_volcano_client_ip
+
 
 
     
@@ -92,6 +100,8 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: AuthRefreshBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> Response[AuthTokenResponse | Error]:
     """ Refresh access token
@@ -105,6 +115,8 @@ def sync_detailed(
     response.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthRefreshBody | Unset):
 
     Raises:
@@ -118,6 +130,8 @@ def sync_detailed(
 
     kwargs = request_kwargs(
         body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )
 
@@ -131,6 +145,8 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: AuthRefreshBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> AuthTokenResponse | Error | None:
     """ Refresh access token
@@ -144,6 +160,8 @@ def sync(
     response.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthRefreshBody | Unset):
 
     Raises:
@@ -158,6 +176,8 @@ def sync(
     return sync_detailed(
         client=client,
 body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     ).parsed
 
@@ -165,6 +185,8 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: AuthRefreshBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> Response[AuthTokenResponse | Error]:
     """ Refresh access token
@@ -178,6 +200,8 @@ async def asyncio_detailed(
     response.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthRefreshBody | Unset):
 
     Raises:
@@ -191,6 +215,8 @@ async def asyncio_detailed(
 
     kwargs = request_kwargs(
         body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )
 
@@ -204,6 +230,8 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: AuthRefreshBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> AuthTokenResponse | Error | None:
     """ Refresh access token
@@ -217,6 +245,8 @@ async def asyncio(
     response.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthRefreshBody | Unset):
 
     Raises:
@@ -231,5 +261,7 @@ async def asyncio(
     return (await asyncio_detailed(
         client=client,
 body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )).parsed

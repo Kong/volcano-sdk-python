@@ -106,6 +106,9 @@ def sync_detailed(
 ) -> Response[Any | Error]:
     """ Delete frontend custom domain
 
+     Deprecated: use `DELETE /projects/{id}/frontends/{frontendId}/domains/{domain}`.
+    Deletes the frontend's oldest domain that serves it rather than redirecting.
+
     Args:
         id (UUID):
         frontend_id (UUID):
@@ -140,6 +143,9 @@ def sync(
 ) -> Any | Error | None:
     """ Delete frontend custom domain
 
+     Deprecated: use `DELETE /projects/{id}/frontends/{frontendId}/domains/{domain}`.
+    Deletes the frontend's oldest domain that serves it rather than redirecting.
+
     Args:
         id (UUID):
         frontend_id (UUID):
@@ -168,6 +174,9 @@ async def asyncio_detailed(
 
 ) -> Response[Any | Error]:
     """ Delete frontend custom domain
+
+     Deprecated: use `DELETE /projects/{id}/frontends/{frontendId}/domains/{domain}`.
+    Deletes the frontend's oldest domain that serves it rather than redirecting.
 
     Args:
         id (UUID):
@@ -202,6 +211,9 @@ async def asyncio(
 
 ) -> Any | Error | None:
     """ Delete frontend custom domain
+
+     Deprecated: use `DELETE /projects/{id}/frontends/{frontendId}/domains/{domain}`.
+    Deletes the frontend's oldest domain that serves it rather than redirecting.
 
     Args:
         id (UUID):
