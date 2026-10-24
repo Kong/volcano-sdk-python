@@ -149,6 +149,18 @@ def timestamp(value: object) -> datetime:
     return result
 
 
+def nullable_timestamp(value: object) -> datetime | None:
+    """Parse an aware timestamp that the Sandbox API may return as null.
+
+    A session with no lifetime limit, such as a local-mode session, has no expiry.
+
+    Returns:
+        The aware response timestamp, or None for a null value.
+
+    """
+    return None if value is None else timestamp(value)
+
+
 def grant_expiry(value: object) -> str:
     """Serialize an aware grant expiry.
 
