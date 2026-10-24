@@ -25,6 +25,9 @@ class Error:
         Attributes:
             error (str):
             code (str | Unset): Stable machine-readable error code when a specific recovery path is available.
+                `plan_required` (403) means the project owner's plan does not include the requested feature or option; upgrading
+                the plan unlocks it. A 403 without a code leaves the reason unspecified: it can be an access refusal, a reached
+                limit, or a plan check that could not read the owner's plan. Match on the code, not the message text.
      """
 
     error: str

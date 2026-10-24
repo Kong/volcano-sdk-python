@@ -89,8 +89,13 @@ class AuthConfig:
                 the same email instead of returning a conflict. Requires require_email_confirmation to be true. Default: False.
             email_enabled (bool | Unset): Enable transactional email sending (confirmation, reset, change notifications).
                 Must be true when require_email_confirmation is true. Default: False.
-            email_from_address (str | Unset):
-            email_from_name (str | Unset):
+            email_from_address (str | Unset): Sender email address. New or changed values containing carriage returns or
+                newlines return 400. Unchanged stored or exported values are preserved. Leading and trailing whitespace in
+                previously saved settings is trimmed in responses and exports, and ignored when sending.
+            email_from_name (str | Unset): Sender display name; supports punctuation and Unicode. New or changed values
+                containing carriage returns or newlines return 400. Unchanged stored or exported values are preserved. Leading
+                and trailing whitespace in previously saved settings is trimmed in responses and exports, and ignored when
+                sending.
             smtp_host (str | Unset):
             smtp_port (int | Unset):  Default: 587.
             smtp_username (str | Unset):

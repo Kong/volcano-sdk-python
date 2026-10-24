@@ -46,6 +46,8 @@ class FrontendDeployment:
             updated_at (datetime.datetime):
             initiated_by (str | Unset): Platform user that triggered a request-initiated deployment; absent for git and
                 system deployments.
+            source_deployment_id (UUID | Unset): The deployment whose build this deployment published instead of compiling
+                its own source. Absent when the deployment compiled.
             site_url (str | Unset):
             build_duration_seconds (int | Unset): Total build time recorded for this deployment, in seconds.
             build_count (int | Unset): Number of completed builds included in build_duration_seconds.
@@ -64,6 +66,7 @@ class FrontendDeployment:
     created_at: datetime.datetime
     updated_at: datetime.datetime
     initiated_by: str | Unset = UNSET
+    source_deployment_id: UUID | Unset = UNSET
     site_url: str | Unset = UNSET
     build_duration_seconds: int | Unset = UNSET
     build_count: int | Unset = UNSET
@@ -96,6 +99,10 @@ class FrontendDeployment:
 
         initiated_by = self.initiated_by
 
+        source_deployment_id: str | Unset = UNSET
+        if not isinstance(self.source_deployment_id, Unset):
+            source_deployment_id = str(self.source_deployment_id)
+
         site_url = self.site_url
 
         build_duration_seconds = self.build_duration_seconds
@@ -127,6 +134,8 @@ class FrontendDeployment:
         })
         if initiated_by is not UNSET:
             field_dict["initiated_by"] = initiated_by
+        if source_deployment_id is not UNSET:
+            field_dict["source_deployment_id"] = source_deployment_id
         if site_url is not UNSET:
             field_dict["site_url"] = site_url
         if build_duration_seconds is not UNSET:
@@ -190,6 +199,16 @@ class FrontendDeployment:
 
         initiated_by = d.pop("initiated_by", UNSET)
 
+        _source_deployment_id = d.pop("source_deployment_id", UNSET)
+        source_deployment_id: UUID | Unset
+        if isinstance(_source_deployment_id,  Unset):
+            source_deployment_id = UNSET
+        else:
+            source_deployment_id = UUID(_source_deployment_id)
+
+
+
+
         site_url = d.pop("site_url", UNSET)
 
         build_duration_seconds = d.pop("build_duration_seconds", UNSET)
@@ -228,6 +247,7 @@ class FrontendDeployment:
             created_at=created_at,
             updated_at=updated_at,
             initiated_by=initiated_by,
+            source_deployment_id=source_deployment_id,
             site_url=site_url,
             build_duration_seconds=build_duration_seconds,
             build_count=build_count,

@@ -133,6 +133,13 @@ def sync_detailed(
     user token, then persists repository metadata only from that validated
     GitHub response.
 
+    Project access tokens are refused. Which repository a project deploys
+    from is a person's decision, made with a platform token or in the
+    dashboard. A project access token can still change the root directory
+    and production branch through PUT
+    /projects/{id}/git-connection/root-directory and PUT
+    /projects/{id}/git-connection/production-branch.
+
     Args:
         id (UUID):
         body (ConnectProjectGitRequest):
@@ -176,6 +183,13 @@ def sync(
     user token, then persists repository metadata only from that validated
     GitHub response.
 
+    Project access tokens are refused. Which repository a project deploys
+    from is a person's decision, made with a platform token or in the
+    dashboard. A project access token can still change the root directory
+    and production branch through PUT
+    /projects/{id}/git-connection/root-directory and PUT
+    /projects/{id}/git-connection/production-branch.
+
     Args:
         id (UUID):
         body (ConnectProjectGitRequest):
@@ -213,6 +227,13 @@ async def asyncio_detailed(
     accessible through installation_id via connection_id's stored GitHub
     user token, then persists repository metadata only from that validated
     GitHub response.
+
+    Project access tokens are refused. Which repository a project deploys
+    from is a person's decision, made with a platform token or in the
+    dashboard. A project access token can still change the root directory
+    and production branch through PUT
+    /projects/{id}/git-connection/root-directory and PUT
+    /projects/{id}/git-connection/production-branch.
 
     Args:
         id (UUID):
@@ -256,6 +277,13 @@ async def asyncio(
     accessible through installation_id via connection_id's stored GitHub
     user token, then persists repository metadata only from that validated
     GitHub response.
+
+    Project access tokens are refused. Which repository a project deploys
+    from is a person's decision, made with a platform token or in the
+    dashboard. A project access token can still change the root directory
+    and production branch through PUT
+    /projects/{id}/git-connection/root-directory and PUT
+    /projects/{id}/git-connection/production-branch.
 
     Args:
         id (UUID):

@@ -87,13 +87,9 @@ def sync_detailed(
 ) -> Response[AutofixSettings | Error]:
     """ Get autofix settings
 
-     Returns whether Volcano diagnoses the project's issues with AI, how far
-    a run may go, and which model it uses. A project that never saved
-    settings returns the defaults, with autofix off.
-
-    Your API key is never returned. `api_key_configured`,
-    `api_key_provider`, and `api_key_last4` show whether one is set and
-    which provider it belongs to.
+     Returns whether Volcano diagnoses the project's issues with AI and how
+    far a run may go. A project that never saved settings returns the
+    defaults, with autofix off.
 
     Where autofix is not available, saved settings stay readable. A project
     that never saved any answers `404` with code `feature_unavailable`.
@@ -129,13 +125,9 @@ def sync(
 ) -> AutofixSettings | Error | None:
     """ Get autofix settings
 
-     Returns whether Volcano diagnoses the project's issues with AI, how far
-    a run may go, and which model it uses. A project that never saved
-    settings returns the defaults, with autofix off.
-
-    Your API key is never returned. `api_key_configured`,
-    `api_key_provider`, and `api_key_last4` show whether one is set and
-    which provider it belongs to.
+     Returns whether Volcano diagnoses the project's issues with AI and how
+    far a run may go. A project that never saved settings returns the
+    defaults, with autofix off.
 
     Where autofix is not available, saved settings stay readable. A project
     that never saved any answers `404` with code `feature_unavailable`.
@@ -166,13 +158,9 @@ async def asyncio_detailed(
 ) -> Response[AutofixSettings | Error]:
     """ Get autofix settings
 
-     Returns whether Volcano diagnoses the project's issues with AI, how far
-    a run may go, and which model it uses. A project that never saved
-    settings returns the defaults, with autofix off.
-
-    Your API key is never returned. `api_key_configured`,
-    `api_key_provider`, and `api_key_last4` show whether one is set and
-    which provider it belongs to.
+     Returns whether Volcano diagnoses the project's issues with AI and how
+    far a run may go. A project that never saved settings returns the
+    defaults, with autofix off.
 
     Where autofix is not available, saved settings stay readable. A project
     that never saved any answers `404` with code `feature_unavailable`.
@@ -208,13 +196,9 @@ async def asyncio(
 ) -> AutofixSettings | Error | None:
     """ Get autofix settings
 
-     Returns whether Volcano diagnoses the project's issues with AI, how far
-    a run may go, and which model it uses. A project that never saved
-    settings returns the defaults, with autofix off.
-
-    Your API key is never returned. `api_key_configured`,
-    `api_key_provider`, and `api_key_last4` show whether one is set and
-    which provider it belongs to.
+     Returns whether Volcano diagnoses the project's issues with AI and how
+    far a run may go. A project that never saved settings returns the
+    defaults, with autofix off.
 
     Where autofix is not available, saved settings stay readable. A project
     that never saved any answers `404` with code `feature_unavailable`.

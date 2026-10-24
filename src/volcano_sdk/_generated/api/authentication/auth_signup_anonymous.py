@@ -10,6 +10,7 @@ from ... import errors
 
 from ...models.auth_signup_anonymous_body import AuthSignupAnonymousBody
 from ...models.auth_token_response import AuthTokenResponse
+from ...models.error import Error
 from ...types import UNSET, Unset
 from typing import cast
 
@@ -18,9 +19,17 @@ from typing import cast
 def request_kwargs(
     *,
     body: AuthSignupAnonymousBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(x_volcano_proxy_authorization, Unset):
+        headers["X-Volcano-Proxy-Authorization"] = x_volcano_proxy_authorization
+
+    if not isinstance(x_volcano_client_ip, Unset):
+        headers["X-Volcano-Client-IP"] = x_volcano_client_ip
+
 
 
     
@@ -43,13 +52,20 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | AuthTokenResponse | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | AuthTokenResponse | Error | None:
     if response.status_code == 201:
         response_201 = AuthTokenResponse.from_dict(response.json())
 
 
 
         return response_201
+
+    if response.status_code == 401:
+        response_401 = Error.from_dict(response.json())
+
+
+
+        return response_401
 
     if response.status_code == 403:
         response_403 = cast(Any, None)
@@ -61,7 +77,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | AuthTokenResponse]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | AuthTokenResponse | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -74,8 +90,10 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: AuthSignupAnonymousBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
-) -> Response[Any | AuthTokenResponse]:
+) -> Response[Any | AuthTokenResponse | Error]:
     """ Create anonymous user
 
      Create guest user without email/password.
@@ -84,6 +102,8 @@ def sync_detailed(
     Requires enable_anonymous_signins to be true.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthSignupAnonymousBody | Unset):
 
     Raises:
@@ -91,12 +111,14 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | AuthTokenResponse]
+        Response[Any | AuthTokenResponse | Error]
      """
 
 
     kwargs = request_kwargs(
         body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )
 
@@ -110,8 +132,10 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: AuthSignupAnonymousBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
-) -> Any | AuthTokenResponse | None:
+) -> Any | AuthTokenResponse | Error | None:
     """ Create anonymous user
 
      Create guest user without email/password.
@@ -120,6 +144,8 @@ def sync(
     Requires enable_anonymous_signins to be true.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthSignupAnonymousBody | Unset):
 
     Raises:
@@ -127,13 +153,15 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | AuthTokenResponse
+        Any | AuthTokenResponse | Error
      """
 
 
     return sync_detailed(
         client=client,
 body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     ).parsed
 
@@ -141,8 +169,10 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: AuthSignupAnonymousBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
-) -> Response[Any | AuthTokenResponse]:
+) -> Response[Any | AuthTokenResponse | Error]:
     """ Create anonymous user
 
      Create guest user without email/password.
@@ -151,6 +181,8 @@ async def asyncio_detailed(
     Requires enable_anonymous_signins to be true.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthSignupAnonymousBody | Unset):
 
     Raises:
@@ -158,12 +190,14 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | AuthTokenResponse]
+        Response[Any | AuthTokenResponse | Error]
      """
 
 
     kwargs = request_kwargs(
         body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )
 
@@ -177,8 +211,10 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: AuthSignupAnonymousBody | Unset = UNSET,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
-) -> Any | AuthTokenResponse | None:
+) -> Any | AuthTokenResponse | Error | None:
     """ Create anonymous user
 
      Create guest user without email/password.
@@ -187,6 +223,8 @@ async def asyncio(
     Requires enable_anonymous_signins to be true.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthSignupAnonymousBody | Unset):
 
     Raises:
@@ -194,12 +232,14 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | AuthTokenResponse
+        Any | AuthTokenResponse | Error
      """
 
 
     return (await asyncio_detailed(
         client=client,
 body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )).parsed

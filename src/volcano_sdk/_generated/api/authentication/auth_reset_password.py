@@ -11,6 +11,7 @@ from ... import errors
 from ...models.auth_reset_password_body import AuthResetPasswordBody
 from ...models.auth_reset_password_response_200 import AuthResetPasswordResponse200
 from ...models.error import Error
+from ...types import UNSET, Unset
 from typing import cast
 
 
@@ -18,9 +19,17 @@ from typing import cast
 def request_kwargs(
     *,
     body: AuthResetPasswordBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(x_volcano_proxy_authorization, Unset):
+        headers["X-Volcano-Proxy-Authorization"] = x_volcano_proxy_authorization
+
+    if not isinstance(x_volcano_client_ip, Unset):
+        headers["X-Volcano-Client-IP"] = x_volcano_client_ip
+
 
 
     
@@ -83,6 +92,8 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: AuthResetPasswordBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> Response[Any | AuthResetPasswordResponse200 | Error]:
     """ Reset password with recovery token
@@ -91,6 +102,8 @@ def sync_detailed(
     Revokes all existing sessions for security.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthResetPasswordBody):
 
     Raises:
@@ -104,6 +117,8 @@ def sync_detailed(
 
     kwargs = request_kwargs(
         body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )
 
@@ -117,6 +132,8 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: AuthResetPasswordBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> Any | AuthResetPasswordResponse200 | Error | None:
     """ Reset password with recovery token
@@ -125,6 +142,8 @@ def sync(
     Revokes all existing sessions for security.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthResetPasswordBody):
 
     Raises:
@@ -139,6 +158,8 @@ def sync(
     return sync_detailed(
         client=client,
 body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     ).parsed
 
@@ -146,6 +167,8 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: AuthResetPasswordBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> Response[Any | AuthResetPasswordResponse200 | Error]:
     """ Reset password with recovery token
@@ -154,6 +177,8 @@ async def asyncio_detailed(
     Revokes all existing sessions for security.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthResetPasswordBody):
 
     Raises:
@@ -167,6 +192,8 @@ async def asyncio_detailed(
 
     kwargs = request_kwargs(
         body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )
 
@@ -180,6 +207,8 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: AuthResetPasswordBody,
+    x_volcano_proxy_authorization: str | Unset = UNSET,
+    x_volcano_client_ip: str | Unset = UNSET,
 
 ) -> Any | AuthResetPasswordResponse200 | Error | None:
     """ Reset password with recovery token
@@ -188,6 +217,8 @@ async def asyncio(
     Revokes all existing sessions for security.
 
     Args:
+        x_volcano_proxy_authorization (str | Unset):
+        x_volcano_client_ip (str | Unset):
         body (AuthResetPasswordBody):
 
     Raises:
@@ -202,5 +233,7 @@ async def asyncio(
     return (await asyncio_detailed(
         client=client,
 body=body,
+x_volcano_proxy_authorization=x_volcano_proxy_authorization,
+x_volcano_client_ip=x_volcano_client_ip,
 
     )).parsed

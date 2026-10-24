@@ -73,8 +73,10 @@ def sync_detailed(
     `sandboxes.sessions` is unavailable |
     | `issues` | The Issues API: listing, reading, and updating grouped runtime errors |
     | `autofix` | The Autofix API: a project's AI diagnosis and fix settings |
-    | `autofix.managed_models` | Turning autofix on with Volcano-managed models instead of your own API
-    key |
+    | `functions.response_streaming` | Streaming an HTTP-mode function's response on its own URL as the
+    function writes it |
+    | `frontend_routes` | Creating and changing Frontend routes; listing, deleting, and serving existing
+    ones work either way |
 
     A capability missing from the list is unavailable, and a capability under
     another, such as `sandboxes.sessions`, is unavailable whenever its parent is.
@@ -83,6 +85,11 @@ def sync_detailed(
     that code. Reading, deleting, and terminating what already exists keep
     working unless the whole feature is absent from the environment. Every caller
     in an environment gets the same answer.
+
+    `functions.response_streaming` refuses nothing: while it is unavailable, a
+    function's own URL still answers and sends a streamed response whole, once
+    the function finishes, up to 6 MiB with headers; a larger one fails the
+    invocation. Frontend Function routes stream either way.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -121,8 +128,10 @@ def sync(
     `sandboxes.sessions` is unavailable |
     | `issues` | The Issues API: listing, reading, and updating grouped runtime errors |
     | `autofix` | The Autofix API: a project's AI diagnosis and fix settings |
-    | `autofix.managed_models` | Turning autofix on with Volcano-managed models instead of your own API
-    key |
+    | `functions.response_streaming` | Streaming an HTTP-mode function's response on its own URL as the
+    function writes it |
+    | `frontend_routes` | Creating and changing Frontend routes; listing, deleting, and serving existing
+    ones work either way |
 
     A capability missing from the list is unavailable, and a capability under
     another, such as `sandboxes.sessions`, is unavailable whenever its parent is.
@@ -131,6 +140,11 @@ def sync(
     that code. Reading, deleting, and terminating what already exists keep
     working unless the whole feature is absent from the environment. Every caller
     in an environment gets the same answer.
+
+    `functions.response_streaming` refuses nothing: while it is unavailable, a
+    function's own URL still answers and sends a streamed response whole, once
+    the function finishes, up to 6 MiB with headers; a larger one fails the
+    invocation. Frontend Function routes stream either way.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -164,8 +178,10 @@ async def asyncio_detailed(
     `sandboxes.sessions` is unavailable |
     | `issues` | The Issues API: listing, reading, and updating grouped runtime errors |
     | `autofix` | The Autofix API: a project's AI diagnosis and fix settings |
-    | `autofix.managed_models` | Turning autofix on with Volcano-managed models instead of your own API
-    key |
+    | `functions.response_streaming` | Streaming an HTTP-mode function's response on its own URL as the
+    function writes it |
+    | `frontend_routes` | Creating and changing Frontend routes; listing, deleting, and serving existing
+    ones work either way |
 
     A capability missing from the list is unavailable, and a capability under
     another, such as `sandboxes.sessions`, is unavailable whenever its parent is.
@@ -174,6 +190,11 @@ async def asyncio_detailed(
     that code. Reading, deleting, and terminating what already exists keep
     working unless the whole feature is absent from the environment. Every caller
     in an environment gets the same answer.
+
+    `functions.response_streaming` refuses nothing: while it is unavailable, a
+    function's own URL still answers and sends a streamed response whole, once
+    the function finishes, up to 6 MiB with headers; a larger one fails the
+    invocation. Frontend Function routes stream either way.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -212,8 +233,10 @@ async def asyncio(
     `sandboxes.sessions` is unavailable |
     | `issues` | The Issues API: listing, reading, and updating grouped runtime errors |
     | `autofix` | The Autofix API: a project's AI diagnosis and fix settings |
-    | `autofix.managed_models` | Turning autofix on with Volcano-managed models instead of your own API
-    key |
+    | `functions.response_streaming` | Streaming an HTTP-mode function's response on its own URL as the
+    function writes it |
+    | `frontend_routes` | Creating and changing Frontend routes; listing, deleting, and serving existing
+    ones work either way |
 
     A capability missing from the list is unavailable, and a capability under
     another, such as `sandboxes.sessions`, is unavailable whenever its parent is.
@@ -222,6 +245,11 @@ async def asyncio(
     that code. Reading, deleting, and terminating what already exists keep
     working unless the whole feature is absent from the environment. Every caller
     in an environment gets the same answer.
+
+    `functions.response_streaming` refuses nothing: while it is unavailable, a
+    function's own URL still answers and sends a streamed response whole, once
+    the function finishes, up to 6 MiB with headers; a larger one fails the
+    invocation. Frontend Function routes stream either way.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

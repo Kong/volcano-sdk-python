@@ -29,7 +29,10 @@ class ProjectGitDeploySettings:
         Attributes:
             auto_deploy_enabled (bool): Whether a production-branch push triggers a deployment.
             deploy_functions (bool): Whether the repo's functions are deployed on push.
-            updated_at (datetime.datetime):
+            updated_at (datetime.datetime): When the settings were last saved, or last changed by connecting a repository.
+                Other changes to the project leave it alone. Settings a connection turned on before Volcano began tracking this
+                report the project's last change before then; settings never saved or changed report when the project was
+                created.
             frontend_name (str | Unset): Name of the frontend to build and deploy on push. Omitted when no frontend is
                 deployed. Resolved at deploy time; need not exist yet.
             frontend_app_root (str | Unset): App root (subdirectory) the frontend builds from. Omitted for the repo root.

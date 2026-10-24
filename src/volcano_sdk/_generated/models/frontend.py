@@ -23,6 +23,7 @@ import datetime
 
 if TYPE_CHECKING:
   from ..models.frontend_function_route import FrontendFunctionRoute
+  from ..models.frontend_route import FrontendRoute
 
 
 
@@ -51,6 +52,9 @@ class Frontend:
             function_routes (list[FrontendFunctionRoute]): Paths on this frontend that forward to a public function, ordered
                 from most to least specific. Anyone who can load the frontend can
                 reach the target function at these paths without a credential.
+            frontend_routes (list[FrontendRoute]): Paths on this frontend served by another frontend in the project,
+                ordered from most to least specific. Function and Frontend routes
+                share one path namespace and the 64-route limit.
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
             variable_scope (FrontendVariableScope | Unset): All preserves access to all project variables. Shared includes
@@ -79,6 +83,7 @@ class Frontend:
     status: FrontendStatus
     deployed_regions: list[str]
     function_routes: list[FrontendFunctionRoute]
+    frontend_routes: list[FrontendRoute]
     created_at: datetime.datetime
     updated_at: datetime.datetime
     variable_scope: FrontendVariableScope | Unset = UNSET
@@ -100,6 +105,7 @@ class Frontend:
 
     def to_dict(self) -> dict[str, Any]:
         from ..models.frontend_function_route import FrontendFunctionRoute # noqa: PLC0415
+        from ..models.frontend_route import FrontendRoute # noqa: PLC0415
         id = str(self.id)
 
         project_id = str(self.project_id)
@@ -118,6 +124,13 @@ class Frontend:
         for function_routes_item_data in self.function_routes:
             function_routes_item = function_routes_item_data.to_dict()
             function_routes.append(function_routes_item)
+
+
+
+        frontend_routes = []
+        for frontend_routes_item_data in self.frontend_routes:
+            frontend_routes_item = frontend_routes_item_data.to_dict()
+            frontend_routes.append(frontend_routes_item)
 
 
 
@@ -178,6 +191,7 @@ class Frontend:
             "status": status,
             "deployed_regions": deployed_regions,
             "function_routes": function_routes,
+            "frontend_routes": frontend_routes,
             "created_at": created_at,
             "updated_at": updated_at,
         })
@@ -211,6 +225,7 @@ class Frontend:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.frontend_function_route import FrontendFunctionRoute # noqa: PLC0415
+        from ..models.frontend_route import FrontendRoute # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 
@@ -245,6 +260,16 @@ class Frontend:
 
 
             function_routes.append(function_routes_item)
+
+
+        frontend_routes = []
+        _frontend_routes = d.pop("frontend_routes")
+        for frontend_routes_item_data in (_frontend_routes):
+            frontend_routes_item = FrontendRoute.from_dict(frontend_routes_item_data)
+
+
+
+            frontend_routes.append(frontend_routes_item)
 
 
         created_at = datetime.datetime.fromisoformat(d.pop("created_at"))
@@ -344,6 +369,7 @@ class Frontend:
             status=status,
             deployed_regions=deployed_regions,
             function_routes=function_routes,
+            frontend_routes=frontend_routes,
             created_at=created_at,
             updated_at=updated_at,
             variable_scope=variable_scope,
