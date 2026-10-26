@@ -35,6 +35,9 @@ class FunctionInvocationRequestPayload:
     }
     ```
 
+    The top-level `__volcano_auth` and `__volcano_http` keys are reserved;
+    Volcano removes caller-supplied values for both.
+
      """
 
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)

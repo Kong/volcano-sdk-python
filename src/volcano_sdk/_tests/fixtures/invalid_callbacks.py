@@ -40,3 +40,7 @@ def run_non_callable_operation(context: DurableContext, operation: str) -> objec
 
 def use_non_callable_retry(context: DurableContext) -> None:
     context.step("charge", lambda _scope: None, retry="aggressively")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+
+
+def wait_for_callback_without_submitter(context: DurableContext) -> None:
+    _ = context.wait_for_callback("payment", None)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]

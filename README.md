@@ -388,6 +388,7 @@ the clock or a random value.
 | `ctx.wait_until(check, options, name=None)` | Polls your own state until `options.until` holds, suspending between checks. `options.initial_state` is required. |
 | `ctx.wait_for_approval(name, title=..., description=None, details=None, timeout=None)` | Suspends until a person approves or denies, and returns an `ApprovalDecision`. A timeout returns `status="expired"` rather than raising. |
 | `ctx.wait_for_message(name, timeout=None)` | Suspends until a message with that name is sent to the execution, and returns a `ReceivedMessage`, or `None` once the timeout passes. |
+| `ctx.wait_for_callback(name, submitter, timeout=None, heartbeat_timeout=None)` | Hands a token to another system and suspends until it succeeds or fails the callback. Returns the result, or `None` once a timeout passes; a failure raises `CallbackFailedError`. |
 | `ctx.publish(name, data=None)` | Records a message for applications to list or receive live, and returns a `PublishedMessage` with `id` and `seq`. |
 | `ctx.map(items, fn, name=None, options=None)` | Runs the same work over every item, each in its own child context. |
 | `ctx.parallel(branches, name=None, options=None)` | Runs independent branches at the same time. |

@@ -32,7 +32,9 @@ class CreateServiceKeyBody:
                 for backward compatibility. Provide an explicit list (e.g.
                 ["functions.invoke", "locks.manage"]) to restrict the key; "*"
                 grants everything. Scope enforcement applies to function invocation,
-                storage object operations, and project locks.
+                storage object operations, project locks, and server-side auth proxy
+                metadata (auth.signin, auth.signup, auth.refresh, auth.logout,
+                auth.password_reset).
                  Example: ['functions.invoke', 'locks.manage'].
      """
 
