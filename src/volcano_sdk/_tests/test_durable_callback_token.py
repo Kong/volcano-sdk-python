@@ -274,11 +274,17 @@ def test_the_submitter_refuses_a_hand_off_that_returns_an_awaitable(
 
     submit = token_submitter(API_URL, "arn:execution", "payment", hand_off)
 
-    with pytest.raises(TypeError, match=SYNCHRONOUS):
-        submit("callback-4", None)
+    # Read the state, then close the coroutine either way: one left unclosed
+    # when the refusal is missing outlives the test and fails the session.
+    try:
+        with pytest.raises(TypeError, match=SYNCHRONOUS):
+            submit("callback-4", None)
+    finally:
+        states = [inspect.getcoroutinestate(coroutine) for coroutine in started]
+        for coroutine in started:
+            coroutine.close()
     assert handed == []
-    [coroutine] = started
-    assert inspect.getcoroutinestate(coroutine) == inspect.CORO_CLOSED
+    assert states == [inspect.CORO_CLOSED]
 
 
 class Pending:
