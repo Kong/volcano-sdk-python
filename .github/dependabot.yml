@@ -35,7 +35,7 @@ updates:
           - "minor"
           - "patch"
       # centrifuge-python and httpx get their own pull requests: every
-      # centrifuge-python update needs the checks in
+      # centrifuge-python update rewrites its exact pin and needs the checks in
       # maintainers/realtime-compatibility.md, and httpx is capped below its
       # next 0.x release on purpose.
       uv-production:

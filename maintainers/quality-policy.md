@@ -1,10 +1,12 @@
 # Quality policy
 
 `uv run --locked poe quality` runs the native Ruff, mypy, basedpyright, pytest,
-coverage.py, package, audit, and mutmut checks. `pyproject.toml` is their source of
-truth. `quality-policy.lock.json` records the exact native tool configuration so
-that changes to exclusions, severities, thresholds, test discovery, and task
-commands appear as explicit policy changes. Its SHA-256 is pinned in
+coverage.py, package, audit, and mutmut checks, then the
+[fresh-install check](dependency-ranges.md#fresh-install-check).
+`pyproject.toml` is their source of truth. `quality-policy.lock.json` records
+the exact native tool configuration so that changes to exclusions, severities,
+thresholds, test discovery, and task commands appear as explicit policy
+changes. Its SHA-256 is pinned in
 `scripts/check_quality_policy.py`; a config change requires updating both the
 readable snapshot and the digest for review.
 

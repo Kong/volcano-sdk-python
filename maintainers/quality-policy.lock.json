@@ -164,6 +164,10 @@
           "shell": "set -euo pipefail\nreport_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$report_dir\"' EXIT\ntest_status=0\nuv run --locked --isolated --python 3.12.14 pytest -c pyproject.toml -q --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=json:\"$report_dir/coverage.json\" --junitxml=\"$report_dir/unit.xml\" || test_status=$?\nmkdir -p reports\nif test -s \"$report_dir/coverage.json\"; then\n  mv \"$report_dir/coverage.json\" reports/coverage.json\nelse\n  echo 'pytest-cov did not write a coverage report' >&2\n  if [[ $test_status -eq 0 ]]; then test_status=1; fi\nfi\nif test -s \"$report_dir/unit.xml\"; then\n  mv \"$report_dir/unit.xml\" reports/coverage-unit.xml\nelse\n  echo 'pytest did not write a JUnit report' >&2\n  if [[ $test_status -eq 0 ]]; then test_status=1; fi\nfi\nexit \"$test_status\"\n"
         },
         "format-check": "ruff format --check --config pyproject.toml .",
+        "fresh-install": {
+          "interpreter": "bash",
+          "shell": "set -euo pipefail\npackage_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$package_dir\"' EXIT\npoe build --out-dir \"$package_dir\"\nbash scripts/check_fresh_install.sh \"$package_dir\"\n"
+        },
         "generated": "python -m scripts.check_openapi",
         "lint": "ruff check --config pyproject.toml .",
         "mutation": "bash scripts/mutation.sh",
@@ -178,7 +182,8 @@
         "policy": "bash scripts/check_quality_policy.sh",
         "quality": [
           "checks",
-          "mutation"
+          "mutation",
+          "fresh-install"
         ],
         "test": {
           "interpreter": "bash",
@@ -246,14 +251,6 @@
           "scripts/*.py": [
             "print"
           ],
-          "{tests,src/volcano_sdk/_tests}/**/*.py": [
-            "D",
-            "implicit-namespace-package",
-            "magic-value-comparison",
-            "assert",
-            "hardcoded-password-string",
-            "hardcoded-password-func-arg"
-          ],
           "src/volcano_sdk/_tests/conftest.py": [
             "pytest-fixture-autouse"
           ],
@@ -262,6 +259,14 @@
           ],
           "src/volcano_sdk/_tests/test_durable_authoring.py": [
             "pytest-fixture-autouse"
+          ],
+          "{tests,src/volcano_sdk/_tests}/**/*.py": [
+            "D",
+            "implicit-namespace-package",
+            "magic-value-comparison",
+            "assert",
+            "hardcoded-password-string",
+            "hardcoded-password-func-arg"
           ]
         },
         "preview": true,
