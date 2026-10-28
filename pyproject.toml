@@ -22,7 +22,7 @@ classifiers = [
 ]
 dependencies = [
   "attrs>=26.1.0",
-  "centrifuge-python>=0.6.0,<0.7.0",
+  "centrifuge-python>=0.6.0,<0.8.0",
   "httpx>=0.28.1,<0.29.0",
   "typing-extensions>=4.12.2",
 ]
