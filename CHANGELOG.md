@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.0](https://github.com/Kong/volcano-sdk-python/compare/v0.15.1...v0.16.0) (2026-10-28)
+
+
+### Features
+
+* **durable:** wait for callbacks with ctx.wait_for_callback ([#400](https://github.com/Kong/volcano-sdk-python/issues/400)) ([b8f3430](https://github.com/Kong/volcano-sdk-python/commit/b8f343083f4dfb3c498c3639a3c10ae96ca183f8))
+
+
+### Bug Fixes
+
+* **deps:** bump filelock from 4.0.1 to 4.2.1 ([#409](https://github.com/Kong/volcano-sdk-python/issues/409)) ([ec49a8d](https://github.com/Kong/volcano-sdk-python/commit/ec49a8dbd36f0733afe07b10b061d6de09ce1f77))
+
 ## [0.15.1](https://github.com/Kong/volcano-sdk-python/compare/v0.15.0...v0.15.1) (2026-10-21)
 
 
