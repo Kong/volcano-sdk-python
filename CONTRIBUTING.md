@@ -9,6 +9,10 @@ uv sync --locked
 uv run --locked poe quality
 ```
 
+`poe quality` ends with `fresh-install`, which tests the wheel against the
+newest dependency versions on PyPI; see
+[dependency ranges](./maintainers/dependency-ranges.md).
+
 The tasks in `pyproject.toml` run the same checks locally and in CI. Run
 `uv run --locked poe` to list them, or invoke a tool directly, such as
 `uv run --locked ruff check .`. Tool settings belong in their native

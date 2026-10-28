@@ -8,9 +8,11 @@ has not been removed.
 
 ## Dependency and scope
 
-`pyproject.toml` allows `centrifuge-python>=0.6.0,<0.7.0`. The current `uv.lock`
-resolves 0.6.0. Keep the upper bound until a reviewed replacement is available.
-Do not assume other patch versions have passed the recorded acceptance run.
+`pyproject.toml` pins `centrifuge-python==0.6.0`, the version in `uv.lock` and
+in the recorded acceptance run. The pin is exact because the adapter depends on
+private client state that any release, including a patch, can change. Keep it
+until a reviewed replacement is available; each update changes the pin and goes
+through the checks below.
 
 `_VolcanoCentrifugeConnection` replaces the official client's private `_subs`
 dictionary with `_ProjectAwareSubscriptions`. It maps incoming prefixed channel
@@ -44,9 +46,9 @@ is not removal.
 ## Review and verification
 
 SDK maintainers must review this exception by **October 19, 2026**, and before
-any dependency-range widening or Python SDK 1.0 release, whichever comes first.
-Record the removal plan or an explicit reviewed renewal in VOL-1054. The deadline
-does not extend automatically.
+any change to the `centrifuge-python` pin or Python SDK 1.0 release, whichever
+comes first. Record the removal plan or an explicit reviewed renewal in
+VOL-1054. The deadline does not extend automatically.
 
 Every dependency update and server channel-shape change must:
 

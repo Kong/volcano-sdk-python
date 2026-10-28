@@ -1084,9 +1084,10 @@ The generated parsed-body-only shortcuts are not public SDK APIs.
 
 The realtime wrapper includes a narrow compatibility adapter for Volcano's
 project-prefixed publication channels. It still delegates connection,
-subscription, publish, and disconnect behavior to `centrifuge-python` 0.6.
+subscription, publish, and disconnect behavior to `centrifuge-python` 0.6.0,
+which the package pins exactly.
 Its [interim compatibility policy](./maintainers/realtime-compatibility.md) records
-the dependency bounds, review deadline, removal criteria, and required checks.
+the dependency pin, review deadline, removal criteria, and required checks.
 
 ## Develop locally
 

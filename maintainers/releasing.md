@@ -35,7 +35,8 @@ These dependencies get their own pull requests:
 
 - ruff: update `tool.ruff.required-version` to match.
 - hatchling: update the build constraints as described in [Build inputs](#build-inputs).
-- centrifuge-python: run the checks in [realtime-compatibility.md](realtime-compatibility.md).
+- centrifuge-python: the update rewrites its exact pin; run the checks in
+  [realtime-compatibility.md](realtime-compatibility.md).
 - httpx: an update past the `<0.29.0` cap widens it, so review the new 0.x
   release before merging.
 
@@ -44,6 +45,9 @@ When a grouped update bumps basedpyright, also update its pin in the tox
 
 The ruff, hatchling and basedpyright pins are also recorded in the
 [policy lock](quality-policy.md), so update the lock and its digest with them.
+
+Update pull requests also run the [fresh-install check](dependency-ranges.md#fresh-install-check),
+which tests the newest versions the published specifiers allow.
 
 Dependabot stops rebasing a pull request once someone else pushes to it, so
 merge it soon after. `@dependabot recreate` starts over and drops those commits.

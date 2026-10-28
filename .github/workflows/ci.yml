@@ -9,6 +9,10 @@ on:
   push:
     branches:
       - main
+  # A new release inside a published dependency range reaches consumers without
+  # a change here; the fresh-install jobs catch it within a day.
+  schedule:
+    - cron: "23 7 * * *"
 
 permissions: {}
 
@@ -68,6 +72,36 @@ jobs:
             reports/coverage-unit.xml
             reports/hypothesis/seed.txt
           if-no-files-found: ignore
+
+  fresh-install:
+    name: fresh-install (${{ matrix.python-version }})
+    env:
+      UV_PYTHON: ${{ matrix.python-patch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: "3.11"
+            python-patch: "3.11.16"
+          - python-version: "3.14"
+            python-patch: "3.14.7"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-patch }}
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.17"
+      - run: uv sync --locked
+      - name: Test the wheel with freshly resolved dependencies
+        run: uv run --locked poe fresh-install
 
   mutation-plan:
     name: Mutation inventory
@@ -136,11 +170,11 @@ jobs:
   quality:
     name: Quality Gate
     if: ${{ always() }}
-    needs: [test, mutation]
+    needs: [test, fresh-install, mutation]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require every mandatory job to succeed
         env:
           RESULTS: ${{ toJSON(needs.*.result) }}
-        run: jq -e 'length == 2 and all(. == "success")' <<< "$RESULTS"
+        run: jq -e 'length == 3 and all(. == "success")' <<< "$RESULTS"

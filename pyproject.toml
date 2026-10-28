@@ -22,7 +22,10 @@ classifiers = [
 ]
 dependencies = [
   "attrs>=26.1.0",
-  "centrifuge-python>=0.6.0,<0.7.0",
+  # Exact: the realtime adapter patches this client's private subscription
+  # registry, which any release can change. See
+  # maintainers/realtime-compatibility.md.
+  "centrifuge-python==0.6.0",
   "httpx>=0.28.1,<0.29.0",
   "typing-extensions>=4.12.2",
 ]
@@ -246,7 +249,7 @@ also_copy = [
 ]
 
 [tool.poe.tasks]
-quality = ["checks", "mutation"]
+quality = ["checks", "mutation", "fresh-install"]
 checks = ["policy", "audit", "generated", "lint", "format-check", "types", "test", "coverage", "package-check", "package-extras"]
 policy = "bash scripts/check_quality_policy.sh"
 build = "uv build --no-sources --require-hashes"
@@ -315,6 +318,17 @@ bash scripts/check_package.sh "" "$package_dir"
 
 [tool.poe.tasks.package-extras]
 cmd = "tox run -c pyproject.toml --recreate -e package-base,package-min-typing,package-durable,package-types"
+
+[tool.poe.tasks.fresh-install]
+# Test the wheel against what a new consumer install resolves, not uv.lock.
+interpreter = "bash"
+shell = """
+set -euo pipefail
+package_dir="$(mktemp -d)"
+trap 'rm -rf "$package_dir"' EXIT
+poe build --out-dir "$package_dir"
+bash scripts/check_fresh_install.sh "$package_dir"
+"""
 
 [tool.tox]
 env_list = ["package-base", "package-min-typing", "package-durable", "package-types"]
