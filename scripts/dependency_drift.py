@@ -3,7 +3,9 @@
 `uv tree --outdated` reports the newest releases, not what the published
 specifiers resolve to, so this report covers that gap. Drift is a warning; an
 exact pin that resolves differently, or test tooling that changes a runtime
-package, fails.
+package, fails. The resolver and `--constraints` prevent both today; the checks
+stop a later edit to the install steps from silently testing a resolution
+consumers do not get.
 """
 
 from __future__ import annotations

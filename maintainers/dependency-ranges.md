@@ -37,7 +37,10 @@ the way `pip install` does. It then:
   each drifted package.
 
 It fails on a test failure, on an exact pin that resolves to another version,
-or when test tooling changes a runtime package. Drift alone only warns.
+or when test tooling changes a runtime package. Drift alone only warns. The
+resolver and constraints already prevent the last two failures; the checks stop
+a later edit to the script from silently testing a resolution consumers do not
+get.
 `uv tree --outdated` reports newest releases rather than this resolution, and
 pytest does not report where a package was imported from; the two helpers
 cover those gaps.
