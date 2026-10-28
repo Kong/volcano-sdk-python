@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -225,15 +225,15 @@ wheels = [
 
 [[package]]
 name = "centrifuge-python"
-version = "0.6.0"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "protobuf" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0f/1b/9903569c33ceb3a5a0c431264405003e7adfe828abf5fb597a639438af2c/centrifuge_python-0.6.0.tar.gz", hash = "sha256:8be7fcea0a6b95d46479f8c52c5f2a3c97dd11feb07e9f4e99730cafb52e80c9", size = 68022, upload-time = "2026-08-02T12:47:14.048Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5b/86/c25886d114d2030af6b3c316ad6d73d429a22f818f06f2c2f6c65710ab68/centrifuge_python-0.7.0.tar.gz", hash = "sha256:11252b45c3f6b6104cfb07fb0fcfc9d2d62832d2af14715dd16fdc5e9c6e5964", size = 97038, upload-time = "2026-10-20T20:05:08.455Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/51/78/0966a25dd202aa936a916edf5be3eae21790bfa989aafca9a35c3c103b2f/centrifuge_python-0.6.0-py3-none-any.whl", hash = "sha256:18e5e9db30b0737727485454ae9b637d1cfcd93c27ca7bc257aad5623b3871da", size = 35639, upload-time = "2026-08-02T12:47:13.033Z" },
+    { url = "https://files.pythonhosted.org/packages/74/b4/2c508b18972448fc80e035cb82c435719fe81ba830a604f00dc4fc18fc86/centrifuge_python-0.7.0-py3-none-any.whl", hash = "sha256:a60741e28d34644aa4b5a7b58ab04d36941821512177ce7e04c45b1b887588e8", size = 44461, upload-time = "2026-10-20T20:05:07.4Z" },
 ]
 
 [[package]]
@@ -2155,7 +2155,7 @@ dev = [
 requires-dist = [
     { name = "attrs", specifier = ">=26.1.0" },
     { name = "aws-durable-execution-sdk-python", marker = "extra == 'durable'", specifier = ">=2.0.0,<3.0.0" },
-    { name = "centrifuge-python", specifier = ">=0.6.0,<0.7.0" },
+    { name = "centrifuge-python", specifier = ">=0.6.0,<0.8.0" },
     { name = "httpx", specifier = ">=0.28.1,<0.29.0" },
     { name = "typing-extensions", specifier = ">=4.12.2" },
 ]
