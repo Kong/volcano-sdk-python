@@ -9,9 +9,11 @@ from uuid import UUID
 
 from ._generated.api.durable_functions import (
     get_durable_execution,
+    get_durable_execution_from_application,
     list_durable_executions,
     start_durable_execution_from_application,
     stop_durable_execution,
+    stop_durable_execution_from_application,
 )
 from ._generated.api.functions.invoke_function import (
     request_kwargs as invoke_function_kwargs,
@@ -209,6 +211,23 @@ class ExecutionTransport(TransportBase):
             )
         return parsed_response(response)
 
+    def get_durable_execution_from_application(
+        self,
+        *,
+        authorization: str,
+        function_id: str,
+        execution_id: str,
+        client_token: str | None,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = get_durable_execution_from_application.sync_detailed(
+                function_id,
+                UUID(execution_id),
+                client=client,
+                x_volcano_client_token=UNSET if client_token is None else client_token,
+            )
+        return parsed_response(response)
+
     def list_durable_executions(
         self,
         *,
@@ -242,5 +261,22 @@ class ExecutionTransport(TransportBase):
                 function_id,
                 UUID(execution_id),
                 client=client,
+            )
+        return parsed_response(response)
+
+    def stop_durable_execution_from_application(
+        self,
+        *,
+        authorization: str,
+        function_id: str,
+        execution_id: str,
+        client_token: str | None,
+    ) -> TransportResponse:
+        with self._client(authorization) as client:
+            response = stop_durable_execution_from_application.sync_detailed(
+                function_id,
+                UUID(execution_id),
+                client=client,
+                x_volcano_client_token=UNSET if client_token is None else client_token,
             )
         return parsed_response(response)
