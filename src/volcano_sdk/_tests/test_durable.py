@@ -894,6 +894,9 @@ def test_stop_from_application_raises_conflict_for_a_pending_execution() -> None
 
 def wire_durable(
     respond: Callable[[httpx.Request], httpx.Response],
+    *,
+    service_key: str | None = None,
+    session: bool = False,
 ) -> tuple[Durable, list[httpx.Request]]:
     requests: list[httpx.Request] = []
 
@@ -903,10 +906,19 @@ def wire_durable(
 
     client = VolcanoClient(
         anon_key="anon-key",
+        service_key=service_key,
         _transport=GeneratedTransport(
             api_url=API_URL, httpx_transport=httpx.MockTransport(handle)
         ),
     )
+    if session:
+        _ = client.auth.set_session(
+            Session(
+                access_token="access-token",
+                refresh_token="refresh-token",
+                user_id="user-1",
+            )
+        )
     return client.durable, requests
 
 
@@ -960,6 +972,37 @@ def test_application_routes_go_over_the_data_plane_path(
         created_at=datetime(2026, 9, 2, 12, 0, tzinfo=UTC),
         result={"ok": True},
     )
+
+
+@pytest.mark.parametrize("operation", APPLICATION_CALLS)
+@pytest.mark.parametrize(
+    ("service_key", "session", "authorization"),
+    [
+        pytest.param("service-key", True, "Bearer access-token", id="session"),
+        # A service key scoped without `*` reaches an execution only with its
+        # client token, so the SDK cannot drop the token for a service key.
+        pytest.param("service-key", False, "Bearer service-key", id="service"),
+        pytest.param(None, False, "Bearer anon-key", id="anon"),
+    ],
+)
+def test_application_routes_send_the_client_token_with_every_credential(
+    operation: str,
+    service_key: str | None,
+    *,
+    session: bool,
+    authorization: str,
+) -> None:
+    durable, requests = wire_durable(
+        lambda _r: httpx.Response(200, json=running_execution()),
+        service_key=service_key,
+        session=session,
+    )
+
+    _ = from_application(durable, operation, client_token="client-token")
+
+    assert len(requests) == 1
+    assert requests[0].headers["authorization"] == authorization
+    assert requests[0].headers["x-volcano-client-token"] == "client-token"
 
 
 @pytest.mark.parametrize("operation", APPLICATION_CALLS)

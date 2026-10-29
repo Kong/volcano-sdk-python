@@ -391,8 +391,8 @@ class Durable:
         to follow. Follow it with `get_from_application` and
         `stop_from_application`, and message it through `durable.messages`,
         with the same credential. Keep the returned `client_token` with the
-        caller that follows it: an anonymous key needs it to reach the
-        execution again.
+        caller that follows it: an anonymous key, or a service key scoped
+        without `*`, needs it to reach the execution again.
 
         Passing `execution_name` makes the start idempotent: starting again
         under the same name returns the execution that already exists rather
@@ -529,12 +529,13 @@ class Durable:
     ) -> DurableExecution:
         """Read an execution with the credential that started it.
 
-        Takes the client's credential, as `start` does. A service key reaches
-        any execution of the project; a signed-in user reaches the executions
-        they started. An anonymous key, or a user who did not start the
-        execution, passes the `client_token` its start returned. Anything else
-        raises `NotFoundError`, as a missing execution does, and so does an
-        execution that has not started yet, except to a service key. Reads
+        Takes the client's credential, as `start` does. A service key holding
+        `*`, the default, reaches any execution of the project; a signed-in
+        user reaches the executions they started. An anonymous key, a service
+        key scoped without `*`, or a user who did not start the execution,
+        passes the `client_token` its start returned. Anything else raises
+        `NotFoundError`, as a missing execution does, and so does an execution
+        that has not started yet, except to a service key holding `*`. Reads
         share the function's rate limit with starts, so poll every few seconds.
 
         Returns
@@ -558,8 +559,9 @@ class Durable:
         awaited, like `stop`: the execution it returns often still says
         `running`, so poll `get_from_application` to see it reach `stopped`.
         Completed steps are not undone, and repeating a stop is safe. A service
-        key stopping an execution that has not started yet raises
-        `ConflictError`.
+        key holding `*` stopping an execution that has not started yet raises
+        `ConflictError`. A `ServerError` can follow a stop that was already
+        sent, so read the execution before stopping it again.
 
         Returns
         -------

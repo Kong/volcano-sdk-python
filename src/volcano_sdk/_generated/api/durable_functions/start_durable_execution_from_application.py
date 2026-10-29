@@ -159,9 +159,11 @@ def sync_detailed(
 
     The start returns a `client_token`. An anon key, or a user who did not
     start the execution, sends it as `X-Volcano-Client-Token` to read the
-    execution, stop it, and reach its messages. An anon key is shared by
+    execution, stop it, and reach its messages. A service key scoped to a
+    list without `*` sends it to read and stop the execution. An anon key is shared by
     everyone who loads the page, so the id alone never reaches an
-    execution. Listing executions requires the project owner's token.
+    execution. Listing executions takes the project owner's token or a
+    project access token.
 
     Send `X-Volcano-Execution-Name` to make the start idempotent: repeating
     a start with the same name returns the existing execution instead of
@@ -233,9 +235,11 @@ def sync(
 
     The start returns a `client_token`. An anon key, or a user who did not
     start the execution, sends it as `X-Volcano-Client-Token` to read the
-    execution, stop it, and reach its messages. An anon key is shared by
+    execution, stop it, and reach its messages. A service key scoped to a
+    list without `*` sends it to read and stop the execution. An anon key is shared by
     everyone who loads the page, so the id alone never reaches an
-    execution. Listing executions requires the project owner's token.
+    execution. Listing executions takes the project owner's token or a
+    project access token.
 
     Send `X-Volcano-Execution-Name` to make the start idempotent: repeating
     a start with the same name returns the existing execution instead of
@@ -302,9 +306,11 @@ async def asyncio_detailed(
 
     The start returns a `client_token`. An anon key, or a user who did not
     start the execution, sends it as `X-Volcano-Client-Token` to read the
-    execution, stop it, and reach its messages. An anon key is shared by
+    execution, stop it, and reach its messages. A service key scoped to a
+    list without `*` sends it to read and stop the execution. An anon key is shared by
     everyone who loads the page, so the id alone never reaches an
-    execution. Listing executions requires the project owner's token.
+    execution. Listing executions takes the project owner's token or a
+    project access token.
 
     Send `X-Volcano-Execution-Name` to make the start idempotent: repeating
     a start with the same name returns the existing execution instead of
@@ -376,9 +382,11 @@ async def asyncio(
 
     The start returns a `client_token`. An anon key, or a user who did not
     start the execution, sends it as `X-Volcano-Client-Token` to read the
-    execution, stop it, and reach its messages. An anon key is shared by
+    execution, stop it, and reach its messages. A service key scoped to a
+    list without `*` sends it to read and stop the execution. An anon key is shared by
     everyone who loads the page, so the id alone never reaches an
-    execution. Listing executions requires the project owner's token.
+    execution. Listing executions takes the project owner's token or a
+    project access token.
 
     Send `X-Volcano-Execution-Name` to make the start idempotent: repeating
     a start with the same name returns the existing execution instead of

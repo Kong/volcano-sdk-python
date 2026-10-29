@@ -116,7 +116,10 @@ def sync_detailed(
     it, including its `result` once it has succeeded. Poll this to wait for
     an execution to finish.
 
-    **With a service key:** any execution in the project.
+    **With a service key:** any execution in the project when the key holds
+    `*`, the default. A key scoped to a list without `*` reaches an
+    execution whose `X-Volcano-Client-Token` the request carries, as an
+    anon key does; the start returns that token.
 
     **With an auth user token:** an execution the user started, or one
     whose `X-Volcano-Client-Token` the request carries, of a durable
@@ -125,8 +128,8 @@ def sync_detailed(
     **With an anon key:** an execution whose `X-Volcano-Client-Token` the
     request carries, of a function with `visibility: public`.
 
-    Only the service key reaches an execution that is still `pending`. Any
-    other execution answers `404`, as a missing one does.
+    Only a service key holding `*` reaches an execution that is still
+    `pending`. Any other execution answers `404`, as a missing one does.
 
     The response is the one `GET
     /projects/{id}/durable-functions/{functionId}/executions/{executionId}`
@@ -173,7 +176,10 @@ def sync(
     it, including its `result` once it has succeeded. Poll this to wait for
     an execution to finish.
 
-    **With a service key:** any execution in the project.
+    **With a service key:** any execution in the project when the key holds
+    `*`, the default. A key scoped to a list without `*` reaches an
+    execution whose `X-Volcano-Client-Token` the request carries, as an
+    anon key does; the start returns that token.
 
     **With an auth user token:** an execution the user started, or one
     whose `X-Volcano-Client-Token` the request carries, of a durable
@@ -182,8 +188,8 @@ def sync(
     **With an anon key:** an execution whose `X-Volcano-Client-Token` the
     request carries, of a function with `visibility: public`.
 
-    Only the service key reaches an execution that is still `pending`. Any
-    other execution answers `404`, as a missing one does.
+    Only a service key holding `*` reaches an execution that is still
+    `pending`. Any other execution answers `404`, as a missing one does.
 
     The response is the one `GET
     /projects/{id}/durable-functions/{functionId}/executions/{executionId}`
@@ -225,7 +231,10 @@ async def asyncio_detailed(
     it, including its `result` once it has succeeded. Poll this to wait for
     an execution to finish.
 
-    **With a service key:** any execution in the project.
+    **With a service key:** any execution in the project when the key holds
+    `*`, the default. A key scoped to a list without `*` reaches an
+    execution whose `X-Volcano-Client-Token` the request carries, as an
+    anon key does; the start returns that token.
 
     **With an auth user token:** an execution the user started, or one
     whose `X-Volcano-Client-Token` the request carries, of a durable
@@ -234,8 +243,8 @@ async def asyncio_detailed(
     **With an anon key:** an execution whose `X-Volcano-Client-Token` the
     request carries, of a function with `visibility: public`.
 
-    Only the service key reaches an execution that is still `pending`. Any
-    other execution answers `404`, as a missing one does.
+    Only a service key holding `*` reaches an execution that is still
+    `pending`. Any other execution answers `404`, as a missing one does.
 
     The response is the one `GET
     /projects/{id}/durable-functions/{functionId}/executions/{executionId}`
@@ -282,7 +291,10 @@ async def asyncio(
     it, including its `result` once it has succeeded. Poll this to wait for
     an execution to finish.
 
-    **With a service key:** any execution in the project.
+    **With a service key:** any execution in the project when the key holds
+    `*`, the default. A key scoped to a list without `*` reaches an
+    execution whose `X-Volcano-Client-Token` the request carries, as an
+    anon key does; the start returns that token.
 
     **With an auth user token:** an execution the user started, or one
     whose `X-Volcano-Client-Token` the request carries, of a durable
@@ -291,8 +303,8 @@ async def asyncio(
     **With an anon key:** an execution whose `X-Volcano-Client-Token` the
     request carries, of a function with `visibility: public`.
 
-    Only the service key reaches an execution that is still `pending`. Any
-    other execution answers `404`, as a missing one does.
+    Only a service key holding `*` reaches an execution that is still
+    `pending`. Any other execution answers `404`, as a missing one does.
 
     The response is the one `GET
     /projects/{id}/durable-functions/{functionId}/executions/{executionId}`

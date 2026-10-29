@@ -258,10 +258,10 @@ one, and is charged once. Only the start that creates the execution returns its
 
 `durable.get_from_application()` and `durable.stop_from_application()` read and
 stop an execution with the credential `durable.start()` takes. A service key
-reaches any execution of the project and a signed-in user the executions they
-started; an anonymous key, or a user who did not start the execution, passes the
-`client_token`. An execution the caller cannot reach raises `NotFoundError`, as a
-missing one does.
+holding `*`, the default, reaches any execution of the project and a signed-in
+user the executions they started; an anonymous key, a service key scoped without
+`*`, or a user who did not start the execution, passes the `client_token`. An
+execution the caller cannot reach raises `NotFoundError`, as a missing one does.
 
 `durable.get()`, `durable.list()` and `durable.stop()` are owner-scoped, reach any
 execution of the project, and need the project owner's platform user token or a
