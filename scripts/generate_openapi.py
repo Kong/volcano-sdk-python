@@ -26,6 +26,7 @@ REQUIRED_OPERATION_MODULES = {
     "get_durable_approval.py",
     "get_durable_approval_stats.py",
     "get_durable_execution.py",
+    "get_durable_execution_from_application.py",
     "force_release_project_lock.py",
     "get_project_log_activity.py",
     "get_project_lock.py",
@@ -45,6 +46,7 @@ REQUIRED_OPERATION_MODULES = {
     "send_durable_message_from_application.py",
     "start_durable_execution_from_application.py",
     "stop_durable_execution.py",
+    "stop_durable_execution_from_application.py",
     "update_storage_object_visibility.py",
     "upload_storage_object.py",
 }

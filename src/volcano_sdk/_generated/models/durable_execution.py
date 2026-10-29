@@ -68,9 +68,10 @@ class DurableExecution:
                 unset, so it reads like a function that returned nothing.
             error (DurableExecutionError | Unset): Why a failed or timed-out execution ended.
             completed_at (datetime.datetime | Unset): Present once the execution has reached a terminal status.
-            client_token (str | Unset): Lets a browser read and send the execution's messages. Returned only
-                by the start whose input the execution runs, never by a repeat under
-                the same name or by a read. Send it as `X-Volcano-Client-Token`.
+            client_token (str | Unset): Lets a browser read the execution, stop it, and read and send its
+                messages. Returned only by the start whose input the execution runs,
+                never by a repeat under the same name or by a read. Send it as
+                `X-Volcano-Client-Token`.
      """
 
     id: UUID

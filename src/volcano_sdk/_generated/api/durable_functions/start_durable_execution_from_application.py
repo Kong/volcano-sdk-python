@@ -157,10 +157,11 @@ def sync_detailed(
     A `private` durable function answers every credential but a service key
     exactly as a missing one, with 404.
 
-    Starting is all this endpoint does. Reading a result or stopping an
-    execution requires the project owner's token, because an anon key is
-    shared by everyone who loads the page and an execution is addressed by
-    id alone.
+    The start returns a `client_token`. An anon key, or a user who did not
+    start the execution, sends it as `X-Volcano-Client-Token` to read the
+    execution, stop it, and reach its messages. An anon key is shared by
+    everyone who loads the page, so the id alone never reaches an
+    execution. Listing executions requires the project owner's token.
 
     Send `X-Volcano-Execution-Name` to make the start idempotent: repeating
     a start with the same name returns the existing execution instead of
@@ -230,10 +231,11 @@ def sync(
     A `private` durable function answers every credential but a service key
     exactly as a missing one, with 404.
 
-    Starting is all this endpoint does. Reading a result or stopping an
-    execution requires the project owner's token, because an anon key is
-    shared by everyone who loads the page and an execution is addressed by
-    id alone.
+    The start returns a `client_token`. An anon key, or a user who did not
+    start the execution, sends it as `X-Volcano-Client-Token` to read the
+    execution, stop it, and reach its messages. An anon key is shared by
+    everyone who loads the page, so the id alone never reaches an
+    execution. Listing executions requires the project owner's token.
 
     Send `X-Volcano-Execution-Name` to make the start idempotent: repeating
     a start with the same name returns the existing execution instead of
@@ -298,10 +300,11 @@ async def asyncio_detailed(
     A `private` durable function answers every credential but a service key
     exactly as a missing one, with 404.
 
-    Starting is all this endpoint does. Reading a result or stopping an
-    execution requires the project owner's token, because an anon key is
-    shared by everyone who loads the page and an execution is addressed by
-    id alone.
+    The start returns a `client_token`. An anon key, or a user who did not
+    start the execution, sends it as `X-Volcano-Client-Token` to read the
+    execution, stop it, and reach its messages. An anon key is shared by
+    everyone who loads the page, so the id alone never reaches an
+    execution. Listing executions requires the project owner's token.
 
     Send `X-Volcano-Execution-Name` to make the start idempotent: repeating
     a start with the same name returns the existing execution instead of
@@ -371,10 +374,11 @@ async def asyncio(
     A `private` durable function answers every credential but a service key
     exactly as a missing one, with 404.
 
-    Starting is all this endpoint does. Reading a result or stopping an
-    execution requires the project owner's token, because an anon key is
-    shared by everyone who loads the page and an execution is addressed by
-    id alone.
+    The start returns a `client_token`. An anon key, or a user who did not
+    start the execution, sends it as `X-Volcano-Client-Token` to read the
+    execution, stop it, and reach its messages. An anon key is shared by
+    everyone who loads the page, so the id alone never reaches an
+    execution. Listing executions requires the project owner's token.
 
     Send `X-Volcano-Execution-Name` to make the start idempotent: repeating
     a start with the same name returns the existing execution instead of
