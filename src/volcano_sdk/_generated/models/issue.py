@@ -38,14 +38,20 @@ class Issue:
                 URLs replaced by placeholders like `<uuid>` and `<n>`.
             status (IssueStatus): `open` until someone resolves or ignores the issue. A resolved issue
                 seen again reopens.
+            exception (bool): Whether the issue holds an exception: one your code threw, or one it
+                logged with `console.error(err)` or Python's `logger.exception()`.
+                `false` for an error logged any other way, such as a structured log
+                line, a logger's error line, or a printed traceback. Once `true`, it
+                stays `true`.
             event_count (int): Errors counted in this issue. A retried delivery can count an error twice.
             first_seen_at (datetime.datetime):
             last_seen_at (datetime.datetime):
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
             error_type (str | Unset): The exception class, such as `TypeError`. Omitted when the error has none.
-            culprit (str | Unset): The innermost frame of your code in the stack, as `function (file)`. Omitted without a
-                stack.
+            culprit (str | Unset): The innermost frame of your code in the stack, as `function (file)`. For a frontend's
+                Next.js build output, the outermost route or page file of the build in the stack, such as
+                `.next/server/app/checkout/route.js`, or without one, the outermost file of the build. Omitted without a stack.
             last_region (str | Unset): The region that served the latest error, such as `us-east-1`.
             sample_event_id (str | Unset): The ID of the latest error's log event, while logs retain it.
             sample_event_at (datetime.datetime | Unset): When the latest error's log event was written.
@@ -58,6 +64,7 @@ class Issue:
     resource: ResourceReference
     title: str
     status: IssueStatus
+    exception: bool
     event_count: int
     first_seen_at: datetime.datetime
     last_seen_at: datetime.datetime
@@ -87,6 +94,8 @@ class Issue:
         title = self.title
 
         status: str = self.status
+
+        exception = self.exception
 
         event_count = self.event_count
 
@@ -127,6 +136,7 @@ class Issue:
             "resource": resource,
             "title": title,
             "status": status,
+            "exception": exception,
             "event_count": event_count,
             "first_seen_at": first_seen_at,
             "last_seen_at": last_seen_at,
@@ -177,6 +187,8 @@ class Issue:
 
 
 
+
+        exception = d.pop("exception")
 
         event_count = d.pop("event_count")
 
@@ -244,6 +256,7 @@ class Issue:
             resource=resource,
             title=title,
             status=status,
+            exception=exception,
             event_count=event_count,
             first_seen_at=first_seen_at,
             last_seen_at=last_seen_at,

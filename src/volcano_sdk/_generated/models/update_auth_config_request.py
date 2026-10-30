@@ -79,17 +79,27 @@ class UpdateAuthConfigRequest:
                 the same email instead of returning a conflict. Requires require_email_confirmation to be true.
             email_enabled (bool | Unset): Enable transactional email sending. Cannot be false while
                 require_email_confirmation is true.
-            email_from_address (str | Unset):
-            email_from_name (str | Unset):
+            email_from_address (str | Unset): Sender email address. New or changed values containing carriage returns or
+                newlines return 400. Unchanged stored or exported values are preserved. Leading and trailing whitespace in
+                previously saved settings is ignored when sending.
+            email_from_name (str | Unset): Sender display name; supports punctuation and Unicode. New or changed values
+                containing carriage returns or newlines return 400. Unchanged stored or exported values are preserved. Leading
+                and trailing whitespace in previously saved settings is ignored when sending.
             smtp_host (str | Unset):
             smtp_port (int | Unset):
             smtp_username (str | Unset):
             smtp_password (str | Unset): Replacement SMTP password. Omit this field to preserve the configured password. The
                 value is encrypted at rest and never returned.
             smtp_use_tls (bool | Unset):
-            email_confirmation_subject (str | Unset):
-            email_password_reset_subject (str | Unset):
-            email_password_changed_subject (str | Unset):
+            email_confirmation_subject (str | Unset): Subject template. For new or changed values, literal interior carriage
+                returns or newlines after Go template whitespace trimming return 400. Outer whitespace and trailing block-scalar
+                newlines are allowed. Unchanged stored subjects are preserved.
+            email_password_reset_subject (str | Unset): Subject template. For new or changed values, literal interior
+                carriage returns or newlines after Go template whitespace trimming return 400. Outer whitespace and trailing
+                block-scalar newlines are allowed. Unchanged stored subjects are preserved.
+            email_password_changed_subject (str | Unset): Subject template. For new or changed values, literal interior
+                carriage returns or newlines after Go template whitespace trimming return 400. Outer whitespace and trailing
+                block-scalar newlines are allowed. Unchanged stored subjects are preserved.
             managed_auth_enabled (bool | Unset): Enable or disable managed auth hosted pages for the project.
             post_auth_redirect_url (str | Unset): Must be included in allowed_redirect_urls when set.
             allowed_redirect_urls (list[str] | Unset): Redirect allowlist. Every entry must be a valid http/https URL.

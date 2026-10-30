@@ -41,7 +41,10 @@ class ProjectImportRun:
             status (ProjectImportRunStatus):
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
-            error_code (str | Unset):
+            error_code (str | Unset): Set when `status` is `failed`: `import.deployment_skipped` when the import's
+                deployment was skipped, otherwise the error code of the Git deployment run the import started (see
+                `GitDeploymentRunError.code`), such as `source_invalid`, `deploy_refused`, `child_deploy_failed`,
+                `child_deploy_not_started`, or `deploy_failed`. Treat a code you do not know as a failure.
             error_message (str | Unset):
      """
 

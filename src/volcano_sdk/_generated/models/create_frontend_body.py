@@ -43,6 +43,18 @@ class CreateFrontendBody:
                 default to `scoped`; omitting this field for an existing frontend preserves its current selection.
             variables (list[str] | Unset): Project variable names selected when `variable_scope` is `scoped`. Submit each
                 name as a repeated multipart field.
+            commit (str | Unset): JSON-encoded commit the uploaded source came from: `{"repository": "acme/app", "sha":
+                "<40-character commit ID>", "dirty": false, "root": "apps/web"}`. `repository` is `owner/name` or a github.com
+                remote URL (`https://github.com/acme/app.git`, `git@github.com:acme/app.git`, or
+                `ssh://git@github.com/acme/app.git`); Volcano drops any credentials in the URL and records `owner/name`. `dirty`
+                is `true` when the uploaded files differ from the commit. `root` is the uploaded directory's path from the
+                repository root, `""` for the root itself. `repository`, `sha`, and `dirty` are required, and fields Volcano
+                does not know are ignored. An empty value, `null`, or `""` reports no commit. A malformed commit, or a
+                repository not on GitHub, returns 400 before anything is deployed. Volcano checks the commit against the
+                project's connected repository and each uploaded file against the commit's file at `root`, and returns the
+                result in the deployment's `commit.verified`; an uploaded file in the project's root directory that the commit
+                does not hold sets `commit.dirty`, and one outside it leaves the commit unverified. A commit it cannot verify is
+                still recorded and never fails the deploy.
      """
 
     name: str
@@ -51,6 +63,7 @@ class CreateFrontendBody:
     app_root: str | Unset = UNSET
     variable_scope: CreateFrontendBodyVariableScope | Unset = UNSET
     variables: list[str] | Unset = UNSET
+    commit: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -81,6 +94,8 @@ class CreateFrontendBody:
 
 
 
+        commit = self.commit
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -96,6 +111,8 @@ class CreateFrontendBody:
             field_dict["variable_scope"] = variable_scope
         if variables is not UNSET:
             field_dict["variables"] = variables
+        if commit is not UNSET:
+            field_dict["commit"] = commit
 
         return field_dict
 
@@ -130,6 +147,11 @@ class CreateFrontendBody:
             for variables_item_element in self.variables:
                 files.append(("variables", (None, str(variables_item_element).encode(), "text/plain")))
 
+
+
+
+        if not isinstance(self.commit, Unset):
+            files.append(("commit", (None, str(self.commit).encode(), "text/plain")))
 
 
 
@@ -179,6 +201,8 @@ class CreateFrontendBody:
         variables = cast(list[str], d.pop("variables", UNSET))
 
 
+        commit = d.pop("commit", UNSET)
+
         create_frontend_body = cls(
             name=name,
             archive=archive,
@@ -186,6 +210,7 @@ class CreateFrontendBody:
             app_root=app_root,
             variable_scope=variable_scope,
             variables=variables,
+            commit=commit,
         )
 
 

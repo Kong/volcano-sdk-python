@@ -20,6 +20,7 @@ from uuid import UUID
 import datetime
 
 if TYPE_CHECKING:
+  from ..models.deployment_commit import DeploymentCommit
   from ..models.deployment_progress import DeploymentProgress
 
 
@@ -45,6 +46,9 @@ class FunctionDeployment:
             batch_id (UUID | Unset):
             initiated_by (str | Unset): Platform user that triggered a request-initiated deployment; absent for git and
                 system deployments.
+            commit (DeploymentCommit | Unset): The commit a deploy client reported for the deployment's source. Absent when
+                the client reported none. A frontend deployment that publishes another deployment's build carries that
+                deployment's commit.
             build_duration_seconds (int | Unset): Total build time recorded for this deployment, in seconds.
             build_count (int | Unset): Number of completed builds included in build_duration_seconds.
             build_duration_recorded_at (datetime.datetime | Unset): When the build time was last recorded.
@@ -64,6 +68,7 @@ class FunctionDeployment:
     updated_at: datetime.datetime
     batch_id: UUID | Unset = UNSET
     initiated_by: str | Unset = UNSET
+    commit: DeploymentCommit | Unset = UNSET
     build_duration_seconds: int | Unset = UNSET
     build_count: int | Unset = UNSET
     build_duration_recorded_at: datetime.datetime | Unset = UNSET
@@ -77,6 +82,7 @@ class FunctionDeployment:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.deployment_commit import DeploymentCommit # noqa: PLC0415
         from ..models.deployment_progress import DeploymentProgress # noqa: PLC0415
         id = str(self.id)
 
@@ -99,6 +105,10 @@ class FunctionDeployment:
             batch_id = str(self.batch_id)
 
         initiated_by = self.initiated_by
+
+        commit: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.commit, Unset):
+            commit = self.commit.to_dict()
 
         build_duration_seconds = self.build_duration_seconds
 
@@ -135,6 +145,8 @@ class FunctionDeployment:
             field_dict["batch_id"] = batch_id
         if initiated_by is not UNSET:
             field_dict["initiated_by"] = initiated_by
+        if commit is not UNSET:
+            field_dict["commit"] = commit
         if build_duration_seconds is not UNSET:
             field_dict["build_duration_seconds"] = build_duration_seconds
         if build_count is not UNSET:
@@ -154,6 +166,7 @@ class FunctionDeployment:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.deployment_commit import DeploymentCommit # noqa: PLC0415
         from ..models.deployment_progress import DeploymentProgress # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
@@ -208,6 +221,16 @@ class FunctionDeployment:
 
         initiated_by = d.pop("initiated_by", UNSET)
 
+        _commit = d.pop("commit", UNSET)
+        commit: DeploymentCommit | Unset
+        if isinstance(_commit,  Unset):
+            commit = UNSET
+        else:
+            commit = DeploymentCommit.from_dict(_commit)
+
+
+
+
         build_duration_seconds = d.pop("build_duration_seconds", UNSET)
 
         build_count = d.pop("build_count", UNSET)
@@ -255,6 +278,7 @@ class FunctionDeployment:
             updated_at=updated_at,
             batch_id=batch_id,
             initiated_by=initiated_by,
+            commit=commit,
             build_duration_seconds=build_duration_seconds,
             build_count=build_count,
             build_duration_recorded_at=build_duration_recorded_at,

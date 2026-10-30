@@ -157,8 +157,8 @@ def sync_detailed(
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.
-    This operation is limited by plan-based frontend deployment quotas (`FREE_FRONTEND_DEPLOYMENTS`,
-    `PRO_FRONTEND_DEPLOYMENTS`).
+    Plans do not limit how many frontends a project has; usage allowances apply across all of a user's
+    frontends.
     Each project can contain up to 10,000 frontends regardless of plan.
 
     Args:
@@ -221,8 +221,8 @@ def sync(
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.
-    This operation is limited by plan-based frontend deployment quotas (`FREE_FRONTEND_DEPLOYMENTS`,
-    `PRO_FRONTEND_DEPLOYMENTS`).
+    Plans do not limit how many frontends a project has; usage allowances apply across all of a user's
+    frontends.
     Each project can contain up to 10,000 frontends regardless of plan.
 
     Args:
@@ -280,8 +280,8 @@ async def asyncio_detailed(
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.
-    This operation is limited by plan-based frontend deployment quotas (`FREE_FRONTEND_DEPLOYMENTS`,
-    `PRO_FRONTEND_DEPLOYMENTS`).
+    Plans do not limit how many frontends a project has; usage allowances apply across all of a user's
+    frontends.
     Each project can contain up to 10,000 frontends regardless of plan.
 
     Args:
@@ -344,8 +344,8 @@ async def asyncio(
     Source archive size is enforced by the API with `SOURCE_ARCHIVE_SIZE_LIMIT_MB`; the CLI
     does not apply its own source archive size limit. After the final container images are
     built, the publish build enforces `LAMBDA_TARGET_CONTAINER_SIZE_LIMIT_MB` before pushing.
-    This operation is limited by plan-based frontend deployment quotas (`FREE_FRONTEND_DEPLOYMENTS`,
-    `PRO_FRONTEND_DEPLOYMENTS`).
+    Plans do not limit how many frontends a project has; usage allowances apply across all of a user's
+    frontends.
     Each project can contain up to 10,000 frontends regardless of plan.
 
     Args:

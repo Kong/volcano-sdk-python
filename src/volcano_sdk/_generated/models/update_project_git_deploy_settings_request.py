@@ -21,7 +21,8 @@ T = TypeVar("T", bound="UpdateProjectGitDeploySettingsRequest")
 
 @_attrs_define
 class UpdateProjectGitDeploySettingsRequest:
-    """ Full replace of a project's Git auto-deploy settings.
+    """ Full replace of a project's Git auto-deploy settings, except apply_migrations, which keeps its saved value when
+    omitted.
 
         Attributes:
             auto_deploy_enabled (bool):
@@ -29,12 +30,19 @@ class UpdateProjectGitDeploySettingsRequest:
             frontend_name (str | Unset): Frontend to deploy on push. Omit or empty to deploy no frontend.
             frontend_app_root (str | Unset): App root the frontend builds from. Requires frontend_name; omit for the repo
                 root.
+            apply_migrations (bool | Unset): Apply the commit's pending migrations before each push deploys. Anyone who can
+                push to the production branch can then run any SQL as the database owner, so protect that branch first. Off
+                until set. Omit to leave the saved value unchanged. Turning it on answers `400` with code `feature_unavailable`
+                where the `databases.migrations` capability is unavailable; `false`, or the saved `true` sent back, is accepted
+                even there. While the project owner's account is `read_only`, the request answers `403` whatever it sends; an
+                `inactive` owner's credentials answer `401`.
      """
 
     auto_deploy_enabled: bool
     deploy_functions: bool
     frontend_name: str | Unset = UNSET
     frontend_app_root: str | Unset = UNSET
+    apply_migrations: bool | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -50,6 +58,8 @@ class UpdateProjectGitDeploySettingsRequest:
 
         frontend_app_root = self.frontend_app_root
 
+        apply_migrations = self.apply_migrations
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -61,6 +71,8 @@ class UpdateProjectGitDeploySettingsRequest:
             field_dict["frontend_name"] = frontend_name
         if frontend_app_root is not UNSET:
             field_dict["frontend_app_root"] = frontend_app_root
+        if apply_migrations is not UNSET:
+            field_dict["apply_migrations"] = apply_migrations
 
         return field_dict
 
@@ -77,11 +89,14 @@ class UpdateProjectGitDeploySettingsRequest:
 
         frontend_app_root = d.pop("frontend_app_root", UNSET)
 
+        apply_migrations = d.pop("apply_migrations", UNSET)
+
         update_project_git_deploy_settings_request = cls(
             auto_deploy_enabled=auto_deploy_enabled,
             deploy_functions=deploy_functions,
             frontend_name=frontend_name,
             frontend_app_root=frontend_app_root,
+            apply_migrations=apply_migrations,
         )
 
 

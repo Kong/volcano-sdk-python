@@ -8,7 +8,8 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.email_template import EmailTemplate
+from ...models.default_email_template import DefaultEmailTemplate
+from ...models.error import Error
 from ...models.get_default_email_template_type import check_get_default_email_template_type
 from ...models.get_default_email_template_type import GetDefaultEmailTemplateType
 from typing import cast
@@ -35,16 +36,19 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | EmailTemplate | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> DefaultEmailTemplate | Error | None:
     if response.status_code == 200:
-        response_200 = EmailTemplate.from_dict(response.json())
+        response_200 = DefaultEmailTemplate.from_dict(response.json())
 
 
 
         return response_200
 
     if response.status_code == 404:
-        response_404 = cast(Any, None)
+        response_404 = Error.from_dict(response.json())
+
+
+
         return response_404
 
     if client.raise_on_unexpected_status:
@@ -53,7 +57,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | EmailTemplate]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[DefaultEmailTemplate | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -67,7 +71,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
 
-) -> Response[Any | EmailTemplate]:
+) -> Response[DefaultEmailTemplate | Error]:
     """ Get default email template by type
 
     Args:
@@ -78,7 +82,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | EmailTemplate]
+        Response[DefaultEmailTemplate | Error]
      """
 
 
@@ -98,7 +102,7 @@ def sync(
     *,
     client: AuthenticatedClient | Client,
 
-) -> Any | EmailTemplate | None:
+) -> DefaultEmailTemplate | Error | None:
     """ Get default email template by type
 
     Args:
@@ -109,7 +113,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | EmailTemplate
+        DefaultEmailTemplate | Error
      """
 
 
@@ -124,7 +128,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
 
-) -> Response[Any | EmailTemplate]:
+) -> Response[DefaultEmailTemplate | Error]:
     """ Get default email template by type
 
     Args:
@@ -135,7 +139,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | EmailTemplate]
+        Response[DefaultEmailTemplate | Error]
      """
 
 
@@ -155,7 +159,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient | Client,
 
-) -> Any | EmailTemplate | None:
+) -> DefaultEmailTemplate | Error | None:
     """ Get default email template by type
 
     Args:
@@ -166,7 +170,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | EmailTemplate
+        DefaultEmailTemplate | Error
      """
 
 

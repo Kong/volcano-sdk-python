@@ -94,6 +94,11 @@ def sync_detailed(
 ) -> Response[Error | ProjectGitConnection]:
     """ Get a project's repo connection
 
+     Returns the repository binding. `production_branch_follows_default`
+    tells a branch that tracks the repository's default from one the
+    project pinned: a client rebinding the same repository sends a pinned
+    branch back to keep it.
+
     Args:
         id (UUID):
 
@@ -125,6 +130,11 @@ def sync(
 ) -> Error | ProjectGitConnection | None:
     """ Get a project's repo connection
 
+     Returns the repository binding. `production_branch_follows_default`
+    tells a branch that tracks the repository's default from one the
+    project pinned: a client rebinding the same repository sends a pinned
+    branch back to keep it.
+
     Args:
         id (UUID):
 
@@ -150,6 +160,11 @@ async def asyncio_detailed(
 
 ) -> Response[Error | ProjectGitConnection]:
     """ Get a project's repo connection
+
+     Returns the repository binding. `production_branch_follows_default`
+    tells a branch that tracks the repository's default from one the
+    project pinned: a client rebinding the same repository sends a pinned
+    branch back to keep it.
 
     Args:
         id (UUID):
@@ -181,6 +196,11 @@ async def asyncio(
 
 ) -> Error | ProjectGitConnection | None:
     """ Get a project's repo connection
+
+     Returns the repository binding. `production_branch_follows_default`
+    tells a branch that tracks the repository's default from one the
+    project pinned: a client rebinding the same repository sends a pinned
+    branch back to keep it.
 
     Args:
         id (UUID):

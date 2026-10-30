@@ -150,11 +150,12 @@ def sync_detailed(
     ordinary Git auto-deploy flow. Direct source writes remain frozen until
     that deployment succeeds and the repository becomes the source of truth.
 
-    The caller confirms the production branch shown before export. Starting
-    export pins that branch: later GitHub default-branch changes do not
-    repoint the project. If the configured branch changed after the caller
-    read it, the request fails without exporting so the caller can show and
-    confirm the new value.
+    The caller confirms the production branch shown before export, and
+    optionally the repository by its `repo_id`. Starting export pins that
+    branch: later GitHub default-branch changes do not repoint the project.
+    If the connected repository or the configured branch changed after the
+    caller read it, the request fails without exporting so the caller can
+    show and confirm the new value.
 
     The response lists what the export could not carry: resources with no
     successful deployment to take source from (`skipped`), and things no
@@ -206,11 +207,12 @@ def sync(
     ordinary Git auto-deploy flow. Direct source writes remain frozen until
     that deployment succeeds and the repository becomes the source of truth.
 
-    The caller confirms the production branch shown before export. Starting
-    export pins that branch: later GitHub default-branch changes do not
-    repoint the project. If the configured branch changed after the caller
-    read it, the request fails without exporting so the caller can show and
-    confirm the new value.
+    The caller confirms the production branch shown before export, and
+    optionally the repository by its `repo_id`. Starting export pins that
+    branch: later GitHub default-branch changes do not repoint the project.
+    If the connected repository or the configured branch changed after the
+    caller read it, the request fails without exporting so the caller can
+    show and confirm the new value.
 
     The response lists what the export could not carry: resources with no
     successful deployment to take source from (`skipped`), and things no
@@ -257,11 +259,12 @@ async def asyncio_detailed(
     ordinary Git auto-deploy flow. Direct source writes remain frozen until
     that deployment succeeds and the repository becomes the source of truth.
 
-    The caller confirms the production branch shown before export. Starting
-    export pins that branch: later GitHub default-branch changes do not
-    repoint the project. If the configured branch changed after the caller
-    read it, the request fails without exporting so the caller can show and
-    confirm the new value.
+    The caller confirms the production branch shown before export, and
+    optionally the repository by its `repo_id`. Starting export pins that
+    branch: later GitHub default-branch changes do not repoint the project.
+    If the connected repository or the configured branch changed after the
+    caller read it, the request fails without exporting so the caller can
+    show and confirm the new value.
 
     The response lists what the export could not carry: resources with no
     successful deployment to take source from (`skipped`), and things no
@@ -313,11 +316,12 @@ async def asyncio(
     ordinary Git auto-deploy flow. Direct source writes remain frozen until
     that deployment succeeds and the repository becomes the source of truth.
 
-    The caller confirms the production branch shown before export. Starting
-    export pins that branch: later GitHub default-branch changes do not
-    repoint the project. If the configured branch changed after the caller
-    read it, the request fails without exporting so the caller can show and
-    confirm the new value.
+    The caller confirms the production branch shown before export, and
+    optionally the repository by its `repo_id`. Starting export pins that
+    branch: later GitHub default-branch changes do not repoint the project.
+    If the connected repository or the configured branch changed after the
+    caller read it, the request fails without exporting so the caller can
+    show and confirm the new value.
 
     The response lists what the export could not carry: resources with no
     successful deployment to take source from (`skipped`), and things no
