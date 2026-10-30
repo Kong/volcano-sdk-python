@@ -260,8 +260,12 @@ one, and is charged once. Only the start that creates the execution returns its
 stop an execution with the credential `durable.start()` takes. A service key
 holding `*`, the default, reaches any execution of the project and a signed-in
 user the executions they started; an anonymous key, a service key scoped without
-`*`, or a user who did not start the execution, passes the `client_token`. An
-execution the caller cannot reach raises `NotFoundError`, as a missing one does.
+`*`, or a user who did not start the execution, passes the `client_token`. A
+service key scoped without `*` also needs `functions.invoke`. The function's
+visibility must also admit the caller; a visibility refusal raises
+`PermissionDeniedError`, for example for an anonymous key holding the token on an
+`authenticated` function. An execution the caller cannot reach raises
+`NotFoundError`, as a missing one does.
 
 `durable.get()`, `durable.list()` and `durable.stop()` are owner-scoped, reach any
 execution of the project, and need the project owner's platform user token or a

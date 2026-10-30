@@ -529,13 +529,17 @@ class Durable:
     ) -> DurableExecution:
         """Read an execution with the credential that started it.
 
-        Takes the client's credential, as `start` does. A service key holding
-        `*`, the default, reaches any execution of the project; a signed-in
-        user reaches the executions they started. An anonymous key, a service
-        key scoped without `*`, or a user who did not start the execution,
-        passes the `client_token` its start returned. Anything else raises
-        `NotFoundError`, as a missing execution does, and so does an execution
-        that has not started yet, except to a service key holding `*`. Reads
+        Takes the client's credential, as `start` does, and the function's
+        visibility must admit it. A service key holding `*`, the default,
+        reaches any execution of the project; a signed-in user reaches the
+        executions they started. An anonymous key, a service key scoped
+        without `*`, or a user who did not start the execution, passes the
+        `client_token` its start returned. A service key scoped without `*`
+        also needs `functions.invoke`. An execution the caller cannot reach
+        raises `NotFoundError`, as a missing one does, and so does one that has
+        not started yet, except to a service key holding `*`. A visibility
+        refusal raises `PermissionDeniedError` instead, for example for an
+        anonymous key holding the token on an `authenticated` function. Reads
         share the function's rate limit with starts, so poll every few seconds.
 
         Returns
