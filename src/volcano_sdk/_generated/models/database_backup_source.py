@@ -1,8 +1,8 @@
 from typing import Literal
 
-DatabaseBackupSource = Literal['manual', 'scheduled']
+DatabaseBackupSource = Literal['manual', 'migration', 'scheduled']
 
-DATABASE_BACKUP_SOURCE_VALUES: set[DatabaseBackupSource] = { 'manual', 'scheduled',  }
+DATABASE_BACKUP_SOURCE_VALUES: set[DatabaseBackupSource] = { 'manual', 'migration', 'scheduled',  }
 
 def check_database_backup_source(value: str) -> DatabaseBackupSource:
     if value in DATABASE_BACKUP_SOURCE_VALUES:

@@ -66,6 +66,13 @@ class CreateDurableFunctionBody:
                 detected in its source. A declared name the project does not define is rejected with 400; a detected name it
                 does not define is ignored. Only used when `variable_scope` is `scoped`. Omitting this leaves an existing
                 function's declared names unchanged.
+            commit (str | Unset): JSON-encoded commit the uploaded source came from: `{"repository": "acme/app", "sha":
+                "<40-character commit ID>", "dirty": false}`. `repository` is `owner/name` or a github.com remote URL
+                (`https://github.com/acme/app.git`, `git@github.com:acme/app.git`, or `ssh://git@github.com/acme/app.git`);
+                Volcano drops any credentials in the URL and records `owner/name`. `dirty` is `true` when the uploaded files
+                differ from the commit. All three fields are required, and fields Volcano does not know are ignored. An empty
+                value, `null`, or `""` reports no commit. A malformed commit, or a repository not on GitHub, returns 400 before
+                anything is deployed. Volcano records a function's commit with `commit.verified: false`.
      """
 
     name: str
@@ -76,6 +83,7 @@ class CreateDurableFunctionBody:
     is_public: bool | Unset = UNSET
     variable_scope: CreateDurableFunctionBodyVariableScope | Unset = UNSET
     variables: str | Unset = UNSET
+    commit: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -106,6 +114,8 @@ class CreateDurableFunctionBody:
 
         variables = self.variables
 
+        commit = self.commit
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -124,6 +134,8 @@ class CreateDurableFunctionBody:
             field_dict["variable_scope"] = variable_scope
         if variables is not UNSET:
             field_dict["variables"] = variables
+        if commit is not UNSET:
+            field_dict["commit"] = commit
 
         return field_dict
 
@@ -165,6 +177,11 @@ class CreateDurableFunctionBody:
 
         if not isinstance(self.variables, Unset):
             files.append(("variables", (None, str(self.variables).encode(), "text/plain")))
+
+
+
+        if not isinstance(self.commit, Unset):
+            files.append(("commit", (None, str(self.commit).encode(), "text/plain")))
 
 
 
@@ -220,6 +237,8 @@ class CreateDurableFunctionBody:
 
         variables = d.pop("variables", UNSET)
 
+        commit = d.pop("commit", UNSET)
+
         create_durable_function_body = cls(
             name=name,
             code=code,
@@ -229,6 +248,7 @@ class CreateDurableFunctionBody:
             is_public=is_public,
             variable_scope=variable_scope,
             variables=variables,
+            commit=commit,
         )
 
 

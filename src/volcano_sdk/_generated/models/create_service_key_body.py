@@ -32,9 +32,14 @@ class CreateServiceKeyBody:
                 for backward compatibility. Provide an explicit list (e.g.
                 ["functions.invoke", "locks.manage"]) to restrict the key; "*"
                 grants everything. Scope enforcement applies to function invocation,
-                storage object operations, project locks, and server-side auth proxy
+                storage object operations, project locks, sandboxes, and server-side auth proxy
                 metadata (auth.signin, auth.signup, auth.refresh, auth.logout,
-                auth.password_reset).
+                auth.password_reset). A key scoped to a list without "*" reads, stops,
+                and messages a durable execution only with the `client_token` its
+                start returned. The scope doesn't restrict the database API, and restricts
+                realtime only on a durable run's channel: every service key queries
+                every table with RLS bypassed, subscribes to every other channel, and
+                publishes on broadcast channels.
                  Example: ['functions.invoke', 'locks.manage'].
      """
 

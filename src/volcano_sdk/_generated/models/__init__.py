@@ -1,5 +1,8 @@
 """ Contains all the data models used in inputs/outputs """
 
+from .account_session import AccountSession
+from .account_session_kind import AccountSessionKind
+from .account_session_list import AccountSessionList
 from .anon_key import AnonKey
 from .auth_cancel_email_change_response_200 import AuthCancelEmailChangeResponse200
 from .auth_config import AuthConfig
@@ -90,23 +93,6 @@ from .auth_user import AuthUser
 from .auth_user_app_metadata import AuthUserAppMetadata
 from .auth_user_status import AuthUserStatus
 from .auth_user_user_metadata import AuthUserUserMetadata
-from .autofix_diagnosis import AutofixDiagnosis
-from .autofix_diagnosis_confidence import AutofixDiagnosisConfidence
-from .autofix_edit import AutofixEdit
-from .autofix_evidence import AutofixEvidence
-from .autofix_evidence_kind import AutofixEvidenceKind
-from .autofix_model import AutofixModel
-from .autofix_patch import AutofixPatch
-from .autofix_provider import AutofixProvider
-from .autofix_pull_request import AutofixPullRequest
-from .autofix_pull_request_skipped import AutofixPullRequestSkipped
-from .autofix_pull_request_state import AutofixPullRequestState
-from .autofix_run import AutofixRun
-from .autofix_run_status import AutofixRunStatus
-from .autofix_run_trigger import AutofixRunTrigger
-from .autofix_run_usage import AutofixRunUsage
-from .autofix_settings import AutofixSettings
-from .autofix_stage import AutofixStage
 from .ban_auth_user_body import BanAuthUserBody
 from .ban_user_response import BanUserResponse
 from .ban_user_response_status import BanUserResponseStatus
@@ -151,8 +137,12 @@ from .create_email_template_request_template_type import CreateEmailTemplateRequ
 from .create_frontend_body import CreateFrontendBody
 from .create_frontend_body_framework import CreateFrontendBodyFramework
 from .create_frontend_body_variable_scope import CreateFrontendBodyVariableScope
+from .create_frontend_candidate_body import CreateFrontendCandidateBody
 from .create_frontend_custom_domain_request import CreateFrontendCustomDomainRequest
+from .create_frontend_deployment_request import CreateFrontendDeploymentRequest
+from .create_frontend_domain_request import CreateFrontendDomainRequest
 from .create_frontend_function_route_request import CreateFrontendFunctionRouteRequest
+from .create_frontend_route_request import CreateFrontendRouteRequest
 from .create_function_body import CreateFunctionBody
 from .create_function_body_runtime import CreateFunctionBodyRuntime
 from .create_function_body_variable_scope import CreateFunctionBodyVariableScope
@@ -190,6 +180,25 @@ from .database_database_type import DatabaseDatabaseType
 from .database_delete_request import DatabaseDeleteRequest
 from .database_insert_request import DatabaseInsertRequest
 from .database_insert_request_values import DatabaseInsertRequestValues
+from .database_migration_baseline import DatabaseMigrationBaseline
+from .database_migration_conflict_error import DatabaseMigrationConflictError
+from .database_migration_file import DatabaseMigrationFile
+from .database_migration_file_error import DatabaseMigrationFileError
+from .database_migration_files_request import DatabaseMigrationFilesRequest
+from .database_migration_history_entry import DatabaseMigrationHistoryEntry
+from .database_migration_history_entry_status import DatabaseMigrationHistoryEntryStatus
+from .database_migration_run import DatabaseMigrationRun
+from .database_migration_run_error import DatabaseMigrationRunError
+from .database_migration_run_error_code import DatabaseMigrationRunErrorCode
+from .database_migration_run_file import DatabaseMigrationRunFile
+from .database_migration_run_file_outcome import DatabaseMigrationRunFileOutcome
+from .database_migration_run_list import DatabaseMigrationRunList
+from .database_migration_run_phase import DatabaseMigrationRunPhase
+from .database_migration_run_source import DatabaseMigrationRunSource
+from .database_migration_run_status import DatabaseMigrationRunStatus
+from .database_migration_warning import DatabaseMigrationWarning
+from .database_migration_warning_code import DatabaseMigrationWarningCode
+from .database_migrations import DatabaseMigrations
 from .database_query_filter import DatabaseQueryFilter
 from .database_query_filter_operator import DatabaseQueryFilterOperator
 from .database_query_order import DatabaseQueryOrder
@@ -199,6 +208,7 @@ from .database_query_performance_response import DatabaseQueryPerformanceRespons
 from .database_query_result import DatabaseQueryResult
 from .database_query_result_data_item import DatabaseQueryResultDataItem
 from .database_restore import DatabaseRestore
+from .database_restore_conflict_error import DatabaseRestoreConflictError
 from .database_restore_kind import DatabaseRestoreKind
 from .database_restore_list import DatabaseRestoreList
 from .database_restore_status import DatabaseRestoreStatus
@@ -209,6 +219,8 @@ from .database_stats_granularity import DatabaseStatsGranularity
 from .database_status import DatabaseStatus
 from .database_update_request import DatabaseUpdateRequest
 from .database_update_request_values import DatabaseUpdateRequestValues
+from .default_email_template import DefaultEmailTemplate
+from .default_email_template_type import DefaultEmailTemplateType
 from .delete_database_backup_response_200 import DeleteDatabaseBackupResponse200
 from .delete_database_branch_response_202 import DeleteDatabaseBranchResponse202
 from .delete_database_response_202 import DeleteDatabaseResponse202
@@ -216,6 +228,7 @@ from .delete_email_template_type import DeleteEmailTemplateType
 from .delete_o_auth_config_provider import DeleteOAuthConfigProvider
 from .deploy_sandbox_body import DeploySandboxBody
 from .deploy_sandbox_body_memory_mb import DeploySandboxBodyMemoryMb
+from .deployment_commit import DeploymentCommit
 from .deployment_phase import DeploymentPhase
 from .deployment_phase_name import DeploymentPhaseName
 from .deployment_phase_status import DeploymentPhaseStatus
@@ -270,7 +283,18 @@ from .error import Error
 from .export_project_source_request import ExportProjectSourceRequest
 from .fail_durable_callback_request import FailDurableCallbackRequest
 from .frontend import Frontend
+from .frontend_candidate import FrontendCandidate
+from .frontend_candidate_configuration_status import FrontendCandidateConfigurationStatus
+from .frontend_candidate_deployment import FrontendCandidateDeployment
+from .frontend_candidate_deployment_status import FrontendCandidateDeploymentStatus
+from .frontend_candidate_list import FrontendCandidateList
+from .frontend_candidate_status import FrontendCandidateStatus
 from .frontend_custom_domain_conflict_error import FrontendCustomDomainConflictError
+from .frontend_custom_domain_list import FrontendCustomDomainList
+from .frontend_custom_domain_redirect import FrontendCustomDomainRedirect
+from .frontend_custom_domain_redirect_request import FrontendCustomDomainRedirectRequest
+from .frontend_custom_domain_redirect_request_status import FrontendCustomDomainRedirectRequestStatus
+from .frontend_custom_domain_redirect_status import FrontendCustomDomainRedirectStatus
 from .frontend_custom_domain_response import FrontendCustomDomainResponse
 from .frontend_custom_domain_response_domain_status import FrontendCustomDomainResponseDomainStatus
 from .frontend_custom_domain_response_serving_certificate import FrontendCustomDomainResponseServingCertificate
@@ -289,6 +313,9 @@ from .frontend_domain_verification_record import FrontendDomainVerificationRecor
 from .frontend_framework import FrontendFramework
 from .frontend_function_route import FrontendFunctionRoute
 from .frontend_function_route_list import FrontendFunctionRouteList
+from .frontend_route import FrontendRoute
+from .frontend_route_list import FrontendRouteList
+from .frontend_serving import FrontendServing
 from .frontend_status import FrontendStatus
 from .frontend_usage_daily_entry import FrontendUsageDailyEntry
 from .frontend_usage_data import FrontendUsageData
@@ -312,6 +339,8 @@ from .function_runtime_deployment import FunctionRuntimeDeployment
 from .function_runtime_option import FunctionRuntimeOption
 from .function_runtimes_response import FunctionRuntimesResponse
 from .function_scheduler import FunctionScheduler
+from .function_scheduler_health import FunctionSchedulerHealth
+from .function_scheduler_last_run_status import FunctionSchedulerLastRunStatus
 from .function_scheduler_list_response import FunctionSchedulerListResponse
 from .function_scheduler_payload import FunctionSchedulerPayload
 from .function_scheduler_schedule_kind import FunctionSchedulerScheduleKind
@@ -332,10 +361,15 @@ from .get_project_config_format import GetProjectConfigFormat
 from .git_connect_start_response import GitConnectStartResponse
 from .git_connection import GitConnection
 from .git_connections_response import GitConnectionsResponse
+from .git_deployment_migration_run import GitDeploymentMigrationRun
+from .git_deployment_run import GitDeploymentRun
+from .git_deployment_run_error import GitDeploymentRunError
+from .git_deployment_run_status import GitDeploymentRunStatus
 from .git_installation import GitInstallation
 from .git_installations_response import GitInstallationsResponse
 from .git_repositories_response import GitRepositoriesResponse
 from .git_repository import GitRepository
+from .git_repository_reference import GitRepositoryReference
 from .heartbeat_durable_callback_request import HeartbeatDurableCallbackRequest
 from .hosted_auth_page_type import HostedAuthPageType
 from .hosted_login_email_check_request import HostedLoginEmailCheckRequest
@@ -350,6 +384,8 @@ from .import_source import ImportSource
 from .import_sources_response import ImportSourcesResponse
 from .issue import Issue
 from .issue_status import IssueStatus
+from .list_account_sessions_sort import ListAccountSessionsSort
+from .list_account_sessions_status import ListAccountSessionsStatus
 from .list_anon_keys_response_200 import ListAnonKeysResponse200
 from .list_auth_users_status import ListAuthUsersStatus
 from .list_available_o_auth_providers_response_200 import ListAvailableOAuthProvidersResponse200
@@ -397,13 +433,19 @@ from .log_stream_request import LogStreamRequest
 from .managed_project_config_frontend_custom_domain_tls_config import ManagedProjectConfigFrontendCustomDomainTLSConfig
 from .managed_project_config_frontend_custom_domain_tls_config_mode import ManagedProjectConfigFrontendCustomDomainTLSConfigMode
 from .metric_usage_data import MetricUsageData
+from .notification_email_settings import NotificationEmailSettings
+from .notification_email_status import NotificationEmailStatus
+from .notification_settings import NotificationSettings
+from .notification_test_delivery import NotificationTestDelivery
+from .notification_test_delivery_channel import NotificationTestDeliveryChannel
+from .notification_test_result import NotificationTestResult
+from .notification_webhook_settings import NotificationWebhookSettings
 from .o_auth_config import OAuthConfig
 from .o_auth_config_provider import OAuthConfigProvider
 from .o_auth_error_response import OAuthErrorResponse
 from .open_api_spec_document import OpenAPISpecDocument
 from .open_durable_message_session_request import OpenDurableMessageSessionRequest
 from .paginated_auth_users import PaginatedAuthUsers
-from .paginated_autofix_runs import PaginatedAutofixRuns
 from .paginated_databases import PaginatedDatabases
 from .paginated_durable_approvals import PaginatedDurableApprovals
 from .paginated_durable_executions import PaginatedDurableExecutions
@@ -412,6 +454,7 @@ from .paginated_frontend_deployments import PaginatedFrontendDeployments
 from .paginated_frontends import PaginatedFrontends
 from .paginated_function_deployments import PaginatedFunctionDeployments
 from .paginated_functions import PaginatedFunctions
+from .paginated_git_deployment_runs import PaginatedGitDeploymentRuns
 from .paginated_issues import PaginatedIssues
 from .paginated_project_access_tokens import PaginatedProjectAccessTokens
 from .paginated_project_custom_domains import PaginatedProjectCustomDomains
@@ -455,26 +498,31 @@ from .project_config_auth_sessions import ProjectConfigAuthSessions
 from .project_config_auth_signup import ProjectConfigAuthSignup
 from .project_config_auth_signup_allowed_email_domains_mode import ProjectConfigAuthSignupAllowedEmailDomainsMode
 from .project_config_auth_tokens import ProjectConfigAuthTokens
-from .project_config_autofix import ProjectConfigAutofix
 from .project_config_bucket import ProjectConfigBucket
 from .project_config_bucket_policy import ProjectConfigBucketPolicy
 from .project_config_bucket_policy_operation import ProjectConfigBucketPolicyOperation
 from .project_config_custom_domain import ProjectConfigCustomDomain
+from .project_config_custom_domain_redirect import ProjectConfigCustomDomainRedirect
+from .project_config_custom_domain_redirect_status import ProjectConfigCustomDomainRedirectStatus
 from .project_config_database import ProjectConfigDatabase
 from .project_config_database_database_type import ProjectConfigDatabaseDatabaseType
 from .project_config_database_pg_version import ProjectConfigDatabasePgVersion
 from .project_config_email_template import ProjectConfigEmailTemplate
 from .project_config_email_templates import ProjectConfigEmailTemplates
 from .project_config_frontend import ProjectConfigFrontend
+from .project_config_frontend_custom_domain import ProjectConfigFrontendCustomDomain
 from .project_config_frontend_function_route import ProjectConfigFrontendFunctionRoute
+from .project_config_frontend_route import ProjectConfigFrontendRoute
 from .project_config_frontend_variable_scope import ProjectConfigFrontendVariableScope
 from .project_config_function import ProjectConfigFunction
 from .project_config_function_openapi_spec_type_0 import ProjectConfigFunctionOpenapiSpecType0
 from .project_config_function_variable_scope import ProjectConfigFunctionVariableScope
 from .project_config_hosted_page import ProjectConfigHostedPage
 from .project_config_hosted_pages import ProjectConfigHostedPages
+from .project_config_lava_flow import ProjectConfigLavaFlow
 from .project_config_missing_resource import ProjectConfigMissingResource
 from .project_config_missing_resource_type import ProjectConfigMissingResourceType
+from .project_config_notifications import ProjectConfigNotifications
 from .project_config_o_auth_provider import ProjectConfigOAuthProvider
 from .project_config_o_auth_provider_provider import ProjectConfigOAuthProviderProvider
 from .project_config_project import ProjectConfigProject
@@ -501,6 +549,8 @@ from .project_frontend_custom_domain_frontend import ProjectFrontendCustomDomain
 from .project_git_connection import ProjectGitConnection
 from .project_git_connection_summary import ProjectGitConnectionSummary
 from .project_git_deploy_settings import ProjectGitDeploySettings
+from .project_git_owner_push import ProjectGitOwnerPush
+from .project_git_owner_push_reason import ProjectGitOwnerPushReason
 from .project_health_category import ProjectHealthCategory
 from .project_health_check import ProjectHealthCheck
 from .project_health_data_status import ProjectHealthDataStatus
@@ -556,6 +606,7 @@ from .project_template_installation import ProjectTemplateInstallation
 from .project_template_installation_phase import ProjectTemplateInstallationPhase
 from .project_template_installation_status import ProjectTemplateInstallationStatus
 from .project_usage_response import ProjectUsageResponse
+from .promote_frontend_candidate_body import PromoteFrontendCandidateBody
 from .publish_durable_message_request import PublishDurableMessageRequest
 from .publish_sandbox_preset_request import PublishSandboxPresetRequest
 from .publish_sandbox_preset_request_memory_mb import PublishSandboxPresetRequestMemoryMb
@@ -563,6 +614,7 @@ from .publish_sandbox_preset_request_preset import PublishSandboxPresetRequestPr
 from .realtime_config import RealtimeConfig
 from .realtime_plan_limits import RealtimePlanLimits
 from .realtime_stats import RealtimeStats
+from .redeploy_frontend_candidate_body import RedeployFrontendCandidateBody
 from .refresh_o_auth_provider_token_provider import RefreshOAuthProviderTokenProvider
 from .refresh_o_auth_provider_token_response_200 import RefreshOAuthProviderTokenResponse200
 from .register_durable_callback_request import RegisterDurableCallbackRequest
@@ -576,6 +628,7 @@ from .reset_database_password_response_200 import ResetDatabasePasswordResponse2
 from .resolve_function_response import ResolveFunctionResponse
 from .resource_reference import ResourceReference
 from .resource_reference_type import ResourceReferenceType
+from .rollback_frontend_serving_body import RollbackFrontendServingBody
 from .sandbox_access import SandboxAccess
 from .sandbox_access_request import SandboxAccessRequest
 from .sandbox_build_log_page import SandboxBuildLogPage
@@ -605,9 +658,12 @@ from .sandbox_template_page import SandboxTemplatePage
 from .sandbox_template_status import SandboxTemplateStatus
 from .schedule_request import ScheduleRequest
 from .schedule_request_kind import ScheduleRequestKind
+from .scheduler_failure_alert_policy import SchedulerFailureAlertPolicy
+from .scheduler_failure_notify_on import SchedulerFailureNotifyOn
 from .send_durable_message_request import SendDurableMessageRequest
 from .service_key import ServiceKey
 from .set_project_git_production_branch_request import SetProjectGitProductionBranchRequest
+from .set_project_git_root_directory_request import SetProjectGitRootDirectoryRequest
 from .start_git_connect_provider import StartGitConnectProvider
 from .storage_bucket import StorageBucket
 from .storage_copy_request import StorageCopyRequest
@@ -632,23 +688,27 @@ from .update_auth_config_request_allowed_email_domains_mode import UpdateAuthCon
 from .update_auth_hosted_page_request import UpdateAuthHostedPageRequest
 from .update_auth_page_layout_request import UpdateAuthPageLayoutRequest
 from .update_auth_page_theme_request import UpdateAuthPageThemeRequest
-from .update_autofix_settings_request import UpdateAutofixSettingsRequest
 from .update_database_branch_request import UpdateDatabaseBranchRequest
 from .update_database_type_request import UpdateDatabaseTypeRequest
 from .update_database_type_request_database_type import UpdateDatabaseTypeRequestDatabaseType
 from .update_email_template_request import UpdateEmailTemplateRequest
 from .update_email_template_type import UpdateEmailTemplateType
+from .update_frontend_custom_domain_request import UpdateFrontendCustomDomainRequest
 from .update_function_request import UpdateFunctionRequest
 from .update_function_request_openapi_spec_type_0 import UpdateFunctionRequestOpenapiSpecType0
 from .update_function_scheduler_request import UpdateFunctionSchedulerRequest
 from .update_function_scheduler_request_payload import UpdateFunctionSchedulerRequestPayload
 from .update_issue_request import UpdateIssueRequest
+from .update_notification_email import UpdateNotificationEmail
+from .update_notification_settings_request import UpdateNotificationSettingsRequest
+from .update_notification_webhook import UpdateNotificationWebhook
 from .update_o_auth_config_provider import UpdateOAuthConfigProvider
 from .update_o_auth_config_request import UpdateOAuthConfigRequest
 from .update_project_git_deploy_settings_request import UpdateProjectGitDeploySettingsRequest
 from .update_project_request import UpdateProjectRequest
 from .update_realtime_config_request import UpdateRealtimeConfigRequest
 from .update_sandbox_template_request import UpdateSandboxTemplateRequest
+from .update_scheduler_failure_alert_policy import UpdateSchedulerFailureAlertPolicy
 from .update_storage_bucket_request import UpdateStorageBucketRequest
 from .update_variable_request import UpdateVariableRequest
 from .upload_project_logo_body import UploadProjectLogoBody
@@ -668,6 +728,9 @@ from .verified_domains_response import VerifiedDomainsResponse
 from .verify_domain_request import VerifyDomainRequest
 
 __all__ = (
+    "AccountSession",
+    "AccountSessionKind",
+    "AccountSessionList",
     "AnonKey",
     "AuthCancelEmailChangeResponse200",
     "AuthConfig",
@@ -758,23 +821,6 @@ __all__ = (
     "AuthUserAppMetadata",
     "AuthUserStatus",
     "AuthUserUserMetadata",
-    "AutofixDiagnosis",
-    "AutofixDiagnosisConfidence",
-    "AutofixEdit",
-    "AutofixEvidence",
-    "AutofixEvidenceKind",
-    "AutofixModel",
-    "AutofixPatch",
-    "AutofixProvider",
-    "AutofixPullRequest",
-    "AutofixPullRequestSkipped",
-    "AutofixPullRequestState",
-    "AutofixRun",
-    "AutofixRunStatus",
-    "AutofixRunTrigger",
-    "AutofixRunUsage",
-    "AutofixSettings",
-    "AutofixStage",
     "BanAuthUserBody",
     "BanUserResponse",
     "BanUserResponseStatus",
@@ -820,8 +866,12 @@ __all__ = (
     "CreateFrontendBody",
     "CreateFrontendBodyFramework",
     "CreateFrontendBodyVariableScope",
+    "CreateFrontendCandidateBody",
     "CreateFrontendCustomDomainRequest",
+    "CreateFrontendDeploymentRequest",
+    "CreateFrontendDomainRequest",
     "CreateFrontendFunctionRouteRequest",
+    "CreateFrontendRouteRequest",
     "CreateFunctionBody",
     "CreateFunctionBodyRuntime",
     "CreateFunctionBodyVariableScope",
@@ -858,6 +908,25 @@ __all__ = (
     "DatabaseDeleteRequest",
     "DatabaseInsertRequest",
     "DatabaseInsertRequestValues",
+    "DatabaseMigrationBaseline",
+    "DatabaseMigrationConflictError",
+    "DatabaseMigrationFile",
+    "DatabaseMigrationFileError",
+    "DatabaseMigrationFilesRequest",
+    "DatabaseMigrationHistoryEntry",
+    "DatabaseMigrationHistoryEntryStatus",
+    "DatabaseMigrationRun",
+    "DatabaseMigrationRunError",
+    "DatabaseMigrationRunErrorCode",
+    "DatabaseMigrationRunFile",
+    "DatabaseMigrationRunFileOutcome",
+    "DatabaseMigrationRunList",
+    "DatabaseMigrationRunPhase",
+    "DatabaseMigrationRunSource",
+    "DatabaseMigrationRunStatus",
+    "DatabaseMigrations",
+    "DatabaseMigrationWarning",
+    "DatabaseMigrationWarningCode",
     "DatabaseQueryFilter",
     "DatabaseQueryFilterOperator",
     "DatabaseQueryOrder",
@@ -867,6 +936,7 @@ __all__ = (
     "DatabaseQueryResult",
     "DatabaseQueryResultDataItem",
     "DatabaseRestore",
+    "DatabaseRestoreConflictError",
     "DatabaseRestoreKind",
     "DatabaseRestoreList",
     "DatabaseRestoreStatus",
@@ -877,11 +947,14 @@ __all__ = (
     "DatabaseStatus",
     "DatabaseUpdateRequest",
     "DatabaseUpdateRequestValues",
+    "DefaultEmailTemplate",
+    "DefaultEmailTemplateType",
     "DeleteDatabaseBackupResponse200",
     "DeleteDatabaseBranchResponse202",
     "DeleteDatabaseResponse202",
     "DeleteEmailTemplateType",
     "DeleteOAuthConfigProvider",
+    "DeploymentCommit",
     "DeploymentPhase",
     "DeploymentPhaseName",
     "DeploymentPhaseStatus",
@@ -938,7 +1011,18 @@ __all__ = (
     "ExportProjectSourceRequest",
     "FailDurableCallbackRequest",
     "Frontend",
+    "FrontendCandidate",
+    "FrontendCandidateConfigurationStatus",
+    "FrontendCandidateDeployment",
+    "FrontendCandidateDeploymentStatus",
+    "FrontendCandidateList",
+    "FrontendCandidateStatus",
     "FrontendCustomDomainConflictError",
+    "FrontendCustomDomainList",
+    "FrontendCustomDomainRedirect",
+    "FrontendCustomDomainRedirectRequest",
+    "FrontendCustomDomainRedirectRequestStatus",
+    "FrontendCustomDomainRedirectStatus",
     "FrontendCustomDomainResponse",
     "FrontendCustomDomainResponseDomainStatus",
     "FrontendCustomDomainResponseServingCertificate",
@@ -957,6 +1041,9 @@ __all__ = (
     "FrontendFramework",
     "FrontendFunctionRoute",
     "FrontendFunctionRouteList",
+    "FrontendRoute",
+    "FrontendRouteList",
+    "FrontendServing",
     "FrontendStatus",
     "FrontendUsageDailyEntry",
     "FrontendUsageData",
@@ -980,6 +1067,8 @@ __all__ = (
     "FunctionRuntimeOption",
     "FunctionRuntimesResponse",
     "FunctionScheduler",
+    "FunctionSchedulerHealth",
+    "FunctionSchedulerLastRunStatus",
     "FunctionSchedulerListResponse",
     "FunctionSchedulerPayload",
     "FunctionSchedulerScheduleKind",
@@ -1000,10 +1089,15 @@ __all__ = (
     "GitConnection",
     "GitConnectionsResponse",
     "GitConnectStartResponse",
+    "GitDeploymentMigrationRun",
+    "GitDeploymentRun",
+    "GitDeploymentRunError",
+    "GitDeploymentRunStatus",
     "GitInstallation",
     "GitInstallationsResponse",
     "GitRepositoriesResponse",
     "GitRepository",
+    "GitRepositoryReference",
     "HeartbeatDurableCallbackRequest",
     "HostedAuthPageType",
     "HostedLoginEmailCheckRequest",
@@ -1018,6 +1112,8 @@ __all__ = (
     "ImportSourcesResponse",
     "Issue",
     "IssueStatus",
+    "ListAccountSessionsSort",
+    "ListAccountSessionsStatus",
     "ListAnonKeysResponse200",
     "ListAuthUsersStatus",
     "ListAvailableOAuthProvidersResponse200",
@@ -1065,13 +1161,19 @@ __all__ = (
     "ManagedProjectConfigFrontendCustomDomainTLSConfig",
     "ManagedProjectConfigFrontendCustomDomainTLSConfigMode",
     "MetricUsageData",
+    "NotificationEmailSettings",
+    "NotificationEmailStatus",
+    "NotificationSettings",
+    "NotificationTestDelivery",
+    "NotificationTestDeliveryChannel",
+    "NotificationTestResult",
+    "NotificationWebhookSettings",
     "OAuthConfig",
     "OAuthConfigProvider",
     "OAuthErrorResponse",
     "OpenAPISpecDocument",
     "OpenDurableMessageSessionRequest",
     "PaginatedAuthUsers",
-    "PaginatedAutofixRuns",
     "PaginatedDatabases",
     "PaginatedDurableApprovals",
     "PaginatedDurableExecutions",
@@ -1080,6 +1182,7 @@ __all__ = (
     "PaginatedFrontends",
     "PaginatedFunctionDeployments",
     "PaginatedFunctions",
+    "PaginatedGitDeploymentRuns",
     "PaginatedIssues",
     "PaginatedProjectAccessTokens",
     "PaginatedProjectCustomDomains",
@@ -1123,26 +1226,31 @@ __all__ = (
     "ProjectConfigAuthSignup",
     "ProjectConfigAuthSignupAllowedEmailDomainsMode",
     "ProjectConfigAuthTokens",
-    "ProjectConfigAutofix",
     "ProjectConfigBucket",
     "ProjectConfigBucketPolicy",
     "ProjectConfigBucketPolicyOperation",
     "ProjectConfigCustomDomain",
+    "ProjectConfigCustomDomainRedirect",
+    "ProjectConfigCustomDomainRedirectStatus",
     "ProjectConfigDatabase",
     "ProjectConfigDatabaseDatabaseType",
     "ProjectConfigDatabasePgVersion",
     "ProjectConfigEmailTemplate",
     "ProjectConfigEmailTemplates",
     "ProjectConfigFrontend",
+    "ProjectConfigFrontendCustomDomain",
     "ProjectConfigFrontendFunctionRoute",
+    "ProjectConfigFrontendRoute",
     "ProjectConfigFrontendVariableScope",
     "ProjectConfigFunction",
     "ProjectConfigFunctionOpenapiSpecType0",
     "ProjectConfigFunctionVariableScope",
     "ProjectConfigHostedPage",
     "ProjectConfigHostedPages",
+    "ProjectConfigLavaFlow",
     "ProjectConfigMissingResource",
     "ProjectConfigMissingResourceType",
+    "ProjectConfigNotifications",
     "ProjectConfigOAuthProvider",
     "ProjectConfigOAuthProviderProvider",
     "ProjectConfigProject",
@@ -1169,6 +1277,8 @@ __all__ = (
     "ProjectGitConnection",
     "ProjectGitConnectionSummary",
     "ProjectGitDeploySettings",
+    "ProjectGitOwnerPush",
+    "ProjectGitOwnerPushReason",
     "ProjectHealthCategory",
     "ProjectHealthCheck",
     "ProjectHealthDataStatus",
@@ -1224,6 +1334,7 @@ __all__ = (
     "ProjectTemplateInstallationPhase",
     "ProjectTemplateInstallationStatus",
     "ProjectUsageResponse",
+    "PromoteFrontendCandidateBody",
     "PublishDurableMessageRequest",
     "PublishSandboxPresetRequest",
     "PublishSandboxPresetRequestMemoryMb",
@@ -1231,6 +1342,7 @@ __all__ = (
     "RealtimeConfig",
     "RealtimePlanLimits",
     "RealtimeStats",
+    "RedeployFrontendCandidateBody",
     "RefreshOAuthProviderTokenProvider",
     "RefreshOAuthProviderTokenResponse200",
     "RegisterDurableCallbackRequest",
@@ -1244,6 +1356,7 @@ __all__ = (
     "ResolveFunctionResponse",
     "ResourceReference",
     "ResourceReferenceType",
+    "RollbackFrontendServingBody",
     "SandboxAccess",
     "SandboxAccessRequest",
     "SandboxBuildLogPage",
@@ -1273,9 +1386,12 @@ __all__ = (
     "SandboxTemplateStatus",
     "ScheduleRequest",
     "ScheduleRequestKind",
+    "SchedulerFailureAlertPolicy",
+    "SchedulerFailureNotifyOn",
     "SendDurableMessageRequest",
     "ServiceKey",
     "SetProjectGitProductionBranchRequest",
+    "SetProjectGitRootDirectoryRequest",
     "StartGitConnectProvider",
     "StorageBucket",
     "StorageCopyRequest",
@@ -1300,23 +1416,27 @@ __all__ = (
     "UpdateAuthHostedPageRequest",
     "UpdateAuthPageLayoutRequest",
     "UpdateAuthPageThemeRequest",
-    "UpdateAutofixSettingsRequest",
     "UpdateDatabaseBranchRequest",
     "UpdateDatabaseTypeRequest",
     "UpdateDatabaseTypeRequestDatabaseType",
     "UpdateEmailTemplateRequest",
     "UpdateEmailTemplateType",
+    "UpdateFrontendCustomDomainRequest",
     "UpdateFunctionRequest",
     "UpdateFunctionRequestOpenapiSpecType0",
     "UpdateFunctionSchedulerRequest",
     "UpdateFunctionSchedulerRequestPayload",
     "UpdateIssueRequest",
+    "UpdateNotificationEmail",
+    "UpdateNotificationSettingsRequest",
+    "UpdateNotificationWebhook",
     "UpdateOAuthConfigProvider",
     "UpdateOAuthConfigRequest",
     "UpdateProjectGitDeploySettingsRequest",
     "UpdateProjectRequest",
     "UpdateRealtimeConfigRequest",
     "UpdateSandboxTemplateRequest",
+    "UpdateSchedulerFailureAlertPolicy",
     "UpdateStorageBucketRequest",
     "UpdateVariableRequest",
     "UploadProjectLogoBody",

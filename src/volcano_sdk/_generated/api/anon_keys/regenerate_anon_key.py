@@ -9,6 +9,7 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.anon_key import AnonKey
+from ...models.error import Error
 from typing import cast
 from uuid import UUID
 
@@ -35,7 +36,7 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> AnonKey | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> AnonKey | Error | None:
     if response.status_code == 200:
         response_200 = AnonKey.from_dict(response.json())
 
@@ -43,13 +44,20 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_200
 
+    if response.status_code == 404:
+        response_404 = Error.from_dict(response.json())
+
+
+
+        return response_404
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[AnonKey]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[AnonKey | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -64,7 +72,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[AnonKey]:
+) -> Response[AnonKey | Error]:
     """ Regenerate anon key
 
      Generate new JWT value for existing key
@@ -78,7 +86,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[AnonKey]
+        Response[AnonKey | Error]
      """
 
 
@@ -100,7 +108,7 @@ def sync(
     *,
     client: AuthenticatedClient,
 
-) -> AnonKey | None:
+) -> AnonKey | Error | None:
     """ Regenerate anon key
 
      Generate new JWT value for existing key
@@ -114,7 +122,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        AnonKey
+        AnonKey | Error
      """
 
 
@@ -131,7 +139,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[AnonKey]:
+) -> Response[AnonKey | Error]:
     """ Regenerate anon key
 
      Generate new JWT value for existing key
@@ -145,7 +153,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[AnonKey]
+        Response[AnonKey | Error]
      """
 
 
@@ -167,7 +175,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
 
-) -> AnonKey | None:
+) -> AnonKey | Error | None:
     """ Regenerate anon key
 
      Generate new JWT value for existing key
@@ -181,7 +189,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        AnonKey
+        AnonKey | Error
      """
 
 

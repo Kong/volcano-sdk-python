@@ -23,7 +23,9 @@ class CreateDatabaseBackupRequest:
     """ 
         Attributes:
             name (str): Backup name, unique within the database. Names beginning with
-                `volcano-` are reserved for the platform's own snapshots.
+                `volcano-` are reserved for the platform's own snapshots, and names
+                beginning with `before-migration-` for the backups migration runs
+                take.
                  Example: before_migration.
      """
 

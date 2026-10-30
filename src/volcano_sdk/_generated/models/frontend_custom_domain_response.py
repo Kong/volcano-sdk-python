@@ -21,6 +21,7 @@ from typing import cast
 import datetime
 
 if TYPE_CHECKING:
+  from ..models.frontend_custom_domain_redirect import FrontendCustomDomainRedirect
   from ..models.frontend_domain_routing_record import FrontendDomainRoutingRecord
   from ..models.frontend_domain_verification_record import FrontendDomainVerificationRecord
 
@@ -44,6 +45,8 @@ class FrontendCustomDomainResponse:
                 withdrawn, or Volcano is retrying after a failure. `failed`: a failure left the domain unserved, alongside
                 `domain_status: failed`; managed domains report the cause in `failure_reason`.
             effective_urls (list[str]):
+            redirect (FrontendCustomDomainRedirect | None): Where the domain redirects every request, or null when it serves
+                the frontend.
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
             serving_certificate (FrontendCustomDomainResponseServingCertificate | Unset): Certificate the domain serves,
@@ -69,6 +72,7 @@ class FrontendCustomDomainResponse:
     domain_status: FrontendCustomDomainResponseDomainStatus
     verification_status: FrontendCustomDomainResponseVerificationStatus
     effective_urls: list[str]
+    redirect: FrontendCustomDomainRedirect | None
     created_at: datetime.datetime
     updated_at: datetime.datetime
     serving_certificate: FrontendCustomDomainResponseServingCertificate | Unset = UNSET
@@ -83,6 +87,7 @@ class FrontendCustomDomainResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.frontend_custom_domain_redirect import FrontendCustomDomainRedirect # noqa: PLC0415
         from ..models.frontend_domain_routing_record import FrontendDomainRoutingRecord # noqa: PLC0415
         from ..models.frontend_domain_verification_record import FrontendDomainVerificationRecord # noqa: PLC0415
         domain = self.domain
@@ -96,6 +101,12 @@ class FrontendCustomDomainResponse:
         effective_urls = self.effective_urls
 
 
+
+        redirect: dict[str, Any] | None
+        if isinstance(self.redirect, FrontendCustomDomainRedirect):
+            redirect = self.redirect.to_dict()
+        else:
+            redirect = self.redirect
 
         created_at = self.created_at.isoformat()
 
@@ -132,6 +143,7 @@ class FrontendCustomDomainResponse:
             "domain_status": domain_status,
             "verification_status": verification_status,
             "effective_urls": effective_urls,
+            "redirect": redirect,
             "created_at": created_at,
             "updated_at": updated_at,
         })
@@ -152,6 +164,7 @@ class FrontendCustomDomainResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.frontend_custom_domain_redirect import FrontendCustomDomainRedirect # noqa: PLC0415
         from ..models.frontend_domain_routing_record import FrontendDomainRoutingRecord # noqa: PLC0415
         from ..models.frontend_domain_verification_record import FrontendDomainVerificationRecord # noqa: PLC0415
         d = dict(src_dict)
@@ -173,6 +186,24 @@ class FrontendCustomDomainResponse:
 
 
         effective_urls = cast(list[str], d.pop("effective_urls"))
+
+
+        def _parse_redirect(data: object) -> FrontendCustomDomainRedirect | None:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                redirect_type_1 = FrontendCustomDomainRedirect.from_dict(data)
+
+
+
+                return redirect_type_1
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(FrontendCustomDomainRedirect | None, data)
+
+        redirect = _parse_redirect(d.pop("redirect"))
 
 
         created_at = datetime.datetime.fromisoformat(d.pop("created_at"))
@@ -227,6 +258,7 @@ class FrontendCustomDomainResponse:
             domain_status=domain_status,
             verification_status=verification_status,
             effective_urls=effective_urls,
+            redirect=redirect,
             created_at=created_at,
             updated_at=updated_at,
             serving_certificate=serving_certificate,

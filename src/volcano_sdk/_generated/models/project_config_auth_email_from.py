@@ -23,8 +23,10 @@ T = TypeVar("T", bound="ProjectConfigAuthEmailFrom")
 class ProjectConfigAuthEmailFrom:
     """ 
         Attributes:
-            address (str | Unset):
-            name (str | Unset):
+            address (str | Unset): Sender email address. New or changed values containing carriage returns or newlines
+                return 422. Unchanged exported values are preserved.
+            name (str | Unset): Sender display name; supports punctuation and Unicode. New or changed values containing
+                carriage returns or newlines return 422. Unchanged exported values are preserved.
      """
 
     address: str | Unset = UNSET

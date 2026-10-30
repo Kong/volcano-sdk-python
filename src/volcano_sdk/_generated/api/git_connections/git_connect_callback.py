@@ -17,8 +17,10 @@ from typing import cast
 def request_kwargs(
     *,
     code: str | Unset = UNSET,
-    state: str,
+    state: str | Unset = UNSET,
     error: str | Unset = UNSET,
+    installation_id: str | Unset = UNSET,
+    setup_action: str | Unset = UNSET,
 
 ) -> dict[str, Any]:
     
@@ -32,6 +34,10 @@ def request_kwargs(
     params["state"] = state
 
     params["error"] = error
+
+    params["installation_id"] = installation_id
+
+    params["setup_action"] = setup_action
 
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
@@ -49,6 +55,10 @@ def request_kwargs(
 
 
 def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Error | None:
+    if response.status_code == 302:
+        response_302 = cast(Any, None)
+        return response_302
+
     if response.status_code == 303:
         response_303 = cast(Any, None)
         return response_303
@@ -100,8 +110,10 @@ def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
     code: str | Unset = UNSET,
-    state: str,
+    state: str | Unset = UNSET,
     error: str | Unset = UNSET,
+    installation_id: str | Unset = UNSET,
+    setup_action: str | Unset = UNSET,
 
 ) -> Response[Any | Error]:
     """ Complete a GitHub App connection callback
@@ -109,10 +121,20 @@ def sync_detailed(
      Public GitHub App callback. The signed state and callback binding cookie
     bind the provider authorization to the browser that started the flow.
 
+    GitHub also sends a browser here without `state` when someone installs
+    the App, changes its repository access, or asks an organization owner
+    to install it, on GitHub itself. That request connects nothing: Volcano
+    ignores `code` and `installation_id`, and redirects to the dashboard's
+    Git settings page when `setup_action` is `install`, `update`, or
+    `request`. Any other request without `state` returns 400. An empty or
+    invalid `state` is refused as before and never redirects there.
+
     Args:
         code (str | Unset):
-        state (str):
+        state (str | Unset):
         error (str | Unset):
+        installation_id (str | Unset):
+        setup_action (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -127,6 +149,8 @@ def sync_detailed(
         code=code,
 state=state,
 error=error,
+installation_id=installation_id,
+setup_action=setup_action,
 
     )
 
@@ -140,8 +164,10 @@ def sync(
     *,
     client: AuthenticatedClient | Client,
     code: str | Unset = UNSET,
-    state: str,
+    state: str | Unset = UNSET,
     error: str | Unset = UNSET,
+    installation_id: str | Unset = UNSET,
+    setup_action: str | Unset = UNSET,
 
 ) -> Any | Error | None:
     """ Complete a GitHub App connection callback
@@ -149,10 +175,20 @@ def sync(
      Public GitHub App callback. The signed state and callback binding cookie
     bind the provider authorization to the browser that started the flow.
 
+    GitHub also sends a browser here without `state` when someone installs
+    the App, changes its repository access, or asks an organization owner
+    to install it, on GitHub itself. That request connects nothing: Volcano
+    ignores `code` and `installation_id`, and redirects to the dashboard's
+    Git settings page when `setup_action` is `install`, `update`, or
+    `request`. Any other request without `state` returns 400. An empty or
+    invalid `state` is refused as before and never redirects there.
+
     Args:
         code (str | Unset):
-        state (str):
+        state (str | Unset):
         error (str | Unset):
+        installation_id (str | Unset):
+        setup_action (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -168,6 +204,8 @@ def sync(
 code=code,
 state=state,
 error=error,
+installation_id=installation_id,
+setup_action=setup_action,
 
     ).parsed
 
@@ -175,8 +213,10 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
     code: str | Unset = UNSET,
-    state: str,
+    state: str | Unset = UNSET,
     error: str | Unset = UNSET,
+    installation_id: str | Unset = UNSET,
+    setup_action: str | Unset = UNSET,
 
 ) -> Response[Any | Error]:
     """ Complete a GitHub App connection callback
@@ -184,10 +224,20 @@ async def asyncio_detailed(
      Public GitHub App callback. The signed state and callback binding cookie
     bind the provider authorization to the browser that started the flow.
 
+    GitHub also sends a browser here without `state` when someone installs
+    the App, changes its repository access, or asks an organization owner
+    to install it, on GitHub itself. That request connects nothing: Volcano
+    ignores `code` and `installation_id`, and redirects to the dashboard's
+    Git settings page when `setup_action` is `install`, `update`, or
+    `request`. Any other request without `state` returns 400. An empty or
+    invalid `state` is refused as before and never redirects there.
+
     Args:
         code (str | Unset):
-        state (str):
+        state (str | Unset):
         error (str | Unset):
+        installation_id (str | Unset):
+        setup_action (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -202,6 +252,8 @@ async def asyncio_detailed(
         code=code,
 state=state,
 error=error,
+installation_id=installation_id,
+setup_action=setup_action,
 
     )
 
@@ -215,8 +267,10 @@ async def asyncio(
     *,
     client: AuthenticatedClient | Client,
     code: str | Unset = UNSET,
-    state: str,
+    state: str | Unset = UNSET,
     error: str | Unset = UNSET,
+    installation_id: str | Unset = UNSET,
+    setup_action: str | Unset = UNSET,
 
 ) -> Any | Error | None:
     """ Complete a GitHub App connection callback
@@ -224,10 +278,20 @@ async def asyncio(
      Public GitHub App callback. The signed state and callback binding cookie
     bind the provider authorization to the browser that started the flow.
 
+    GitHub also sends a browser here without `state` when someone installs
+    the App, changes its repository access, or asks an organization owner
+    to install it, on GitHub itself. That request connects nothing: Volcano
+    ignores `code` and `installation_id`, and redirects to the dashboard's
+    Git settings page when `setup_action` is `install`, `update`, or
+    `request`. Any other request without `state` returns 400. An empty or
+    invalid `state` is refused as before and never redirects there.
+
     Args:
         code (str | Unset):
-        state (str):
+        state (str | Unset):
         error (str | Unset):
+        installation_id (str | Unset):
+        setup_action (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -243,5 +307,7 @@ async def asyncio(
 code=code,
 state=state,
 error=error,
+installation_id=installation_id,
+setup_action=setup_action,
 
     )).parsed

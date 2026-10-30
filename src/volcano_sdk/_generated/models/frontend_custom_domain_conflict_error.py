@@ -33,6 +33,9 @@ class FrontendCustomDomainConflictError:
         Attributes:
             error (str):
             code (str | Unset): Stable machine-readable error code when a specific recovery path is available.
+                `plan_required` (403) means the project owner's plan does not include the requested feature or option; upgrading
+                the plan unlocks it. A 403 without a code leaves the reason unspecified: it can be an access refusal, a reached
+                limit, or a plan check that could not read the owner's plan. Match on the code, not the message text.
             required_record (FrontendDomainVerificationRecord | Unset): The DNS records currently required. Volcano may
                 require an account-specific TXT ownership record for the hostname's domain before returning a CNAME that
                 authorizes managed certificate issuance and renewal. Clients must follow the records returned for the current
