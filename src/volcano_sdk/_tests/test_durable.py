@@ -1,24 +1,35 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
+import httpx
 import pytest
 
 from volcano_sdk import (
     ConflictError,
+    DurableExecution,
     NotFoundError,
     ServerError,
     Session,
     VolcanoClient,
 )
-from volcano_sdk._transport import DurableExecutionListRequest
+from volcano_sdk._transport import DurableExecutionListRequest, GeneratedTransport
 
 from .transport_fixtures import RejectingTransport
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from volcano_sdk.durable import Durable
+
 EXECUTION_ID = "00000000-0000-4000-8000-0000000000e1"
 PROJECT_ID = "00000000-0000-4000-8000-000000000001"
+API_URL = "https://api.volcano.test"
+APPLICATION_PATH = f"/durable-functions/order-pipeline/executions/{EXECUTION_ID}"
 
 
 @dataclass(frozen=True)
@@ -84,6 +95,14 @@ class FakeDurableTransport(RejectingTransport):
 
     def stop_durable_execution(self, **kwargs: object) -> FakeResponse:
         self.calls.append(("stopDurableExecution", kwargs))
+        return self.stop_response
+
+    def get_durable_execution_from_application(self, **kwargs: object) -> FakeResponse:
+        self.calls.append(("getDurableExecutionFromApplication", kwargs))
+        return self.get_response
+
+    def stop_durable_execution_from_application(self, **kwargs: object) -> FakeResponse:
+        self.calls.append(("stopDurableExecutionFromApplication", kwargs))
         return self.stop_response
 
 
@@ -642,3 +661,360 @@ def test_execution_rejects_an_invalid_client_token(value: object) -> None:
 
     with pytest.raises(TypeError, match="complete durable execution"):
         _ = durable_client(transport).durable.start("order-pipeline")
+
+
+def test_get_from_application_reads_with_the_start_credential() -> None:
+    transport = FakeDurableTransport()
+
+    execution = durable_client(transport, session=False).durable.get_from_application(
+        "order-pipeline", EXECUTION_ID, client_token="client-token"
+    )
+
+    assert execution.status == "succeeded"
+    assert execution.result == {"charged": "ch_1", "items": (1, 2)}
+    assert execution.completed_at == datetime(2026, 9, 2, 12, 4, 30, tzinfo=UTC)
+    assert transport.calls == [
+        (
+            "getDurableExecutionFromApplication",
+            {
+                "authorization": "service-key",
+                "function_id": "order-pipeline",
+                "execution_id": EXECUTION_ID,
+                "client_token": "client-token",
+            },
+        )
+    ]
+
+
+def test_stop_from_application_returns_the_execution_read_back() -> None:
+    transport = FakeDurableTransport()
+
+    execution = durable_client(transport, session=False).durable.stop_from_application(
+        "order-pipeline", EXECUTION_ID, client_token="client-token"
+    )
+
+    assert execution.status == "running"
+    assert transport.calls == [
+        (
+            "stopDurableExecutionFromApplication",
+            {
+                "authorization": "service-key",
+                "function_id": "order-pipeline",
+                "execution_id": EXECUTION_ID,
+                "client_token": "client-token",
+            },
+        )
+    ]
+
+
+APPLICATION_CALLS = {
+    "get": "getDurableExecutionFromApplication",
+    "stop": "stopDurableExecutionFromApplication",
+}
+
+
+def from_application(
+    durable: Durable,
+    operation: str,
+    *,
+    function_name: str = "order-pipeline",
+    execution_id: str = EXECUTION_ID,
+    client_token: str | None = None,
+) -> DurableExecution:
+    if operation == "get":
+        return durable.get_from_application(
+            function_name, execution_id, client_token=client_token
+        )
+    return durable.stop_from_application(
+        function_name, execution_id, client_token=client_token
+    )
+
+
+@pytest.mark.parametrize("operation", APPLICATION_CALLS)
+@pytest.mark.parametrize(
+    ("anon_key", "service_key", "session", "expected"),
+    [
+        pytest.param("anon-key", "service-key", True, "access-token", id="session"),
+        pytest.param("anon-key", "service-key", False, "service-key", id="service"),
+        pytest.param("anon-key", None, False, "anon-key", id="anon"),
+    ],
+)
+def test_application_routes_send_the_credential_start_sends(
+    operation: str,
+    anon_key: str,
+    service_key: str | None,
+    *,
+    session: bool,
+    expected: str,
+) -> None:
+    transport = FakeDurableTransport()
+    client = durable_client(
+        transport, anon_key=anon_key, service_key=service_key, session=session
+    )
+
+    _ = from_application(client.durable, operation)
+
+    assert [called for called, _ in transport.calls] == [APPLICATION_CALLS[operation]]
+    assert transport.calls[0][1]["authorization"] == expected
+    assert transport.calls[0][1]["client_token"] is None
+
+
+@pytest.mark.parametrize("operation", APPLICATION_CALLS)
+def test_application_routes_canonicalize_the_execution_id(operation: str) -> None:
+    transport = FakeDurableTransport()
+
+    _ = from_application(
+        durable_client(transport).durable,
+        operation,
+        function_name=" order-pipeline ",
+        execution_id=f" {EXECUTION_ID.upper()} ",
+    )
+
+    assert transport.calls[0][1]["function_id"] == "order-pipeline"
+    assert transport.calls[0][1]["execution_id"] == EXECUTION_ID
+
+
+def test_application_routes_accept_a_client_token_at_the_platform_limit() -> None:
+    transport = FakeDurableTransport()
+
+    _ = durable_client(transport).durable.get_from_application(
+        "order-pipeline", EXECUTION_ID, client_token="t" * 128
+    )
+
+    assert transport.calls[0][1]["client_token"] == "t" * 128
+
+
+INVALID_APPLICATION_ARGUMENTS: dict[str, tuple[Callable[[Durable], object], str]] = {
+    "get function": (
+        lambda d: d.get_from_application(" ", EXECUTION_ID),
+        "function_name must be a non-empty string",
+    ),
+    "get empty execution": (
+        lambda d: d.get_from_application("order-pipeline", ""),
+        "execution_id must be a non-empty string",
+    ),
+    "get execution": (
+        lambda d: d.get_from_application("order-pipeline", "execution-1"),
+        "execution_id must be a UUID",
+    ),
+    "get empty client token": (
+        lambda d: d.get_from_application(
+            "order-pipeline", EXECUTION_ID, client_token=""
+        ),
+        "client_token must be a non-empty string",
+    ),
+    "get long client token": (
+        lambda d: d.get_from_application(
+            "order-pipeline", EXECUTION_ID, client_token="t" * 129
+        ),
+        "client_token must be at most 128 characters",
+    ),
+    "get non-ASCII client token": (
+        lambda d: d.get_from_application(
+            "order-pipeline", EXECUTION_ID, client_token="tök"
+        ),
+        "client_token must be printable ASCII",
+    ),
+    "get padded client token": (
+        lambda d: d.get_from_application(
+            "order-pipeline", EXECUTION_ID, client_token=" token"
+        ),
+        "client_token must not start or end with whitespace",
+    ),
+    "stop function": (
+        lambda d: d.stop_from_application("", EXECUTION_ID),
+        "function_name must be a non-empty string",
+    ),
+    "stop execution": (
+        lambda d: d.stop_from_application("order-pipeline", "execution-1"),
+        "execution_id must be a UUID",
+    ),
+    "stop client token": (
+        lambda d: d.stop_from_application(
+            "order-pipeline", EXECUTION_ID, client_token="t" * 129
+        ),
+        "client_token must be at most 128 characters",
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    ("call", "message"),
+    [
+        pytest.param(*case, id=name)
+        for name, case in INVALID_APPLICATION_ARGUMENTS.items()
+    ],
+)
+def test_application_routes_refuse_invalid_arguments_before_transport(
+    call: Callable[[Durable], object], message: str
+) -> None:
+    transport = FakeDurableTransport()
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        _ = call(durable_client(transport).durable)
+
+    assert transport.calls == []
+
+
+@pytest.mark.parametrize("operation", APPLICATION_CALLS)
+def test_application_routes_raise_not_found_for_an_unreachable_execution(
+    operation: str,
+) -> None:
+    # The platform answers an execution the credential cannot reach exactly
+    # as a missing one, so the id cannot be probed.
+    transport = FakeDurableTransport()
+    missing = FakeResponse(
+        404, {"error": "execution not found", "code": "not_found"}, {}
+    )
+    transport.get_response = missing
+    transport.stop_response = missing
+
+    with pytest.raises(NotFoundError, match="execution not found") as raised:
+        _ = from_application(
+            durable_client(transport, session=False).durable, operation
+        )
+
+    assert raised.value.status == 404
+    assert raised.value.code == "not_found"
+
+
+def test_stop_from_application_raises_conflict_for_a_pending_execution() -> None:
+    transport = FakeDurableTransport()
+    transport.stop_response = FakeResponse(
+        409, {"error": "execution has not started", "code": "conflict"}, {}
+    )
+
+    with pytest.raises(ConflictError, match="execution has not started") as raised:
+        _ = durable_client(transport, session=False).durable.stop_from_application(
+            "order-pipeline", EXECUTION_ID
+        )
+
+    assert raised.value.status == 409
+
+
+def wire_durable(
+    respond: Callable[[httpx.Request], httpx.Response],
+    *,
+    service_key: str | None = None,
+    session: bool = False,
+) -> tuple[Durable, list[httpx.Request]]:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return respond(request)
+
+    client = VolcanoClient(
+        anon_key="anon-key",
+        service_key=service_key,
+        _transport=GeneratedTransport(
+            api_url=API_URL, httpx_transport=httpx.MockTransport(handle)
+        ),
+    )
+    if session:
+        _ = client.auth.set_session(
+            Session(
+                access_token="access-token",
+                refresh_token="refresh-token",
+                user_id="user-1",
+            )
+        )
+    return client.durable, requests
+
+
+@pytest.mark.parametrize(
+    ("operation", "method", "path"),
+    [
+        ("get", "GET", APPLICATION_PATH),
+        ("stop", "POST", f"{APPLICATION_PATH}/stop"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("client_token", "headers"),
+    [
+        pytest.param(
+            "client-token", {"x-volcano-client-token": "client-token"}, id="token"
+        ),
+        pytest.param(None, {}, id="no-token"),
+    ],
+)
+def test_application_routes_go_over_the_data_plane_path(
+    operation: str,
+    method: str,
+    path: str,
+    client_token: str | None,
+    headers: dict[str, str],
+) -> None:
+    durable, requests = wire_durable(
+        lambda _r: httpx.Response(
+            200, json=running_execution(status="succeeded", result={"ok": True})
+        )
+    )
+
+    execution = from_application(durable, operation, client_token=client_token)
+
+    assert len(requests) == 1
+    assert requests[0].method == method
+    assert str(requests[0].url) == f"{API_URL}{path}"
+    assert requests[0].content == b""
+    assert requests[0].headers["authorization"] == "Bearer anon-key"
+    assert {
+        name: value
+        for name, value in requests[0].headers.items()
+        if name == "x-volcano-client-token"
+    } == headers
+    assert execution == DurableExecution(
+        id=EXECUTION_ID,
+        function_id="00000000-0000-4000-8000-000000000040",
+        name="order-42",
+        status="succeeded",
+        region="aws-us-east-1",
+        created_at=datetime(2026, 9, 2, 12, 0, tzinfo=UTC),
+        result={"ok": True},
+    )
+
+
+@pytest.mark.parametrize("operation", APPLICATION_CALLS)
+@pytest.mark.parametrize(
+    ("service_key", "session", "authorization"),
+    [
+        pytest.param("service-key", True, "Bearer access-token", id="session"),
+        # A service key scoped without `*` reaches an execution only with its
+        # client token, so the SDK cannot drop the token for a service key.
+        pytest.param("service-key", False, "Bearer service-key", id="service"),
+        pytest.param(None, False, "Bearer anon-key", id="anon"),
+    ],
+)
+def test_application_routes_send_the_client_token_with_every_credential(
+    operation: str,
+    service_key: str | None,
+    *,
+    session: bool,
+    authorization: str,
+) -> None:
+    durable, requests = wire_durable(
+        lambda _r: httpx.Response(200, json=running_execution()),
+        service_key=service_key,
+        session=session,
+    )
+
+    _ = from_application(durable, operation, client_token="client-token")
+
+    assert len(requests) == 1
+    assert requests[0].headers["authorization"] == authorization
+    assert requests[0].headers["x-volcano-client-token"] == "client-token"
+
+
+@pytest.mark.parametrize("operation", APPLICATION_CALLS)
+def test_application_routes_raise_not_found_over_the_wire(operation: str) -> None:
+    durable, requests = wire_durable(
+        lambda _r: httpx.Response(
+            404, json={"error": "execution not found", "code": "not_found"}
+        )
+    )
+
+    with pytest.raises(NotFoundError, match="execution not found") as raised:
+        _ = from_application(durable, operation, client_token="client-token")
+
+    assert len(requests) == 1
+    assert raised.value.code == "not_found"

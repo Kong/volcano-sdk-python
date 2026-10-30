@@ -69,6 +69,11 @@ execution = client.durable.start(
 )
 print(execution.id, execution.status)
 
+execution = client.durable.get_from_application(
+    "order-pipeline", execution.id, client_token=execution.client_token
+)
+print(execution.is_terminal, execution.result)
+
 owner_client = VolcanoClient(
     api_url="https://api.volcano.dev",
     anon_key="your-anon-key",
@@ -245,26 +250,36 @@ Anonymous and service keys do not refresh.
 
 `durable.start()` begins an execution of a deployed durable function and returns
 a handle rather than a result: an execution can run for up to 366 days, so its
-result is read back with `durable.get()`. It takes the credential `functions.invoke()`
-takes, and is, with `durable.messages`, the only durable operation an
-application credential may perform.
+result is read back later. It takes the credential `functions.invoke()` takes.
 An `execution_name` makes the start idempotent — starting again under the same
 name returns the execution that already exists rather than beginning a second
-one, and is charged once.
+one, and is charged once. Only the start that creates the execution returns its
+`client_token`.
 
-`durable.get()`, `durable.list()` and `durable.stop()` are owner-scoped and need
-the project owner's platform user token or a project access token, because an
-execution is addressed by its id alone and an anonymous key is held by everyone
-who loads the page. A `read_only` project access token can read and list but not
-stop. Auth-user sessions from `sign_in()`, anonymous keys, and service keys are
-not accepted. Poll them from a trusted backend.
-`get()` carries `result` once the execution has succeeded and `error` when it
+`durable.get_from_application()` and `durable.stop_from_application()` read and
+stop an execution with the credential `durable.start()` takes. A service key
+holding `*`, the default, reaches any execution of the project and a signed-in
+user the executions they started; an anonymous key, a service key scoped without
+`*`, or a user who did not start the execution, passes the `client_token`. An
+anonymous key or a service key scoped without `*` also needs `functions.invoke`;
+without it the call raises `PermissionDeniedError`. The function's visibility
+must also admit the caller: an anonymous key on an `authenticated` function
+raises `PermissionDeniedError`, even with the token, and a `private` function
+raises `NotFoundError` for every credential but a service key. An execution the
+caller cannot reach raises `NotFoundError`, as a missing one does.
+
+`durable.get()`, `durable.list()` and `durable.stop()` are owner-scoped, reach any
+execution of the project, and need the project owner's platform user token or a
+project access token. A `read_only` project access token can read and list but
+not stop. Auth-user sessions from `sign_in()`, anonymous keys, and service keys
+are not accepted. Call them from a trusted backend.
+Every read carries `result` once the execution has succeeded and `error` when it
 failed; `result_expired` separates a result the platform has discarded from a
 function that returned nothing. `is_terminal` reports whether the execution has
 stopped changing, and counts `unknown` — the status the platform writes for an
-outcome it could not determine — as finished. `stop()` is accepted rather than
+outcome it could not determine — as finished. Either stop is accepted rather than
 awaited: what it returns is the execution read back after asking, often still
-`running`, so poll `get()` to see it reach `stopped`. Repeating a stop is safe.
+`running`, so poll a read to see it reach `stopped`. Repeating a stop is safe.
 
 `durable.approvals` reads and decides the approvals a durable function waits on:
 

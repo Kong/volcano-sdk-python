@@ -58,7 +58,8 @@ class DurableExecution:
             result (Any | Unset): Whatever the function returned, verbatim. Absent while the execution
                 is still running, absent when the result was too large to return and
                 was checkpointed instead, and absent once the retention period has
-                lapsed.
+                lapsed. A result Volcano has just read can still be returned for up
+                to five minutes after that.
             result_expired (bool | Unset): `true` when the execution is terminal but its result is no longer
                 retained, which distinguishes a discarded result from an empty one.
                 Shortly after that the execution itself is dropped and reads answer
@@ -68,9 +69,11 @@ class DurableExecution:
                 unset, so it reads like a function that returned nothing.
             error (DurableExecutionError | Unset): Why a failed or timed-out execution ended.
             completed_at (datetime.datetime | Unset): Present once the execution has reached a terminal status.
-            client_token (str | Unset): Lets a browser read and send the execution's messages. Returned only
-                by the start whose input the execution runs, never by a repeat under
-                the same name or by a read. Send it as `X-Volcano-Client-Token`.
+            client_token (str | Unset): Lets a browser read the execution, stop it, and read and send its
+                messages, and a service key scoped to a list without `*` read and
+                stop it. Returned only by the start whose input the execution runs,
+                never by a repeat under the same name or by a read. Send it as
+                `X-Volcano-Client-Token`.
      """
 
     id: UUID

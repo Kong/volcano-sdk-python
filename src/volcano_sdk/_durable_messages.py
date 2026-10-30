@@ -7,7 +7,12 @@ import inspect
 from typing import TYPE_CHECKING, Protocol, Unpack, runtime_checkable
 
 from ._callbacks import require_callable
-from ._durable_arguments import identifier, known_options
+from ._durable_arguments import (
+    MAX_CLIENT_TOKEN_LENGTH,
+    header_value,
+    identifier,
+    known_options,
+)
 from ._durable_callback import operation_name
 from ._durable_message_response import durable_message, durable_message_page
 from ._durable_message_stream import DurableMessageStream
@@ -45,9 +50,8 @@ _SERVER_ENDED = (
     "The server ended the durable message subscription; subscribe again to resume"
 )
 _LEAVE_FAILED = "Volcano could not leave the ended durable message channel"
-# The spec's bounds on Idempotency-Key, X-Volcano-Client-Token, and a page.
+# The spec's bounds on Idempotency-Key and a page.
 _MAX_IDEMPOTENCY_KEY_LENGTH = 255
-_MAX_CLIENT_TOKEN_LENGTH = 128
 _MAX_LIST_LIMIT = 500
 _TARGET_OPTIONS = frozenset({"client_token", "project_id"})
 _SEND_OPTIONS = _TARGET_OPTIONS | {"idempotency_key"}
@@ -230,7 +234,7 @@ class DurableMessages:
         request = DurableMessageSendRequest(
             name=operation_name(name),
             data=data,
-            idempotency_key=_bounded_text(
+            idempotency_key=header_value(
                 options.get("idempotency_key"),
                 "idempotency_key",
                 _MAX_IDEMPOTENCY_KEY_LENGTH,
@@ -461,34 +465,10 @@ def _target(
         function_id=identifier(function_name, "function_name"),
         execution_id=identifier(execution_id, "execution_id"),
         project_id=None if project_id is None else identifier(project_id, "project_id"),
-        client_token=_bounded_text(
-            options.get("client_token"), "client_token", _MAX_CLIENT_TOKEN_LENGTH
+        client_token=header_value(
+            options.get("client_token"), "client_token", MAX_CLIENT_TOKEN_LENGTH
         ),
     )
-
-
-def _bounded_text(value: object, field: str, limit: int) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value:
-        message = f"{field} must be a non-empty string"
-        raise ValueError(message)
-    _require_header_value(value, field)
-    if len(value) > limit:
-        message = f"{field} must be at most {limit} characters"
-        raise ValueError(message)
-    return value
-
-
-def _require_header_value(value: str, field: str) -> None:
-    # Headers carry printable ASCII only, and the HTTP stack refuses a value
-    # with surrounding whitespace.
-    if not (value.isascii() and value.isprintable()):
-        message = f"{field} must be printable ASCII"
-        raise ValueError(message)
-    if value != value.strip():
-        message = f"{field} must not start or end with whitespace"
-        raise ValueError(message)
 
 
 def _after(value: object) -> int | None:

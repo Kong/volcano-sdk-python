@@ -381,9 +381,9 @@ class DurableExecution:
     result_expired: bool | None = None
     error: DurableExecutionFailure | None = None
     completed_at: datetime | None = None
-    # Lets whoever started the execution send it messages and read what it
-    # publishes. Returned only by the start that created the execution, so
-    # keep it with the execution id.
+    # Lets whoever started the execution read it, stop it, send it messages,
+    # and read what it publishes. Returned only by the start that created the
+    # execution, so keep it with the execution id.
     client_token: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:

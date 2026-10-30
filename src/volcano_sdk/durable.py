@@ -12,7 +12,12 @@ from ._durable_approval_response import (
     durable_approval_page,
     durable_approval_stats,
 )
-from ._durable_arguments import identifier, known_options
+from ._durable_arguments import (
+    MAX_CLIENT_TOKEN_LENGTH,
+    header_value,
+    identifier,
+    known_options,
+)
 from ._durable_messages import DurableMessageChannels, DurableMessages
 from ._durable_response import durable_execution, durable_execution_page
 from ._transport import (
@@ -98,6 +103,17 @@ class DurableTransport(Protocol):
         """Read one execution of a durable function."""
         ...
 
+    def get_durable_execution_from_application(
+        self,
+        *,
+        authorization: str,
+        function_id: str,
+        execution_id: str,
+        client_token: str | None,
+    ) -> TransportResponse:
+        """Read one execution with the credential that started it."""
+        ...
+
     def list_durable_executions(
         self,
         *,
@@ -118,6 +134,17 @@ class DurableTransport(Protocol):
         execution_id: str,
     ) -> TransportResponse:
         """Ask a running execution to stop."""
+        ...
+
+    def stop_durable_execution_from_application(
+        self,
+        *,
+        authorization: str,
+        function_id: str,
+        execution_id: str,
+        client_token: str | None,
+    ) -> TransportResponse:
+        """Ask a running execution to stop with the credential that started it."""
         ...
 
 
@@ -181,7 +208,7 @@ class DurableApprovalsTransport(Protocol):
 class DurableApprovals:
     """Review and decide the approvals durable workflows wait on.
 
-    Owner-scoped, like reading an execution: every method takes the project id
+    Owner-scoped, like listing executions: every method takes the project id
     and the session's platform token. Only a person decides: a project access
     token can read approvals but is refused with `PermissionDeniedError` when it
     approves or denies one.
@@ -361,9 +388,11 @@ class Durable:
 
         A durable function is never invoked synchronously: it can run for
         hours, so the platform accepts the start and answers with an execution
-        to follow. Besides messaging an execution through `durable.messages`,
-        starting is the only durable operation an application credential may
-        perform -- reading a result or stopping an execution is owner-scoped.
+        to follow. Follow it with `get_from_application` and
+        `stop_from_application`, and message it through `durable.messages`,
+        with the same credential. Keep the returned `client_token` with the
+        caller that follows it: an anonymous key, or a service key scoped
+        without `*`, needs it to reach the execution again.
 
         Passing `execution_name` makes the start idempotent: starting again
         under the same name returns the execution that already exists rather
@@ -397,11 +426,10 @@ class Durable:
         """Read an execution, including its result once it has succeeded.
 
         Owner-scoped: it takes the project id and the project's own platform
-        token or a project access token, because an execution is addressed by
-        its id alone and an anonymous key is held by everyone who loads the
-        page. Poll it from a backend, not a browser. Neither an auth-user
-        session from sign-in nor a service key is accepted here -- the route
-        answers anything else 401.
+        token or a project access token, and reaches any execution of the
+        project. Neither an auth-user session from sign-in nor a service key is
+        accepted here -- the route answers anything else 401. An application
+        reads the executions it started with `get_from_application` instead.
 
         Returns
         -------
@@ -469,7 +497,8 @@ class Durable:
         after asking, and it often still says `running`, so poll `get` to see
         it reach `stopped`. Completed steps are not undone. Repeating a stop is
         safe -- an execution that has already finished reports the state it is
-        in. Owner-scoped, like `get`.
+        in. Owner-scoped, like `get`; an application stops the executions it
+        started with `stop_from_application` instead.
 
         Returns
         -------
@@ -487,6 +516,89 @@ class Durable:
             project_id=project,
             function_id=function,
             execution_id=execution,
+        )
+        response_body: object = response_payload(response, _HTTP_OK)
+        return durable_execution(response_body)
+
+    def get_from_application(
+        self,
+        function_name: str,
+        execution_id: str,
+        *,
+        client_token: str | None = None,
+    ) -> DurableExecution:
+        """Read an execution with the credential that started it.
+
+        Takes the client's credential, as `start` does, and the function's
+        visibility must admit it. A service key holding `*`, the default,
+        reaches any execution of the project; a signed-in user reaches the
+        executions they started. An anonymous key, a service key scoped
+        without `*`, or a user who did not start the execution, passes the
+        `client_token` its start returned. An anonymous key or a service key
+        scoped without `*` also needs `functions.invoke`; without it the call
+        raises `PermissionDeniedError`. An anonymous key on an `authenticated`
+        function raises `PermissionDeniedError` too, even with the token, and a
+        `private` function raises `NotFoundError` for every credential but a
+        service key. An execution the caller cannot reach raises
+        `NotFoundError`, as a missing one does, and so does one that has not
+        started yet, except to a service key holding `*`. Reads share the
+        function's rate limit with starts, so poll every few seconds.
+
+        Returns
+        -------
+        DurableExecution
+            The execution snapshot, including any available result or failure.
+
+        """
+        return self._from_application("get", function_name, execution_id, client_token)
+
+    def stop_from_application(
+        self,
+        function_name: str,
+        execution_id: str,
+        *,
+        client_token: str | None = None,
+    ) -> DurableExecution:
+        """Ask a running execution to stop, with the credential that started it.
+
+        Reaches what `get_from_application` reaches. Accepted rather than
+        awaited, like `stop`: the execution it returns often still says
+        `running`, so poll `get_from_application` to see it reach `stopped`.
+        Completed steps are not undone, and repeating a stop is safe. A service
+        key holding `*` stopping an execution that has not started yet raises
+        `ConflictError`. A `ServerError` can follow a stop that was already
+        sent, so read the execution before stopping it again.
+
+        Returns
+        -------
+        DurableExecution
+            The execution snapshot after the stop request; it may still be running.
+
+        """
+        return self._from_application("stop", function_name, execution_id, client_token)
+
+    def _from_application(
+        self,
+        operation: Literal["get", "stop"],
+        function_name: str,
+        execution_id: str,
+        client_token: object,
+    ) -> DurableExecution:
+        function = identifier(function_name, "function_name")
+        execution = identifier(execution_id, "execution_id")
+        token = header_value(client_token, "client_token", MAX_CLIENT_TOKEN_LENGTH)
+        transport = self._durable_transport()
+        request = (
+            transport.get_durable_execution_from_application
+            if operation == "get"
+            else transport.stop_durable_execution_from_application
+        )
+        response = invoke(
+            request,
+            authorization=self._client.function_token(),
+            function_id=function,
+            execution_id=execution,
+            client_token=token,
         )
         response_body: object = response_payload(response, _HTTP_OK)
         return durable_execution(response_body)

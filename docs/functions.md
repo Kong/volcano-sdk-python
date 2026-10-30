@@ -74,6 +74,12 @@ handle = client.durable.start(
     {"order_id": "order-9"},
     execution_name="order-9",
 )
+execution = client.durable.get_from_application(
+    "charge-order", handle.id, client_token=handle.client_token
+)
+client.durable.stop_from_application(
+    "charge-order", handle.id, client_token=handle.client_token
+)
 
 owner_client = VolcanoClient(
     anon_key=os.environ["VOLCANO_ANON_KEY"],
@@ -85,9 +91,11 @@ page = owner_client.durable.list(project_id, "charge-order", status="running")
 owner_client.durable.stop(project_id, "charge-order", handle.id)
 ```
 
-`start()` accepts the same active session, service key, or anonymous key as `functions.invoke()`. Besides [sending and following messages](#send-and-follow-messages), it is the only durable operation available to application credentials. An execution name makes a start idempotent.
+`start()` accepts the same active session, service key, or anonymous key as `functions.invoke()`. An execution name makes a start idempotent. Only the start that creates the execution returns its `client_token`; a repeat under the same name and a read never do, so keep it with the execution id.
 
-`get()`, `list()`, and `stop()` are owner-scoped. Call them from a trusted backend with the project owner's platform user token or a project access token; a `read_only` token can read and list but not stop. Auth-user sessions, anonymous keys, and service keys are not accepted. `stop()` returns after the stop request is accepted, so poll `get()` until `is_terminal` is true.
+`get_from_application()` and `stop_from_application()` read and stop an execution with the credential `start()` takes, as [sending and following messages](#send-and-follow-messages) does. A service key holding `*`, the default, reaches any execution of the project, and a signed-in user reaches the executions they started. An anonymous key, a service key scoped without `*`, or a user who did not start the execution, passes the `client_token`. An anonymous key or a service key scoped without `*` also needs `functions.invoke`; without it the call raises `PermissionDeniedError`. The function's visibility must also admit the caller: an anonymous key on an `authenticated` function raises `PermissionDeniedError`, even with the token, and a `private` function raises `NotFoundError` for every credential but a service key. An execution the caller cannot reach raises `NotFoundError`, as a missing one does, and until an execution leaves `pending` only a service key holding `*` reaches it; that key stopping one then raises `ConflictError`. Reads and stops share the function's rate limit with starts, so poll every few seconds. A `ServerError` from a stop can follow a stop that was already sent, so read the execution before stopping it again.
+
+`get()`, `list()`, and `stop()` are owner-scoped and reach any execution of the project. Call them from a trusted backend with the project owner's platform user token or a project access token; a `read_only` token can read and list but not stop. Auth-user sessions, anonymous keys, and service keys are not accepted. Listing has no application equivalent. Either stop returns once the request is accepted, so poll a read until `is_terminal` is true.
 
 ## Write a durable function
 

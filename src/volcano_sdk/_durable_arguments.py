@@ -24,6 +24,8 @@ _UUID_IDENTIFIERS = {
     "execution_id": "execution_id must be a UUID",
     "approval_id": "approval_id must be a UUID",
 }
+# The spec's maxLength on X-Volcano-Client-Token.
+MAX_CLIENT_TOKEN_LENGTH = 128
 
 
 def identifier(value: object, field: str) -> str:
@@ -67,3 +69,41 @@ def known_options(options: Mapping[str, object], known: frozenset[str]) -> None:
     if unknown:
         message = f"unexpected option: {', '.join(unknown)}"
         raise TypeError(message)
+
+
+def header_value(value: object, field: str, limit: int) -> str | None:
+    """Require a value an optional request header can carry.
+
+    Returns
+    -------
+    str | None
+        The value, or None when it is unset.
+
+    Raises
+    ------
+    ValueError
+        If the value is empty, is not a string, is not printable ASCII, has
+        surrounding whitespace, or exceeds `limit` characters.
+
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        message = f"{field} must be a non-empty string"
+        raise ValueError(message)
+    _require_header_text(value, field)
+    if len(value) > limit:
+        message = f"{field} must be at most {limit} characters"
+        raise ValueError(message)
+    return value
+
+
+def _require_header_text(value: str, field: str) -> None:
+    # Headers carry printable ASCII only, and the HTTP stack refuses a value
+    # with surrounding whitespace.
+    if not (value.isascii() and value.isprintable()):
+        message = f"{field} must be printable ASCII"
+        raise ValueError(message)
+    if value != value.strip():
+        message = f"{field} must not start or end with whitespace"
+        raise ValueError(message)
