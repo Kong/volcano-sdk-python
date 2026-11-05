@@ -8,6 +8,7 @@ from ._auth_base import AuthBase
 from ._auth_values import (
     INVALID_AUTH_TRANSPORT,
     NO_ACTIVE_SESSION,
+    confirm_email_result_from_payload,
     email_change_result_from_payload,
 )
 from ._transport import (
@@ -27,6 +28,7 @@ from .errors import (
 
 if TYPE_CHECKING:
     from .models import (
+        ConfirmEmailResult,
         EmailChangeResult,
         User,
     )
@@ -132,8 +134,12 @@ class EmailAuth(AuthBase):
         )
         return self._update_current_user(response_payload(response, 200), binding)
 
-    def confirm_email(self, *, token: str) -> None:
+    def confirm_email(self, *, token: str) -> ConfirmEmailResult:
         """Confirm an email with its token without changing local state.
+
+        Returns:
+            The acknowledgement, with the sign-up return target when the
+            server returns one.
 
         Raises:
             TypeError: The transport does not support this authentication operation.
@@ -147,7 +153,7 @@ class EmailAuth(AuthBase):
             authorization=self._client.anon_token(),
             token=token,
         )
-        _ = response_payload(response, 200)
+        return confirm_email_result_from_payload(response_payload(response, 200))
 
     def resend_confirmation(self, *, email: str) -> None:
         """Request a generic confirmation resend without changing local state.

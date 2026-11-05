@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from volcano_sdk.durable_authoring import DurableContext
     from volcano_sdk.logs import Logs
     from volcano_sdk.models import (
+        ConfirmEmailResult,
         JSONValue,
         LinkedOAuthProvider,
         OAuthProviderTokenStatus,
@@ -174,6 +175,10 @@ def assign_provider_token(status: OAuthProviderTokenStatus) -> None:
 
 def assign_sign_up_message(result: SignUpResult) -> None:
     result.message = "changed"  # type: ignore[misc]  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def assign_confirm_email_redirect(result: ConfirmEmailResult) -> None:
+    result.redirect_to = "changed"  # type: ignore[misc]  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def assign_user_email(user: User) -> None:

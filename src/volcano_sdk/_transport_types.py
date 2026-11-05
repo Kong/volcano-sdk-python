@@ -285,6 +285,7 @@ class AuthSignUpTransport(Protocol):
         email: str,
         password: str,
         metadata: dict[str, object],
+        redirect_to: str | None,
     ) -> TransportResponse: ...
 
 

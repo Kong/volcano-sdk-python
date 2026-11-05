@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import get_type_hints
 
-from volcano_sdk import SignUpResult, User, VolcanoClient
+from volcano_sdk import ConfirmEmailResult, SignUpResult, User, VolcanoClient
 
 
 def test_package_exports_client() -> None:
@@ -13,6 +13,12 @@ def test_package_exports_sign_up_result() -> None:
 
     assert result.confirmation_required is True
     assert result.message == "Check your email"
+
+
+def test_package_exports_confirm_email_result() -> None:
+    result = ConfirmEmailResult(message=None, redirect_to="https://app.example.com/")
+
+    assert result.redirect_to == "https://app.example.com/"
 
 
 def test_package_exports_user() -> None:

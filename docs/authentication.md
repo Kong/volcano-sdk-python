@@ -102,11 +102,39 @@ raise the same typed Volcano errors as other authentication operations.
 Confirm an email address with the token from its confirmation link:
 
 ```python
-client.auth.confirm_email(token="confirmation-token")
+result = client.auth.confirm_email(token="confirmation-token")
+print(result.message)
 ```
 
-Success returns `None`. Confirmation does not sign in the confirmed account or change an unrelated
-local session.
+Success returns an immutable `ConfirmEmailResult`. Its `message` and `redirect_to` fields may be
+`None`. Confirmation does not sign in the confirmed account or change an unrelated local session.
+
+## Return the user after confirmation
+
+Pass `redirect_to` to `sign_up()` to say where the user should go after they confirm their email.
+Use a full URL in the project's allowed redirect URLs. The server keeps it with the account, so it
+works when the email is opened on another device, and a resent confirmation keeps it. The managed
+verify page shows it as a Continue link.
+
+```python
+client.auth.sign_up(
+    email="new-user@example.com",
+    password="correct-horse-battery-staple",
+    redirect_to="https://app.example.com/onboarding",
+)
+
+# In the handler for the confirmation link:
+result = client.auth.confirm_email(token=token)
+next_url = result.redirect_to or "https://app.example.com/login"
+```
+
+`confirm_email()` returns `redirect_to` once, as a full URL; later calls return `None`. The server
+stores it only when the signup creates the account and the project requires email confirmation. A
+repeated signup or a resend does not change it. A value outside the allowed redirect URLs raises
+`ValidationError`.
+
+A path, such as `/login`, is also accepted. It resolves against the Volcano site URL, not your
+app, so it only suits the Volcano dashboard.
 
 ## Resend confirmation
 

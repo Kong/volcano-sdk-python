@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from volcano_sdk import AuthenticationError, VolcanoError
+from volcano_sdk import AuthenticationError, ConfirmEmailResult, VolcanoError
 from volcano_sdk._auth_values import (
+    confirm_email_result_from_payload,
     email_change_result_from_payload,
     linked_oauth_providers_from_payload,
     oauth_api_data_from_payload,
@@ -210,6 +211,53 @@ def test_email_change_acknowledgement_rejects_invalid_fields(
         TypeError, match="Expected a valid email-change acknowledgement"
     ):
         _ = email_change_result_from_payload({field: value})
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({}, ConfirmEmailResult(message=None, redirect_to=None)),
+        (
+            {"message": "Email already confirmed", "redirect_to": None},
+            ConfirmEmailResult(message="Email already confirmed", redirect_to=None),
+        ),
+        (
+            {
+                "message": "Email confirmed successfully",
+                "redirect_to": "https://app.example.com/onboarding",
+            },
+            ConfirmEmailResult(
+                message="Email confirmed successfully",
+                redirect_to="https://app.example.com/onboarding",
+            ),
+        ),
+    ],
+)
+def test_email_confirmation_acknowledgement_reads_the_redirect(
+    payload: object, expected: ConfirmEmailResult
+) -> None:
+    assert confirm_email_result_from_payload(payload) == expected
+
+
+@pytest.mark.parametrize("payload", [None, [], "confirmed"])
+def test_email_confirmation_acknowledgement_requires_a_mapping(
+    payload: object,
+) -> None:
+    with pytest.raises(
+        TypeError, match="Expected a valid email confirmation acknowledgement"
+    ):
+        _ = confirm_email_result_from_payload(payload)
+
+
+@pytest.mark.parametrize("field", ["message", "redirect_to"])
+@pytest.mark.parametrize("value", [False, 42, [], {}])
+def test_email_confirmation_acknowledgement_rejects_invalid_fields(
+    field: str, value: object
+) -> None:
+    with pytest.raises(
+        TypeError, match="Expected a valid email confirmation acknowledgement"
+    ):
+        _ = confirm_email_result_from_payload({field: value})
 
 
 @pytest.mark.parametrize("value", [UNSET, None])
