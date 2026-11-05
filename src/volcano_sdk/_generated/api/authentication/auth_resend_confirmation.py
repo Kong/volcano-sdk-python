@@ -83,7 +83,8 @@ def sync_detailed(
     Returns generic message to prevent email enumeration.
     No email is sent when the account does not exist or is already confirmed.
     If the account exists and is unconfirmed, a new token is generated and
-    any previous confirmation token is invalidated.
+    any previous confirmation token is invalidated. The `redirect_to` given
+    at signup carries over to the new token.
 
     Args:
         body (AuthResendConfirmationBody):
@@ -120,7 +121,8 @@ def sync(
     Returns generic message to prevent email enumeration.
     No email is sent when the account does not exist or is already confirmed.
     If the account exists and is unconfirmed, a new token is generated and
-    any previous confirmation token is invalidated.
+    any previous confirmation token is invalidated. The `redirect_to` given
+    at signup carries over to the new token.
 
     Args:
         body (AuthResendConfirmationBody):
@@ -152,7 +154,8 @@ async def asyncio_detailed(
     Returns generic message to prevent email enumeration.
     No email is sent when the account does not exist or is already confirmed.
     If the account exists and is unconfirmed, a new token is generated and
-    any previous confirmation token is invalidated.
+    any previous confirmation token is invalidated. The `redirect_to` given
+    at signup carries over to the new token.
 
     Args:
         body (AuthResendConfirmationBody):
@@ -189,7 +192,8 @@ async def asyncio(
     Returns generic message to prevent email enumeration.
     No email is sent when the account does not exist or is already confirmed.
     If the account exists and is unconfirmed, a new token is generated and
-    any previous confirmation token is invalidated.
+    any previous confirmation token is invalidated. The `redirect_to` given
+    at signup carries over to the new token.
 
     Args:
         body (AuthResendConfirmationBody):
