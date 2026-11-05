@@ -30,11 +30,18 @@ class AuthSignupBody:
             password (str): Password validated after NFC normalization against the
                 policy returned by GET /auth/password-policy.
             user_metadata (AuthSignupBodyUserMetadata | Unset):
+            redirect_to (str | Unset): Where to send the user after they confirm their email: a
+                URL in the project's allowed redirect URLs, or a path on
+                the Volcano site, such as `/login`. Stored only when the
+                signup creates the account and the project requires email
+                confirmation. Returned once by `POST /auth/confirm`, and
+                shown as a Continue link on the managed verify page.
      """
 
     email: str
     password: str
     user_metadata: AuthSignupBodyUserMetadata | Unset = UNSET
+    redirect_to: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -51,6 +58,8 @@ class AuthSignupBody:
         if not isinstance(self.user_metadata, Unset):
             user_metadata = self.user_metadata.to_dict()
 
+        redirect_to = self.redirect_to
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -60,6 +69,8 @@ class AuthSignupBody:
         })
         if user_metadata is not UNSET:
             field_dict["user_metadata"] = user_metadata
+        if redirect_to is not UNSET:
+            field_dict["redirect_to"] = redirect_to
 
         return field_dict
 
@@ -83,10 +94,13 @@ class AuthSignupBody:
 
 
 
+        redirect_to = d.pop("redirect_to", UNSET)
+
         auth_signup_body = cls(
             email=email,
             password=password,
             user_metadata=user_metadata,
+            redirect_to=redirect_to,
         )
 
 

@@ -597,11 +597,12 @@ raise the same typed Volcano errors as other authentication operations.
 Confirm an email address with the token from its confirmation link:
 
 ```python
-client.auth.confirm_email(token="confirmation-token")
+result = client.auth.confirm_email(token="confirmation-token")
+print(result.message)
 ```
 
-Success returns `None`. Confirmation does not sign in the confirmed account or change an unrelated
-local session.
+Success returns an immutable `ConfirmEmailResult`. Its `message` and `redirect_to` fields may be
+`None`. Confirmation does not sign in the confirmed account or change an unrelated local session.
 
 Request another confirmation email without revealing account state:
 

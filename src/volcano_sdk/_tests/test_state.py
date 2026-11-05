@@ -16,6 +16,7 @@ from volcano_sdk import (
     AuthenticationError,
     AuthSession,
     AuthSubscription,
+    ConfirmEmailResult,
     LinkedOAuthProvider,
     OAuthProviderTokenStatus,
     RateLimitedError,
@@ -61,6 +62,7 @@ from volcano_sdk.database import QueryBuilder
 
 from .client_inspection import InspectedClient
 from .fixtures.invalid_arguments import (
+    assign_confirm_email_redirect,
     assign_linked_provider,
     assign_metadata_value,
     assign_provider_token,
@@ -1393,10 +1395,26 @@ def test_sign_up_returns_immutable_acknowledgement_without_session_change() -> N
             "email": "new@example.com",
             "password": "secret",
             "metadata": {"display_name": "New User"},
+            "redirect_to": None,
         }
     ]
     with pytest.raises(FrozenInstanceError):
         assign_sign_up_message(result)
+
+
+def test_sign_up_forwards_the_confirmation_redirect() -> None:
+    transport = StateTransport()
+    client = InspectedClient(anon_key="anon", _transport=transport)
+
+    _ = client.auth.sign_up(
+        email="new@example.com",
+        password="secret",
+        redirect_to="https://app.example.com/onboarding",
+    )
+
+    assert transport.signup_calls[0]["redirect_to"] == (
+        "https://app.example.com/onboarding"
+    )
 
 
 def test_sign_up_uses_empty_metadata_without_creating_a_session() -> None:
@@ -2904,12 +2922,47 @@ def test_confirm_email_uses_the_token_without_session_change() -> None:
     client = InspectedClient(anon_key="anon", _transport=transport)
     established = client.auth.sign_in(email="other@example.com", password="secret")
 
-    client.auth.confirm_email(token="confirmation-token")
+    result = client.auth.confirm_email(token="confirmation-token")
 
+    assert result == ConfirmEmailResult(
+        message="Email confirmed successfully", redirect_to=None
+    )
     assert transport.confirm_email_calls == [
         {"authorization": "anon", "token": "confirmation-token"}
     ]
     assert client.auth.get_session() is established
+    with pytest.raises(FrozenInstanceError):
+        assign_confirm_email_redirect(result)
+
+
+def test_confirm_email_returns_the_redirect_stored_at_signup() -> None:
+    transport = StateTransport()
+    transport.confirm_email_response = Response(
+        200,
+        {
+            "message": "Email confirmed successfully",
+            "redirect_to": "https://app.example.com/onboarding",
+        },
+    )
+    client = InspectedClient(anon_key="anon", _transport=transport)
+
+    result = client.auth.confirm_email(token="confirmation-token")
+
+    assert result == ConfirmEmailResult(
+        message="Email confirmed successfully",
+        redirect_to="https://app.example.com/onboarding",
+    )
+
+
+def test_confirm_email_rejects_a_malformed_acknowledgement() -> None:
+    transport = StateTransport()
+    transport.confirm_email_response = Response(200, {"redirect_to": 42})
+    client = InspectedClient(anon_key="anon", _transport=transport)
+
+    with pytest.raises(
+        TypeError, match="Expected a valid email confirmation acknowledgement"
+    ):
+        _ = client.auth.confirm_email(token="confirmation-token")
 
 
 def test_confirm_email_raises_a_typed_error_without_session_change() -> None:
@@ -2919,7 +2972,7 @@ def test_confirm_email_raises_a_typed_error_without_session_change() -> None:
     transport.confirm_email_response = Response(401)
 
     with pytest.raises(AuthenticationError):
-        client.auth.confirm_email(token="expired-token")
+        _ = client.auth.confirm_email(token="expired-token")
 
     assert client.auth.get_session() is established
 

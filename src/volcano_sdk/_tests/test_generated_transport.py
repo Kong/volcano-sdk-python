@@ -347,6 +347,7 @@ def test_generated_transport_signs_up_with_the_anon_key_and_metadata() -> None:
         email="user@example.com",
         password="secret",
         metadata={"display_name": "New User"},
+        redirect_to=None,
     )
 
     assert response.status_code == 201
@@ -361,6 +362,37 @@ def test_generated_transport_signs_up_with_the_anon_key_and_metadata() -> None:
         "email": "user@example.com",
         "password": "secret",
         "user_metadata": {"display_name": "New User"},
+    }
+
+
+def test_generated_transport_sends_the_confirmation_redirect_at_signup() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            201,
+            json={"confirmation_required": True, "message": "Check your email"},
+        )
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    _ = transport.auth_signup(
+        authorization="anon-key",
+        email="user@example.com",
+        password="secret",
+        metadata={},
+        redirect_to="/welcome?step=2",
+    )
+
+    assert json.loads(requests[0].content) == {
+        "email": "user@example.com",
+        "password": "secret",
+        "user_metadata": {},
+        "redirect_to": "/welcome?step=2",
     }
 
 
@@ -1029,7 +1061,13 @@ def test_generated_transport_confirms_an_email_with_the_anon_key() -> None:
 
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        return httpx.Response(200, json={"message": "Email confirmed successfully"})
+        return httpx.Response(
+            200,
+            json={
+                "message": "Email confirmed successfully",
+                "redirect_to": "https://app.example.com/onboarding",
+            },
+        )
 
     transport = GeneratedTransport(
         api_url="https://api.test.volcano.dev",
@@ -1042,6 +1080,10 @@ def test_generated_transport_confirms_an_email_with_the_anon_key() -> None:
     )
 
     assert response.status_code == 200
+    assert response.payload == {
+        "message": "Email confirmed successfully",
+        "redirect_to": "https://app.example.com/onboarding",
+    }
     assert requests[0].method == "POST"
     assert requests[0].url.path == "/auth/confirm"
     assert requests[0].headers["authorization"] == "Bearer anon-key"

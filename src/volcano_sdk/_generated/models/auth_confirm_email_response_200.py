@@ -27,9 +27,13 @@ class AuthConfirmEmailResponse200:
     """ 
         Attributes:
             message (AuthConfirmEmailResponse200Message | Unset):
+            redirect_to (str | Unset): The `redirect_to` given at signup, as a full URL: a
+                path is joined to the Volcano site URL. Returned once;
+                the next confirm call does not return it.
      """
 
     message: AuthConfirmEmailResponse200Message | Unset = UNSET
+    redirect_to: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -42,6 +46,8 @@ class AuthConfirmEmailResponse200:
             message = self.message
 
 
+        redirect_to = self.redirect_to
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -49,6 +55,8 @@ class AuthConfirmEmailResponse200:
         })
         if message is not UNSET:
             field_dict["message"] = message
+        if redirect_to is not UNSET:
+            field_dict["redirect_to"] = redirect_to
 
         return field_dict
 
@@ -67,8 +75,11 @@ class AuthConfirmEmailResponse200:
 
 
 
+        redirect_to = d.pop("redirect_to", UNSET)
+
         auth_confirm_email_response_200 = cls(
             message=message,
+            redirect_to=redirect_to,
         )
 
 

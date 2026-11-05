@@ -121,11 +121,13 @@ class AuthIdentityTransport(TransportBase):
         email: str,
         password: str,
         metadata: dict[str, object],
+        redirect_to: str | None,
     ) -> TransportResponse:
         body = AuthSignupBody(
             email=email,
             password=password,
             user_metadata=AuthSignupBodyUserMetadata.from_dict(metadata),
+            redirect_to=UNSET if redirect_to is None else redirect_to,
         )
         with self._client(authorization) as client:
             response = auth_signup.sync_detailed(client=client, body=body)

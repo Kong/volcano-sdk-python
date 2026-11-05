@@ -41,6 +41,7 @@ from .errors import (
 )
 from .models import (
     AuthSession,
+    ConfirmEmailResult,
     EmailChangeResult,
     JSONValue,
     LinkedOAuthProvider,
@@ -66,6 +67,9 @@ INVALID_SIGN_UP_RESULT = "Expected a complete sign-up acknowledgement"
 
 
 INVALID_EMAIL_CHANGE_RESULT = "Expected a valid email-change acknowledgement"
+
+
+INVALID_CONFIRM_EMAIL_RESULT = "Expected a valid email confirmation acknowledgement"
 
 
 INVALID_USER = "Expected a complete user profile"
@@ -280,6 +284,22 @@ def email_change_result_from_payload(payload: object) -> EmailChangeResult:
     return EmailChangeResult(
         message=message,
         new_email=new_email,
+    )
+
+
+def confirm_email_result_from_payload(payload: object) -> ConfirmEmailResult:
+    if not isinstance(payload, Mapping):
+        raise TypeError(INVALID_CONFIRM_EMAIL_RESULT)
+    values = cast("Mapping[object, object]", payload)
+    message = values.get("message")
+    redirect_to = values.get("redirect_to")
+    if message is not None and not isinstance(message, str):
+        raise TypeError(INVALID_CONFIRM_EMAIL_RESULT)
+    if redirect_to is not None and not isinstance(redirect_to, str):
+        raise TypeError(INVALID_CONFIRM_EMAIL_RESULT)
+    return ConfirmEmailResult(
+        message=message,
+        redirect_to=redirect_to,
     )
 
 

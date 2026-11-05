@@ -191,6 +191,18 @@ class SignUpResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ConfirmEmailResult:
+    """Email confirmation acknowledgement with an optional return target.
+
+    ``redirect_to`` is the target given at sign-up, as a full URL. The server
+    returns it once; later confirmations return ``None``.
+    """
+
+    message: str | None
+    redirect_to: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class EmailChangeResult:
     """Acknowledgement returned after requesting an email change."""
 

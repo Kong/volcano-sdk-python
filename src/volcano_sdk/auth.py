@@ -100,8 +100,14 @@ class Auth(EmailAuth, OAuthAuth):
         password: str,
         metadata: Mapping[str, object] | None = None,
         sign_in_when_allowed: bool = False,
+        redirect_to: str | None = None,
     ) -> SignUpResult:
         """Sign up, optionally signing in when confirmation is not required.
+
+        ``redirect_to`` is where to send the user after they confirm their
+        email: a URL in the project's allowed redirect URLs. The server stores
+        it only when the sign-up creates the account, and ``confirm_email()``
+        returns it.
 
         Returns:
             The sign-up acknowledgement, including a session if signed in.
@@ -120,6 +126,7 @@ class Auth(EmailAuth, OAuthAuth):
             email=email,
             password=password,
             metadata=dict(metadata or {}),
+            redirect_to=redirect_to,
         )
         result = sign_up_result_from_payload(response_payload(response, 201))
         if sign_in_when_allowed and not result.confirmation_required:
