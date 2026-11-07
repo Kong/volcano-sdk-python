@@ -26,7 +26,10 @@ class DurableCallbackError:
         Attributes:
             type_ (str): A name workflows can branch on, such as `PaymentDeclined`. Up to
                 256 characters, without control characters.
-            message (str | Unset): A human-readable explanation, up to 32 KiB.
+            message (str | Unset): A human-readable explanation of up to 32,768 bytes of UTF-8, with
+                tab and newline as its only control characters. A character
+                outside ASCII takes more than one byte, so such text reaches the
+                limit before `maxLength`.
      """
 
     type_: str

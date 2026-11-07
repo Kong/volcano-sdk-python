@@ -23,7 +23,10 @@ T = TypeVar("T", bound="CreateDatabaseBranchRequest")
 class CreateDatabaseBranchRequest:
     """ 
         Attributes:
-            name (str): Branch name (must be unique within the parent database) Example: feature_checkout.
+            name (str): Branch name, unique within the parent database. Names beginning
+                with `migration_rehearsal_` are reserved for the branches migration
+                runs rehearse on.
+                 Example: feature_checkout.
             ttl_seconds (int | Unset): How long the branch should live, between one hour and 30 days.
                 Defaults to 7 days when omitted.
                  Example: 86400.
