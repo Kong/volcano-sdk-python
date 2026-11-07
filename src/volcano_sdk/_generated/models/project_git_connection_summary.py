@@ -29,7 +29,9 @@ class ProjectGitConnectionSummary:
             repo_full_name (str):
             root_directory (str):
             production_branch (str):
-            updated_at (datetime.datetime):
+            updated_at (datetime.datetime): When the connection last changed: its repository, root directory or production
+                branch. Naming the branch it already uses, and other changes to the project, leave it alone. A connection that
+                has not changed since Volcano began tracking this reports the project's last change before then.
      """
 
     repo_installation_id: int

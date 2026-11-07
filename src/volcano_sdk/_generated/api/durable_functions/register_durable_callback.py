@@ -131,7 +131,9 @@ def sync_detailed(
     the step's own timeout, and only for that step.
 
     Retrying is safe: a request for a step that is already registered
-    returns the same token with `200`.
+    returns the same token with `200` while the step still waits. Once
+    the token is answered, or the step times out or ends, a retry answers
+    `409` with `callback_closed`.
 
     Args:
         body (RegisterDurableCallbackRequest):
@@ -174,7 +176,9 @@ def sync(
     the step's own timeout, and only for that step.
 
     Retrying is safe: a request for a step that is already registered
-    returns the same token with `200`.
+    returns the same token with `200` while the step still waits. Once
+    the token is answered, or the step times out or ends, a retry answers
+    `409` with `callback_closed`.
 
     Args:
         body (RegisterDurableCallbackRequest):
@@ -212,7 +216,9 @@ async def asyncio_detailed(
     the step's own timeout, and only for that step.
 
     Retrying is safe: a request for a step that is already registered
-    returns the same token with `200`.
+    returns the same token with `200` while the step still waits. Once
+    the token is answered, or the step times out or ends, a retry answers
+    `409` with `callback_closed`.
 
     Args:
         body (RegisterDurableCallbackRequest):
@@ -255,7 +261,9 @@ async def asyncio(
     the step's own timeout, and only for that step.
 
     Retrying is safe: a request for a step that is already registered
-    returns the same token with `200`.
+    returns the same token with `200` while the step still waits. Once
+    the token is answered, or the step times out or ends, a retry answers
+    `409` with `callback_closed`.
 
     Args:
         body (RegisterDurableCallbackRequest):

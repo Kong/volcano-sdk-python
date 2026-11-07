@@ -12,7 +12,7 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
-  from ..models.email_template import EmailTemplate
+  from ..models.default_email_template import DefaultEmailTemplate
 
 
 
@@ -26,10 +26,10 @@ T = TypeVar("T", bound="GetDefaultEmailTemplatesResponse200")
 class GetDefaultEmailTemplatesResponse200:
     """ 
         Attributes:
-            data (list[EmailTemplate] | Unset):
+            data (list[DefaultEmailTemplate] | Unset):
      """
 
-    data: list[EmailTemplate] | Unset = UNSET
+    data: list[DefaultEmailTemplate] | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -37,7 +37,7 @@ class GetDefaultEmailTemplatesResponse200:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.email_template import EmailTemplate # noqa: PLC0415
+        from ..models.default_email_template import DefaultEmailTemplate # noqa: PLC0415
         data: list[dict[str, Any]] | Unset = UNSET
         if not isinstance(self.data, Unset):
             data = []
@@ -61,14 +61,14 @@ class GetDefaultEmailTemplatesResponse200:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.email_template import EmailTemplate # noqa: PLC0415
+        from ..models.default_email_template import DefaultEmailTemplate # noqa: PLC0415
         d = dict(src_dict)
         _data = d.pop("data", UNSET)
-        data: list[EmailTemplate] | Unset = UNSET
+        data: list[DefaultEmailTemplate] | Unset = UNSET
         if _data is not UNSET:
             data = []
             for data_item_data in _data:
-                data_item = EmailTemplate.from_dict(data_item_data)
+                data_item = DefaultEmailTemplate.from_dict(data_item_data)
 
 
 

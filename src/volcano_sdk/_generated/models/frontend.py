@@ -23,6 +23,7 @@ import datetime
 
 if TYPE_CHECKING:
   from ..models.frontend_function_route import FrontendFunctionRoute
+  from ..models.frontend_route import FrontendRoute
 
 
 
@@ -48,9 +49,17 @@ class Frontend:
                 frontend stays `active` on the previous deployment, so `failed` means no
                 deployment is serving.
             deployed_regions (list[str]):
+            serving_candidate_id (None | UUID): The promoted Candidate whose runtime receives this frontend's traffic, the
+                same as
+                `candidate_id` in `serving`. Null when the frontend serves its own runtime. While it is
+                set, `current_deployment_id` and `status` describe a deployment that receives no traffic,
+                and deploying the frontend is refused until it is rolled back.
             function_routes (list[FrontendFunctionRoute]): Paths on this frontend that forward to a public function, ordered
                 from most to least specific. Anyone who can load the frontend can
                 reach the target function at these paths without a credential.
+            frontend_routes (list[FrontendRoute]): Paths on this frontend served by another frontend in the project,
+                ordered from most to least specific. Function and Frontend routes
+                share one path namespace and the 64-route limit.
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
             variable_scope (FrontendVariableScope | Unset): All preserves access to all project variables. Shared includes
@@ -78,7 +87,9 @@ class Frontend:
     framework: FrontendFramework
     status: FrontendStatus
     deployed_regions: list[str]
+    serving_candidate_id: None | UUID
     function_routes: list[FrontendFunctionRoute]
+    frontend_routes: list[FrontendRoute]
     created_at: datetime.datetime
     updated_at: datetime.datetime
     variable_scope: FrontendVariableScope | Unset = UNSET
@@ -100,6 +111,7 @@ class Frontend:
 
     def to_dict(self) -> dict[str, Any]:
         from ..models.frontend_function_route import FrontendFunctionRoute # noqa: PLC0415
+        from ..models.frontend_route import FrontendRoute # noqa: PLC0415
         id = str(self.id)
 
         project_id = str(self.project_id)
@@ -114,10 +126,23 @@ class Frontend:
 
 
 
+        serving_candidate_id: None | str
+        if isinstance(self.serving_candidate_id, UUID):
+            serving_candidate_id = str(self.serving_candidate_id)
+        else:
+            serving_candidate_id = self.serving_candidate_id
+
         function_routes = []
         for function_routes_item_data in self.function_routes:
             function_routes_item = function_routes_item_data.to_dict()
             function_routes.append(function_routes_item)
+
+
+
+        frontend_routes = []
+        for frontend_routes_item_data in self.frontend_routes:
+            frontend_routes_item = frontend_routes_item_data.to_dict()
+            frontend_routes.append(frontend_routes_item)
 
 
 
@@ -177,7 +202,9 @@ class Frontend:
             "framework": framework,
             "status": status,
             "deployed_regions": deployed_regions,
+            "serving_candidate_id": serving_candidate_id,
             "function_routes": function_routes,
+            "frontend_routes": frontend_routes,
             "created_at": created_at,
             "updated_at": updated_at,
         })
@@ -211,6 +238,7 @@ class Frontend:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.frontend_function_route import FrontendFunctionRoute # noqa: PLC0415
+        from ..models.frontend_route import FrontendRoute # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 
@@ -237,6 +265,24 @@ class Frontend:
         deployed_regions = cast(list[str], d.pop("deployed_regions"))
 
 
+        def _parse_serving_candidate_id(data: object) -> None | UUID:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                serving_candidate_id_type_0 = UUID(data)
+
+
+
+                return serving_candidate_id_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | UUID, data)
+
+        serving_candidate_id = _parse_serving_candidate_id(d.pop("serving_candidate_id"))
+
+
         function_routes = []
         _function_routes = d.pop("function_routes")
         for function_routes_item_data in (_function_routes):
@@ -245,6 +291,16 @@ class Frontend:
 
 
             function_routes.append(function_routes_item)
+
+
+        frontend_routes = []
+        _frontend_routes = d.pop("frontend_routes")
+        for frontend_routes_item_data in (_frontend_routes):
+            frontend_routes_item = FrontendRoute.from_dict(frontend_routes_item_data)
+
+
+
+            frontend_routes.append(frontend_routes_item)
 
 
         created_at = datetime.datetime.fromisoformat(d.pop("created_at"))
@@ -343,7 +399,9 @@ class Frontend:
             framework=framework,
             status=status,
             deployed_regions=deployed_regions,
+            serving_candidate_id=serving_candidate_id,
             function_routes=function_routes,
+            frontend_routes=frontend_routes,
             created_at=created_at,
             updated_at=updated_at,
             variable_scope=variable_scope,

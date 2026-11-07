@@ -40,6 +40,11 @@ class CreateFunctionsBatchBody:
                 it must not deploy without the variable. The request is rejected with 400 before anything is deployed if a
                 scoped function declares a variable the project does not define, or if the resulting environment exceeds 4096
                 bytes.
+
+                Each entry may also carry `commit`, the commit its source came from, as an object: `{"repository": "acme/app",
+                "sha": "<40-character commit ID>", "dirty": false}`. It takes the same values as the `commit` field of a single
+                function upload; `null` or `""` reports no commit. The request is rejected with 400 before anything is deployed
+                if an entry's commit is malformed or names a repository not on GitHub.
             code_0 (File | Unset): Function ZIP or tar.gz archive referenced by the first manifest entry's `file_field`;
                 additional code_N file fields may be included. Each archive is subject to SOURCE_ARCHIVE_SIZE_LIMIT_MB.
      """
