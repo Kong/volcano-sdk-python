@@ -107,6 +107,9 @@ def sync_detailed(
     subject or a blank message. Also rejects with 400 if
     `email_enabled=false`, `smtp_host` is empty, or the saved
     `smtp_password` can't be read and must be set again.
+    Sender values with interior line breaks return 400 before SMTP delivery.
+    Rendered override subjects containing a line break have outer whitespace
+    trimmed; any remaining interior line break returns 400 before delivery.
 
     Args:
         id (UUID):
@@ -162,6 +165,9 @@ def sync(
     subject or a blank message. Also rejects with 400 if
     `email_enabled=false`, `smtp_host` is empty, or the saved
     `smtp_password` can't be read and must be set again.
+    Sender values with interior line breaks return 400 before SMTP delivery.
+    Rendered override subjects containing a line break have outer whitespace
+    trimmed; any remaining interior line break returns 400 before delivery.
 
     Args:
         id (UUID):
@@ -212,6 +218,9 @@ async def asyncio_detailed(
     subject or a blank message. Also rejects with 400 if
     `email_enabled=false`, `smtp_host` is empty, or the saved
     `smtp_password` can't be read and must be set again.
+    Sender values with interior line breaks return 400 before SMTP delivery.
+    Rendered override subjects containing a line break have outer whitespace
+    trimmed; any remaining interior line break returns 400 before delivery.
 
     Args:
         id (UUID):
@@ -267,6 +276,9 @@ async def asyncio(
     subject or a blank message. Also rejects with 400 if
     `email_enabled=false`, `smtp_host` is empty, or the saved
     `smtp_password` can't be read and must be set again.
+    Sender values with interior line breaks return 400 before SMTP delivery.
+    Rendered override subjects containing a line break have outer whitespace
+    trimmed; any remaining interior line break returns 400 before delivery.
 
     Args:
         id (UUID):

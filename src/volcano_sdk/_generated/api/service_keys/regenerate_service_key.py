@@ -8,6 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.error import Error
 from ...models.service_key import ServiceKey
 from typing import cast
 from uuid import UUID
@@ -35,7 +36,7 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ServiceKey | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Error | ServiceKey | None:
     if response.status_code == 200:
         response_200 = ServiceKey.from_dict(response.json())
 
@@ -43,13 +44,20 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_200
 
+    if response.status_code == 403:
+        response_403 = Error.from_dict(response.json())
+
+
+
+        return response_403
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[ServiceKey]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Error | ServiceKey]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -64,7 +72,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[ServiceKey]:
+) -> Response[Error | ServiceKey]:
     """ Regenerate service key
 
      Generate new JWT value for existing key.
@@ -80,7 +88,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ServiceKey]
+        Response[Error | ServiceKey]
      """
 
 
@@ -102,7 +110,7 @@ def sync(
     *,
     client: AuthenticatedClient,
 
-) -> ServiceKey | None:
+) -> Error | ServiceKey | None:
     """ Regenerate service key
 
      Generate new JWT value for existing key.
@@ -118,7 +126,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ServiceKey
+        Error | ServiceKey
      """
 
 
@@ -135,7 +143,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[ServiceKey]:
+) -> Response[Error | ServiceKey]:
     """ Regenerate service key
 
      Generate new JWT value for existing key.
@@ -151,7 +159,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ServiceKey]
+        Response[Error | ServiceKey]
      """
 
 
@@ -173,7 +181,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
 
-) -> ServiceKey | None:
+) -> Error | ServiceKey | None:
     """ Regenerate service key
 
      Generate new JWT value for existing key.
@@ -189,7 +197,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ServiceKey
+        Error | ServiceKey
      """
 
 

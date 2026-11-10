@@ -23,7 +23,9 @@ T = TypeVar("T", bound="UpdateEmailTemplateRequest")
 class UpdateEmailTemplateRequest:
     """ 
         Attributes:
-            subject (str | Unset):
+            subject (str | Unset): Subject template. For new or changed values, literal interior carriage returns or
+                newlines after Go template whitespace trimming return 400. Outer whitespace and trailing block-scalar newlines
+                are allowed. Unchanged stored subjects are preserved.
             html_body (str | Unset):
             text_body (str | Unset):
      """

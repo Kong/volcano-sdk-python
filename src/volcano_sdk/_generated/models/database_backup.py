@@ -34,9 +34,9 @@ class DatabaseBackup:
         Attributes:
             name (str): Backup name, unique within the database. Backups you create are
                 named by you; scheduled backups are named by the storage provider.
-            source (DatabaseBackupSource): Whether the backup was requested explicitly or produced by the
-                backup schedule. Only `manual` backups count against the plan's
-                backup allowance.
+            source (DatabaseBackupSource): Whether the backup was requested explicitly, produced by the backup
+                schedule, or taken before migrations were applied to the database.
+                Only `manual` backups count against the plan's backup allowance.
             created_at (datetime.datetime): The point in time the backup captures.
             size_bytes (int | Unset): Storage the backup occupies. Absent until the provider has costed
                 it, which takes a few minutes after the backup is taken; absent is

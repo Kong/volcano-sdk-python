@@ -26,7 +26,9 @@ class CreateEmailTemplateRequest:
     """ 
         Attributes:
             template_type (CreateEmailTemplateRequestTemplateType): Type of email template
-            subject (str): Email subject line Example: Confirm your email.
+            subject (str): Subject template. After Go template whitespace trimming, literal interior carriage returns or
+                newlines return 400. Outer whitespace and trailing block-scalar newlines are allowed. Example: Confirm your
+                email.
             html_body (str): HTML template body. Available placeholders:
                 - {{.Token}} - The confirmation/reset token
                 - {{.ProjectName}} - The project name
