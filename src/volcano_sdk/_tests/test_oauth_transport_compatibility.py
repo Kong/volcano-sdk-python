@@ -77,7 +77,18 @@ def test_linked_provider_wire_values_keep_native_validation(
 
 @pytest.mark.parametrize("field", ["linked_at", "updated_at"])
 @pytest.mark.parametrize(
-    "value", ["2026-02-30T12:00:00Z", "2026-08-30T12:00:00", "2026-08-30"]
+    "value",
+    [
+        "2026-02-30T12:00:00Z",
+        "2026-08-30T12:00:00",
+        "2026-08-30",
+        "2026-08-30T12:00:00+24:00",
+        "2026-08-30T12:00:00+05:60",
+        "2026-08-30T12:00:00-24:00",
+        "2026-08-30T12:00:00-05:60",
+        "2026-08-30T24:00:00Z",
+        "2026-08-30T12:00:60Z",
+    ],
 )
 def test_linked_provider_wire_dates_reject_invalid_calendar_values(
     field: str, value: str
