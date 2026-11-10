@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import secrets
 from collections.abc import Mapping
 from datetime import datetime
@@ -75,6 +76,11 @@ INVALID_SESSION_PAGE = "Expected a complete session page"
 
 
 INVALID_LINKED_OAUTH_PROVIDERS = "Expected complete linked OAuth providers"
+
+
+OAUTH_PROVIDER_TIMESTAMP = re.compile(
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})"
+)
 
 
 INVALID_OAUTH_LINK = "Expected an OAuth authorization URL"
@@ -409,6 +415,11 @@ def linked_oauth_datetime(value: object) -> datetime:
 def linked_oauth_providers_from_payload(
     payload: object,
 ) -> tuple[LinkedOAuthProvider, ...]:
+    if is_object_mapping(payload):
+        providers = payload.get("providers")
+        if not is_object_sequence(providers):
+            raise VolcanoError(INVALID_LINKED_OAUTH_PROVIDERS)
+        return tuple(linked_oauth_provider_from_wire(item) for item in providers)
     if not isinstance(payload, AuthListOAuthProvidersResponse200) or isinstance(
         payload.providers, Unset
     ):
@@ -416,6 +427,25 @@ def linked_oauth_providers_from_payload(
     return tuple(
         linked_oauth_provider_from_model(provider) for provider in payload.providers
     )
+
+
+def linked_oauth_provider_from_wire(value: object) -> LinkedOAuthProvider:
+    if not is_object_mapping(value):
+        raise VolcanoError(INVALID_LINKED_OAUTH_PROVIDERS)
+    return LinkedOAuthProvider(
+        provider=linked_oauth_provider_string(value.get("provider")),
+        linked_at=linked_oauth_wire_datetime(value.get("linked_at")),
+        updated_at=linked_oauth_wire_datetime(value.get("updated_at")),
+    )
+
+
+def linked_oauth_wire_datetime(value: object) -> datetime:
+    if not isinstance(value, str) or not OAUTH_PROVIDER_TIMESTAMP.fullmatch(value):
+        raise VolcanoError(INVALID_LINKED_OAUTH_PROVIDERS)
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError as error:
+        raise VolcanoError(INVALID_LINKED_OAUTH_PROVIDERS) from error
 
 
 def oauth_provider_name(value: object) -> OAuthProviderName:

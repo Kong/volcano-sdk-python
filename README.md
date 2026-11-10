@@ -726,6 +726,8 @@ for provider in providers:
 
 The method returns an immutable tuple of `LinkedOAuthProvider` values and raises
 `SessionChangedError` if the active session changes while the request is in flight.
+It also accepts responses from older servers that omit provider IDs and logins;
+the public result contains the provider name and linkage timestamps.
 
 Start linking another OAuth provider to the current account:
 

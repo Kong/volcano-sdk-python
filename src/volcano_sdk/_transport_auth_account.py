@@ -45,9 +45,6 @@ from ._generated.models.auth_get_my_sessions_response_200 import (
 from ._generated.models.auth_link_o_auth_provider_response_200 import (
     AuthLinkOAuthProviderResponse200,
 )
-from ._generated.models.auth_list_o_auth_providers_response_200 import (
-    AuthListOAuthProvidersResponse200,
-)
 from ._generated.models.auth_o_auth_exchange_body import AuthOAuthExchangeBody
 from ._generated.models.call_o_auth_provider_api_body import CallOAuthProviderApiBody
 from ._generated.models.call_o_auth_provider_api_response_200 import (
@@ -169,10 +166,10 @@ class AuthAccountTransport(TransportBase):
         if response.status_code != HTTP_OK:
             return unparsed_response(response)
         try:
-            payload = AuthListOAuthProvidersResponse200.from_dict(json_object(response))
+            # The stable facade uses provider and timestamps, including responses
+            # from servers that predate the additional provider identity fields.
+            payload = json_object(response)
         except (
-            AttributeError,
-            KeyError,
             TypeError,
             UnicodeDecodeError,
             ValueError,
