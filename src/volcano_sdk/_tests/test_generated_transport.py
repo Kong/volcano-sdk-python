@@ -29,6 +29,8 @@ from volcano_sdk._transport import (
     response_payload,
 )
 
+from .test_auth_facade_recovery import client_for
+
 
 def test_generated_transport_queries_a_database_asynchronously() -> None:
     requests: list[httpx.Request] = []
@@ -606,6 +608,7 @@ def test_generated_transport_lists_linked_oauth_providers() -> None:
                 "providers": [
                     {
                         "provider": "google",
+                        "provider_user_id": "583231",
                         "linked_at": "2026-08-30T12:00:00Z",
                         "updated_at": "2026-09-01T12:00:00Z",
                     }
@@ -636,6 +639,23 @@ def test_generated_transport_rejects_malformed_linked_oauth_providers() -> None:
 
     with pytest.raises(VolcanoError, match="Expected complete linked OAuth providers"):
         _ = transport.auth_list_oauth_providers(authorization="access-token")
+
+
+@pytest.mark.parametrize("field", ["provider", "linked_at", "updated_at"])
+def test_auth_facade_rejects_missing_oauth_public_fields(field: str) -> None:
+    provider = {
+        "provider": "google",
+        "provider_user_id": "583231",
+        "linked_at": "2026-08-30T12:00:00Z",
+        "updated_at": "2026-09-01T12:00:00Z",
+    }
+    del provider[field]
+    client = client_for(
+        lambda _request: httpx.Response(200, json={"providers": [provider]})
+    )
+
+    with pytest.raises(VolcanoError, match="Expected complete linked OAuth providers"):
+        _ = client.auth.list_linked_oauth_providers()
 
 
 def test_generated_transport_preserves_a_malformed_oauth_auth_error() -> None:

@@ -23,7 +23,6 @@ from volcano_sdk._auth_values import (
 from volcano_sdk._generated.models import (
     AuthGetUserResponse200,
     AuthListOAuthProvidersResponse200,
-    AuthListOAuthProvidersResponse200ProvidersItem,
     CallOAuthProviderApiResponse200,
 )
 from volcano_sdk._generated.types import UNSET, Unset
@@ -248,8 +247,36 @@ def test_linked_providers_require_the_collection_to_be_present() -> None:
 
 @pytest.mark.parametrize("provider", [UNSET, "", " \t"])
 def test_linked_providers_require_a_nonempty_provider(provider: str | Unset) -> None:
-    payload = AuthListOAuthProvidersResponse200(
-        providers=[AuthListOAuthProvidersResponse200ProvidersItem(provider=provider)]
+    payload = AuthListOAuthProvidersResponse200.from_dict(
+        {
+            "providers": [
+                {
+                    "provider": provider,
+                    "provider_user_id": "583231",
+                    "linked_at": "2026-08-30T12:00:00Z",
+                    "updated_at": "2026-09-01T12:00:00Z",
+                }
+            ]
+        }
     )
+    with pytest.raises(VolcanoError, match="Expected complete linked OAuth providers"):
+        _ = linked_oauth_providers_from_payload(payload)
+
+
+@pytest.mark.parametrize("provider", [None, False, 42, [], {}])
+def test_linked_providers_reject_nonstring_wire_values(provider: object) -> None:
+    payload = AuthListOAuthProvidersResponse200.from_dict(
+        {
+            "providers": [
+                {
+                    "provider": provider,
+                    "provider_user_id": "583231",
+                    "linked_at": "2026-08-30T12:00:00Z",
+                    "updated_at": "2026-09-01T12:00:00Z",
+                }
+            ]
+        }
+    )
+
     with pytest.raises(VolcanoError, match="Expected complete linked OAuth providers"):
         _ = linked_oauth_providers_from_payload(payload)

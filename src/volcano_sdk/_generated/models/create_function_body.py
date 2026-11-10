@@ -46,10 +46,13 @@ class CreateFunctionBody:
                 - Node.js: nodejs22.x, nodejs24.x
                 - Python: python3.10, python3.11, python3.12, python3.13, python3.14
                 - Ruby: ruby3.3, ruby3.4, ruby4.0
+
+                python3.10 is deprecated: it still deploys, and Volcano will remove it before 2027-08-31.
                  Example: nodejs24.x.
             handler (str | Unset): The name of the function to invoke. Defaults to "handler" if not specified.
                 Your code must export/define a function with this name:
-                - Node.js: exports.handler (in index.js)
+                - Node.js: exports.handler (in index.js, index.mjs or index.cjs, or in TypeScript in index.ts, index.mts or
+                index.cts, which the build compiles without type-checking)
                 - Python: def handler() (in main.py)
                 - Ruby: def handler() (in main.rb)
                  Default: 'handler'. Example: handler.
@@ -80,6 +83,14 @@ class CreateFunctionBody:
                 detected in its source. A declared name the project does not define is rejected with 400; a detected name it
                 does not define is ignored. Only used when `variable_scope` is `scoped`. Omitting this leaves an existing
                 function's declared names unchanged.
+            commit (str | Unset): JSON-encoded commit the uploaded source came from: `{"repository": "acme/app", "sha":
+                "<40-character commit ID>", "dirty": false}`. `repository` is `owner/name` or a github.com remote URL
+                (`https://github.com/acme/app.git`, `git@github.com:acme/app.git`, or `ssh://git@github.com/acme/app.git`);
+                Volcano drops any credentials in the URL and records `owner/name`. `dirty` is `true` when the uploaded files
+                differ from the commit. All three fields are required, and fields Volcano does not know are ignored. An empty
+                value, `null`, or `""` reports no commit. A malformed commit, or a repository not on GitHub, returns 400 before
+                anything is deployed. Volcano records a function's commit with `commit.verified: false`; a clean commit of the
+                project's connected repository that its production branch holds gets `commit.verification: repository`.
      """
 
     name: str
@@ -93,6 +104,7 @@ class CreateFunctionBody:
     openapi_spec: str | Unset = UNSET
     variable_scope: CreateFunctionBodyVariableScope | Unset = UNSET
     variables: str | Unset = UNSET
+    commit: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -135,6 +147,8 @@ class CreateFunctionBody:
 
         variables = self.variables
 
+        commit = self.commit
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -159,6 +173,8 @@ class CreateFunctionBody:
             field_dict["variable_scope"] = variable_scope
         if variables is not UNSET:
             field_dict["variables"] = variables
+        if commit is not UNSET:
+            field_dict["commit"] = commit
 
         return field_dict
 
@@ -215,6 +231,11 @@ class CreateFunctionBody:
 
         if not isinstance(self.variables, Unset):
             files.append(("variables", (None, str(self.variables).encode(), "text/plain")))
+
+
+
+        if not isinstance(self.commit, Unset):
+            files.append(("commit", (None, str(self.commit).encode(), "text/plain")))
 
 
 
@@ -292,6 +313,8 @@ class CreateFunctionBody:
 
         variables = d.pop("variables", UNSET)
 
+        commit = d.pop("commit", UNSET)
+
         create_function_body = cls(
             name=name,
             code=code,
@@ -304,6 +327,7 @@ class CreateFunctionBody:
             openapi_spec=openapi_spec,
             variable_scope=variable_scope,
             variables=variables,
+            commit=commit,
         )
 
 

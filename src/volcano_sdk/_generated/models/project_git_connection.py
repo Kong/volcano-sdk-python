@@ -30,7 +30,13 @@ class ProjectGitConnection:
             root_directory (str):
             production_branch (str): The branch a push must land on to deploy. Follows the repository's GitHub default
                 branch unless the project set its own, which a default-branch rename on GitHub then leaves alone.
-            updated_at (datetime.datetime):
+            production_branch_follows_default (bool): True when `production_branch` follows the repository's default branch
+                and moves with a default-branch rename on GitHub. False when the project pinned a branch, even one that matches
+                the current default. Pin a branch with `PUT /projects/{id}/git-connection/production-branch`; send an empty
+                `production_branch` there to follow the default again.
+            updated_at (datetime.datetime): When the connection last changed: its repository, root directory or production
+                branch. Naming the branch it already uses, and other changes to the project, leave it alone. A connection that
+                has not changed since Volcano began tracking this reports the project's last change before then.
      """
 
     repo_installation_id: int
@@ -38,6 +44,7 @@ class ProjectGitConnection:
     repo_full_name: str
     root_directory: str
     production_branch: str
+    production_branch_follows_default: bool
     updated_at: datetime.datetime
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -56,6 +63,8 @@ class ProjectGitConnection:
 
         production_branch = self.production_branch
 
+        production_branch_follows_default = self.production_branch_follows_default
+
         updated_at = self.updated_at.isoformat()
 
 
@@ -67,6 +76,7 @@ class ProjectGitConnection:
             "repo_full_name": repo_full_name,
             "root_directory": root_directory,
             "production_branch": production_branch,
+            "production_branch_follows_default": production_branch_follows_default,
             "updated_at": updated_at,
         })
 
@@ -87,6 +97,8 @@ class ProjectGitConnection:
 
         production_branch = d.pop("production_branch")
 
+        production_branch_follows_default = d.pop("production_branch_follows_default")
+
         updated_at = datetime.datetime.fromisoformat(d.pop("updated_at"))
 
 
@@ -98,6 +110,7 @@ class ProjectGitConnection:
             repo_full_name=repo_full_name,
             root_directory=root_directory,
             production_branch=production_branch,
+            production_branch_follows_default=production_branch_follows_default,
             updated_at=updated_at,
         )
 
