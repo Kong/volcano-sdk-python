@@ -11,7 +11,6 @@ from uuid import UUID
 
 import httpx
 import pytest
-from attrs import evolve
 
 from volcano_sdk import (
     AuthenticationError,
@@ -1945,15 +1944,17 @@ def test_list_linked_oauth_providers_requires_a_current_session() -> None:
     assert transport.list_oauth_providers_calls == []
 
 
-def test_list_linked_oauth_providers_rejects_an_incomplete_item() -> None:
+def test_list_linked_oauth_providers_rejects_an_incomplete_item(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     transport = StateTransport()
     client = InspectedClient(anon_key="anon", _transport=transport)
     _ = client.auth.sign_in(email="user@example.com", password="secret")
     payload = _linked_oauth_providers()
     assert not isinstance(payload.providers, Unset)
-    payload.providers[0] = evolve(
-        payload.providers[0], linked_at=UNSET, updated_at=UNSET
-    )
+    # Custom transports can return incomplete models without wire parsing.
+    monkeypatch.setattr(payload.providers[0], "linked_at", UNSET)
+    monkeypatch.setattr(payload.providers[0], "updated_at", UNSET)
     transport.list_oauth_providers_response = Response(200, payload)
 
     with pytest.raises(VolcanoError, match="Expected complete linked OAuth providers"):
