@@ -606,6 +606,7 @@ def test_generated_transport_lists_linked_oauth_providers() -> None:
                 "providers": [
                     {
                         "provider": "google",
+                        "provider_user_id": "583231",
                         "linked_at": "2026-08-30T12:00:00Z",
                         "updated_at": "2026-09-01T12:00:00Z",
                     }
@@ -631,6 +632,28 @@ def test_generated_transport_rejects_malformed_linked_oauth_providers() -> None:
         api_url="https://api.test.volcano.dev",
         httpx_transport=httpx.MockTransport(
             lambda _request: httpx.Response(200, content=b"not-json")
+        ),
+    )
+
+    with pytest.raises(VolcanoError, match="Expected complete linked OAuth providers"):
+        _ = transport.auth_list_oauth_providers(authorization="access-token")
+
+
+@pytest.mark.parametrize(
+    "field", ["provider", "provider_user_id", "linked_at", "updated_at"]
+)
+def test_generated_transport_rejects_missing_oauth_wire_values(field: str) -> None:
+    provider = {
+        "provider": "google",
+        "provider_user_id": "583231",
+        "linked_at": "2026-08-30T12:00:00Z",
+        "updated_at": "2026-09-01T12:00:00Z",
+    }
+    del provider[field]
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json={"providers": [provider]})
         ),
     )
 

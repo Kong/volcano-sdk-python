@@ -11,6 +11,7 @@ from uuid import UUID
 
 import httpx
 import pytest
+from attrs import evolve
 
 from volcano_sdk import (
     AuthenticationError,
@@ -56,7 +57,7 @@ from volcano_sdk._generated.models.get_o_auth_provider_token_response_200 import
 from volcano_sdk._generated.models.refresh_o_auth_provider_token_response_200 import (
     RefreshOAuthProviderTokenResponse200,
 )
-from volcano_sdk._generated.types import Unset
+from volcano_sdk._generated.types import UNSET, Unset
 from volcano_sdk.database import QueryBuilder
 
 from .client_inspection import InspectedClient
@@ -205,6 +206,7 @@ def _linked_oauth_providers() -> AuthListOAuthProvidersResponse200:
             "providers": [
                 {
                     "provider": "google",
+                    "provider_user_id": "583231",
                     "linked_at": "2026-08-30T12:00:00Z",
                     "updated_at": "2026-09-01T12:00:00Z",
                 }
@@ -1947,12 +1949,12 @@ def test_list_linked_oauth_providers_rejects_an_incomplete_item() -> None:
     transport = StateTransport()
     client = InspectedClient(anon_key="anon", _transport=transport)
     _ = client.auth.sign_in(email="user@example.com", password="secret")
-    transport.list_oauth_providers_response = Response(
-        200,
-        AuthListOAuthProvidersResponse200.from_dict(
-            {"providers": [{"provider": "google"}]}
-        ),
+    payload = _linked_oauth_providers()
+    assert not isinstance(payload.providers, Unset)
+    payload.providers[0] = evolve(
+        payload.providers[0], linked_at=UNSET, updated_at=UNSET
     )
+    transport.list_oauth_providers_response = Response(200, payload)
 
     with pytest.raises(VolcanoError, match="Expected complete linked OAuth providers"):
         _ = client.auth.list_linked_oauth_providers()
@@ -1969,6 +1971,7 @@ def test_list_linked_oauth_providers_accepts_a_future_provider_name() -> None:
                 "providers": [
                     {
                         "provider": "future-provider",
+                        "provider_user_id": "583231",
                         "linked_at": "2026-08-30T12:00:00Z",
                         "updated_at": "2026-09-01T12:00:00Z",
                     }
