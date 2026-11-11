@@ -28,7 +28,11 @@ from volcano_sdk import (
 )
 from volcano_sdk._transport import GeneratedTransport
 
-from .fixtures.invalid_arguments import assign_sandbox_state, non_datetime_sandbox_grant
+from .fixtures.invalid_arguments import (
+    assign_sandbox_state,
+    non_datetime_sandbox_grant,
+    session_idle_timeout,
+)
 from .session_fixtures import access_token
 from .transport_fixtures import RejectingTransport
 
@@ -105,7 +109,6 @@ def test_sandbox_selectors_and_mutation_identity() -> None:
             sandbox_id=SUBJECT,
             request_id=KEY,
             max_duration_seconds=300,
-            idle_timeout_seconds=30,
         )
         assert session.id == SESSION
     first, second = server.requests
@@ -116,9 +119,19 @@ def test_sandbox_selectors_and_mutation_identity() -> None:
         "sandbox_id": SUBJECT,
         "region": "aws-us-east-1",
         "max_duration_seconds": 300,
-        "idle_timeout_seconds": 30,
     }
     assert first.extensions["timeout"]["read"] == 60
+
+
+def test_sandbox_create_never_sends_the_removed_idle_timeout() -> None:
+    # The API rejects unknown fields, so a leftover option must not be sent.
+    server = SandboxHTTP()
+    server.reply(session_body(), 201)
+    session_idle_timeout(server.client.sandboxes)
+    assert json.loads(server.requests[-1].content) == {
+        "preset": "p",
+        "region": "r",
+    }
 
 
 def test_sandbox_one_shot_and_session_execution() -> None:
@@ -406,7 +419,7 @@ def test_sandbox_rejects_invalid_command_response(field: str, value: object) -> 
     ("field", "value", "message"),
     [
         ("state", "invalid", "Invalid Sandbox state"),
-        ("expires_at", None, "Invalid Sandbox text field"),
+        ("expires_at", 3600, "Invalid Sandbox text field"),
         ("expires_at", "tomorrow", "Invalid Sandbox timestamp"),
         (
             "expires_at",
@@ -682,6 +695,44 @@ def test_sandbox_cleanup_accepts_an_already_removed_session() -> None:
     with pytest.raises(ValueError, match="body failed") as caught:
         fail_inside_session(session)
     assert not hasattr(caught.value, "__notes__")
+
+
+def expiry_of(session: SandboxSession) -> datetime | None:
+    return session.expires_at
+
+
+def test_sandbox_with_no_lifetime_limit_has_no_expiry() -> None:
+    # A local-mode session has no lifetime limit, so the API returns expires_at: null.
+    server = SandboxHTTP()
+    unlimited = session_body() | {"expires_at": None}
+    server.reply(unlimited, 201)
+    created = server.client.sandboxes.create(
+        PROJECT, region="aws-us-east-1", preset="python3.12"
+    )
+    assert expiry_of(created) is None
+    server.reply(unlimited)
+    assert expiry_of(server.client.sandboxes.get(SESSION)) is None
+    server.reply(session_body())
+    session = server.client.sandboxes.get(SESSION)
+    assert expiry_of(session) == datetime(2026, 9, 25, tzinfo=UTC)
+    server.reply(unlimited)
+    assert session.refresh() is session
+    assert expiry_of(session) is None
+    server.reply(session_body())
+    assert session.refresh() is session
+    assert expiry_of(session) == datetime(2026, 9, 25, tzinfo=UTC)
+
+
+def test_sandbox_access_expiry_stays_required() -> None:
+    # Only the session's expiry may be null; an access credential always expires.
+    server = SandboxHTTP()
+    server.reply(session_body())
+    session = server.client.sandboxes.get(SESSION)
+    server.reply(
+        {"url": "https://sandbox.test/access", "token": "secret", "expires_at": None}
+    )
+    with pytest.raises(TypeError, match=r"^Invalid Sandbox text field$"):
+        _ = session.access(8080)
 
 
 def test_sandbox_metadata_is_read_only_and_expires_at_is_aware() -> None:

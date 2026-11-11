@@ -15,6 +15,7 @@ from ._sandbox import (
     command_body,
     command_result,
     identifier,
+    nullable_timestamp,
     record,
     request_id,
     state,
@@ -86,7 +87,7 @@ class SandboxSession:
         self._project_id: str = identifier(text(data.get("project_id")))
         self._region: str = text(data.get("region"))
         self._state: SandboxState = state(data.get("state"))
-        self._expires_at: datetime = timestamp(data.get("expires_at"))
+        self._expires_at: datetime | None = nullable_timestamp(data.get("expires_at"))
         self._files: SandboxFiles = SandboxFiles(requests, self._id)
 
     @property
@@ -110,8 +111,8 @@ class SandboxSession:
         return self._state
 
     @property
-    def expires_at(self) -> datetime:
-        """The aware expiration timestamp observed from the API."""
+    def expires_at(self) -> datetime | None:
+        """The aware expiry, or None when the session has no lifetime limit."""
         return self._expires_at
 
     @property
@@ -163,7 +164,7 @@ class SandboxSession:
             message = "Sandbox session identity changed"
             raise TypeError(message)
         next_state = state(response.get("state"))
-        expiry = timestamp(response.get("expires_at"))
+        expiry = nullable_timestamp(response.get("expires_at"))
         self._state, self._expires_at = next_state, expiry
         return self
 

@@ -71,7 +71,7 @@ Context exit skips an already terminating or terminated session and treats a
 cleanup 404 as already removed. Other cleanup failures preserve an existing body
 exception and attach a note. Session identity, lifecycle state, expiry, and file
 access are read-only properties. `state` is a `SandboxState` literal value;
-`session.expires_at` and `access.expires_at` are timezone-aware `datetime` values.
+`access.expires_at` is a timezone-aware `datetime`. `session.expires_at` is too, or `None` when the session has no lifetime limit (a local-mode session), so check for `None` before using it as a time.
 
 ## Access a background HTTP service
 

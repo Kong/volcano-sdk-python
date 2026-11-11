@@ -28,7 +28,6 @@ class SandboxCreateOptions(TypedDict):
     sandbox_id: NotRequired[str]
     memory_mb: NotRequired[int]
     max_duration_seconds: NotRequired[int]
-    idle_timeout_seconds: NotRequired[int]
     request_id: NotRequired[str]
 
 

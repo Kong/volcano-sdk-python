@@ -65,9 +65,8 @@ class Sandboxes(SandboxDeployments):
         """
         requests = self._requests.management()
         body = selector(options)
-        for key in ("max_duration_seconds", "idle_timeout_seconds"):
-            if key in options:
-                body[key] = integer(options.get(key))
+        if "max_duration_seconds" in options:
+            body["max_duration_seconds"] = integer(options.get("max_duration_seconds"))
         response = requests.send(
             SandboxRequest(
                 "create_sandbox_session",
