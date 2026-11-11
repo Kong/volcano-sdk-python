@@ -9,6 +9,7 @@ from typing_extensions import override
 
 from volcano_sdk import (
     RealtimeConnectContext,
+    RealtimeConnectionError,
     RealtimeDisconnectContext,
     RealtimeErrorContext,
     Session,
@@ -32,7 +33,12 @@ from volcano_sdk._realtime_transport import (
 
 from .client_inspection import InspectedClient
 from .realtime_probes import channel_state, completed_operation, realtime_state
-from .test_realtime import FakeCentrifugeClient, FakeCentrifugeFactory, FakeSubscription
+from .test_realtime import (
+    FakeCentrifugeClient,
+    FakeCentrifugeFactory,
+    FakeConnectionState,
+    FakeSubscription,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -70,6 +76,7 @@ async def test_failed_connect_clears_credentials_before_retry(
         await channel.subscribe()
 
     assert caught.value is failure
+    assert native.calls == ["disconnect"]
     assert realtime_state(client.realtime).connection is None
     assert realtime_state(client.realtime).connection_session_lineage is None
     assert realtime_state(client.realtime).connection_access_token is None
@@ -80,6 +87,112 @@ async def test_failed_connect_clears_credentials_before_retry(
         assert native.attempts == 2
         assert client.realtime.is_connected
         assert await realtime_state(client.realtime).token() == "new-access"
+    finally:
+        await client.realtime.disconnect()
+
+
+class RejectedConnection(FakeCentrifugeClient):
+    @override
+    async def connect(self) -> None:
+        assert self.events is not None
+        await self.events.on_disconnected(
+            SimpleNamespace(code=3507, reason="permission denied")
+        )
+
+
+@pytest.mark.parametrize(
+    "cleanup_failure",
+    [None, RuntimeError("cleanup failed"), asyncio.CancelledError("cleanup cancelled")],
+)
+async def test_terminal_connection_failure_preserves_reason_and_stops_transport(
+    cleanup_failure: BaseException | None,
+) -> None:
+    native = RejectedConnection()
+    native.disconnect_error = cleanup_failure
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    try:
+        with pytest.raises(
+            RealtimeConnectionError, match="permission denied"
+        ) as caught:
+            await asyncio.wait_for(client.realtime.channel("room").subscribe(), 0.2)
+        assert caught.value.code == 3507
+        assert native.calls == ["disconnect"]
+        assert realtime_state(client.realtime).connection is None
+    finally:
+        await client.realtime.disconnect()
+
+
+async def test_unbound_connection_events_do_not_treat_a_disconnect_as_terminal() -> (
+    None
+):
+    events = ClientEvents(lambda _context: None)
+    await events.on_disconnected(SimpleNamespace(code=3001, reason="transport closed"))
+
+    assert events.failure is None
+    assert not events.started.is_set()
+
+
+async def test_connect_waits_for_a_delayed_native_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    native = FakeCentrifugeClient()
+    entered = asyncio.Event()
+
+    async def connect() -> None:
+        native.state = FakeConnectionState(value="connecting")
+        entered.set()
+        await completed_operation(None)
+
+    monkeypatch.setattr(native, "connect", connect)
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    connecting = asyncio.create_task(realtime_state(client.realtime).connect())
+    try:
+        _ = await asyncio.wait_for(entered.wait(), timeout=0.2)
+        assert not connecting.done()
+        assert not client.realtime.is_connected
+        native.state = FakeConnectionState(value="connected")
+        assert native.events is not None
+        await native.events.on_connected(SimpleNamespace(client="client-123"))
+        _ = await asyncio.wait_for(connecting, timeout=0.2)
+        assert client.realtime.is_connected
+    finally:
+        _ = connecting.cancel()
+        _ = await asyncio.gather(connecting, return_exceptions=True)
+        await client.realtime.disconnect()
+
+
+async def test_connection_startup_times_out_within_its_ten_second_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    native = FakeCentrifugeClient()
+
+    async def connect() -> None:
+        _ = await asyncio.Event().wait()
+
+    monkeypatch.setattr(native, "connect", connect)
+    client = VolcanoClient(
+        anon_key="anon",
+        access_token="access",
+        _realtime_client_factory=FakeCentrifugeFactory(native),
+    )
+    try:
+        # The outer deadline distinguishes the SDK's ten-second timeout from
+        # an absent deadline or one extended beyond its documented bound.
+        async with asyncio.timeout(10.75):
+            with pytest.raises(TimeoutError):
+                _ = await realtime_state(client.realtime).connect()
+        assert native.calls == ["disconnect"]
+        assert realtime_state(client.realtime).connection_session_lineage is None
+        assert realtime_state(client.realtime).connection_access_token is None
+        assert not client.realtime.is_connected
     finally:
         await client.realtime.disconnect()
 

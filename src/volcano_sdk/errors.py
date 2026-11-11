@@ -67,3 +67,17 @@ class ServerError(VolcanoError):
 
 class TransportError(VolcanoError):
     """The request failed before receiving an API response."""
+
+
+class RealtimeConnectionError(RuntimeError):
+    """A terminal realtime disconnect before a connection becomes ready."""
+
+    def __init__(self, message: str, *, code: int | None = None) -> None:
+        """Preserve the disconnect reason and optional numeric transport code."""
+        super().__init__(message)
+        self._code: int | None = code
+
+    @property
+    def code(self) -> int | None:
+        """The transport's disconnect code, when available."""
+        return self._code

@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 from typing import assert_type
 
+from volcano_sdk import RealtimeConnectionError
 from volcano_sdk._realtime_transport import (
     ProjectAwareSubscriptions,
 )
@@ -52,3 +53,9 @@ async def channel_facade_types(realtime: Realtime) -> None:
     await realtime.remove_channel("members", channel_type="presence")
     await realtime.remove_all_channels()
     await realtime.disconnect()
+
+
+def disconnect_code(error: BaseException) -> None:
+    """An exception handler can read numeric disconnect codes without casts."""
+    if isinstance(error, RealtimeConnectionError):
+        _code = assert_type(error.code, int | None)
