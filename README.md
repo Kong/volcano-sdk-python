@@ -3,10 +3,10 @@
 Use the Volcano Python SDK to access authentication, databases, storage,
 functions, locks, logs, and realtime events. Requires Python 3.11 or later.
 
-Start with the [Python quickstart](https://github.com/Kong/volcano-sdk-python/blob/main/docs/README.md).
-See the [functions guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/functions.md) for invocation identity and response handling.
+Start with the [Python quickstart](https://docs.volcano.dev/sdk/python).
+See the [functions guide](https://docs.volcano.dev/sdk/python/functions) for invocation identity and response handling.
 
-See [Authentication](https://github.com/Kong/volcano-sdk-python/blob/main/docs/authentication.md) for account, session, email, and OAuth workflows.
+See [Authentication](https://docs.volcano.dev/sdk/python/authentication) for account, session, email, and OAuth workflows.
 
 ## Install
 
@@ -199,7 +199,7 @@ Acquisition accepts caller-owned UUID `token` and `request_id` values and retrie
 an ambiguous transport failure or HTTP 503 once with the same request and credential.
 Retain those IDs to recover an uncertain acquisition. Other lock methods accept
 `request_id`; block-scoped helpers forward initial IDs only to acquisition.
-See the [lock guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/locks.md)
+See the [lock guide](https://docs.volcano.dev/sdk/python/locks)
 for examples and fencing requirements.
 
 `locks.get()` returns immutable lock availability, expiry, and fencing-token
@@ -282,7 +282,7 @@ Repeating the same decision returns the approval unchanged; a conflicting one, o
 deciding an approval that expired or whose execution ended, raises
 `ConflictError` with `code` set to `approval_decided`, `approval_expired`, or
 `approval_cancelled`. See the
-[functions guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/functions.md#decide-approvals-from-a-backend).
+[functions guide](https://docs.volcano.dev/sdk/python/functions#decide-approvals-from-a-backend).
 
 `durable.messages` sends messages to a running execution, lists its messages,
 and follows what it publishes. It takes the credential `durable.start()` takes;
@@ -316,7 +316,7 @@ visible to the session, leaves the channel and is reported once to the event
 loop's exception handler. A send to an execution that has ended raises
 `ConflictError` with `code` set to `execution_not_running`. Pass `project_id` to
 use the owner's project route instead. See the
-[functions guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/functions.md#send-and-follow-messages).
+[functions guide](https://docs.volcano.dev/sdk/python/functions#send-and-follow-messages).
 
 ## Write a durable function
 
@@ -453,14 +453,14 @@ sets `VOLCANO_PLATFORM_API_URL` on durable functions; without it the call raises
 `RuntimeError`. The function retries registering the approval for up to 30
 seconds. If Volcano refuses it, the call raises the durable runtime's
 `CallbackSubmitterError` with the SDK error's message. See the
-[functions guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/functions.md#wait-for-an-approval).
+[functions guide](https://docs.volcano.dev/sdk/python/functions#wait-for-an-approval).
 
 `logs.search()` returns an immutable page of retained runtime or deployment log
 events. Pass `next_cursor` back as `cursor` to continue a search. `logs.activity()`
 returns immutable time buckets using the same resource selector and query syntax.
 Both methods require a platform user token or a project access token.
 A `read_only` project token is sufficient; end-user sessions cannot read project logs.
-See the [logs guide](https://github.com/Kong/volcano-sdk-python/blob/main/docs/logs.md).
+See the [logs guide](https://docs.volcano.dev/sdk/python/logs).
 
 Database selects, inserts, updates, deletes, log reads, and authenticated storage
 requests (including upload sessions and parts) refresh the captured
@@ -845,7 +845,7 @@ Without a refresh token, `refresh_session()` raises `AuthenticationError` and
 `sign_out()` clears local state and revokes the server session when the access JWT
 contains a readable UUID `session_id`.
 Supplied credentials require both a refresh token and an access JWT with a readable UUID
-`session_id` to enable refresh. See the [token bootstrap example](https://github.com/Kong/volcano-sdk-python/blob/main/docs/README.md#use-a-supplied-access-token).
+`session_id` to enable refresh. See the [token bootstrap example](https://docs.volcano.dev/sdk/python#use-a-supplied-access-token).
 
 Copy a complete native session into another client's memory:
 

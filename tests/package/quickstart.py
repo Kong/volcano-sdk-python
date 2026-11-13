@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import json
 import os
-import re
 import runpy
 import signal
 import threading
@@ -88,11 +87,31 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+# The public quickstart, as published in Kong/volcano-docs
+# content/sdk/python/index.md ("Sign in and read a profile"). Change both together.
+QUICKSTART = """\
+import os
+
+from volcano_sdk import VolcanoClient
+
+client = VolcanoClient(
+    anon_key=os.environ["VOLCANO_ANON_KEY"],
+    api_url=os.environ.get("VOLCANO_API_URL", "https://api.volcano.dev"),
+)
+session = client.auth.sign_in(
+    email=os.environ["VOLCANO_USER_EMAIL"],
+    password=os.environ["VOLCANO_USER_PASSWORD"],
+)
+try:
+    user = client.auth.get_user()
+    assert user.id == session.user_id
+    print(f"Signed in as {user.email}")
+finally:
+    client.auth.sign_out()
+"""
+
+
 def run_quickstart() -> None:
-    document = (Path(__file__).resolve().parents[2] / "docs/README.md").read_text()
-    section = document.split("## Sign in and read a profile\n")[1].split("\n## ")[0]
-    examples = re.findall(r"```python\n([\s\S]*?)\n```", section)
-    assert len(examples) == 1, "Expected one complete documented quickstart"
     user: dict[str, object] = {
         "id": "22222222-2222-4222-8222-222222222222",
         "project_id": "11111111-1111-4111-8111-111111111111",
@@ -118,9 +137,7 @@ def run_quickstart() -> None:
             output = io.StringIO()
             with TemporaryDirectory(prefix="volcano-quickstart-") as directory:
                 example = Path(directory) / "quickstart.py"
-                example_source = cast("object", examples[0])
-                assert isinstance(example_source, str)
-                _ = example.write_text(example_source)
+                _ = example.write_text(QUICKSTART)
                 with redirect_stdout(output):
                     _ = runpy.run_path(str(example), run_name="__main__")
             assert output.getvalue().strip() == f"Signed in as {user['email']}"
