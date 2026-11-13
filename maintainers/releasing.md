@@ -61,8 +61,10 @@ The release-triggered workflow builds after the GitHub release is published, the
 After publication, verify the registry's package identity and version, digest/provenance where available, clean installation, and the documented quickstart against the approved platform revision.
 Record the workflow URL and registry URL. Source-main tests alone do not prove the published artifact contains that source.
 
-`scripts/check_package.sh` also runs the unchanged public quickstart from each
-isolated wheel and sdist install. The test checks sign-in, profile retrieval and
+`scripts/check_package.sh` also runs the public quickstart, kept in
+`tests/package/quickstart.py`, from each isolated wheel and sdist install.
+`Kong/volcano-docs` owns the published copy (`content/sdk/python/index.md`);
+change both together. The test checks sign-in, profile retrieval and
 logout against synthetic local HTTP responses, without publisher credentials.
 It records each unchanged artifact's SHA256 before the release job uploads it.
 This package/example check does not replace registry installation or approved
@@ -114,7 +116,7 @@ Build constraints do not pin consumers' runtime dependencies.
 
 ## Recover from a bad release
 
-For an application regression, first restore its previously tested application revision and dependency lock using [the public guide](../docs/versions.md).
+For an application regression, first restore its previously tested application revision and dependency lock using [the public guide](https://docs.volcano.dev/sdk/python/versions).
 Confirm compatibility with current server configuration and data; an SDK downgrade does not roll either back.
 
 Record the affected versions, symptom, safe previous version, artifact digests and any required data/server remediation in the incident or release issue.
