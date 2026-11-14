@@ -13,6 +13,7 @@ from typing import cast
 import datetime
 
 if TYPE_CHECKING:
+  from ..models.log_app_request_resource import LogAppRequestResource
   from ..models.log_database_request_resource import LogDatabaseRequestResource
   from ..models.log_frontend_request_resource import LogFrontendRequestResource
   from ..models.log_function_request_resource import LogFunctionRequestResource
@@ -30,15 +31,15 @@ class LogStreamRequest:
     """ Stream request for live project logs. Pagination cursors and fixed end times are not supported.
 
         Attributes:
-            resource (LogDatabaseRequestResource | LogFrontendRequestResource | LogFunctionRequestResource): Resource
-                selectors for project log reads.
+            resource (LogAppRequestResource | LogDatabaseRequestResource | LogFrontendRequestResource |
+                LogFunctionRequestResource): Resource selectors for project log reads.
             q (str | Unset): Optional log query using the same syntax as search and activity requests.
             start_time (datetime.datetime | Unset): Start time.
             limit (int | Unset): Maximum number of records to deliver on connect or reconnect before following new events.
                 Default: 100.
      """
 
-    resource: LogDatabaseRequestResource | LogFrontendRequestResource | LogFunctionRequestResource
+    resource: LogAppRequestResource | LogDatabaseRequestResource | LogFrontendRequestResource | LogFunctionRequestResource
     q: str | Unset = UNSET
     start_time: datetime.datetime | Unset = UNSET
     limit: int | Unset = 100
@@ -48,6 +49,7 @@ class LogStreamRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.log_app_request_resource import LogAppRequestResource # noqa: PLC0415
         from ..models.log_database_request_resource import LogDatabaseRequestResource # noqa: PLC0415
         from ..models.log_frontend_request_resource import LogFrontendRequestResource # noqa: PLC0415
         from ..models.log_function_request_resource import LogFunctionRequestResource # noqa: PLC0415
@@ -55,6 +57,8 @@ class LogStreamRequest:
         if isinstance(self.resource, LogFunctionRequestResource):
             resource = self.resource.to_dict()
         elif isinstance(self.resource, LogFrontendRequestResource):
+            resource = self.resource.to_dict()
+        elif isinstance(self.resource, LogDatabaseRequestResource):
             resource = self.resource.to_dict()
         else:
             resource = self.resource.to_dict()
@@ -87,11 +91,12 @@ class LogStreamRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.log_app_request_resource import LogAppRequestResource # noqa: PLC0415
         from ..models.log_database_request_resource import LogDatabaseRequestResource # noqa: PLC0415
         from ..models.log_frontend_request_resource import LogFrontendRequestResource # noqa: PLC0415
         from ..models.log_function_request_resource import LogFunctionRequestResource # noqa: PLC0415
         d = dict(src_dict)
-        def _parse_resource(data: object) -> LogDatabaseRequestResource | LogFrontendRequestResource | LogFunctionRequestResource:
+        def _parse_resource(data: object) -> LogAppRequestResource | LogDatabaseRequestResource | LogFrontendRequestResource | LogFunctionRequestResource:
             try:
                 if not isinstance(data, dict):
                     raise TypeError()
@@ -112,13 +117,23 @@ class LogStreamRequest:
                 return componentsschemas_log_request_resource_type_1
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                componentsschemas_log_request_resource_type_2 = LogDatabaseRequestResource.from_dict(data)
+
+
+
+                return componentsschemas_log_request_resource_type_2
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
             if not isinstance(data, dict):
                 raise TypeError()
-            componentsschemas_log_request_resource_type_2 = LogDatabaseRequestResource.from_dict(data)
+            componentsschemas_log_request_resource_type_3 = LogAppRequestResource.from_dict(data)
 
 
 
-            return componentsschemas_log_request_resource_type_2
+            return componentsschemas_log_request_resource_type_3
 
         resource = _parse_resource(d.pop("resource"))
 

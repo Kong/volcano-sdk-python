@@ -10,6 +10,10 @@ from ..types import UNSET, Unset
 
 from ..models.function_kind import check_function_kind
 from ..models.function_kind import FunctionKind
+from ..models.function_scheduler_health import check_function_scheduler_health
+from ..models.function_scheduler_health import FunctionSchedulerHealth
+from ..models.function_scheduler_last_run_status import check_function_scheduler_last_run_status
+from ..models.function_scheduler_last_run_status import FunctionSchedulerLastRunStatus
 from ..models.function_scheduler_schedule_kind import check_function_scheduler_schedule_kind
 from ..models.function_scheduler_schedule_kind import FunctionSchedulerScheduleKind
 from ..types import UNSET, Unset
@@ -53,6 +57,16 @@ class FunctionScheduler:
             last_error (str | Unset):
             run_count (int | Unset): Total number of times this scheduler has executed. 0 for a scheduler that has never
                 run.
+            health (FunctionSchedulerHealth | Unset): `failing` while `consecutive_failures` is above 0; `healthy`
+                otherwise, including before its first run in the region the scheduler runs in now. A run from a region it moved
+                away from does not count. For a durable function a run finishes when its execution does, so a run that starts
+                but then fails counts as failed.
+            consecutive_failures (int | Unset): How many runs in a row have failed in the region the scheduler runs in now.
+                Resets to 0 when a run succeeds, and starts at 0 in a region it moves to.
+            last_run_status (FunctionSchedulerLastRunStatus | Unset): Outcome of the most recent finished run. Absent before
+                the first.
+            last_success_at (datetime.datetime | Unset): When the most recent successful run finished.
+            last_failure_at (datetime.datetime | Unset): When the most recent failed run finished.
             created_at (datetime.datetime | Unset):
             updated_at (datetime.datetime | Unset):
      """
@@ -73,6 +87,11 @@ class FunctionScheduler:
     last_completed_at: datetime.datetime | Unset = UNSET
     last_error: str | Unset = UNSET
     run_count: int | Unset = UNSET
+    health: FunctionSchedulerHealth | Unset = UNSET
+    consecutive_failures: int | Unset = UNSET
+    last_run_status: FunctionSchedulerLastRunStatus | Unset = UNSET
+    last_success_at: datetime.datetime | Unset = UNSET
+    last_failure_at: datetime.datetime | Unset = UNSET
     created_at: datetime.datetime | Unset = UNSET
     updated_at: datetime.datetime | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -139,6 +158,26 @@ class FunctionScheduler:
 
         run_count = self.run_count
 
+        health: str | Unset = UNSET
+        if not isinstance(self.health, Unset):
+            health = self.health
+
+
+        consecutive_failures = self.consecutive_failures
+
+        last_run_status: str | Unset = UNSET
+        if not isinstance(self.last_run_status, Unset):
+            last_run_status = self.last_run_status
+
+
+        last_success_at: str | Unset = UNSET
+        if not isinstance(self.last_success_at, Unset):
+            last_success_at = self.last_success_at.isoformat()
+
+        last_failure_at: str | Unset = UNSET
+        if not isinstance(self.last_failure_at, Unset):
+            last_failure_at = self.last_failure_at.isoformat()
+
         created_at: str | Unset = UNSET
         if not isinstance(self.created_at, Unset):
             created_at = self.created_at.isoformat()
@@ -184,6 +223,16 @@ class FunctionScheduler:
             field_dict["last_error"] = last_error
         if run_count is not UNSET:
             field_dict["run_count"] = run_count
+        if health is not UNSET:
+            field_dict["health"] = health
+        if consecutive_failures is not UNSET:
+            field_dict["consecutive_failures"] = consecutive_failures
+        if last_run_status is not UNSET:
+            field_dict["last_run_status"] = last_run_status
+        if last_success_at is not UNSET:
+            field_dict["last_success_at"] = last_success_at
+        if last_failure_at is not UNSET:
+            field_dict["last_failure_at"] = last_failure_at
         if created_at is not UNSET:
             field_dict["created_at"] = created_at
         if updated_at is not UNSET:
@@ -302,6 +351,48 @@ class FunctionScheduler:
 
         run_count = d.pop("run_count", UNSET)
 
+        _health = d.pop("health", UNSET)
+        health: FunctionSchedulerHealth | Unset
+        if isinstance(_health,  Unset):
+            health = UNSET
+        else:
+            health = check_function_scheduler_health(_health)
+
+
+
+
+        consecutive_failures = d.pop("consecutive_failures", UNSET)
+
+        _last_run_status = d.pop("last_run_status", UNSET)
+        last_run_status: FunctionSchedulerLastRunStatus | Unset
+        if isinstance(_last_run_status,  Unset):
+            last_run_status = UNSET
+        else:
+            last_run_status = check_function_scheduler_last_run_status(_last_run_status)
+
+
+
+
+        _last_success_at = d.pop("last_success_at", UNSET)
+        last_success_at: datetime.datetime | Unset
+        if isinstance(_last_success_at,  Unset):
+            last_success_at = UNSET
+        else:
+            last_success_at = datetime.datetime.fromisoformat(_last_success_at)
+
+
+
+
+        _last_failure_at = d.pop("last_failure_at", UNSET)
+        last_failure_at: datetime.datetime | Unset
+        if isinstance(_last_failure_at,  Unset):
+            last_failure_at = UNSET
+        else:
+            last_failure_at = datetime.datetime.fromisoformat(_last_failure_at)
+
+
+
+
         _created_at = d.pop("created_at", UNSET)
         created_at: datetime.datetime | Unset
         if isinstance(_created_at,  Unset):
@@ -339,6 +430,11 @@ class FunctionScheduler:
             last_completed_at=last_completed_at,
             last_error=last_error,
             run_count=run_count,
+            health=health,
+            consecutive_failures=consecutive_failures,
+            last_run_status=last_run_status,
+            last_success_at=last_success_at,
+            last_failure_at=last_failure_at,
             created_at=created_at,
             updated_at=updated_at,
         )

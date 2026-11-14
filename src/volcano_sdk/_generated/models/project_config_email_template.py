@@ -23,7 +23,9 @@ T = TypeVar("T", bound="ProjectConfigEmailTemplate")
 class ProjectConfigEmailTemplate:
     """ 
         Attributes:
-            subject (str | Unset):
+            subject (str | Unset): Subject template. For new or changed values, literal interior carriage returns or
+                newlines after Go template whitespace trimming return 422. Outer whitespace and trailing block-scalar newlines
+                are allowed. Unchanged stored subjects are preserved.
             html_body (str | Unset): HTML body. Max 256 KiB. SUPERAGENT plan required for custom bodies.
             text_body (str | Unset): Plain-text body. Max 256 KiB. SUPERAGENT plan required for custom bodies.
      """

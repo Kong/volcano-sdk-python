@@ -17,6 +17,10 @@ from typing import cast
 from uuid import UUID
 import datetime
 
+if TYPE_CHECKING:
+  from ..models.sandbox_session_applied_limits import SandboxSessionAppliedLimits
+  from ..models.sandbox_session_executions import SandboxSessionExecutions
+  from ..models.sandbox_session_network import SandboxSessionNetwork
 
 
 
@@ -40,7 +44,19 @@ class SandboxSession:
             memory_mb (int):
             created_at (datetime.datetime):
             expires_at (datetime.datetime | None): Absolute VM expiry. Null means unlimited in local mode.
+            network (SandboxSessionNetwork):
+            executions (SandboxSessionExecutions): How the session's command executions are kept. Fixed when the session is
+                created.
+            last_error_code (str | Unset): Last recorded lifecycle reason, such as sandbox_run_hook_timeout or
+                sandbox_authority_or_expiry. Historical information, not a current error; use state for the current session
+                state. Retained when later observations supply no reason, including after termination or recovery. Omitted when
+                no reason is known. Values may be added; this field does not imply whether a command ran or whether it can be
+                retried.
             started_at (datetime.datetime | Unset):
+            limits (SandboxSessionAppliedLimits | Unset): The caps the session enforces, as the session reports them.
+                Present only
+                when the session was created with `limits`. The session stays
+                `starting` until `applied` is known.
      """
 
     id: UUID
@@ -52,13 +68,20 @@ class SandboxSession:
     memory_mb: int
     created_at: datetime.datetime
     expires_at: datetime.datetime | None
+    network: SandboxSessionNetwork
+    executions: SandboxSessionExecutions
+    last_error_code: str | Unset = UNSET
     started_at: datetime.datetime | Unset = UNSET
+    limits: SandboxSessionAppliedLimits | Unset = UNSET
 
 
 
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.sandbox_session_applied_limits import SandboxSessionAppliedLimits # noqa: PLC0415
+        from ..models.sandbox_session_executions import SandboxSessionExecutions # noqa: PLC0415
+        from ..models.sandbox_session_network import SandboxSessionNetwork # noqa: PLC0415
         id = str(self.id)
 
         project_id = str(self.project_id)
@@ -85,9 +108,19 @@ class SandboxSession:
         else:
             expires_at = self.expires_at
 
+        network = self.network.to_dict()
+
+        executions = self.executions.to_dict()
+
+        last_error_code = self.last_error_code
+
         started_at: str | Unset = UNSET
         if not isinstance(self.started_at, Unset):
             started_at = self.started_at.isoformat()
+
+        limits: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.limits, Unset):
+            limits = self.limits.to_dict()
 
 
         field_dict: dict[str, Any] = {}
@@ -102,9 +135,15 @@ class SandboxSession:
             "memory_mb": memory_mb,
             "created_at": created_at,
             "expires_at": expires_at,
+            "network": network,
+            "executions": executions,
         })
+        if last_error_code is not UNSET:
+            field_dict["last_error_code"] = last_error_code
         if started_at is not UNSET:
             field_dict["started_at"] = started_at
+        if limits is not UNSET:
+            field_dict["limits"] = limits
 
         return field_dict
 
@@ -112,6 +151,9 @@ class SandboxSession:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.sandbox_session_applied_limits import SandboxSessionAppliedLimits # noqa: PLC0415
+        from ..models.sandbox_session_executions import SandboxSessionExecutions # noqa: PLC0415
+        from ..models.sandbox_session_network import SandboxSessionNetwork # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 
@@ -178,12 +220,34 @@ class SandboxSession:
         expires_at = _parse_expires_at(d.pop("expires_at"))
 
 
+        network = SandboxSessionNetwork.from_dict(d.pop("network"))
+
+
+
+
+        executions = SandboxSessionExecutions.from_dict(d.pop("executions"))
+
+
+
+
+        last_error_code = d.pop("last_error_code", UNSET)
+
         _started_at = d.pop("started_at", UNSET)
         started_at: datetime.datetime | Unset
         if isinstance(_started_at,  Unset):
             started_at = UNSET
         else:
             started_at = datetime.datetime.fromisoformat(_started_at)
+
+
+
+
+        _limits = d.pop("limits", UNSET)
+        limits: SandboxSessionAppliedLimits | Unset
+        if isinstance(_limits,  Unset):
+            limits = UNSET
+        else:
+            limits = SandboxSessionAppliedLimits.from_dict(_limits)
 
 
 
@@ -198,7 +262,11 @@ class SandboxSession:
             memory_mb=memory_mb,
             created_at=created_at,
             expires_at=expires_at,
+            network=network,
+            executions=executions,
+            last_error_code=last_error_code,
             started_at=started_at,
+            limits=limits,
         )
 
         return sandbox_session

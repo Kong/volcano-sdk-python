@@ -8,6 +8,8 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.issue_source import check_issue_source
+from ..models.issue_source import IssueSource
 from ..models.issue_status import check_issue_status
 from ..models.issue_status import IssueStatus
 from ..types import UNSET, Unset
@@ -16,6 +18,7 @@ from uuid import UUID
 import datetime
 
 if TYPE_CHECKING:
+  from ..models.issue_finding import IssueFinding
   from ..models.resource_reference import ResourceReference
 
 
@@ -28,7 +31,10 @@ T = TypeVar("T", bound="Issue")
 
 @_attrs_define
 class Issue:
-    """ Runtime errors from one function or frontend, grouped by error type and stack.
+    """ Runtime errors from one function or frontend, grouped by error type and stack, one LavaFlow Code Quality finding,
+    failed builds of one function or frontend with the same first error, a user-reported project problem, or an issue a
+    person wrote. A report or a written issue has a project resource, zero runtime occurrences, and the time it was made
+    as its first and last seen times.
 
         Attributes:
             id (UUID):
@@ -37,16 +43,37 @@ class Issue:
             title (str): The error type and message, with values such as IDs, numbers, and
                 URLs replaced by placeholders like `<uuid>` and `<n>`.
             status (IssueStatus): `open` until someone resolves or ignores the issue. A resolved issue
-                seen again reopens.
+                seen again reopens. A reported problem resolves when its LavaFlow fix
+                merges. Volcano ignores one whose report it deleted before any fix
+                merged, so it no longer counts toward the project's open issues.
+            source (IssueSource): Where the issue came from: `runtime` for errors your code logged, `code_quality` for a
+                LavaFlow Code Quality finding in code a deploy changed, `build` for deploys of one function or frontend that
+                failed in its own build step, `report` for a problem reported for the project, such as through Slack, or
+                `request` for an issue a person wrote with `POST /issues`. A later deploy that builds resolves a `build` issue.
+                Deploys Volcano failed, such as a timeout or a refused build, never make one.
+            exception (bool): Whether the issue holds an exception: one your code threw, or one it
+                logged with `console.error(err)` or Python's `logger.exception()`.
+                `false` for an error logged any other way, such as a structured log
+                line, a logger's error line, or a printed traceback, and for every
+                `code_quality` issue. `true` for every `build` issue: a failed build
+                stops its deploy as an exception stops a request. Once `true`, it
+                stays `true`.
             event_count (int): Errors counted in this issue. A retried delivery can count an error twice.
             first_seen_at (datetime.datetime):
             last_seen_at (datetime.datetime):
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
             error_type (str | Unset): The exception class, such as `TypeError`. Omitted when the error has none.
-            culprit (str | Unset): The innermost frame of your code in the stack, as `function (file)`. Omitted without a
-                stack.
+            culprit (str | Unset): The innermost frame of your code in the stack, as `function (file)`. For a frontend's
+                Next.js build output, the outermost route or page file of the build in the stack, such as
+                `.next/server/app/checkout/route.js`, or without one, the outermost file of the build. For a minified file of a
+                function's own bundle, the file alone. Omitted without a stack.
+            finding (IssueFinding | Unset): The LavaFlow Code Quality finding behind a `code_quality` issue.
+            description (str | Unset): What the person who wrote a `request` issue asked for, as they wrote it, trimmed.
+                Omitted for every other source.
             last_region (str | Unset): The region that served the latest error, such as `us-east-1`.
+            last_deployment_id (UUID | Unset): For a `build` issue, the latest deployment that failed in its build step.
+                Omitted for every other issue: runtime errors are not tied to a deployment.
             sample_event_id (str | Unset): The ID of the latest error's log event, while logs retain it.
             sample_event_at (datetime.datetime | Unset): When the latest error's log event was written.
             resolved_at (datetime.datetime | Unset): When the issue was resolved. Present only while it is resolved.
@@ -58,6 +85,8 @@ class Issue:
     resource: ResourceReference
     title: str
     status: IssueStatus
+    source: IssueSource
+    exception: bool
     event_count: int
     first_seen_at: datetime.datetime
     last_seen_at: datetime.datetime
@@ -65,7 +94,10 @@ class Issue:
     updated_at: datetime.datetime
     error_type: str | Unset = UNSET
     culprit: str | Unset = UNSET
+    finding: IssueFinding | Unset = UNSET
+    description: str | Unset = UNSET
     last_region: str | Unset = UNSET
+    last_deployment_id: UUID | Unset = UNSET
     sample_event_id: str | Unset = UNSET
     sample_event_at: datetime.datetime | Unset = UNSET
     resolved_at: datetime.datetime | Unset = UNSET
@@ -77,6 +109,7 @@ class Issue:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.issue_finding import IssueFinding # noqa: PLC0415
         from ..models.resource_reference import ResourceReference # noqa: PLC0415
         id = str(self.id)
 
@@ -87,6 +120,10 @@ class Issue:
         title = self.title
 
         status: str = self.status
+
+        source: str = self.source
+
+        exception = self.exception
 
         event_count = self.event_count
 
@@ -102,7 +139,17 @@ class Issue:
 
         culprit = self.culprit
 
+        finding: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.finding, Unset):
+            finding = self.finding.to_dict()
+
+        description = self.description
+
         last_region = self.last_region
+
+        last_deployment_id: str | Unset = UNSET
+        if not isinstance(self.last_deployment_id, Unset):
+            last_deployment_id = str(self.last_deployment_id)
 
         sample_event_id = self.sample_event_id
 
@@ -127,6 +174,8 @@ class Issue:
             "resource": resource,
             "title": title,
             "status": status,
+            "source": source,
+            "exception": exception,
             "event_count": event_count,
             "first_seen_at": first_seen_at,
             "last_seen_at": last_seen_at,
@@ -137,8 +186,14 @@ class Issue:
             field_dict["error_type"] = error_type
         if culprit is not UNSET:
             field_dict["culprit"] = culprit
+        if finding is not UNSET:
+            field_dict["finding"] = finding
+        if description is not UNSET:
+            field_dict["description"] = description
         if last_region is not UNSET:
             field_dict["last_region"] = last_region
+        if last_deployment_id is not UNSET:
+            field_dict["last_deployment_id"] = last_deployment_id
         if sample_event_id is not UNSET:
             field_dict["sample_event_id"] = sample_event_id
         if sample_event_at is not UNSET:
@@ -154,6 +209,7 @@ class Issue:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.issue_finding import IssueFinding # noqa: PLC0415
         from ..models.resource_reference import ResourceReference # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
@@ -177,6 +233,13 @@ class Issue:
 
 
 
+
+        source = check_issue_source(d.pop("source"))
+
+
+
+
+        exception = d.pop("exception")
 
         event_count = d.pop("event_count")
 
@@ -204,7 +267,29 @@ class Issue:
 
         culprit = d.pop("culprit", UNSET)
 
+        _finding = d.pop("finding", UNSET)
+        finding: IssueFinding | Unset
+        if isinstance(_finding,  Unset):
+            finding = UNSET
+        else:
+            finding = IssueFinding.from_dict(_finding)
+
+
+
+
+        description = d.pop("description", UNSET)
+
         last_region = d.pop("last_region", UNSET)
+
+        _last_deployment_id = d.pop("last_deployment_id", UNSET)
+        last_deployment_id: UUID | Unset
+        if isinstance(_last_deployment_id,  Unset):
+            last_deployment_id = UNSET
+        else:
+            last_deployment_id = UUID(_last_deployment_id)
+
+
+
 
         sample_event_id = d.pop("sample_event_id", UNSET)
 
@@ -244,6 +329,8 @@ class Issue:
             resource=resource,
             title=title,
             status=status,
+            source=source,
+            exception=exception,
             event_count=event_count,
             first_seen_at=first_seen_at,
             last_seen_at=last_seen_at,
@@ -251,7 +338,10 @@ class Issue:
             updated_at=updated_at,
             error_type=error_type,
             culprit=culprit,
+            finding=finding,
+            description=description,
             last_region=last_region,
+            last_deployment_id=last_deployment_id,
             sample_event_id=sample_event_id,
             sample_event_at=sample_event_at,
             resolved_at=resolved_at,

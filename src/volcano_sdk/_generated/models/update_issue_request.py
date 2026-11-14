@@ -26,7 +26,9 @@ class UpdateIssueRequest:
     """ 
         Attributes:
             status (IssueStatus): `open` until someone resolves or ignores the issue. A resolved issue
-                seen again reopens.
+                seen again reopens. A reported problem resolves when its LavaFlow fix
+                merges. Volcano ignores one whose report it deleted before any fix
+                merged, so it no longer counts toward the project's open issues.
      """
 
     status: IssueStatus

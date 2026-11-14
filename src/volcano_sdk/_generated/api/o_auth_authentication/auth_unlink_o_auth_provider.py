@@ -84,8 +84,10 @@ def sync_detailed(
 ) -> Response[Any | Error]:
     """ Unlink OAuth provider
 
-     Remove OAuth provider from user's account.
-    Cannot unlink if it's the only authentication method.
+     Remove OAuth provider from user's account. Refused when the account would
+    have no other way to sign in: another linked OAuth provider that's enabled
+    for the project, or a password while email/password sign-in is on for the
+    project (`enable_email_password`).
 
     Args:
         provider (AuthUnlinkOAuthProviderProvider):
@@ -118,8 +120,10 @@ def sync(
 ) -> Any | Error | None:
     """ Unlink OAuth provider
 
-     Remove OAuth provider from user's account.
-    Cannot unlink if it's the only authentication method.
+     Remove OAuth provider from user's account. Refused when the account would
+    have no other way to sign in: another linked OAuth provider that's enabled
+    for the project, or a password while email/password sign-in is on for the
+    project (`enable_email_password`).
 
     Args:
         provider (AuthUnlinkOAuthProviderProvider):
@@ -147,8 +151,10 @@ async def asyncio_detailed(
 ) -> Response[Any | Error]:
     """ Unlink OAuth provider
 
-     Remove OAuth provider from user's account.
-    Cannot unlink if it's the only authentication method.
+     Remove OAuth provider from user's account. Refused when the account would
+    have no other way to sign in: another linked OAuth provider that's enabled
+    for the project, or a password while email/password sign-in is on for the
+    project (`enable_email_password`).
 
     Args:
         provider (AuthUnlinkOAuthProviderProvider):
@@ -181,8 +187,10 @@ async def asyncio(
 ) -> Any | Error | None:
     """ Unlink OAuth provider
 
-     Remove OAuth provider from user's account.
-    Cannot unlink if it's the only authentication method.
+     Remove OAuth provider from user's account. Refused when the account would
+    have no other way to sign in: another linked OAuth provider that's enabled
+    for the project, or a password while email/password sign-in is on for the
+    project (`enable_email_password`).
 
     Args:
         provider (AuthUnlinkOAuthProviderProvider):

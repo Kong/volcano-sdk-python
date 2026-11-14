@@ -23,6 +23,7 @@ def request_kwargs(
     limit: int | Unset = 10,
     search: str | Unset = UNSET,
     include_revoked: bool | Unset = False,
+    include_delegated: bool | Unset = False,
 
 ) -> dict[str, Any]:
     
@@ -38,6 +39,8 @@ def request_kwargs(
     params["search"] = search
 
     params["include_revoked"] = include_revoked
+
+    params["include_delegated"] = include_delegated
 
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
@@ -106,6 +109,7 @@ def sync_detailed(
     limit: int | Unset = 10,
     search: str | Unset = UNSET,
     include_revoked: bool | Unset = False,
+    include_delegated: bool | Unset = False,
 
 ) -> Response[Error | PaginatedProjectAccessTokens]:
     """ List a project's access tokens
@@ -118,6 +122,12 @@ def sync_detailed(
     revoked and expired ones are hidden. Pass `include_revoked=true` to see
     them, which is how you find out what a key did before it stopped working.
 
+    Delegated grants are hidden by default too. A first-party app you have
+    allowed to act on this project mints one every few minutes, and you
+    revoke the app's access as a whole rather than grant by grant. Pass
+    `include_delegated=true` to list them; they have scope `delegated`.
+    They never count toward the project's limit of 100 live tokens.
+
     Requires a platform token. A project access token cannot manage project
     access tokens, so a leaked credential cannot enumerate or replace itself.
 
@@ -127,6 +137,7 @@ def sync_detailed(
         limit (int | Unset):  Default: 10.
         search (str | Unset):
         include_revoked (bool | Unset):  Default: False.
+        include_delegated (bool | Unset):  Default: False.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -143,6 +154,7 @@ page=page,
 limit=limit,
 search=search,
 include_revoked=include_revoked,
+include_delegated=include_delegated,
 
     )
 
@@ -160,6 +172,7 @@ def sync(
     limit: int | Unset = 10,
     search: str | Unset = UNSET,
     include_revoked: bool | Unset = False,
+    include_delegated: bool | Unset = False,
 
 ) -> Error | PaginatedProjectAccessTokens | None:
     """ List a project's access tokens
@@ -172,6 +185,12 @@ def sync(
     revoked and expired ones are hidden. Pass `include_revoked=true` to see
     them, which is how you find out what a key did before it stopped working.
 
+    Delegated grants are hidden by default too. A first-party app you have
+    allowed to act on this project mints one every few minutes, and you
+    revoke the app's access as a whole rather than grant by grant. Pass
+    `include_delegated=true` to list them; they have scope `delegated`.
+    They never count toward the project's limit of 100 live tokens.
+
     Requires a platform token. A project access token cannot manage project
     access tokens, so a leaked credential cannot enumerate or replace itself.
 
@@ -181,6 +200,7 @@ def sync(
         limit (int | Unset):  Default: 10.
         search (str | Unset):
         include_revoked (bool | Unset):  Default: False.
+        include_delegated (bool | Unset):  Default: False.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -198,6 +218,7 @@ page=page,
 limit=limit,
 search=search,
 include_revoked=include_revoked,
+include_delegated=include_delegated,
 
     ).parsed
 
@@ -209,6 +230,7 @@ async def asyncio_detailed(
     limit: int | Unset = 10,
     search: str | Unset = UNSET,
     include_revoked: bool | Unset = False,
+    include_delegated: bool | Unset = False,
 
 ) -> Response[Error | PaginatedProjectAccessTokens]:
     """ List a project's access tokens
@@ -221,6 +243,12 @@ async def asyncio_detailed(
     revoked and expired ones are hidden. Pass `include_revoked=true` to see
     them, which is how you find out what a key did before it stopped working.
 
+    Delegated grants are hidden by default too. A first-party app you have
+    allowed to act on this project mints one every few minutes, and you
+    revoke the app's access as a whole rather than grant by grant. Pass
+    `include_delegated=true` to list them; they have scope `delegated`.
+    They never count toward the project's limit of 100 live tokens.
+
     Requires a platform token. A project access token cannot manage project
     access tokens, so a leaked credential cannot enumerate or replace itself.
 
@@ -230,6 +258,7 @@ async def asyncio_detailed(
         limit (int | Unset):  Default: 10.
         search (str | Unset):
         include_revoked (bool | Unset):  Default: False.
+        include_delegated (bool | Unset):  Default: False.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -246,6 +275,7 @@ page=page,
 limit=limit,
 search=search,
 include_revoked=include_revoked,
+include_delegated=include_delegated,
 
     )
 
@@ -263,6 +293,7 @@ async def asyncio(
     limit: int | Unset = 10,
     search: str | Unset = UNSET,
     include_revoked: bool | Unset = False,
+    include_delegated: bool | Unset = False,
 
 ) -> Error | PaginatedProjectAccessTokens | None:
     """ List a project's access tokens
@@ -275,6 +306,12 @@ async def asyncio(
     revoked and expired ones are hidden. Pass `include_revoked=true` to see
     them, which is how you find out what a key did before it stopped working.
 
+    Delegated grants are hidden by default too. A first-party app you have
+    allowed to act on this project mints one every few minutes, and you
+    revoke the app's access as a whole rather than grant by grant. Pass
+    `include_delegated=true` to list them; they have scope `delegated`.
+    They never count toward the project's limit of 100 live tokens.
+
     Requires a platform token. A project access token cannot manage project
     access tokens, so a leaked credential cannot enumerate or replace itself.
 
@@ -284,6 +321,7 @@ async def asyncio(
         limit (int | Unset):  Default: 10.
         search (str | Unset):
         include_revoked (bool | Unset):  Default: False.
+        include_delegated (bool | Unset):  Default: False.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -301,5 +339,6 @@ page=page,
 limit=limit,
 search=search,
 include_revoked=include_revoked,
+include_delegated=include_delegated,
 
     )).parsed

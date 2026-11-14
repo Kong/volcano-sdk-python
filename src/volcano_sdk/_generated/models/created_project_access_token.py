@@ -8,8 +8,8 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..models.project_access_token_scope import check_project_access_token_scope
-from ..models.project_access_token_scope import ProjectAccessTokenScope
+from ..models.project_access_token_listed_scope import check_project_access_token_listed_scope
+from ..models.project_access_token_listed_scope import ProjectAccessTokenListedScope
 from ..models.project_access_token_status import check_project_access_token_status
 from ..models.project_access_token_status import ProjectAccessTokenStatus
 from ..models.project_access_token_token_source import check_project_access_token_token_source
@@ -36,25 +36,12 @@ class CreatedProjectAccessToken:
             project_id (UUID):
             name (str): Unique per project.
             token_prefix (str): First 12 characters of the secret, for recognising a token in a list.
-            scope (ProjectAccessTokenScope): What a project access token may do within its project.
+            scope (ProjectAccessTokenListedScope): A listed token's scope. `full` and `read_only` are the scopes you
+                choose when you create a token; see `ProjectAccessTokenScope`.
 
-                `full` is everything you can do to that one project, up to and including
-                deleting it. It cannot manage access tokens, so a leaked token cannot
-                mint a replacement or erase the record of its own use, but for a CI or
-                agent credential that only deploys, prefer `read_only` where the job
-                allows it.
-
-                `read_only` refuses mutations. It is enforced by route classification
-                rather than HTTP method, so the log and metrics query endpoints remain
-                available even though they are POST requests that carry body filters.
-
-                `read_only` also refuses the reads that return a credential — service
-                keys, anon keys, variable values, and database connection strings. Those
-                grant write access over the project's data and keep working after the
-                token that fetched them is revoked, so returning one to a read-only
-                credential would make the scope a formality. An anon key is included
-                because its permissions are chosen per key and may include uploading,
-                deleting, and publishing.
+                `delegated` marks a delegated grant: a `pg-` token a first-party app
+                minted for one run from the access you allowed it. It is listed only
+                with `include_delegated=true`, and you cannot create one.
             status (ProjectAccessTokenStatus): `revoked` means the token was deliberately revoked, by you or by the
                 deletion of its project. `expired` means it simply reached
                 `expires_at`; nothing was taken away. Both are refused, and both keep
@@ -76,7 +63,7 @@ class CreatedProjectAccessToken:
     project_id: UUID
     name: str
     token_prefix: str
-    scope: ProjectAccessTokenScope
+    scope: ProjectAccessTokenListedScope
     status: ProjectAccessTokenStatus
     token_source: ProjectAccessTokenTokenSource
     created_at: datetime.datetime
@@ -168,7 +155,7 @@ class CreatedProjectAccessToken:
 
         token_prefix = d.pop("token_prefix")
 
-        scope = check_project_access_token_scope(d.pop("scope"))
+        scope = check_project_access_token_listed_scope(d.pop("scope"))
 
 
 

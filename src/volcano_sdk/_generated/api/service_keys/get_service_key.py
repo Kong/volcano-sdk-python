@@ -8,6 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.error import Error
 from ...models.service_key import ServiceKey
 from typing import cast
 from uuid import UUID
@@ -35,13 +36,20 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | ServiceKey | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Error | ServiceKey | None:
     if response.status_code == 200:
         response_200 = ServiceKey.from_dict(response.json())
 
 
 
         return response_200
+
+    if response.status_code == 403:
+        response_403 = Error.from_dict(response.json())
+
+
+
+        return response_403
 
     if response.status_code == 404:
         response_404 = cast(Any, None)
@@ -53,7 +61,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | ServiceKey]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error | ServiceKey]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -68,7 +76,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[Any | ServiceKey]:
+) -> Response[Any | Error | ServiceKey]:
     """ Get service key
 
      Get details of a specific service key
@@ -82,7 +90,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | ServiceKey]
+        Response[Any | Error | ServiceKey]
      """
 
 
@@ -104,7 +112,7 @@ def sync(
     *,
     client: AuthenticatedClient,
 
-) -> Any | ServiceKey | None:
+) -> Any | Error | ServiceKey | None:
     """ Get service key
 
      Get details of a specific service key
@@ -118,7 +126,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | ServiceKey
+        Any | Error | ServiceKey
      """
 
 
@@ -135,7 +143,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[Any | ServiceKey]:
+) -> Response[Any | Error | ServiceKey]:
     """ Get service key
 
      Get details of a specific service key
@@ -149,7 +157,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | ServiceKey]
+        Response[Any | Error | ServiceKey]
      """
 
 
@@ -171,7 +179,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
 
-) -> Any | ServiceKey | None:
+) -> Any | Error | ServiceKey | None:
     """ Get service key
 
      Get details of a specific service key
@@ -185,7 +193,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | ServiceKey
+        Any | Error | ServiceKey
      """
 
 
