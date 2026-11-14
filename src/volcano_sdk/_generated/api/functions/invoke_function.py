@@ -151,11 +151,12 @@ def sync_detailed(
     - Function must have `visibility: public`
     - Function receives payload only (no `__volcano_auth`)
 
-    **Reserved payload keys:** the top-level `__volcano_auth` and
-    `__volcano_http` keys are reserved. Volcano removes caller-supplied
-    values for both before the function runs; only an auth user token adds
-    a server-built `__volcano_auth`, and only HTTP-mode ingress sets
-    `__volcano_http: true`.
+    **Reserved payload keys:** the top-level `__volcano_auth`,
+    `__volcano_http` and `__volcano_mount` keys are reserved. Volcano
+    removes caller-supplied values for all three before the function runs;
+    only an auth user token adds a server-built `__volcano_auth`, and only
+    HTTP-mode ingress sets `__volcano_http: true`. `__volcano_mount` is set
+    only by Volcano's first-party app mounts.
 
     **Transport and CORS:**
     - This operation is the authenticated direct RPC endpoint and always uses the
@@ -242,11 +243,12 @@ def sync(
     - Function must have `visibility: public`
     - Function receives payload only (no `__volcano_auth`)
 
-    **Reserved payload keys:** the top-level `__volcano_auth` and
-    `__volcano_http` keys are reserved. Volcano removes caller-supplied
-    values for both before the function runs; only an auth user token adds
-    a server-built `__volcano_auth`, and only HTTP-mode ingress sets
-    `__volcano_http: true`.
+    **Reserved payload keys:** the top-level `__volcano_auth`,
+    `__volcano_http` and `__volcano_mount` keys are reserved. Volcano
+    removes caller-supplied values for all three before the function runs;
+    only an auth user token adds a server-built `__volcano_auth`, and only
+    HTTP-mode ingress sets `__volcano_http: true`. `__volcano_mount` is set
+    only by Volcano's first-party app mounts.
 
     **Transport and CORS:**
     - This operation is the authenticated direct RPC endpoint and always uses the
@@ -328,11 +330,12 @@ async def asyncio_detailed(
     - Function must have `visibility: public`
     - Function receives payload only (no `__volcano_auth`)
 
-    **Reserved payload keys:** the top-level `__volcano_auth` and
-    `__volcano_http` keys are reserved. Volcano removes caller-supplied
-    values for both before the function runs; only an auth user token adds
-    a server-built `__volcano_auth`, and only HTTP-mode ingress sets
-    `__volcano_http: true`.
+    **Reserved payload keys:** the top-level `__volcano_auth`,
+    `__volcano_http` and `__volcano_mount` keys are reserved. Volcano
+    removes caller-supplied values for all three before the function runs;
+    only an auth user token adds a server-built `__volcano_auth`, and only
+    HTTP-mode ingress sets `__volcano_http: true`. `__volcano_mount` is set
+    only by Volcano's first-party app mounts.
 
     **Transport and CORS:**
     - This operation is the authenticated direct RPC endpoint and always uses the
@@ -419,11 +422,12 @@ async def asyncio(
     - Function must have `visibility: public`
     - Function receives payload only (no `__volcano_auth`)
 
-    **Reserved payload keys:** the top-level `__volcano_auth` and
-    `__volcano_http` keys are reserved. Volcano removes caller-supplied
-    values for both before the function runs; only an auth user token adds
-    a server-built `__volcano_auth`, and only HTTP-mode ingress sets
-    `__volcano_http: true`.
+    **Reserved payload keys:** the top-level `__volcano_auth`,
+    `__volcano_http` and `__volcano_mount` keys are reserved. Volcano
+    removes caller-supplied values for all three before the function runs;
+    only an auth user token adds a server-built `__volcano_auth`, and only
+    HTTP-mode ingress sets `__volcano_http: true`. `__volcano_mount` is set
+    only by Volcano's first-party app mounts.
 
     **Transport and CORS:**
     - This operation is the authenticated direct RPC endpoint and always uses the

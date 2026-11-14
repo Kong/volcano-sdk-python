@@ -36,7 +36,10 @@ class DurableFunctionConfig:
                 timeout is the plan's own, smaller number.
             retention_days (int): How long a finished execution's result and history are retained, for
                 as long as the function exists. Deleting the function, or its
-                project, ends retention early and takes the history with it.
+                project, ends retention early and takes the history with it. A
+                result or error Volcano has just read is kept in memory for up to
+                five minutes, so a read can still return it for up to five minutes
+                after retention ends.
      """
 
     execution_timeout_seconds: int

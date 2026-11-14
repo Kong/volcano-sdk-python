@@ -29,8 +29,12 @@ class LogResource:
 
         Attributes:
             type_ (LogResourceType): Resource type that owns the log event.
-            id (UUID): Resource ID that owns the log event.
-            name (str | Unset): Resource name associated with the log event, when available.
+            id (UUID): Resource ID that owns the log event. For type `app`, the ID is
+                UUIDv5(`7374f5e9-35ff-4e46-ac13-a4717bae00e1`, slug), with the app's
+                slug as UTF-8 bytes; the Builder (`builder`) is
+                `b52fc8fa-8656-5141-adef-99d698ce6f3c`.
+            name (str | Unset): Resource name associated with the log event, when available. For type `app`, the app's slug,
+                such as `builder`.
      """
 
     type_: LogResourceType

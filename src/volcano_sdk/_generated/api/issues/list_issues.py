@@ -9,6 +9,8 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.error import Error
+from ...models.issue_source import check_issue_source
+from ...models.issue_source import IssueSource
 from ...models.issue_status import check_issue_status
 from ...models.issue_status import IssueStatus
 from ...models.paginated_issues import PaginatedIssues
@@ -25,6 +27,7 @@ def request_kwargs(
     cursor: str | Unset = UNSET,
     status: IssueStatus | Unset = UNSET,
     resource_id: UUID | str | Unset = UNSET,
+    source: IssueSource | Unset = UNSET,
 
 ) -> dict[str, Any]:
     
@@ -47,6 +50,12 @@ def request_kwargs(
     if not isinstance(resource_id, Unset):
         json_resource_id = str(resource_id)
     params["resource_id"] = json_resource_id
+
+    json_source: str | Unset = UNSET
+    if not isinstance(source, Unset):
+        json_source = source
+
+    params["source"] = json_source
 
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
@@ -108,13 +117,17 @@ def sync_detailed(
     cursor: str | Unset = UNSET,
     status: IssueStatus | Unset = UNSET,
     resource_id: UUID | str | Unset = UNSET,
+    source: IssueSource | Unset = UNSET,
 
 ) -> Response[Error | PaginatedIssues]:
     """ List issues
 
      Lists the project's issues, most recently seen first. An issue groups
     the runtime errors one function or frontend raised with the same error
-    type and stack, or the same message when there is no stack.
+    type and stack, or the same message when there is no stack; the
+    deploys of one function or frontend whose own build failed with the
+    same first error (`source` `build`); or one Code Quality finding or
+    reported problem, or one issue a person wrote (`source` `request`).
 
     Project access tokens can list issues, including read-only ones.
 
@@ -124,8 +137,16 @@ def sync_detailed(
         cursor (str | Unset):
         status (IssueStatus | Unset): `open` until someone resolves or ignores the issue. A
             resolved issue
-            seen again reopens.
+            seen again reopens. A reported problem resolves when its LavaFlow fix
+            merges. Volcano ignores one whose report it deleted before any fix
+            merged, so it no longer counts toward the project's open issues.
         resource_id (UUID | Unset):
+        source (IssueSource | Unset): Where the issue came from: `runtime` for errors your code
+            logged, `code_quality` for a LavaFlow Code Quality finding in code a deploy changed,
+            `build` for deploys of one function or frontend that failed in its own build step,
+            `report` for a problem reported for the project, such as through Slack, or `request` for
+            an issue a person wrote with `POST /issues`. A later deploy that builds resolves a `build`
+            issue. Deploys Volcano failed, such as a timeout or a refused build, never make one.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -142,6 +163,7 @@ limit=limit,
 cursor=cursor,
 status=status,
 resource_id=resource_id,
+source=source,
 
     )
 
@@ -159,13 +181,17 @@ def sync(
     cursor: str | Unset = UNSET,
     status: IssueStatus | Unset = UNSET,
     resource_id: UUID | str | Unset = UNSET,
+    source: IssueSource | Unset = UNSET,
 
 ) -> Error | PaginatedIssues | None:
     """ List issues
 
      Lists the project's issues, most recently seen first. An issue groups
     the runtime errors one function or frontend raised with the same error
-    type and stack, or the same message when there is no stack.
+    type and stack, or the same message when there is no stack; the
+    deploys of one function or frontend whose own build failed with the
+    same first error (`source` `build`); or one Code Quality finding or
+    reported problem, or one issue a person wrote (`source` `request`).
 
     Project access tokens can list issues, including read-only ones.
 
@@ -175,8 +201,16 @@ def sync(
         cursor (str | Unset):
         status (IssueStatus | Unset): `open` until someone resolves or ignores the issue. A
             resolved issue
-            seen again reopens.
+            seen again reopens. A reported problem resolves when its LavaFlow fix
+            merges. Volcano ignores one whose report it deleted before any fix
+            merged, so it no longer counts toward the project's open issues.
         resource_id (UUID | Unset):
+        source (IssueSource | Unset): Where the issue came from: `runtime` for errors your code
+            logged, `code_quality` for a LavaFlow Code Quality finding in code a deploy changed,
+            `build` for deploys of one function or frontend that failed in its own build step,
+            `report` for a problem reported for the project, such as through Slack, or `request` for
+            an issue a person wrote with `POST /issues`. A later deploy that builds resolves a `build`
+            issue. Deploys Volcano failed, such as a timeout or a refused build, never make one.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -194,6 +228,7 @@ limit=limit,
 cursor=cursor,
 status=status,
 resource_id=resource_id,
+source=source,
 
     ).parsed
 
@@ -205,13 +240,17 @@ async def asyncio_detailed(
     cursor: str | Unset = UNSET,
     status: IssueStatus | Unset = UNSET,
     resource_id: UUID | str | Unset = UNSET,
+    source: IssueSource | Unset = UNSET,
 
 ) -> Response[Error | PaginatedIssues]:
     """ List issues
 
      Lists the project's issues, most recently seen first. An issue groups
     the runtime errors one function or frontend raised with the same error
-    type and stack, or the same message when there is no stack.
+    type and stack, or the same message when there is no stack; the
+    deploys of one function or frontend whose own build failed with the
+    same first error (`source` `build`); or one Code Quality finding or
+    reported problem, or one issue a person wrote (`source` `request`).
 
     Project access tokens can list issues, including read-only ones.
 
@@ -221,8 +260,16 @@ async def asyncio_detailed(
         cursor (str | Unset):
         status (IssueStatus | Unset): `open` until someone resolves or ignores the issue. A
             resolved issue
-            seen again reopens.
+            seen again reopens. A reported problem resolves when its LavaFlow fix
+            merges. Volcano ignores one whose report it deleted before any fix
+            merged, so it no longer counts toward the project's open issues.
         resource_id (UUID | Unset):
+        source (IssueSource | Unset): Where the issue came from: `runtime` for errors your code
+            logged, `code_quality` for a LavaFlow Code Quality finding in code a deploy changed,
+            `build` for deploys of one function or frontend that failed in its own build step,
+            `report` for a problem reported for the project, such as through Slack, or `request` for
+            an issue a person wrote with `POST /issues`. A later deploy that builds resolves a `build`
+            issue. Deploys Volcano failed, such as a timeout or a refused build, never make one.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -239,6 +286,7 @@ limit=limit,
 cursor=cursor,
 status=status,
 resource_id=resource_id,
+source=source,
 
     )
 
@@ -256,13 +304,17 @@ async def asyncio(
     cursor: str | Unset = UNSET,
     status: IssueStatus | Unset = UNSET,
     resource_id: UUID | str | Unset = UNSET,
+    source: IssueSource | Unset = UNSET,
 
 ) -> Error | PaginatedIssues | None:
     """ List issues
 
      Lists the project's issues, most recently seen first. An issue groups
     the runtime errors one function or frontend raised with the same error
-    type and stack, or the same message when there is no stack.
+    type and stack, or the same message when there is no stack; the
+    deploys of one function or frontend whose own build failed with the
+    same first error (`source` `build`); or one Code Quality finding or
+    reported problem, or one issue a person wrote (`source` `request`).
 
     Project access tokens can list issues, including read-only ones.
 
@@ -272,8 +324,16 @@ async def asyncio(
         cursor (str | Unset):
         status (IssueStatus | Unset): `open` until someone resolves or ignores the issue. A
             resolved issue
-            seen again reopens.
+            seen again reopens. A reported problem resolves when its LavaFlow fix
+            merges. Volcano ignores one whose report it deleted before any fix
+            merged, so it no longer counts toward the project's open issues.
         resource_id (UUID | Unset):
+        source (IssueSource | Unset): Where the issue came from: `runtime` for errors your code
+            logged, `code_quality` for a LavaFlow Code Quality finding in code a deploy changed,
+            `build` for deploys of one function or frontend that failed in its own build step,
+            `report` for a problem reported for the project, such as through Slack, or `request` for
+            an issue a person wrote with `POST /issues`. A later deploy that builds resolves a `build`
+            issue. Deploys Volcano failed, such as a timeout or a refused build, never make one.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -291,5 +351,6 @@ limit=limit,
 cursor=cursor,
 status=status,
 resource_id=resource_id,
+source=source,
 
     )).parsed

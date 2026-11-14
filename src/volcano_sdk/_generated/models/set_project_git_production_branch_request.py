@@ -23,7 +23,7 @@ class SetProjectGitProductionBranchRequest:
     """ 
         Attributes:
             production_branch (str): The branch a push must land on to deploy. Validated as a Git branch name only — it does
-                not have to exist yet.
+                not have to exist yet. An empty string follows the repository's default branch, including later renames.
      """
 
     production_branch: str

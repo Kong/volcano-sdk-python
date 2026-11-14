@@ -60,13 +60,18 @@ class Function:
                 function.
             has_openapi_spec (bool): Whether OpenAPI metadata is configured; list responses omit the document itself.
             deployed_regions (list[str]): Regions where this function is currently deployed
+            serving_candidate_id (None | UUID): The promoted preview whose runtime receives this function's traffic, the
+                same as
+                `candidate_id` in `serving`. Null when the function runs its own build. While it is set,
+                `current_deployment_id` and `status` describe the function's own build, which receives no
+                traffic until the function is rolled back.
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
             provisioning_started_at (datetime.datetime | Unset): Timestamp when the current provisioning phase started
             invoke_url (str | Unset): Canonical geo-routed HTTPS endpoint for invoking this function. Use it as-is: it does
-                not share a domain with the API, so a host derived from the API URL will not reach the function. Omitted when
-                the deployment serves no public invocation domain, as in local development, so a client testing for an empty
-                string never matches.
+                not share a domain with the API, so a host derived from the API URL will not reach the function. In local
+                development it is `http://{id}.functions.localhost:8000/`, served by the local API. Omitted when the deployment
+                serves no function invocation domain, so a client testing for an empty string never matches.
             runtime (str | Unset):
             handler (str | Unset):
             current_deployment_id (UUID | Unset): Identifier of the latest function deployment operation
@@ -85,6 +90,7 @@ class Function:
     openapi_spec: FunctionOpenapiSpecType0 | None
     has_openapi_spec: bool
     deployed_regions: list[str]
+    serving_candidate_id: None | UUID
     created_at: datetime.datetime
     updated_at: datetime.datetime
     provisioning_started_at: datetime.datetime | Unset = UNSET
@@ -130,6 +136,12 @@ class Function:
 
 
 
+        serving_candidate_id: None | str
+        if isinstance(self.serving_candidate_id, UUID):
+            serving_candidate_id = str(self.serving_candidate_id)
+        else:
+            serving_candidate_id = self.serving_candidate_id
+
         created_at = self.created_at.isoformat()
 
         updated_at = self.updated_at.isoformat()
@@ -171,6 +183,7 @@ class Function:
             "openapi_spec": openapi_spec,
             "has_openapi_spec": has_openapi_spec,
             "deployed_regions": deployed_regions,
+            "serving_candidate_id": serving_candidate_id,
             "created_at": created_at,
             "updated_at": updated_at,
         })
@@ -254,6 +267,24 @@ class Function:
         deployed_regions = cast(list[str], d.pop("deployed_regions"))
 
 
+        def _parse_serving_candidate_id(data: object) -> None | UUID:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                serving_candidate_id_type_0 = UUID(data)
+
+
+
+                return serving_candidate_id_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | UUID, data)
+
+        serving_candidate_id = _parse_serving_candidate_id(d.pop("serving_candidate_id"))
+
+
         created_at = datetime.datetime.fromisoformat(d.pop("created_at"))
 
 
@@ -322,6 +353,7 @@ class Function:
             openapi_spec=openapi_spec,
             has_openapi_spec=has_openapi_spec,
             deployed_regions=deployed_regions,
+            serving_candidate_id=serving_candidate_id,
             created_at=created_at,
             updated_at=updated_at,
             provisioning_started_at=provisioning_started_at,

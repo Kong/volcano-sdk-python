@@ -104,11 +104,15 @@ def sync_detailed(
     """ Search project logs
 
      Search or filter logs for one resource type in the project. Set
-    `resource.type` to `function`, `frontend`, or `database`. Add
+    `resource.type` to `function`, `frontend`, `database`, or `app`. Add
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to read deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT feature; requests for
+    databases or apps. `app` reads the entries a first-party app, such as
+    the Builder, wrote into the project; an app's ID is UUIDv5 of its slug
+    (see `LogResource.id`). With no entries it answers 200 with none; an unknown app in `resource.ids`
+    answers 404 `app not found`. The `app_logs` release gate controls new writes only: entries already
+    written stay readable when it closes. Database logs are a SUPERAGENT feature; requests for
     `resource.type=database` from a HOBBY project owner return 403.
     Log history (runtime and deployment) is limited to the plan's retention
     window (HOBBY: 1 day, SUPERAGENT: 30 days); older time ranges are clamped to that
@@ -149,11 +153,15 @@ def sync(
     """ Search project logs
 
      Search or filter logs for one resource type in the project. Set
-    `resource.type` to `function`, `frontend`, or `database`. Add
+    `resource.type` to `function`, `frontend`, `database`, or `app`. Add
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to read deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT feature; requests for
+    databases or apps. `app` reads the entries a first-party app, such as
+    the Builder, wrote into the project; an app's ID is UUIDv5 of its slug
+    (see `LogResource.id`). With no entries it answers 200 with none; an unknown app in `resource.ids`
+    answers 404 `app not found`. The `app_logs` release gate controls new writes only: entries already
+    written stay readable when it closes. Database logs are a SUPERAGENT feature; requests for
     `resource.type=database` from a HOBBY project owner return 403.
     Log history (runtime and deployment) is limited to the plan's retention
     window (HOBBY: 1 day, SUPERAGENT: 30 days); older time ranges are clamped to that
@@ -189,11 +197,15 @@ async def asyncio_detailed(
     """ Search project logs
 
      Search or filter logs for one resource type in the project. Set
-    `resource.type` to `function`, `frontend`, or `database`. Add
+    `resource.type` to `function`, `frontend`, `database`, or `app`. Add
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to read deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT feature; requests for
+    databases or apps. `app` reads the entries a first-party app, such as
+    the Builder, wrote into the project; an app's ID is UUIDv5 of its slug
+    (see `LogResource.id`). With no entries it answers 200 with none; an unknown app in `resource.ids`
+    answers 404 `app not found`. The `app_logs` release gate controls new writes only: entries already
+    written stay readable when it closes. Database logs are a SUPERAGENT feature; requests for
     `resource.type=database` from a HOBBY project owner return 403.
     Log history (runtime and deployment) is limited to the plan's retention
     window (HOBBY: 1 day, SUPERAGENT: 30 days); older time ranges are clamped to that
@@ -234,11 +246,15 @@ async def asyncio(
     """ Search project logs
 
      Search or filter logs for one resource type in the project. Set
-    `resource.type` to `function`, `frontend`, or `database`. Add
+    `resource.type` to `function`, `frontend`, `database`, or `app`. Add
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to read deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT feature; requests for
+    databases or apps. `app` reads the entries a first-party app, such as
+    the Builder, wrote into the project; an app's ID is UUIDv5 of its slug
+    (see `LogResource.id`). With no entries it answers 200 with none; an unknown app in `resource.ids`
+    answers 404 `app not found`. The `app_logs` release gate controls new writes only: entries already
+    written stay readable when it closes. Database logs are a SUPERAGENT feature; requests for
     `resource.type=database` from a HOBBY project owner return 403.
     Log history (runtime and deployment) is limited to the plan's retention
     window (HOBBY: 1 day, SUPERAGENT: 30 days); older time ranges are clamped to that

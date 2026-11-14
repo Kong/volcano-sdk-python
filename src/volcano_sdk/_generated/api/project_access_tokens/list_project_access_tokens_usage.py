@@ -115,7 +115,9 @@ def sync_detailed(
     present, so a gap reads as zero rather than missing.
 
     Revoked tokens are included, because the traffic they made before
-    revocation is usually the reason you are looking.
+    revocation is usually the reason you are looking. Delegated grants are
+    not, as the token list hides them by default; read one grant's usage by
+    its ID.
 
     `days` defaults to 30 and is capped at 60, which is also how long per-day
     counts are retained — a longer window cannot be answered.
@@ -163,7 +165,9 @@ def sync(
     present, so a gap reads as zero rather than missing.
 
     Revoked tokens are included, because the traffic they made before
-    revocation is usually the reason you are looking.
+    revocation is usually the reason you are looking. Delegated grants are
+    not, as the token list hides them by default; read one grant's usage by
+    its ID.
 
     `days` defaults to 30 and is capped at 60, which is also how long per-day
     counts are retained — a longer window cannot be answered.
@@ -206,7 +210,9 @@ async def asyncio_detailed(
     present, so a gap reads as zero rather than missing.
 
     Revoked tokens are included, because the traffic they made before
-    revocation is usually the reason you are looking.
+    revocation is usually the reason you are looking. Delegated grants are
+    not, as the token list hides them by default; read one grant's usage by
+    its ID.
 
     `days` defaults to 30 and is capped at 60, which is also how long per-day
     counts are retained — a longer window cannot be answered.
@@ -254,7 +260,9 @@ async def asyncio(
     present, so a gap reads as zero rather than missing.
 
     Revoked tokens are included, because the traffic they made before
-    revocation is usually the reason you are looking.
+    revocation is usually the reason you are looking. Delegated grants are
+    not, as the token list hides them by default; read one grant's usage by
+    its ID.
 
     `days` defaults to 30 and is capped at 60, which is also how long per-day
     counts are retained — a longer window cannot be answered.

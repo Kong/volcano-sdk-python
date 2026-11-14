@@ -30,6 +30,11 @@ class ProjectConfigApplyResultEntry:
             action (ProjectConfigApplyResultEntryAction):
             name (str | Unset): Resource name or key within the section. Empty for singleton sections.
             error (str | Unset): Error detail when action is `error`.
+            code (str | Unset): Machine-readable reason for a `notice`, when it has one. Clients must accept codes not
+                listed
+                here. `function_served_by_candidate` - a promoted preview serves the function and keeps the
+                variables it was built with, so the apply did not synchronize the function's variables; the
+                entry's action is `unchanged`, and the rest of the apply succeeded.
             notice (str | Unset): Optional operational note (e.g. disabling realtime drops active connections).
      """
 
@@ -37,6 +42,7 @@ class ProjectConfigApplyResultEntry:
     action: ProjectConfigApplyResultEntryAction
     name: str | Unset = UNSET
     error: str | Unset = UNSET
+    code: str | Unset = UNSET
     notice: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -53,6 +59,8 @@ class ProjectConfigApplyResultEntry:
 
         error = self.error
 
+        code = self.code
+
         notice = self.notice
 
 
@@ -66,6 +74,8 @@ class ProjectConfigApplyResultEntry:
             field_dict["name"] = name
         if error is not UNSET:
             field_dict["error"] = error
+        if code is not UNSET:
+            field_dict["code"] = code
         if notice is not UNSET:
             field_dict["notice"] = notice
 
@@ -87,6 +97,8 @@ class ProjectConfigApplyResultEntry:
 
         error = d.pop("error", UNSET)
 
+        code = d.pop("code", UNSET)
+
         notice = d.pop("notice", UNSET)
 
         project_config_apply_result_entry = cls(
@@ -94,6 +106,7 @@ class ProjectConfigApplyResultEntry:
             action=action,
             name=name,
             error=error,
+            code=code,
             notice=notice,
         )
 
