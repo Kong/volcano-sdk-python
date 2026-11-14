@@ -75,7 +75,7 @@ def test_http_failures_map_to_stable_error_categories(
     assert type(caught.value) is expected
     assert caught.value.status == status
     assert caught.value.code == "contract_code"
-    assert caught.value.retry_after == (17 if status == 429 else None)
+    assert caught.value.retry_after == (17 if status in {429, 503} else None)
     assert len(requests) == 1
     assert requests[0].method == "POST"
     assert requests[0].url == "https://api.test.volcano.dev/auth/signin"
