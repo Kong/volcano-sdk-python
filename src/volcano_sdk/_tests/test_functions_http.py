@@ -26,6 +26,7 @@ import pytest
 from volcano_sdk import NotFoundError, VolcanoClient
 
 from .thread_support import worker_pool
+from .user_agent_support import USER_AGENT_PATTERN
 
 pytestmark = pytest.mark.allow_hosts(["127.0.0.1"])
 
@@ -42,6 +43,7 @@ class RecordedRequest:
     authorization: str | None
     method: str
     content_type: str | None
+    user_agents: list[str] = field(default_factory=list[str])
 
 
 @dataclass
@@ -85,6 +87,7 @@ class Handler(BaseHTTPRequestHandler):
                 authorization=self.headers.get("Authorization"),
                 method=self.command,
                 content_type=self.headers.get("Content-Type"),
+                user_agents=self.headers.get_all("User-Agent", []),
             )
         )
         answer = self.respond(self.path)
@@ -203,6 +206,36 @@ def test_repeated_invocations_resolve_once_and_reach_the_resolved_host(
         assert invoked.authorization == "Bearer service-key"
         assert invoked.method == "POST"
         assert invoked.content_type == "application/json"
+    finally:
+        api.close()
+
+
+def test_resolution_and_the_resolved_invocation_identify_the_sdk(
+    function_server: tuple[_Server, Recorder],
+) -> None:
+    functions, function_requests = function_server
+    api_requests = Recorder()
+    api = _api_server(
+        api_requests,
+        {
+            "name": "send-welcome",
+            "function_id": FUNCTION_ID,
+            "invoke_url": f"{functions.url}/",
+            "cache_ttl_seconds": 300,
+        },
+    )
+    try:
+        result = _client(api.url).functions.invoke("send-welcome")
+
+        assert result.status == 200
+        recorded = [*api_requests.requests, *function_requests.requests]
+        assert [request.path for request in recorded] == [
+            "/functions/resolve?name=send-welcome",
+            "/",
+        ]
+        for request in recorded:
+            assert len(request.user_agents) == 1
+            assert USER_AGENT_PATTERN.fullmatch(request.user_agents[0])
     finally:
         api.close()
 

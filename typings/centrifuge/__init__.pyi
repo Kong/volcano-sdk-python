@@ -45,6 +45,7 @@ class Client:
         token: str = "",
         get_token: Callable[[], Awaitable[str]] | None = None,
         *,
+        headers: dict[str, str] | None = None,
         loop: asyncio.AbstractEventLoop | None = None,
     ) -> None: ...
     async def connect(self) -> None: ...
