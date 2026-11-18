@@ -377,12 +377,12 @@ class DurableContext:
 
     def _branch(
         self, branch: Callable[[DurableContext], T] | ParallelBranch[T]
-    ) -> object:
+    ) -> Callable[[RuntimeContext], T] | object:
         """Adapt one branch to the engine.
 
-        The branch's own result type is not carried through: what goes to the
-        engine is an untyped callable either way, and `parallel` keeps the
-        type on its own signature.
+        What goes to the engine is an untyped callable or named branch either
+        way. The return type still names the branch's result type so that type
+        checkers can solve the engine batch type for `parallel`.
 
         Returns:
             A named engine branch or a callable that wraps the engine context.
