@@ -10,6 +10,7 @@ from ._lock_renewer import renewal_delay as _calculate_renewal_delay
 
 if TYPE_CHECKING:
     from _thread import LockType
+    from collections.abc import Callable
 
     from .models import LockLease
 
@@ -30,17 +31,23 @@ SUSPEND_AWARE_CLOCK_ID = suspend_aware_clock_id(_clock_id_value)
 class FallbackClock:
     """Combine monotonic progress with suspend-aware wall time."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        monotonic: Callable[[], float] = time.monotonic,
+        wall: Callable[[], float] = time.time,
+    ) -> None:
         self._lock: LockType = threading.Lock()
-        self._monotonic: float = time.monotonic()
-        self._value: float = time.time()
+        self._read_monotonic: Callable[[], float] = monotonic
+        self._read_wall: Callable[[], float] = wall
+        self._monotonic: float = monotonic()
+        self._value: float = wall()
 
     def __call__(self) -> float:
         with self._lock:
-            monotonic = time.monotonic()
+            monotonic = self._read_monotonic()
             elapsed = max(0.0, monotonic - self._monotonic)
             self._monotonic = monotonic
-            self._value = max(self._value + elapsed, time.time())
+            self._value = max(self._value + elapsed, self._read_wall())
             return self._value
 
 

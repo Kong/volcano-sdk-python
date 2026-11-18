@@ -119,48 +119,38 @@ def test_lock_guard_rejects_an_already_expired_renewal_window(
     assert str(failure) == "lock lease expired before renewal completed"
 
 
-def test_fallback_clock_includes_system_suspend(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_fallback_clock_includes_system_suspend() -> None:
     monotonic = iter((100.0, 100.0))
     wall = iter((1_000.0, 1_005.0))
-    monkeypatch.setattr(time, "monotonic", lambda: next(monotonic))
-    monkeypatch.setattr(time, "time", lambda: next(wall))
-    clock = guard_module.FallbackClock()
+    clock = guard_module.FallbackClock(
+        monotonic=lambda: next(monotonic), wall=lambda: next(wall)
+    )
 
     assert clock() == pytest.approx(1_005.0)
 
 
-def test_fallback_clock_ignores_wall_clock_rollbacks(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_fallback_clock_ignores_wall_clock_rollbacks() -> None:
     monotonic = iter((100.0, 101.0))
     wall = iter((1_000.0, 900.0))
-    monkeypatch.setattr(time, "monotonic", lambda: next(monotonic))
-    monkeypatch.setattr(time, "time", lambda: next(wall))
-    clock = guard_module.FallbackClock()
+    clock = guard_module.FallbackClock(
+        monotonic=lambda: next(monotonic), wall=lambda: next(wall)
+    )
 
     assert clock() == pytest.approx(1_001.0)
 
 
-def test_fallback_clock_does_not_advance_without_elapsed_time(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(time, "monotonic", lambda: 100.0)
-    monkeypatch.setattr(time, "time", lambda: 1_000.0)
-    clock = guard_module.FallbackClock()
+def test_fallback_clock_does_not_advance_without_elapsed_time() -> None:
+    clock = guard_module.FallbackClock(monotonic=lambda: 100.0, wall=lambda: 1_000.0)
 
     assert clock() == pytest.approx(1_000.0)
 
 
-def test_fallback_clock_accumulates_monotonic_time_across_calls(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_fallback_clock_accumulates_monotonic_time_across_calls() -> None:
     monotonic = iter((100.0, 101.0, 102.0))
     wall = iter((1_000.0, 900.0, 900.0))
-    monkeypatch.setattr(time, "monotonic", lambda: next(monotonic))
-    monkeypatch.setattr(time, "time", lambda: next(wall))
-    clock = guard_module.FallbackClock()
+    clock = guard_module.FallbackClock(
+        monotonic=lambda: next(monotonic), wall=lambda: next(wall)
+    )
 
     assert clock() == pytest.approx(1_001.0)
     assert clock() == pytest.approx(1_002.0)

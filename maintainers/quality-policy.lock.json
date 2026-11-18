@@ -270,7 +270,7 @@
         ]
       },
       "output-prefer-rule-codes": true,
-      "required-version": "==0.16.10",
+      "required-version": "==0.17.5",
       "target-version": "py311"
     },
     "tox": {
@@ -321,7 +321,7 @@
             ]
           ],
           "deps": [
-            "basedpyright==1.40.1"
+            "basedpyright==1.40.2"
           ],
           "extras": [
             "durable"
