@@ -53,7 +53,7 @@ dev = [
   "aws-durable-execution-sdk-python-testing>=1.2.1,<2.0.0",
   "mypy>=1.18.0",
   "pyrefly==1.4.1",
-  "openapi-python-client==0.29.1",
+  "openapi-python-client==0.30.0",
   "basedpyright==1.40.2",
   "pytest==9.2.0",
   "ruff==0.17.5",
