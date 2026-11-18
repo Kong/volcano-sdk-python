@@ -20,9 +20,10 @@ def sdk_version() -> str:
 
     """
     try:
-        return metadata.version(_DISTRIBUTION)
+        version: str | None = metadata.version(_DISTRIBUTION)
     except metadata.PackageNotFoundError:
         return _UNKNOWN
+    return version or _UNKNOWN
 
 
 def build_user_agent(
@@ -41,10 +42,12 @@ def build_user_agent(
     """
     os_name = _PLATFORMS.get(system, system)
     arch = machine.lower() or _UNKNOWN
-    return (
+    value = (
         f"{_DISTRIBUTION}/{version} "
         f"({implementation}/{python_version}; {os_name}/{arch})"
     )
+    # HTTP clients encode header values as ASCII and raise on anything else.
+    return "".join(char if char.isascii() else "?" for char in value)
 
 
 USER_AGENT: Final = build_user_agent(

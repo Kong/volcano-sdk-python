@@ -58,6 +58,7 @@ def test_each_caller_gets_its_own_header_mapping() -> None:
             "",
             "volcano-sdk-python/1.4.0 (cpython/3.12.4; freebsd14/unknown)",
         ),
+        ("linux", "\u00e4rm", "volcano-sdk-python/1.4.0 (cpython/3.12.4; linux/?rm)"),
     ],
 )
 def test_the_runtime_is_normalised(system: str, machine: str, expected: str) -> None:
@@ -86,6 +87,17 @@ def test_an_uninstalled_sdk_reports_an_unknown_version(
 
     assert _user_agent.sdk_version() == "unknown"
     assert seen == ["volcano-sdk-python"]
+
+
+def test_a_versionless_install_reports_an_unknown_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def versionless(_distribution: str) -> None:
+        return None
+
+    monkeypatch.setattr(metadata, "version", versionless)
+
+    assert _user_agent.sdk_version() == "unknown"
 
 
 def _single_user_agent(request: httpx.Request) -> str:
@@ -146,7 +158,7 @@ def test_durable_platform_requests_identify_the_sdk(
         PlatformRequest(
             path="/durable-approvals",
             body={},
-            headers={"User-Agent": "replaced", "X-Volcano-Callback": "token"},
+            headers={"user-agent": "replaced", "X-Volcano-Callback": "token"},
         ),
     )
 
