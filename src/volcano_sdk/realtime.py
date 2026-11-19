@@ -8,6 +8,7 @@ import volcano_sdk._realtime_messages as _messages
 import volcano_sdk._realtime_transport as _native
 
 from ._client_context import ClientContextSource, facade_context
+from ._path_segments import database_name
 from ._realtime_connection import RealtimeState
 
 if TYPE_CHECKING:
@@ -188,7 +189,7 @@ class Realtime:
 
     def set_database_name(self, name: str | None) -> None:
         """Bind lightweight Postgres changes to a project database."""
-        self._state.set_database_name(name)
+        self._state.set_database_name(None if name is None else database_name(name))
 
     def on_connect(
         self, callback: Callable[[RealtimeConnectContext], object]

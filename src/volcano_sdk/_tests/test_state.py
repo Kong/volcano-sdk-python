@@ -2035,13 +2035,13 @@ def test_get_hosted_auth_url_builds_the_canonical_action_url(
     )
 
     result = client.auth.get_hosted_auth_url(
-        project_id="project/id",
+        project_id="project id?",
         action=action,
         state="state value",
     )
 
     assert result == (
-        "https://api.example.com/root/projects/project%2Fid/auth/hosted"
+        "https://api.example.com/root/projects/project%20id%3F/auth/hosted"
         f"?action={action}&anon_key=anon+key&state=state+value"
     )
     assert client.auth.get_session() is None

@@ -24,6 +24,8 @@ from ._generated.models.upload_storage_object_files_body import (
     UploadStorageObjectFilesBody,
 )
 from ._generated.types import UNSET, File
+from ._path_segments import bucket_name as checked_bucket
+from ._path_segments import object_path
 from ._transport_base import TransportBase
 from ._transport_response import (
     parsed_response,
@@ -51,7 +53,7 @@ class StorageTransport(TransportBase):
         data: bytes,
         content_type: str = "application/octet-stream",
     ) -> TransportResponse:
-        file_name = PurePosixPath(path).name or "file"
+        file_name = PurePosixPath(path).name
         body = UploadStorageObjectFilesBody(
             file=File(
                 payload=BytesIO(data),
@@ -61,8 +63,8 @@ class StorageTransport(TransportBase):
         )
         with self._client(authorization) as client:
             response = upload_storage_object.sync_detailed(
-                bucket_name,
-                path,
+                checked_bucket(bucket_name),
+                object_path(path),
                 client=client,
                 body=body,
             )
@@ -76,15 +78,15 @@ class StorageTransport(TransportBase):
         request: StorageUploadSessionRequest,
     ) -> TransportResponse:
         body = CreateUploadSessionRequest(
-            object_path=request.path,
+            object_path=object_path(request.path),
             content_type=request.content_type,
             total_size=request.total_size,
             part_size=request.part_size if request.part_size is not None else UNSET,
         )
         with self._client(authorization) as client:
             response = upload_storage_object.sync_detailed(
-                bucket_name,
-                request.path,
+                checked_bucket(bucket_name),
+                object_path(request.path),
                 client=client,
                 body=body,
             )
@@ -99,8 +101,8 @@ class StorageTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = upload_part.sync_detailed(
-                bucket_name,
-                request.path,
+                checked_bucket(bucket_name),
+                object_path(request.path),
                 client=client,
                 body=File(payload=BytesIO(request.data)),
                 x_upload_session=request.session_id,
@@ -117,8 +119,8 @@ class StorageTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = upload_storage_object.sync_detailed(
-                bucket_name,
-                request.path,
+                checked_bucket(bucket_name),
+                object_path(request.path),
                 client=client,
                 x_upload_session=request.session_id,
                 x_upload_complete="true",
@@ -134,8 +136,8 @@ class StorageTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = download_storage_object.sync_detailed(
-                bucket_name,
-                request.path,
+                checked_bucket(bucket_name),
+                object_path(request.path),
                 client=client,
                 x_upload_session=request.session_id,
             )
@@ -150,8 +152,8 @@ class StorageTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = delete_storage_object.sync_detailed(
-                bucket_name,
-                request.path,
+                checked_bucket(bucket_name),
+                object_path(request.path),
                 client=client,
                 x_upload_session=request.session_id,
             )
@@ -167,8 +169,8 @@ class StorageTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = download_storage_object.sync_detailed(
-                bucket_name,
-                path,
+                checked_bucket(bucket_name),
+                object_path(path),
                 client=client,
                 range_=byte_range if byte_range is not None else UNSET,
             )
@@ -185,7 +187,7 @@ class StorageTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = list_storage_objects.sync_detailed(
-                bucket_name,
+                checked_bucket(bucket_name),
                 client=client,
                 prefix=prefix or UNSET,
                 limit=limit if limit is not None else UNSET,
@@ -202,8 +204,8 @@ class StorageTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = delete_storage_object.sync_detailed(
-                bucket_name,
-                path,
+                checked_bucket(bucket_name),
+                object_path(path),
                 client=client,
             )
         return parsed_response(response)
@@ -218,9 +220,11 @@ class StorageTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = move_storage_object.sync_detailed(
-                bucket_name,
+                checked_bucket(bucket_name),
                 client=client,
-                body=StorageMoveRequest(from_=from_path, to=to_path),
+                body=StorageMoveRequest(
+                    from_=object_path(from_path), to=object_path(to_path)
+                ),
             )
         return parsed_response(response)
 
@@ -234,9 +238,11 @@ class StorageTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = copy_storage_object.sync_detailed(
-                bucket_name,
+                checked_bucket(bucket_name),
                 client=client,
-                body=StorageCopyRequest(from_=from_path, to=to_path),
+                body=StorageCopyRequest(
+                    from_=object_path(from_path), to=object_path(to_path)
+                ),
             )
         return parsed_response(response)
 
@@ -250,8 +256,8 @@ class StorageTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = update_storage_object_visibility.sync_detailed(
-                bucket_name,
-                path,
+                checked_bucket(bucket_name),
+                object_path(path),
                 client=client,
                 body=StorageVisibilityRequest(is_public=is_public),
             )

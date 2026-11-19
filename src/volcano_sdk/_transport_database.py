@@ -33,6 +33,7 @@ from ._generated.models.database_delete_request import DatabaseDeleteRequest
 from ._generated.models.database_insert_request import DatabaseInsertRequest
 from ._generated.models.database_select_request import DatabaseSelectRequest
 from ._generated.models.database_update_request import DatabaseUpdateRequest
+from ._path_segments import database_name as checked_database
 from ._transport_base import TransportBase
 from ._transport_response import (
     generated_request,
@@ -59,7 +60,7 @@ class DatabaseTransport(TransportBase):
             response = generated_request(
                 client,
                 database_select_kwargs(
-                    database_name,
+                    checked_database(database_name),
                     body=DatabaseSelectRequest.from_dict(body),
                 ),
             )
@@ -77,7 +78,7 @@ class DatabaseTransport(TransportBase):
     ) -> TransportResponse:
         async with self._client(authorization) as client:
             response = await query_database_select.asyncio_detailed(
-                database_name,
+                checked_database(database_name),
                 client=client,
                 body=DatabaseSelectRequest.from_dict(body),
             )
@@ -94,7 +95,8 @@ class DatabaseTransport(TransportBase):
             response = generated_request(
                 client,
                 database_insert_kwargs(
-                    database_name, body=DatabaseInsertRequest.from_dict(body)
+                    checked_database(database_name),
+                    body=DatabaseInsertRequest.from_dict(body),
                 ),
             )
             if response.status_code == HTTP_UNAUTHORIZED:
@@ -113,7 +115,8 @@ class DatabaseTransport(TransportBase):
             response = generated_request(
                 client,
                 database_update_kwargs(
-                    database_name, body=DatabaseUpdateRequest.from_dict(body)
+                    checked_database(database_name),
+                    body=DatabaseUpdateRequest.from_dict(body),
                 ),
             )
             if response.status_code == HTTP_UNAUTHORIZED:
@@ -132,7 +135,8 @@ class DatabaseTransport(TransportBase):
             response = generated_request(
                 client,
                 database_delete_kwargs(
-                    database_name, body=DatabaseDeleteRequest.from_dict(body)
+                    checked_database(database_name),
+                    body=DatabaseDeleteRequest.from_dict(body),
                 ),
             )
             if response.status_code == HTTP_UNAUTHORIZED:

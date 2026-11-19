@@ -11,7 +11,6 @@ from ._auth_values import (
     HOSTED_AUTH_ACTIONS,
     INVALID_AUTH_TRANSPORT,
     NO_ACTIVE_SESSION,
-    PATH_SEGMENT_SAFE,
     UNSUPPORTED_HOSTED_AUTH_ACTION,
     copy_complete_session,
     hosted_auth_parameter,
@@ -27,6 +26,7 @@ from ._auth_values import (
     validate_hosted_auth_callback_state,
     validate_oauth_callback_state,
 )
+from ._path_segments import path_identifier
 from ._transport import (
     AuthCallOAuthAPITransport,
     AuthGetOAuthProviderTokenTransport,
@@ -103,7 +103,9 @@ class OAuthAuth(AuthBase):
             ValueError: A parameter is empty or the action is unsupported.
 
         """
-        project = hosted_auth_parameter(project_id).strip()
+        project = path_identifier(
+            hosted_auth_parameter(project_id).strip(), "project_id"
+        )
         auth_state = hosted_auth_parameter(state)
         if action not in HOSTED_AUTH_ACTIONS:
             raise ValueError(UNSUPPORTED_HOSTED_AUTH_ACTION)
@@ -114,7 +116,7 @@ class OAuthAuth(AuthBase):
                 "state": auth_state,
             }
         )
-        project_path = quote(project, safe=PATH_SEGMENT_SAFE)
+        project_path = quote(project)
         return (
             f"{self._client.api_base_url()}/projects/{project_path}/auth/hosted?{query}"
         )

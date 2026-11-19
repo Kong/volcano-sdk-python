@@ -1473,7 +1473,7 @@ def test_generated_transport_calls_the_seven_openapi_operations() -> None:
     assert UUID(requests[7].headers["x-volcano-request-id"]).version == 4
 
 
-def test_generated_transport_names_an_upload_without_a_basename() -> None:
+def test_generated_transport_refuses_an_upload_path_without_a_basename() -> None:
     requests: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -1485,16 +1485,15 @@ def test_generated_transport_names_an_upload_without_a_basename() -> None:
         httpx_transport=httpx.MockTransport(handle),
     )
 
-    _ = transport.upload_storage_object(
-        authorization="access-token",
-        bucket_name="assets",
-        path="/",
-        data=b"binary\x00data",
-    )
+    with pytest.raises(ValueError, match="segments"):
+        _ = transport.upload_storage_object(
+            authorization="access-token",
+            bucket_name="assets",
+            path="/",
+            data=b"binary\x00data",
+        )
 
-    assert len(requests) == 1
-    assert b'filename="file"' in requests[0].content
-    assert b"binary\x00data" in requests[0].content
+    assert requests == []
 
 
 def test_generated_transport_deletes_a_storage_object() -> None:

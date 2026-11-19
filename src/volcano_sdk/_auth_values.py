@@ -137,9 +137,6 @@ OAUTH_API_METHODS: frozenset[str] = frozenset({"GET", "POST"})
 HOSTED_AUTH_ACTIONS: frozenset[str] = frozenset({"login", "signup", "forgot-password"})
 
 
-PATH_SEGMENT_SAFE = ""
-
-
 def is_non_empty_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
 

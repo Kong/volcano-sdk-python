@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from ._path_segments import path_identifier
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -15,6 +17,9 @@ _INVALID_IDENTIFIERS = {
     "execution_id": "execution_id must be a non-empty string",
     "approval_id": "approval_id must be a non-empty string",
 }
+# The identifiers sent as URL path segments; an execution name is sent in
+# the X-Volcano-Execution-Name header.
+_PATH_IDENTIFIERS = frozenset(_INVALID_IDENTIFIERS) - {"execution_name"}
 # The identifiers the transport converts to a UUID before sending. Checked
 # here so a malformed one is a facade ValidationError rather than a
 # `badly formed hexadecimal UUID string` raised from inside the transport,
@@ -46,6 +51,8 @@ def identifier(value: object, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(_INVALID_IDENTIFIERS[field])
     trimmed = value.strip()
+    if field in _PATH_IDENTIFIERS:
+        trimmed = path_identifier(trimmed, field)
     if field not in _UUID_IDENTIFIERS:
         return trimmed
     try:

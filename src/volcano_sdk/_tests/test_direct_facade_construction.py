@@ -164,8 +164,8 @@ def test_direct_locks_retains_service_credentials_and_lease_ownership() -> None:
 def test_direct_database_and_query_builder_preserve_follow_on_state() -> None:
     transport = FakeTransport()
     client = signed_in_client(transport)
-    database = Database(_client=client, _name="direct-db")
-    query = QueryBuilder(_client=client, _database_name="direct-db", _table="items")
+    database = Database(_client=client, _name="direct_db")
+    query = QueryBuilder(_client=client, _database_name="direct_db", _table="items")
 
     assert database.from_("items").execute() == [{"slug": "a"}]
     assert query.select("slug").eq("id", 1).order("slug").limit(5).offset(
@@ -175,7 +175,7 @@ def test_direct_database_and_query_builder_preserve_follow_on_state() -> None:
         "queryDatabaseSelect",
         {
             "authorization": "access-token",
-            "database_name": "direct-db",
+            "database_name": "direct_db",
             "body": {
                 "table": "items",
                 "select": ["slug"],
@@ -191,16 +191,16 @@ def test_direct_database_and_query_builder_preserve_follow_on_state() -> None:
 def test_direct_write_builders_accept_client_and_keep_filters() -> None:
     transport = FakeTransport()
     client = signed_in_client(transport)
-    insert = InsertBuilder(client, "direct-db", "items", {"slug": "new"})
-    update = UpdateBuilder(client, "direct-db", "items", {"slug": "updated"})
-    delete = DeleteBuilder(client, "direct-db", "items")
+    insert = InsertBuilder(client, "direct_db", "items", {"slug": "new"})
+    update = UpdateBuilder(client, "direct_db", "items", {"slug": "updated"})
+    delete = DeleteBuilder(client, "direct_db", "items")
 
     assert insert.execute() == [{"slug": "new"}]
     assert update.eq("id", 1).execute() == [{"slug": "updated"}]
     assert delete.eq("id", 1).execute() == [{"slug": "updated"}]
     assert transport.calls[-1][1] == {
         "authorization": "access-token",
-        "database_name": "direct-db",
+        "database_name": "direct_db",
         "body": {
             "table": "items",
             "filters": [{"column": "id", "operator": "eq", "value": 1}],
@@ -211,7 +211,7 @@ def test_direct_write_builders_accept_client_and_keep_filters() -> None:
 def test_direct_query_follow_on_writes_preserve_the_original_client() -> None:
     transport = FakeTransport()
     client = signed_in_client(transport)
-    query = QueryBuilder(client, "direct-db", "items").eq("id", 1)
+    query = QueryBuilder(client, "direct_db", "items").eq("id", 1)
 
     assert query.insert({"slug": "new"}).execute() == [{"slug": "new"}]
     assert query.update({"slug": "updated"}).execute() == [{"slug": "updated"}]
@@ -259,7 +259,7 @@ async def test_direct_realtime_fetches_rows_through_async_client_transport() -> 
         client_factory=FakeCentrifugeFactory(official),
     )
     _ = client.auth.sign_in(email="user@example.com", password="secret")
-    realtime.set_database_name("direct-db")
+    realtime.set_database_name("direct_db")
     channel = realtime.channel("public:messages", channel_type="postgres")
     delivered = asyncio.Event()
     changes: list[PostgresChange] = []
@@ -291,4 +291,4 @@ async def test_direct_realtime_fetches_rows_through_async_client_transport() -> 
 
     assert changes[0].record == {"id": 42, "body": "fetched"}
     assert transport.queries[0]["authorization"] == "access-1"
-    assert transport.queries[0]["database_name"] == "direct-db"
+    assert transport.queries[0]["database_name"] == "direct_db"
