@@ -9,8 +9,6 @@ from io import BytesIO
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
-import httpx
-
 from ._generated.api.sandboxes import (
     delete_sandbox,
     deploy_sandbox,
@@ -198,15 +196,15 @@ class SandboxHTTPTransport(TransportBase):
             The status, headers, and decoded response body.
 
         """
-        base_client = (
-            self._public_client()
-            if authorization is None
-            else self._client(authorization)
-        )
         timeout = self._timeout
         if request.timeout is not None:
             timeout = max(timeout, request.timeout)
-        with base_client.with_timeout(httpx.Timeout(timeout)) as client:
+        base_client = (
+            self._public_client(timeout=timeout)
+            if authorization is None
+            else self._client(authorization, timeout=timeout)
+        )
+        with base_client as client:
             if request.operation == "deploy_sandbox":
                 return _deploy(client, request)
             response = generated_request(

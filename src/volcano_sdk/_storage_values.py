@@ -21,6 +21,12 @@ from urllib.parse import quote
 
 from typing_extensions import TypeIs
 
+from ._path_segments import (
+    SEGMENT_RULE,
+    STORAGE_PATH_SEGMENTS,
+    bucket_relative_path,
+    invalid_storage_path,
+)
 from .models import (
     JSONValue,
     StorageObject,
@@ -43,7 +49,7 @@ _INVALID_STORAGE_VISIBILITY = "is_public must be a boolean"
 
 _INVALID_STORAGE_ANON_KEY = "Anon key must contain a project ID"
 
-_INVALID_PUBLIC_URL_PATH = "Public URL paths cannot contain dot segments"
+_STORAGE_PATHS_SEGMENTS = f"Storage paths {SEGMENT_RULE}"
 
 _JWT_PART_COUNT = 3
 
@@ -273,7 +279,10 @@ def storage_paths(paths: object) -> tuple[str, ...]:
         not isinstance(path, str) or not path for path in raw_paths
     ):
         raise ValueError(_INVALID_STORAGE_PATHS)
-    return cast("tuple[str, ...]", raw_paths)
+    checked = cast("tuple[str, ...]", raw_paths)
+    if any(invalid_storage_path(path) for path in checked):
+        raise ValueError(_STORAGE_PATHS_SEGMENTS)
+    return checked
 
 
 def storage_path(path: object) -> str:
@@ -281,6 +290,8 @@ def storage_path(path: object) -> str:
         raise TypeError(_INVALID_STORAGE_PATH)
     if not path:
         raise ValueError(_INVALID_STORAGE_PATH)
+    if invalid_storage_path(path):
+        raise ValueError(STORAGE_PATH_SEGMENTS)
     return path
 
 
@@ -309,14 +320,11 @@ def project_id_from_anon_key(anon_key: str) -> str:
 
 
 def encoded_storage_path(path: str) -> str:
-    segments = path.split("/")
-    if any(segment in {".", ".."} for segment in segments):
-        raise ValueError(_INVALID_PUBLIC_URL_PATH)
-    return "/".join(quote(segment) for segment in segments)
+    return quote(bucket_relative_path(path))
 
 
 def encoded_storage_component(value: str) -> str:
-    return quote(value).replace("/", "%2F")
+    return quote(value)
 
 
 def has_seekable_methods(source: BinaryReader) -> TypeIs[SeekableBinaryReader]:

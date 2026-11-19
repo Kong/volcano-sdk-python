@@ -17,6 +17,7 @@ from ._generated.api.locks.acquire_project_lock import (
     request_kwargs as lock_acquire_kwargs,
 )
 from ._generated.models.project_lock_lease_request import ProjectLockLeaseRequest
+from ._path_segments import lock_key
 from ._transport_base import TransportBase
 from ._transport_response import (
     generated_request,
@@ -43,7 +44,7 @@ class LocksTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             request_kwargs = lock_acquire_kwargs(
-                key,
+                lock_key(key),
                 body=ProjectLockLeaseRequest(ttl_seconds=ttl),
                 x_volcano_lock_token=token,
                 x_volcano_request_id=request_id or str(uuid4()),
@@ -63,7 +64,7 @@ class LocksTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = get_project_lock.sync_detailed(
-                key,
+                lock_key(key),
                 client=client,
                 x_volcano_request_id=request_id or str(uuid4()),
             )
@@ -78,7 +79,7 @@ class LocksTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = force_release_project_lock.sync_detailed(
-                key,
+                lock_key(key),
                 client=client,
                 x_volcano_request_id=request_id or str(uuid4()),
             )
@@ -95,7 +96,7 @@ class LocksTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = renew_project_lock.sync_detailed(
-                key,
+                lock_key(key),
                 client=client,
                 body=ProjectLockLeaseRequest(ttl_seconds=ttl),
                 x_volcano_lock_token=token,
@@ -113,7 +114,7 @@ class LocksTransport(TransportBase):
     ) -> TransportResponse:
         with self._client(authorization) as client:
             response = release_project_lock.sync_detailed(
-                key,
+                lock_key(key),
                 client=client,
                 x_volcano_lock_token=token,
                 x_volcano_request_id=request_id or str(uuid4()),

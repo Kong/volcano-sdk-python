@@ -11,6 +11,7 @@ from typing import (
 )
 
 from ._client_context import ClientContextSource, facade_context
+from ._path_segments import bucket_name, path_identifier
 from ._storage_values import (
     BinaryReader,
     SeekableBinaryReader,
@@ -277,6 +278,9 @@ class StorageBucket:
     _client: StorageContext | ClientContextSource
     _name: str
 
+    def _bucket_name(self) -> str:
+        return bucket_name(self._name)
+
     def upload(
         self,
         path: str,
@@ -294,6 +298,8 @@ class StorageBucket:
 
         """
         client = facade_context(self._client)
+        path = storage_path(path)
+        bucket = self._bucket_name()
         mime_type = upload_content_type(content_type)
         binding = client.capture_session_binding()
         _ = client.session_token()
@@ -302,7 +308,7 @@ class StorageBucket:
             lambda token: invoke(
                 client.transport().upload_storage_object,
                 authorization=token,
-                bucket_name=self._name,
+                bucket_name=bucket,
                 path=path,
                 data=content,
                 content_type=mime_type,
@@ -322,11 +328,13 @@ class StorageBucket:
 
         """
         client = facade_context(self._client)
+        path = storage_path(path)
+        bucket = self._bucket_name()
         response = client.auth().request(
             lambda token: invoke(
                 client.transport().download_storage_object,
                 authorization=token,
-                bucket_name=self._name,
+                bucket_name=bucket,
                 path=path,
                 byte_range=byte_range,
             )
@@ -364,7 +372,7 @@ class StorageBucket:
             lambda token: invoke(
                 transport.create_upload_session,
                 authorization=token,
-                bucket_name=self._name,
+                bucket_name=self._bucket_name(),
                 request=StorageUploadSessionRequest(
                     path=storage_path(path),
                     content_type=content_type,
@@ -400,7 +408,7 @@ class StorageBucket:
             lambda token: invoke(
                 transport.upload_part,
                 authorization=token,
-                bucket_name=self._name,
+                bucket_name=self._bucket_name(),
                 request=StorageUploadPartRequest(
                     path=storage_path(path),
                     session_id=session_id,
@@ -434,7 +442,7 @@ class StorageBucket:
             lambda token: invoke(
                 transport.complete_upload_session,
                 authorization=token,
-                bucket_name=self._name,
+                bucket_name=self._bucket_name(),
                 request=StorageUploadSessionReference(
                     path=storage_path(path),
                     session_id=session_id,
@@ -467,7 +475,7 @@ class StorageBucket:
             lambda token: invoke(
                 transport.get_upload_session,
                 authorization=token,
-                bucket_name=self._name,
+                bucket_name=self._bucket_name(),
                 request=StorageUploadSessionReference(
                     path=storage_path(path),
                     session_id=session_id,
@@ -496,7 +504,7 @@ class StorageBucket:
             lambda token: invoke(
                 transport.abort_upload_session,
                 authorization=token,
-                bucket_name=self._name,
+                bucket_name=self._bucket_name(),
                 request=StorageUploadSessionReference(
                     path=storage_path(path),
                     session_id=session_id,
@@ -592,7 +600,7 @@ class StorageBucket:
             lambda token: invoke(
                 transport.list_storage_objects,
                 authorization=token,
-                bucket_name=self._name,
+                bucket_name=self._bucket_name(),
                 prefix=prefix,
                 limit=limit,
                 cursor=cursor,
@@ -625,8 +633,8 @@ class StorageBucket:
             lambda token: invoke(
                 transport.delete_storage_object,
                 authorization=token,
-                bucket_name=self._name,
-                path=path,
+                bucket_name=self._bucket_name(),
+                path=storage_path(path),
             ),
             binding=binding,
         )
@@ -651,7 +659,7 @@ class StorageBucket:
             lambda token: invoke(
                 transport.move_storage_object,
                 authorization=token,
-                bucket_name=self._name,
+                bucket_name=self._bucket_name(),
                 from_path=source,
                 to_path=destination,
             )
@@ -677,7 +685,7 @@ class StorageBucket:
             lambda token: invoke(
                 transport.copy_storage_object,
                 authorization=token,
-                bucket_name=self._name,
+                bucket_name=self._bucket_name(),
                 from_path=source,
                 to_path=destination,
             )
@@ -704,7 +712,7 @@ class StorageBucket:
             lambda token: invoke(
                 transport.update_storage_object_visibility,
                 authorization=token,
-                bucket_name=self._name,
+                bucket_name=self._bucket_name(),
                 path=object_path,
                 is_public=visibility,
             )
@@ -720,11 +728,13 @@ class StorageBucket:
         """
         client = facade_context(self._client)
         object_path = storage_path(path)
-        project_id = project_id_from_anon_key(client.anon_token())
+        project_id = path_identifier(
+            project_id_from_anon_key(client.anon_token()), "Project ID in anon key"
+        )
         return (
             f"{client.api_base_url()}/public/"
             f"{encoded_storage_component(project_id)}/"
-            f"{encoded_storage_component(self._name)}/"
+            f"{encoded_storage_component(self._bucket_name())}/"
             f"{encoded_storage_path(object_path)}"
         )
 

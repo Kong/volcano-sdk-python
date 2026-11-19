@@ -1560,16 +1560,23 @@ def test_storage_get_public_url_encodes_path_segments_without_a_request() -> Non
     assert transport.calls == []
 
 
-def test_storage_public_url_encodes_project_and_bucket_slashes() -> None:
+def test_storage_public_url_encodes_the_project_and_drops_a_leading_slash() -> None:
     client = VolcanoClient(
         api_url="https://api.test.volcano.dev",
-        anon_key=anon_key_with_project_id("MaYJ?h5V2/team"),
+        anon_key=anon_key_with_project_id("MaYJ?h5V2 team"),
     )
 
-    assert client.storage.from_("assets/private").get_public_url("file.bin") == (
-        "https://api.test.volcano.dev/public/"
-        "MaYJ%3Fh5V2%2Fteam/assets%2Fprivate/file.bin"
+    assert client.storage.from_("assets").get_public_url("/file.bin") == (
+        "https://api.test.volcano.dev/public/MaYJ%3Fh5V2%20team/assets/file.bin"
     )
+
+
+@pytest.mark.parametrize("bucket", ["assets/private", "..", ".", "", "a.b", "a" * 65])
+def test_storage_public_url_rejects_invalid_bucket_names(bucket: str) -> None:
+    client = VolcanoClient(anon_key=anon_key_with_project_id("project-123"))
+
+    with pytest.raises(ValueError, match="Bucket name"):
+        _ = client.storage.from_(bucket).get_public_url("file.bin")
 
 
 def test_storage_public_url_accepts_a_single_padding_character() -> None:
@@ -1614,7 +1621,9 @@ def test_storage_get_public_url_rejects_an_empty_path() -> None:
     assert transport.calls == []
 
 
-@pytest.mark.parametrize("path", [".", "avatars/../secret.txt"])
+@pytest.mark.parametrize(
+    "path", [".", "avatars/../a.txt", "folder/", "a//b", "//a.txt"]
+)
 def test_storage_get_public_url_rejects_dot_segments(path: str) -> None:
     transport = FakeTransport()
     client = VolcanoClient(
@@ -1622,7 +1631,7 @@ def test_storage_get_public_url_rejects_dot_segments(path: str) -> None:
         _transport=transport,
     )
 
-    with pytest.raises(ValueError, match="dot segments"):
+    with pytest.raises(ValueError, match="segments"):
         _ = client.storage.from_("assets").get_public_url(path)
 
     assert transport.calls == []
