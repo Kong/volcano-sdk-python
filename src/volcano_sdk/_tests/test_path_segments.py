@@ -7,8 +7,10 @@ import httpx
 import pytest
 
 from volcano_sdk import VolcanoClient
+from volcano_sdk._generated.api.sandboxes import list_sandbox_presets
 from volcano_sdk._path_segments import check_request_path
 from volcano_sdk._transport import GeneratedTransport
+from volcano_sdk._transport_base import TransportBase
 from volcano_sdk._transport_sandbox import SandboxRequest
 
 from .test_facade import FakeTransport, anon_key_with_project_id, signed_in_client
@@ -360,3 +362,36 @@ def test_a_64_character_database_name_is_sent() -> None:
     )
 
     assert requests[0].url.path == f"/base/databases/{'a' * 64}/query/select"
+
+
+class AsyncPublicTransport(TransportBase):
+    async def presets(self, path: str = "") -> object:
+        async with self._public_client(timeout=9) as client:
+            if path:
+                return await client.get_async_httpx_client().get(path)
+            return await list_sandbox_presets.asyncio_detailed(client=client)
+
+
+def test_asynchronous_public_requests_are_route_checked() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"data": []})
+
+    transport = AsyncPublicTransport(
+        api_url="https://api.test.volcano.dev/base",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    _ = asyncio.run(transport.presets())
+    with pytest.raises(ValueError, match="Request path cannot contain"):
+        _ = asyncio.run(transport.presets("/sandboxes/../projects"))
+
+    assert len(requests) == 1
+    assert requests[0].url.path.startswith("/base/")
+    assert requests[0].headers["user-agent"].startswith("volcano-sdk-python/")
+    assert "authorization" not in requests[0].headers
+    assert requests[0].extensions["timeout"] == dict.fromkeys(
+        ("connect", "read", "write", "pool"), 9
+    )

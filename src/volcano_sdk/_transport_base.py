@@ -83,8 +83,7 @@ class TransportBase:
 
 # The generated clients build a plain httpx client for whichever side a call
 # enters. These build the route-checking client instead, still only for the
-# side that is used. Every unauthenticated operation is synchronous, so the
-# public client checks only that side.
+# side that is used.
 @final
 class _CheckedClient(Client):
     route_transport: httpx.BaseTransport | None = None
@@ -99,6 +98,17 @@ class _CheckedClient(Client):
                 transport=self.route_transport,
             )
         return self._client
+
+    @override
+    def get_async_httpx_client(self) -> httpx.AsyncClient:
+        if self._async_client is None:
+            self._async_client = _RouteCheckingAsyncClient(
+                base_url=self._base_url,
+                headers=self._headers,
+                timeout=self._timeout,
+                transport=_async_side(self.route_transport),
+            )
+        return self._async_client
 
 
 @final
