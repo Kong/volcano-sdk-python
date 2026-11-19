@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.0](https://github.com/Kong/volcano-sdk-python/compare/v0.16.0...v0.17.0) (2026-11-19)
+
+
+### Features
+
+* **telemetry:** identify the SDK version in the user agent ([#430](https://github.com/Kong/volcano-sdk-python/issues/430)) ([76cac75](https://github.com/Kong/volcano-sdk-python/commit/76cac750953cd30e522a1a0e45c6ca261fd0c34d))
+
+
+### Bug Fixes
+
+* validate resource names and object paths before sending requests ([#435](https://github.com/Kong/volcano-sdk-python/issues/435)) ([7f7d1f2](https://github.com/Kong/volcano-sdk-python/commit/7f7d1f27bddea4ba721082953842cb15e31f85e4))
+
 ## [0.16.0](https://github.com/Kong/volcano-sdk-python/compare/v0.15.1...v0.16.0) (2026-10-28)
 
 
