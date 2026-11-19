@@ -6,6 +6,7 @@ import httpx
 
 from ._generated.client import AuthenticatedClient, Client
 from ._transport_types import URL_TRAILING_SLASHES
+from ._user_agent import user_agent_headers
 
 
 class TransportBase:
@@ -29,6 +30,7 @@ class TransportBase:
         return AuthenticatedClient(
             base_url=self._api_url,
             token=authorization,
+            headers=user_agent_headers(),
             timeout=httpx.Timeout(self._timeout),
             httpx_args=httpx_args,
         )
@@ -36,5 +38,6 @@ class TransportBase:
     def _public_client(self) -> Client:
         return Client(
             base_url=self._api_url,
+            headers=user_agent_headers(),
             httpx_args={"transport": self._httpx_transport},
         )

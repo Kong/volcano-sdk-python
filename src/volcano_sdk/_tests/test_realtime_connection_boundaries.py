@@ -29,6 +29,7 @@ from volcano_sdk._realtime_transport import (
     centrifuge_client,
     native_presence_clients,
 )
+from volcano_sdk._user_agent import USER_AGENT
 
 from .client_inspection import InspectedClient
 from .realtime_probes import channel_state, completed_operation, realtime_state
@@ -209,8 +210,9 @@ def test_default_factory_passes_connection_settings_to_centrifuge(
         events: object,
         token: str,
         get_token: Callable[[], Awaitable[str]],
+        headers: dict[str, str],
     ) -> FakeCentrifugeClient:
-        received.extend((supplied_address, events, token, get_token))
+        received.extend((supplied_address, events, token, get_token, headers))
         return native
 
     monkeypatch.setattr(realtime_transport, "Client", construct)
@@ -224,7 +226,13 @@ def test_default_factory_passes_connection_settings_to_centrifuge(
         )
         is native
     )
-    assert received == [address, events, "initial-access", refresh_token]
+    assert received == [
+        address,
+        events,
+        "initial-access",
+        refresh_token,
+        {"User-Agent": USER_AGENT},
+    ]
 
 
 @pytest.mark.parametrize(

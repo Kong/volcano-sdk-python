@@ -19,6 +19,7 @@ from ._transport_response import (
     unparsed_response,
 )
 from ._transport_types import HTTP_CREATED, HTTP_OK
+from ._user_agent import user_agent_headers
 from .errors import (
     ConflictError,
     NotFoundError,
@@ -117,7 +118,12 @@ def post_to_platform(api_url: str, request: PlatformRequest) -> object:
     """
     url = f"{api_url.removesuffix('/')}{request.path}"
     content = encode(request.body)
-    headers = {**_JSON, **request.headers}
+    caller_headers = {
+        name: value
+        for name, value in request.headers.items()
+        if name.lower() != "user-agent"
+    }
+    headers = {**_JSON, **caller_headers, **user_agent_headers()}
     deadline = monotonic() + _DEADLINE_SECONDS
     timeout = _REQUEST_TIMEOUT_SECONDS
     for delay in _RETRY_DELAYS:

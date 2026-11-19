@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Protocol, TypeVar, overload
 from centrifuge import CentrifugeError, Client
 from typing_extensions import override
 
+from ._user_agent import user_agent_headers
+
 if TYPE_CHECKING:
     from typing import TypeGuard
 
@@ -202,7 +204,13 @@ def centrifuge_client(
     token: str,
     get_token: Callable[[], Awaitable[str]],
 ) -> CentrifugeConnection:
-    return Client(address, events=events, token=token, get_token=get_token)
+    return Client(
+        address,
+        events=events,
+        token=token,
+        get_token=get_token,
+        headers=user_agent_headers(),
+    )
 
 
 class ProjectAwareSubscriptions(UserDict[str, _SubscriptionT]):
