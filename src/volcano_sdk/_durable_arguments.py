@@ -18,7 +18,7 @@ _INVALID_IDENTIFIERS = {
     "approval_id": "approval_id must be a non-empty string",
 }
 # The identifiers sent as URL path segments; an execution name is sent in
-# the request body.
+# the X-Volcano-Execution-Name header.
 _PATH_IDENTIFIERS = frozenset(_INVALID_IDENTIFIERS) - {"execution_name"}
 # The identifiers the transport converts to a UUID before sending. Checked
 # here so a malformed one is a facade ValidationError rather than a

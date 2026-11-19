@@ -128,6 +128,31 @@ def test_generated_requests_identify_the_sdk() -> None:
     assert requests[0].headers["authorization"] == "Bearer access-token"
 
 
+def test_asynchronous_generated_requests_identify_the_sdk() -> None:
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"data": []})
+
+    transport = GeneratedTransport(
+        api_url="https://api.test.volcano.dev",
+        httpx_transport=httpx.MockTransport(handle),
+    )
+
+    async def query() -> object:
+        return await transport.query_database_select_async(
+            authorization="access-token",
+            database_name="app",
+            body={"table": "messages", "limit": 1},
+        )
+
+    _ = asyncio.run(query())
+
+    assert _single_user_agent(requests[0]) == USER_AGENT
+    assert requests[0].headers["authorization"] == "Bearer access-token"
+
+
 def test_unauthenticated_generated_requests_identify_the_sdk() -> None:
     requests: list[httpx.Request] = []
 

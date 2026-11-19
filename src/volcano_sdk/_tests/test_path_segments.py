@@ -79,6 +79,12 @@ def database_multiline(transport: GeneratedTransport) -> object:
     )
 
 
+def database_too_long(transport: GeneratedTransport) -> object:
+    return transport.query_database_select(
+        authorization="token", database_name="a" * 65, body={"table": "t"}
+    )
+
+
 def lock_dots(transport: GeneratedTransport) -> object:
     return transport.get_project_lock(authorization="token", key="..")
 
@@ -129,6 +135,7 @@ def bucket_slash(transport: GeneratedTransport) -> object:
     [
         database_dots,
         database_multiline,
+        database_too_long,
         lock_dots,
         session_dots,
         session_empty,
@@ -141,6 +148,7 @@ def bucket_slash(transport: GeneratedTransport) -> object:
     ids=[
         "database_dots",
         "database_multiline",
+        "database_too_long",
         "lock_dots",
         "session_dots",
         "session_empty",
@@ -327,6 +335,9 @@ def test_route_checked_clients_keep_the_configured_timeouts() -> None:
     _ = transport.sandbox_request(
         authorization=None, request=SandboxRequest("list_sandbox_presets", timeout=3)
     )
+    _ = transport.sandbox_request(
+        authorization=None, request=SandboxRequest("list_sandbox_presets", timeout=30)
+    )
 
     async def query() -> object:
         return await transport.query_database_select_async(
@@ -335,7 +346,17 @@ def test_route_checked_clients_keep_the_configured_timeouts() -> None:
 
     _ = asyncio.run(query())
 
-    for request, limit in zip(requests, (7, 300, 7, 7), strict=True):
+    for request, limit in zip(requests, (7, 300, 7, 30, 7), strict=True):
         assert request.extensions["timeout"] == dict.fromkeys(
             ("connect", "read", "write", "pool"), limit
         )
+
+
+def test_a_64_character_database_name_is_sent() -> None:
+    transport, requests = recording_transport()
+
+    _ = transport.query_database_select(
+        authorization="token", database_name="a" * 64, body={"table": "t"}
+    )
+
+    assert requests[0].url.path == f"/base/databases/{'a' * 64}/query/select"

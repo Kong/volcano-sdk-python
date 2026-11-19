@@ -17,7 +17,7 @@ REQUEST_PATH_SEGMENTS: Final = f"Request path {SEGMENT_RULE}"
 STORAGE_PATH_SEGMENTS: Final = f"Storage path {SEGMENT_RULE}"
 INVALID_BUCKET_NAME: Final = 'Bucket name must be 1-64 letters, numbers, "_", or "-"'
 INVALID_DATABASE_NAME: Final = (
-    'Database name must be lowercase letters, numbers, or "_"'
+    'Database name must be 1-64 lowercase letters, numbers, or "_"'
 )
 INVALID_LOCK_KEY: Final = (
     "Lock key must start with a letter or number and contain at most 128 "
@@ -27,7 +27,7 @@ INVALID_IDENTIFIER: Final = '{field} cannot contain "/" or be "." or ".."'
 
 _DOT_SEGMENTS: Final = frozenset({".", ".."})
 _BUCKET_NAME: Final = re.compile(r"[A-Za-z0-9_-]{1,64}")
-_DATABASE_NAME: Final = re.compile(r"[a-z0-9_]+")
+_DATABASE_NAME: Final = re.compile(r"[a-z0-9_]{1,64}")
 _LOCK_KEY: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 _ENCODED_DOT: Final = re.compile(r"%2e", re.IGNORECASE)
 _ENCODED_SLASH: Final = re.compile(r"%2f", re.IGNORECASE)

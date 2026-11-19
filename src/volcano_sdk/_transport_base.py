@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import final
+
 import httpx
 from typing_extensions import override
 
@@ -57,39 +59,76 @@ class TransportBase:
     def _client(
         self, authorization: str, *, timeout: float | None = None
     ) -> AuthenticatedClient:
-        client = AuthenticatedClient(base_url=self._api_url, token=authorization)
-        limits = httpx.Timeout(self._timeout if timeout is None else timeout)
-        # Both sides are set, so neither entry builds an unchecked httpx client.
-        _ = client.set_async_httpx_client(
-            _RouteCheckingAsyncClient(
-                base_url=self._api_url,
-                headers={**user_agent_headers(), **_credential_header(client)},
-                timeout=limits,
-                transport=_async_side(self._httpx_transport),
-            )
+        client = _CheckedAuthenticatedClient(
+            base_url=self._api_url,
+            token=authorization,
+            headers=user_agent_headers(),
+            timeout=self._limits(timeout),
         )
-        return client.set_httpx_client(
-            _RouteCheckingClient(
-                base_url=self._api_url,
-                headers={**user_agent_headers(), **_credential_header(client)},
-                timeout=limits,
-                transport=self._httpx_transport,
-            )
-        )
+        client.route_transport = self._httpx_transport
+        return client
 
     def _public_client(self, *, timeout: float | None = None) -> Client:
-        return Client(base_url=self._api_url).set_httpx_client(
-            _RouteCheckingClient(
-                base_url=self._api_url,
-                headers=user_agent_headers(),
-                timeout=httpx.Timeout(timeout),
-                transport=self._httpx_transport,
-            )
+        client = _CheckedClient(
+            base_url=self._api_url,
+            headers=user_agent_headers(),
+            timeout=self._limits(timeout),
         )
+        client.route_transport = self._httpx_transport
+        return client
+
+    def _limits(self, timeout: float | None) -> httpx.Timeout:
+        return httpx.Timeout(self._timeout if timeout is None else timeout)
 
 
-def _credential_header(client: AuthenticatedClient) -> dict[str, str]:
-    return {client.auth_header_name: f"{client.prefix} {client.token}"}
+# The generated clients build a plain httpx client for whichever side a call
+# enters. These build the route-checking client instead, still only for the
+# side that is used. Every unauthenticated operation is synchronous, so the
+# public client checks only that side.
+@final
+class _CheckedClient(Client):
+    route_transport: httpx.BaseTransport | None = None
+
+    @override
+    def get_httpx_client(self) -> httpx.Client:
+        if self._client is None:
+            self._client = _RouteCheckingClient(
+                base_url=self._base_url,
+                headers=self._headers,
+                timeout=self._timeout,
+                transport=self.route_transport,
+            )
+        return self._client
+
+
+@final
+class _CheckedAuthenticatedClient(AuthenticatedClient):
+    route_transport: httpx.BaseTransport | None = None
+
+    @override
+    def get_httpx_client(self) -> httpx.Client:
+        if self._client is None:
+            self._client = _RouteCheckingClient(
+                base_url=self._base_url,
+                headers=self._credentialed_headers(),
+                timeout=self._timeout,
+                transport=self.route_transport,
+            )
+        return self._client
+
+    @override
+    def get_async_httpx_client(self) -> httpx.AsyncClient:
+        if self._async_client is None:
+            self._async_client = _RouteCheckingAsyncClient(
+                base_url=self._base_url,
+                headers=self._credentialed_headers(),
+                timeout=self._timeout,
+                transport=_async_side(self.route_transport),
+            )
+        return self._async_client
+
+    def _credentialed_headers(self) -> dict[str, str]:
+        return {**self._headers, self.auth_header_name: f"{self.prefix} {self.token}"}
 
 
 def _async_side(
