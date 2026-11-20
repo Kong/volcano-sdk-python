@@ -17,6 +17,7 @@ from ._transport_types import (
     HTTP_RATE_LIMITED,
     HTTP_SERVER_ERROR_MAX,
     HTTP_SERVER_ERROR_MIN,
+    HTTP_SERVICE_UNAVAILABLE,
     RETRY_AFTER_HEADER,
     GeneratedTransportResponse,
     JSONResponse,
@@ -189,7 +190,7 @@ def response_payload(response: TransportResponse, expected_status: int) -> objec
         code_value = payload.get("code")
         code = str(code_value) if code_value is not None else None
         retry_after = None
-        if status == HTTP_RATE_LIMITED:
+        if status in {HTTP_RATE_LIMITED, HTTP_SERVICE_UNAVAILABLE}:
             retry_after_value = header(response.headers, RETRY_AFTER_HEADER)
             try:
                 retry_after = (
