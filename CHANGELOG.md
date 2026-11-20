@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/Kong/volcano-sdk-python/compare/v0.17.0...v0.17.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **transport:** preserve retry delay on service unavailable responses ([#428](https://github.com/Kong/volcano-sdk-python/issues/428)) ([1e566fb](https://github.com/Kong/volcano-sdk-python/commit/1e566fbb15c42f3f9cae8c367c3023bcb8b3516d))
+
 ## [0.17.0](https://github.com/Kong/volcano-sdk-python/compare/v0.16.0...v0.17.0) (2026-11-19)
 
 
