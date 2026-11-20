@@ -95,6 +95,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_409
 
+    if response.status_code == 413:
+        response_413 = Error.from_dict(response.json())
+
+
+
+        return response_413
+
     if response.status_code == 500:
         response_500 = Error.from_dict(response.json())
 
@@ -134,7 +141,10 @@ def sync_detailed(
 ) -> Response[Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse]:
     """ Configure frontend custom domain
 
-     Configures one custom domain for a frontend.
+     Deprecated: use `POST /projects/{id}/frontends/{frontendId}/domains`, which adds a domain beside the
+    frontend's others.
+    Configures one custom domain for a frontend. When the frontend already has a domain, a request for
+    another hostname returns `409`.
     The default Volcano-generated frontend URL remains active.
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
     The account must own the hostname: it must have verified the hostname or a domain above it (see
@@ -197,7 +207,10 @@ def sync(
 ) -> Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse | None:
     """ Configure frontend custom domain
 
-     Configures one custom domain for a frontend.
+     Deprecated: use `POST /projects/{id}/frontends/{frontendId}/domains`, which adds a domain beside the
+    frontend's others.
+    Configures one custom domain for a frontend. When the frontend already has a domain, a request for
+    another hostname returns `409`.
     The default Volcano-generated frontend URL remains active.
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
     The account must own the hostname: it must have verified the hostname or a domain above it (see
@@ -255,7 +268,10 @@ async def asyncio_detailed(
 ) -> Response[Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse]:
     """ Configure frontend custom domain
 
-     Configures one custom domain for a frontend.
+     Deprecated: use `POST /projects/{id}/frontends/{frontendId}/domains`, which adds a domain beside the
+    frontend's others.
+    Configures one custom domain for a frontend. When the frontend already has a domain, a request for
+    another hostname returns `409`.
     The default Volcano-generated frontend URL remains active.
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
     The account must own the hostname: it must have verified the hostname or a domain above it (see
@@ -318,7 +334,10 @@ async def asyncio(
 ) -> Error | FrontendCustomDomainConflictError | FrontendCustomDomainResponse | None:
     """ Configure frontend custom domain
 
-     Configures one custom domain for a frontend.
+     Deprecated: use `POST /projects/{id}/frontends/{frontendId}/domains`, which adds a domain beside the
+    frontend's others.
+    Configures one custom domain for a frontend. When the frontend already has a domain, a request for
+    another hostname returns `409`.
     The default Volcano-generated frontend URL remains active.
     Wildcard Volcano frontend TLS remains valid and isolated from custom-domain certificate changes.
     The account must own the hostname: it must have verified the hostname or a domain above it (see

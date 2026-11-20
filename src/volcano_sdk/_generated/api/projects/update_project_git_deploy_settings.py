@@ -129,10 +129,13 @@ def sync_detailed(
     until set here; the frontend need not exist when they are saved, since
     frontend_name is resolved at deploy time.
 
+    apply_migrations is the exception to the full replace: omitting it
+    leaves the saved value unchanged. It is off until set here.
+
     Args:
         id (UUID):
         body (UpdateProjectGitDeploySettingsRequest): Full replace of a project's Git auto-deploy
-            settings.
+            settings, except apply_migrations, which keeps its saved value when omitted.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -176,10 +179,13 @@ def sync(
     until set here; the frontend need not exist when they are saved, since
     frontend_name is resolved at deploy time.
 
+    apply_migrations is the exception to the full replace: omitting it
+    leaves the saved value unchanged. It is off until set here.
+
     Args:
         id (UUID):
         body (UpdateProjectGitDeploySettingsRequest): Full replace of a project's Git auto-deploy
-            settings.
+            settings, except apply_migrations, which keeps its saved value when omitted.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -218,10 +224,13 @@ async def asyncio_detailed(
     until set here; the frontend need not exist when they are saved, since
     frontend_name is resolved at deploy time.
 
+    apply_migrations is the exception to the full replace: omitting it
+    leaves the saved value unchanged. It is off until set here.
+
     Args:
         id (UUID):
         body (UpdateProjectGitDeploySettingsRequest): Full replace of a project's Git auto-deploy
-            settings.
+            settings, except apply_migrations, which keeps its saved value when omitted.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -265,10 +274,13 @@ async def asyncio(
     until set here; the frontend need not exist when they are saved, since
     frontend_name is resolved at deploy time.
 
+    apply_migrations is the exception to the full replace: omitting it
+    leaves the saved value unchanged. It is off until set here.
+
     Args:
         id (UUID):
         body (UpdateProjectGitDeploySettingsRequest): Full replace of a project's Git auto-deploy
-            settings.
+            settings, except apply_migrations, which keeps its saved value when omitted.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

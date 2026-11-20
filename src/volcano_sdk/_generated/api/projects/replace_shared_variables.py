@@ -10,6 +10,7 @@ from ... import errors
 
 from ...models.error import Error
 from ...models.replace_shared_variables_body import ReplaceSharedVariablesBody
+from ...models.shared_variables_replace_result import SharedVariablesReplaceResult
 from typing import cast
 from uuid import UUID
 
@@ -42,7 +43,14 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Error | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Error | SharedVariablesReplaceResult | None:
+    if response.status_code == 200:
+        response_200 = SharedVariablesReplaceResult.from_dict(response.json())
+
+
+
+        return response_200
+
     if response.status_code == 204:
         response_204 = cast(Any, None)
         return response_204
@@ -93,7 +101,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error | SharedVariablesReplaceResult]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -108,7 +116,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: ReplaceSharedVariablesBody,
 
-) -> Response[Any | Error]:
+) -> Response[Any | Error | SharedVariablesReplaceResult]:
     """ Replace shared variable names
 
      Atomically replaces the complete shared function-variable list without
@@ -125,7 +133,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | Error]
+        Response[Any | Error | SharedVariablesReplaceResult]
      """
 
 
@@ -147,7 +155,7 @@ def sync(
     client: AuthenticatedClient,
     body: ReplaceSharedVariablesBody,
 
-) -> Any | Error | None:
+) -> Any | Error | SharedVariablesReplaceResult | None:
     """ Replace shared variable names
 
      Atomically replaces the complete shared function-variable list without
@@ -164,7 +172,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | Error
+        Any | Error | SharedVariablesReplaceResult
      """
 
 
@@ -181,7 +189,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: ReplaceSharedVariablesBody,
 
-) -> Response[Any | Error]:
+) -> Response[Any | Error | SharedVariablesReplaceResult]:
     """ Replace shared variable names
 
      Atomically replaces the complete shared function-variable list without
@@ -198,7 +206,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | Error]
+        Response[Any | Error | SharedVariablesReplaceResult]
      """
 
 
@@ -220,7 +228,7 @@ async def asyncio(
     client: AuthenticatedClient,
     body: ReplaceSharedVariablesBody,
 
-) -> Any | Error | None:
+) -> Any | Error | SharedVariablesReplaceResult | None:
     """ Replace shared variable names
 
      Atomically replaces the complete shared function-variable list without
@@ -237,7 +245,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | Error
+        Any | Error | SharedVariablesReplaceResult
      """
 
 

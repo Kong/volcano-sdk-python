@@ -82,6 +82,12 @@ class AuthConfig:
             max_password_history (int | Unset): Number of previous passwords to remember (0=disabled) Default: 0.
             cors_allow_credentials (bool | Unset): Allow credentials in CORS requests Default: True.
             cors_max_age (int | Unset): CORS preflight cache duration (seconds) Default: 86400.
+            cors_allow_frontend_previews (bool | Unset): Allow the exact origins of the project's own live frontend previews
+                in its CORS checks, in addition to `cors_allowed_origins`. A preview's origin stops being allowed within seconds
+                of the preview being deleted or expiring, with no configuration change. Default: False.
+            frontend_preview_origins (list[str] | Unset): Origins of the project's live frontend previews that its CORS
+                checks currently allow. Empty unless `cors_allow_frontend_previews` is true. Omitted when the live previews
+                could not be read; the rest of the response, and any update it answers, is unaffected.
             require_email_confirmation (bool | Unset): Require users to confirm email before sign-in. Can only be true when
                 email_enabled is true. Default: False.
             email_confirmation_timeout (int | Unset): Email confirmation token expiry in seconds. Default: 86400.
@@ -89,8 +95,13 @@ class AuthConfig:
                 the same email instead of returning a conflict. Requires require_email_confirmation to be true. Default: False.
             email_enabled (bool | Unset): Enable transactional email sending (confirmation, reset, change notifications).
                 Must be true when require_email_confirmation is true. Default: False.
-            email_from_address (str | Unset):
-            email_from_name (str | Unset):
+            email_from_address (str | Unset): Sender email address. New or changed values containing carriage returns or
+                newlines return 400. Unchanged stored or exported values are preserved. Leading and trailing whitespace in
+                previously saved settings is trimmed in responses and exports, and ignored when sending.
+            email_from_name (str | Unset): Sender display name; supports punctuation and Unicode. New or changed values
+                containing carriage returns or newlines return 400. Unchanged stored or exported values are preserved. Leading
+                and trailing whitespace in previously saved settings is trimmed in responses and exports, and ignored when
+                sending.
             smtp_host (str | Unset):
             smtp_port (int | Unset):  Default: 587.
             smtp_username (str | Unset):
@@ -144,6 +155,8 @@ class AuthConfig:
     max_password_history: int | Unset = 0
     cors_allow_credentials: bool | Unset = True
     cors_max_age: int | Unset = 86400
+    cors_allow_frontend_previews: bool | Unset = False
+    frontend_preview_origins: list[str] | Unset = UNSET
     require_email_confirmation: bool | Unset = False
     email_confirmation_timeout: int | Unset = 86400
     auto_link_verified_oauth: bool | Unset = False
@@ -243,6 +256,14 @@ class AuthConfig:
         cors_allow_credentials = self.cors_allow_credentials
 
         cors_max_age = self.cors_max_age
+
+        cors_allow_frontend_previews = self.cors_allow_frontend_previews
+
+        frontend_preview_origins: list[str] | Unset = UNSET
+        if not isinstance(self.frontend_preview_origins, Unset):
+            frontend_preview_origins = self.frontend_preview_origins
+
+
 
         require_email_confirmation = self.require_email_confirmation
 
@@ -356,6 +377,10 @@ class AuthConfig:
             field_dict["cors_allow_credentials"] = cors_allow_credentials
         if cors_max_age is not UNSET:
             field_dict["cors_max_age"] = cors_max_age
+        if cors_allow_frontend_previews is not UNSET:
+            field_dict["cors_allow_frontend_previews"] = cors_allow_frontend_previews
+        if frontend_preview_origins is not UNSET:
+            field_dict["frontend_preview_origins"] = frontend_preview_origins
         if require_email_confirmation is not UNSET:
             field_dict["require_email_confirmation"] = require_email_confirmation
         if email_confirmation_timeout is not UNSET:
@@ -486,6 +511,11 @@ class AuthConfig:
 
         cors_max_age = d.pop("cors_max_age", UNSET)
 
+        cors_allow_frontend_previews = d.pop("cors_allow_frontend_previews", UNSET)
+
+        frontend_preview_origins = cast(list[str], d.pop("frontend_preview_origins", UNSET))
+
+
         require_email_confirmation = d.pop("require_email_confirmation", UNSET)
 
         email_confirmation_timeout = d.pop("email_confirmation_timeout", UNSET)
@@ -575,6 +605,8 @@ class AuthConfig:
             max_password_history=max_password_history,
             cors_allow_credentials=cors_allow_credentials,
             cors_max_age=cors_max_age,
+            cors_allow_frontend_previews=cors_allow_frontend_previews,
+            frontend_preview_origins=frontend_preview_origins,
             require_email_confirmation=require_email_confirmation,
             email_confirmation_timeout=email_confirmation_timeout,
             auto_link_verified_oauth=auto_link_verified_oauth,

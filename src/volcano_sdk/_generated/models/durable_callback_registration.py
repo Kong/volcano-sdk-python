@@ -27,9 +27,10 @@ class DurableCallbackRegistration:
         Attributes:
             token (str): The `vcb_` token the workflow handed out. It is the only credential
                 the callback operations take, so treat it as a secret.
-            expires_at (datetime.datetime | None): When the waiting step times out and the token stops working. Null
-                when the workflow set no timeout, in which case the token works
-                until the execution ends.
+            expires_at (datetime.datetime | None): When the waiting step's `timeout` passes and the token stops
+                working. Null when the workflow set no `timeout`. A step with a
+                heartbeat timeout also ends once that long passes without a
+                heartbeat, which can be before this time.
      """
 
     token: str
