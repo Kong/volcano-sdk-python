@@ -25,14 +25,24 @@ T = TypeVar("T", bound="AuthListOAuthProvidersResponse200ProvidersItem")
 class AuthListOAuthProvidersResponse200ProvidersItem:
     """ 
         Attributes:
-            provider (str | Unset):
-            linked_at (datetime.datetime | Unset):
-            updated_at (datetime.datetime | Unset):
+            provider (str):
+            provider_user_id (str): The user's account ID at the provider, as a string.
+                It stays the same when the user renames the account.
+                 Example: 583231.
+            linked_at (datetime.datetime):
+            updated_at (datetime.datetime):
+            provider_login (str | Unset): The account's login at the provider when it was
+                linked, such as a GitHub username. It isn't updated
+                when the user renames the account. Omitted for
+                providers without logins.
+                 Example: octocat.
      """
 
-    provider: str | Unset = UNSET
-    linked_at: datetime.datetime | Unset = UNSET
-    updated_at: datetime.datetime | Unset = UNSET
+    provider: str
+    provider_user_id: str
+    linked_at: datetime.datetime
+    updated_at: datetime.datetime
+    provider_login: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -42,25 +52,25 @@ class AuthListOAuthProvidersResponse200ProvidersItem:
     def to_dict(self) -> dict[str, Any]:
         provider = self.provider
 
-        linked_at: str | Unset = UNSET
-        if not isinstance(self.linked_at, Unset):
-            linked_at = self.linked_at.isoformat()
+        provider_user_id = self.provider_user_id
 
-        updated_at: str | Unset = UNSET
-        if not isinstance(self.updated_at, Unset):
-            updated_at = self.updated_at.isoformat()
+        linked_at = self.linked_at.isoformat()
+
+        updated_at = self.updated_at.isoformat()
+
+        provider_login = self.provider_login
 
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
+            "provider": provider,
+            "provider_user_id": provider_user_id,
+            "linked_at": linked_at,
+            "updated_at": updated_at,
         })
-        if provider is not UNSET:
-            field_dict["provider"] = provider
-        if linked_at is not UNSET:
-            field_dict["linked_at"] = linked_at
-        if updated_at is not UNSET:
-            field_dict["updated_at"] = updated_at
+        if provider_login is not UNSET:
+            field_dict["provider_login"] = provider_login
 
         return field_dict
 
@@ -69,32 +79,28 @@ class AuthListOAuthProvidersResponse200ProvidersItem:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        provider = d.pop("provider", UNSET)
+        provider = d.pop("provider")
 
-        _linked_at = d.pop("linked_at", UNSET)
-        linked_at: datetime.datetime | Unset
-        if isinstance(_linked_at,  Unset):
-            linked_at = UNSET
-        else:
-            linked_at = datetime.datetime.fromisoformat(_linked_at)
+        provider_user_id = d.pop("provider_user_id")
+
+        linked_at = datetime.datetime.fromisoformat(d.pop("linked_at"))
 
 
 
 
-        _updated_at = d.pop("updated_at", UNSET)
-        updated_at: datetime.datetime | Unset
-        if isinstance(_updated_at,  Unset):
-            updated_at = UNSET
-        else:
-            updated_at = datetime.datetime.fromisoformat(_updated_at)
+        updated_at = datetime.datetime.fromisoformat(d.pop("updated_at"))
 
 
 
+
+        provider_login = d.pop("provider_login", UNSET)
 
         auth_list_o_auth_providers_response_200_providers_item = cls(
             provider=provider,
+            provider_user_id=provider_user_id,
             linked_at=linked_at,
             updated_at=updated_at,
+            provider_login=provider_login,
         )
 
 

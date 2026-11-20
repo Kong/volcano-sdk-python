@@ -30,21 +30,21 @@ class EmailTemplate:
 
         Attributes:
             template_type (EmailTemplateTemplateType):
-            subject (str):  Example: Confirm your email address.
-            html_body (str): HTML template with placeholders
-            text_body (str): Plain text template with placeholders
             id (UUID | Unset):
             project_id (UUID | Unset):
+            subject (str | Unset):  Example: Confirm your email address.
+            html_body (str | Unset): HTML template with placeholders
+            text_body (str | Unset): Plain text template with placeholders
             created_at (datetime.datetime | Unset):
             updated_at (datetime.datetime | Unset):
      """
 
     template_type: EmailTemplateTemplateType
-    subject: str
-    html_body: str
-    text_body: str
     id: UUID | Unset = UNSET
     project_id: UUID | Unset = UNSET
+    subject: str | Unset = UNSET
+    html_body: str | Unset = UNSET
+    text_body: str | Unset = UNSET
     created_at: datetime.datetime | Unset = UNSET
     updated_at: datetime.datetime | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -56,12 +56,6 @@ class EmailTemplate:
     def to_dict(self) -> dict[str, Any]:
         template_type: str = self.template_type
 
-        subject = self.subject
-
-        html_body = self.html_body
-
-        text_body = self.text_body
-
         id: str | Unset = UNSET
         if not isinstance(self.id, Unset):
             id = str(self.id)
@@ -69,6 +63,12 @@ class EmailTemplate:
         project_id: str | Unset = UNSET
         if not isinstance(self.project_id, Unset):
             project_id = str(self.project_id)
+
+        subject = self.subject
+
+        html_body = self.html_body
+
+        text_body = self.text_body
 
         created_at: str | Unset = UNSET
         if not isinstance(self.created_at, Unset):
@@ -83,14 +83,17 @@ class EmailTemplate:
         field_dict.update(self.additional_properties)
         field_dict.update({
             "template_type": template_type,
-            "subject": subject,
-            "html_body": html_body,
-            "text_body": text_body,
         })
         if id is not UNSET:
             field_dict["id"] = id
         if project_id is not UNSET:
             field_dict["project_id"] = project_id
+        if subject is not UNSET:
+            field_dict["subject"] = subject
+        if html_body is not UNSET:
+            field_dict["html_body"] = html_body
+        if text_body is not UNSET:
+            field_dict["text_body"] = text_body
         if created_at is not UNSET:
             field_dict["created_at"] = created_at
         if updated_at is not UNSET:
@@ -107,12 +110,6 @@ class EmailTemplate:
 
 
 
-
-        subject = d.pop("subject")
-
-        html_body = d.pop("html_body")
-
-        text_body = d.pop("text_body")
 
         _id = d.pop("id", UNSET)
         id: UUID | Unset
@@ -133,6 +130,12 @@ class EmailTemplate:
 
 
 
+
+        subject = d.pop("subject", UNSET)
+
+        html_body = d.pop("html_body", UNSET)
+
+        text_body = d.pop("text_body", UNSET)
 
         _created_at = d.pop("created_at", UNSET)
         created_at: datetime.datetime | Unset
@@ -156,11 +159,11 @@ class EmailTemplate:
 
         email_template = cls(
             template_type=template_type,
+            id=id,
+            project_id=project_id,
             subject=subject,
             html_body=html_body,
             text_body=text_body,
-            id=id,
-            project_id=project_id,
             created_at=created_at,
             updated_at=updated_at,
         )

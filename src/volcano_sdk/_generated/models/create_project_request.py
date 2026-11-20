@@ -27,7 +27,8 @@ class CreateProjectRequest:
     """ Request to create a new project
 
         Attributes:
-            name (str): Project name (must be unique).
+            name (str): Project name. A name you already use is not refused: the project is
+                created with a short random suffix added to it.
                 Can only contain letters, numbers, underscores, and hyphens.
                  Example: my-awesome-app.
             template_id (CreateProjectRequestTemplateId | Unset): Optional trusted starter template identifier. The server

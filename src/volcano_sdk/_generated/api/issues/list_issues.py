@@ -124,7 +124,9 @@ def sync_detailed(
         cursor (str | Unset):
         status (IssueStatus | Unset): `open` until someone resolves or ignores the issue. A
             resolved issue
-            seen again reopens.
+            seen again reopens. A reported problem resolves when its LavaFlow fix
+            merges. Volcano ignores one whose report it deleted before any fix
+            merged, so it no longer counts toward the project's open issues.
         resource_id (UUID | Unset):
 
     Raises:
@@ -175,7 +177,9 @@ def sync(
         cursor (str | Unset):
         status (IssueStatus | Unset): `open` until someone resolves or ignores the issue. A
             resolved issue
-            seen again reopens.
+            seen again reopens. A reported problem resolves when its LavaFlow fix
+            merges. Volcano ignores one whose report it deleted before any fix
+            merged, so it no longer counts toward the project's open issues.
         resource_id (UUID | Unset):
 
     Raises:
@@ -221,7 +225,9 @@ async def asyncio_detailed(
         cursor (str | Unset):
         status (IssueStatus | Unset): `open` until someone resolves or ignores the issue. A
             resolved issue
-            seen again reopens.
+            seen again reopens. A reported problem resolves when its LavaFlow fix
+            merges. Volcano ignores one whose report it deleted before any fix
+            merged, so it no longer counts toward the project's open issues.
         resource_id (UUID | Unset):
 
     Raises:
@@ -272,7 +278,9 @@ async def asyncio(
         cursor (str | Unset):
         status (IssueStatus | Unset): `open` until someone resolves or ignores the issue. A
             resolved issue
-            seen again reopens.
+            seen again reopens. A reported problem resolves when its LavaFlow fix
+            merges. Volcano ignores one whose report it deleted before any fix
+            merged, so it no longer counts toward the project's open issues.
         resource_id (UUID | Unset):
 
     Raises:

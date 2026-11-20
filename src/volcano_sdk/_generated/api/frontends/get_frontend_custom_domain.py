@@ -116,6 +116,9 @@ def sync_detailed(
 ) -> Response[Error | FrontendCustomDomainResponse | None]:
     """ Get frontend custom domain status
 
+     Deprecated: use `GET /projects/{id}/frontends/{frontendId}/domains`.
+    Returns the frontend's oldest domain that serves it rather than redirecting.
+
     Args:
         id (UUID):
         frontend_id (UUID):
@@ -150,6 +153,9 @@ def sync(
 ) -> Error | FrontendCustomDomainResponse | None | None:
     """ Get frontend custom domain status
 
+     Deprecated: use `GET /projects/{id}/frontends/{frontendId}/domains`.
+    Returns the frontend's oldest domain that serves it rather than redirecting.
+
     Args:
         id (UUID):
         frontend_id (UUID):
@@ -178,6 +184,9 @@ async def asyncio_detailed(
 
 ) -> Response[Error | FrontendCustomDomainResponse | None]:
     """ Get frontend custom domain status
+
+     Deprecated: use `GET /projects/{id}/frontends/{frontendId}/domains`.
+    Returns the frontend's oldest domain that serves it rather than redirecting.
 
     Args:
         id (UUID):
@@ -212,6 +221,9 @@ async def asyncio(
 
 ) -> Error | FrontendCustomDomainResponse | None | None:
     """ Get frontend custom domain status
+
+     Deprecated: use `GET /projects/{id}/frontends/{frontendId}/domains`.
+    Returns the frontend's oldest domain that serves it rather than redirecting.
 
     Args:
         id (UUID):

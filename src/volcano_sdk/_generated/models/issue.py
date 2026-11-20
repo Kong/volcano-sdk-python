@@ -8,6 +8,8 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.issue_source import check_issue_source
+from ..models.issue_source import IssueSource
 from ..models.issue_status import check_issue_status
 from ..models.issue_status import IssueStatus
 from ..types import UNSET, Unset
@@ -16,6 +18,7 @@ from uuid import UUID
 import datetime
 
 if TYPE_CHECKING:
+  from ..models.issue_finding import IssueFinding
   from ..models.resource_reference import ResourceReference
 
 
@@ -28,7 +31,9 @@ T = TypeVar("T", bound="Issue")
 
 @_attrs_define
 class Issue:
-    """ Runtime errors from one function or frontend, grouped by error type and stack.
+    """ Runtime errors from one function or frontend, grouped by error type and stack, one LavaFlow Code Quality finding, or
+    a user-reported project problem. A report has a project resource, zero runtime occurrences, and report times as its
+    first and last seen times.
 
         Attributes:
             id (UUID):
@@ -37,15 +42,29 @@ class Issue:
             title (str): The error type and message, with values such as IDs, numbers, and
                 URLs replaced by placeholders like `<uuid>` and `<n>`.
             status (IssueStatus): `open` until someone resolves or ignores the issue. A resolved issue
-                seen again reopens.
+                seen again reopens. A reported problem resolves when its LavaFlow fix
+                merges. Volcano ignores one whose report it deleted before any fix
+                merged, so it no longer counts toward the project's open issues.
+            source (IssueSource): Where the issue came from: `runtime` for errors your code logged, `code_quality` for a
+                LavaFlow Code Quality finding in code a deploy changed, or `report` for a problem reported for the project, such
+                as through Slack. A `code_quality` issue's `error_type` is the finding's rule, its `culprit` the enclosing
+                function and file, and its `event_count` the scans that found it.
+            exception (bool): Whether the issue holds an exception: one your code threw, or one it
+                logged with `console.error(err)` or Python's `logger.exception()`.
+                `false` for an error logged any other way, such as a structured log
+                line, a logger's error line, or a printed traceback, and for every
+                `code_quality` issue. Once `true`, it stays `true`.
             event_count (int): Errors counted in this issue. A retried delivery can count an error twice.
             first_seen_at (datetime.datetime):
             last_seen_at (datetime.datetime):
             created_at (datetime.datetime):
             updated_at (datetime.datetime):
             error_type (str | Unset): The exception class, such as `TypeError`. Omitted when the error has none.
-            culprit (str | Unset): The innermost frame of your code in the stack, as `function (file)`. Omitted without a
-                stack.
+            culprit (str | Unset): The innermost frame of your code in the stack, as `function (file)`. For a frontend's
+                Next.js build output, the outermost route or page file of the build in the stack, such as
+                `.next/server/app/checkout/route.js`, or without one, the outermost file of the build. For a minified file of a
+                function's own bundle, the file alone. Omitted without a stack.
+            finding (IssueFinding | Unset): The LavaFlow Code Quality finding behind a `code_quality` issue.
             last_region (str | Unset): The region that served the latest error, such as `us-east-1`.
             sample_event_id (str | Unset): The ID of the latest error's log event, while logs retain it.
             sample_event_at (datetime.datetime | Unset): When the latest error's log event was written.
@@ -58,6 +77,8 @@ class Issue:
     resource: ResourceReference
     title: str
     status: IssueStatus
+    source: IssueSource
+    exception: bool
     event_count: int
     first_seen_at: datetime.datetime
     last_seen_at: datetime.datetime
@@ -65,6 +86,7 @@ class Issue:
     updated_at: datetime.datetime
     error_type: str | Unset = UNSET
     culprit: str | Unset = UNSET
+    finding: IssueFinding | Unset = UNSET
     last_region: str | Unset = UNSET
     sample_event_id: str | Unset = UNSET
     sample_event_at: datetime.datetime | Unset = UNSET
@@ -77,6 +99,7 @@ class Issue:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.issue_finding import IssueFinding # noqa: PLC0415
         from ..models.resource_reference import ResourceReference # noqa: PLC0415
         id = str(self.id)
 
@@ -87,6 +110,10 @@ class Issue:
         title = self.title
 
         status: str = self.status
+
+        source: str = self.source
+
+        exception = self.exception
 
         event_count = self.event_count
 
@@ -101,6 +128,10 @@ class Issue:
         error_type = self.error_type
 
         culprit = self.culprit
+
+        finding: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.finding, Unset):
+            finding = self.finding.to_dict()
 
         last_region = self.last_region
 
@@ -127,6 +158,8 @@ class Issue:
             "resource": resource,
             "title": title,
             "status": status,
+            "source": source,
+            "exception": exception,
             "event_count": event_count,
             "first_seen_at": first_seen_at,
             "last_seen_at": last_seen_at,
@@ -137,6 +170,8 @@ class Issue:
             field_dict["error_type"] = error_type
         if culprit is not UNSET:
             field_dict["culprit"] = culprit
+        if finding is not UNSET:
+            field_dict["finding"] = finding
         if last_region is not UNSET:
             field_dict["last_region"] = last_region
         if sample_event_id is not UNSET:
@@ -154,6 +189,7 @@ class Issue:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.issue_finding import IssueFinding # noqa: PLC0415
         from ..models.resource_reference import ResourceReference # noqa: PLC0415
         d = dict(src_dict)
         id = UUID(d.pop("id"))
@@ -177,6 +213,13 @@ class Issue:
 
 
 
+
+        source = check_issue_source(d.pop("source"))
+
+
+
+
+        exception = d.pop("exception")
 
         event_count = d.pop("event_count")
 
@@ -203,6 +246,16 @@ class Issue:
         error_type = d.pop("error_type", UNSET)
 
         culprit = d.pop("culprit", UNSET)
+
+        _finding = d.pop("finding", UNSET)
+        finding: IssueFinding | Unset
+        if isinstance(_finding,  Unset):
+            finding = UNSET
+        else:
+            finding = IssueFinding.from_dict(_finding)
+
+
+
 
         last_region = d.pop("last_region", UNSET)
 
@@ -244,6 +297,8 @@ class Issue:
             resource=resource,
             title=title,
             status=status,
+            source=source,
+            exception=exception,
             event_count=event_count,
             first_seen_at=first_seen_at,
             last_seen_at=last_seen_at,
@@ -251,6 +306,7 @@ class Issue:
             updated_at=updated_at,
             error_type=error_type,
             culprit=culprit,
+            finding=finding,
             last_region=last_region,
             sample_event_id=sample_event_id,
             sample_event_at=sample_event_at,

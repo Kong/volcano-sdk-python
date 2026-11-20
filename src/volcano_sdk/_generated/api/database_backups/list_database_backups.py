@@ -99,9 +99,9 @@ def sync_detailed(
      Returns every backup of the database, newest first, together with the
     window a point-in-time restore may target.
 
-    Both backups you took and backups the schedule produced are listed;
-    `source` tells them apart. Only manual backups count against the plan's
-    backup allowance.
+    Backups you took, backups the schedule produced, and backups taken
+    before migrations are all listed; `source` tells them apart. Only manual
+    backups count against the plan's backup allowance.
 
     Args:
         id (UUID):
@@ -140,9 +140,9 @@ def sync(
      Returns every backup of the database, newest first, together with the
     window a point-in-time restore may target.
 
-    Both backups you took and backups the schedule produced are listed;
-    `source` tells them apart. Only manual backups count against the plan's
-    backup allowance.
+    Backups you took, backups the schedule produced, and backups taken
+    before migrations are all listed; `source` tells them apart. Only manual
+    backups count against the plan's backup allowance.
 
     Args:
         id (UUID):
@@ -176,9 +176,9 @@ async def asyncio_detailed(
      Returns every backup of the database, newest first, together with the
     window a point-in-time restore may target.
 
-    Both backups you took and backups the schedule produced are listed;
-    `source` tells them apart. Only manual backups count against the plan's
-    backup allowance.
+    Backups you took, backups the schedule produced, and backups taken
+    before migrations are all listed; `source` tells them apart. Only manual
+    backups count against the plan's backup allowance.
 
     Args:
         id (UUID):
@@ -217,9 +217,9 @@ async def asyncio(
      Returns every backup of the database, newest first, together with the
     window a point-in-time restore may target.
 
-    Both backups you took and backups the schedule produced are listed;
-    `source` tells them apart. Only manual backups count against the plan's
-    backup allowance.
+    Backups you took, backups the schedule produced, and backups taken
+    before migrations are all listed; `source` tells them apart. Only manual
+    backups count against the plan's backup allowance.
 
     Args:
         id (UUID):
