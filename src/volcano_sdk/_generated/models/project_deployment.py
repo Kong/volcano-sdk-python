@@ -20,6 +20,7 @@ from uuid import UUID
 import datetime
 
 if TYPE_CHECKING:
+  from ..models.deployment_commit import DeploymentCommit
   from ..models.deployment_progress import DeploymentProgress
   from ..models.project_deployment_resource import ProjectDeploymentResource
 
@@ -48,6 +49,9 @@ class ProjectDeployment:
             completed_at (datetime.datetime | Unset):
             progress (DeploymentProgress | Unset): Normalized live progress derived from the deployment workflow and build
                 phases.
+            commit (DeploymentCommit | Unset): The commit a deploy client reported for the deployment's source. Absent when
+                the client reported none. A frontend deployment that publishes another deployment's build carries that
+                deployment's commit.
      """
 
     id: UUID
@@ -61,6 +65,7 @@ class ProjectDeployment:
     error_message: str | Unset = UNSET
     completed_at: datetime.datetime | Unset = UNSET
     progress: DeploymentProgress | Unset = UNSET
+    commit: DeploymentCommit | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -68,6 +73,7 @@ class ProjectDeployment:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.deployment_commit import DeploymentCommit # noqa: PLC0415
         from ..models.deployment_progress import DeploymentProgress # noqa: PLC0415
         from ..models.project_deployment_resource import ProjectDeploymentResource # noqa: PLC0415
         id = str(self.id)
@@ -96,6 +102,10 @@ class ProjectDeployment:
         if not isinstance(self.progress, Unset):
             progress = self.progress.to_dict()
 
+        commit: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.commit, Unset):
+            commit = self.commit.to_dict()
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -115,6 +125,8 @@ class ProjectDeployment:
             field_dict["completed_at"] = completed_at
         if progress is not UNSET:
             field_dict["progress"] = progress
+        if commit is not UNSET:
+            field_dict["commit"] = commit
 
         return field_dict
 
@@ -122,6 +134,7 @@ class ProjectDeployment:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.deployment_commit import DeploymentCommit # noqa: PLC0415
         from ..models.deployment_progress import DeploymentProgress # noqa: PLC0415
         from ..models.project_deployment_resource import ProjectDeploymentResource # noqa: PLC0415
         d = dict(src_dict)
@@ -187,6 +200,16 @@ class ProjectDeployment:
 
 
 
+        _commit = d.pop("commit", UNSET)
+        commit: DeploymentCommit | Unset
+        if isinstance(_commit,  Unset):
+            commit = UNSET
+        else:
+            commit = DeploymentCommit.from_dict(_commit)
+
+
+
+
         project_deployment = cls(
             id=id,
             project_id=project_id,
@@ -199,6 +222,7 @@ class ProjectDeployment:
             error_message=error_message,
             completed_at=completed_at,
             progress=progress,
+            commit=commit,
         )
 
 

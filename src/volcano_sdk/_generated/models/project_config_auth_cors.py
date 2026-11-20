@@ -28,12 +28,14 @@ class ProjectConfigAuthCORS:
             allowed_origins (list[str] | Unset):
             allow_credentials (bool | Unset):
             max_age (int | Unset):
+            allow_frontend_previews (bool | Unset): Allow the origins of the project's own live frontend previews.
      """
 
     enabled: bool | Unset = UNSET
     allowed_origins: list[str] | Unset = UNSET
     allow_credentials: bool | Unset = UNSET
     max_age: int | Unset = UNSET
+    allow_frontend_previews: bool | Unset = UNSET
 
 
 
@@ -52,6 +54,8 @@ class ProjectConfigAuthCORS:
 
         max_age = self.max_age
 
+        allow_frontend_previews = self.allow_frontend_previews
+
 
         field_dict: dict[str, Any] = {}
 
@@ -65,6 +69,8 @@ class ProjectConfigAuthCORS:
             field_dict["allow_credentials"] = allow_credentials
         if max_age is not UNSET:
             field_dict["max_age"] = max_age
+        if allow_frontend_previews is not UNSET:
+            field_dict["allow_frontend_previews"] = allow_frontend_previews
 
         return field_dict
 
@@ -82,11 +88,14 @@ class ProjectConfigAuthCORS:
 
         max_age = d.pop("max_age", UNSET)
 
+        allow_frontend_previews = d.pop("allow_frontend_previews", UNSET)
+
         project_config_auth_cors = cls(
             enabled=enabled,
             allowed_origins=allowed_origins,
             allow_credentials=allow_credentials,
             max_age=max_age,
+            allow_frontend_previews=allow_frontend_previews,
         )
 
         return project_config_auth_cors

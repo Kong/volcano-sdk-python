@@ -52,6 +52,7 @@ class UpdateAuthConfigRequest:
                 'http://localhost:3000'].
             cors_allow_credentials (bool | Unset):
             cors_max_age (int | Unset):
+            cors_allow_frontend_previews (bool | Unset): Allow the origins of the project's own live frontend previews.
             enable_anonymous_signins (bool | Unset):
             allowed_email_domains (list[str] | Unset): Replaces the email domain allowlist. Empty array removes the
                 restriction so any domain can sign up. Entries must be bare domains
@@ -79,17 +80,27 @@ class UpdateAuthConfigRequest:
                 the same email instead of returning a conflict. Requires require_email_confirmation to be true.
             email_enabled (bool | Unset): Enable transactional email sending. Cannot be false while
                 require_email_confirmation is true.
-            email_from_address (str | Unset):
-            email_from_name (str | Unset):
+            email_from_address (str | Unset): Sender email address. New or changed values containing carriage returns or
+                newlines return 400. Unchanged stored or exported values are preserved. Leading and trailing whitespace in
+                previously saved settings is ignored when sending.
+            email_from_name (str | Unset): Sender display name; supports punctuation and Unicode. New or changed values
+                containing carriage returns or newlines return 400. Unchanged stored or exported values are preserved. Leading
+                and trailing whitespace in previously saved settings is ignored when sending.
             smtp_host (str | Unset):
             smtp_port (int | Unset):
             smtp_username (str | Unset):
             smtp_password (str | Unset): Replacement SMTP password. Omit this field to preserve the configured password. The
                 value is encrypted at rest and never returned.
             smtp_use_tls (bool | Unset):
-            email_confirmation_subject (str | Unset):
-            email_password_reset_subject (str | Unset):
-            email_password_changed_subject (str | Unset):
+            email_confirmation_subject (str | Unset): Subject template. For new or changed values, literal interior carriage
+                returns or newlines after Go template whitespace trimming return 400. Outer whitespace and trailing block-scalar
+                newlines are allowed. Unchanged stored subjects are preserved.
+            email_password_reset_subject (str | Unset): Subject template. For new or changed values, literal interior
+                carriage returns or newlines after Go template whitespace trimming return 400. Outer whitespace and trailing
+                block-scalar newlines are allowed. Unchanged stored subjects are preserved.
+            email_password_changed_subject (str | Unset): Subject template. For new or changed values, literal interior
+                carriage returns or newlines after Go template whitespace trimming return 400. Outer whitespace and trailing
+                block-scalar newlines are allowed. Unchanged stored subjects are preserved.
             managed_auth_enabled (bool | Unset): Enable or disable managed auth hosted pages for the project.
             post_auth_redirect_url (str | Unset): Must be included in allowed_redirect_urls when set.
             allowed_redirect_urls (list[str] | Unset): Redirect allowlist. Every entry must be a valid http/https URL.
@@ -121,6 +132,7 @@ class UpdateAuthConfigRequest:
     cors_allowed_origins: list[str] | Unset = UNSET
     cors_allow_credentials: bool | Unset = UNSET
     cors_max_age: int | Unset = UNSET
+    cors_allow_frontend_previews: bool | Unset = UNSET
     enable_anonymous_signins: bool | Unset = UNSET
     allowed_email_domains: list[str] | Unset = UNSET
     allowed_email_domains_mode: UpdateAuthConfigRequestAllowedEmailDomainsMode | Unset = UNSET
@@ -198,6 +210,8 @@ class UpdateAuthConfigRequest:
         cors_allow_credentials = self.cors_allow_credentials
 
         cors_max_age = self.cors_max_age
+
+        cors_allow_frontend_previews = self.cors_allow_frontend_previews
 
         enable_anonymous_signins = self.enable_anonymous_signins
 
@@ -307,6 +321,8 @@ class UpdateAuthConfigRequest:
             field_dict["cors_allow_credentials"] = cors_allow_credentials
         if cors_max_age is not UNSET:
             field_dict["cors_max_age"] = cors_max_age
+        if cors_allow_frontend_previews is not UNSET:
+            field_dict["cors_allow_frontend_previews"] = cors_allow_frontend_previews
         if enable_anonymous_signins is not UNSET:
             field_dict["enable_anonymous_signins"] = enable_anonymous_signins
         if allowed_email_domains is not UNSET:
@@ -408,6 +424,8 @@ class UpdateAuthConfigRequest:
 
         cors_max_age = d.pop("cors_max_age", UNSET)
 
+        cors_allow_frontend_previews = d.pop("cors_allow_frontend_previews", UNSET)
+
         enable_anonymous_signins = d.pop("enable_anonymous_signins", UNSET)
 
         allowed_email_domains = cast(list[str], d.pop("allowed_email_domains", UNSET))
@@ -490,6 +508,7 @@ class UpdateAuthConfigRequest:
             cors_allowed_origins=cors_allowed_origins,
             cors_allow_credentials=cors_allow_credentials,
             cors_max_age=cors_max_age,
+            cors_allow_frontend_previews=cors_allow_frontend_previews,
             enable_anonymous_signins=enable_anonymous_signins,
             allowed_email_domains=allowed_email_domains,
             allowed_email_domains_mode=allowed_email_domains_mode,

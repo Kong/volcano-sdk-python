@@ -44,7 +44,7 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Database | Error | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Database | Error | None:
     if response.status_code == 200:
         response_200 = Database.from_dict(response.json())
 
@@ -53,11 +53,31 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return response_200
 
     if response.status_code == 400:
-        response_400 = cast(Any, None)
+        response_400 = Error.from_dict(response.json())
+
+
+
         return response_400
 
+    if response.status_code == 401:
+        response_401 = Error.from_dict(response.json())
+
+
+
+        return response_401
+
+    if response.status_code == 403:
+        response_403 = Error.from_dict(response.json())
+
+
+
+        return response_403
+
     if response.status_code == 404:
-        response_404 = cast(Any, None)
+        response_404 = Error.from_dict(response.json())
+
+
+
         return response_404
 
     if response.status_code == 409:
@@ -66,6 +86,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
         return response_409
+
+    if response.status_code == 500:
+        response_500 = Error.from_dict(response.json())
+
+
+
+        return response_500
 
     if response.status_code == 503:
         response_503 = Error.from_dict(response.json())
@@ -80,7 +107,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Database | Error]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Database | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -96,7 +123,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: UpdateDatabaseTypeRequest,
 
-) -> Response[Any | Database | Error]:
+) -> Response[Database | Error]:
     """ Update database size
 
      Change the size tier of a database. This may briefly interrupt active connections.
@@ -119,7 +146,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | Database | Error]
+        Response[Database | Error]
      """
 
 
@@ -143,7 +170,7 @@ def sync(
     client: AuthenticatedClient,
     body: UpdateDatabaseTypeRequest,
 
-) -> Any | Database | Error | None:
+) -> Database | Error | None:
     """ Update database size
 
      Change the size tier of a database. This may briefly interrupt active connections.
@@ -166,7 +193,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | Database | Error
+        Database | Error
      """
 
 
@@ -185,7 +212,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: UpdateDatabaseTypeRequest,
 
-) -> Response[Any | Database | Error]:
+) -> Response[Database | Error]:
     """ Update database size
 
      Change the size tier of a database. This may briefly interrupt active connections.
@@ -208,7 +235,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | Database | Error]
+        Response[Database | Error]
      """
 
 
@@ -232,7 +259,7 @@ async def asyncio(
     client: AuthenticatedClient,
     body: UpdateDatabaseTypeRequest,
 
-) -> Any | Database | Error | None:
+) -> Database | Error | None:
     """ Update database size
 
      Change the size tier of a database. This may briefly interrupt active connections.
@@ -255,7 +282,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | Database | Error
+        Database | Error
      """
 
 

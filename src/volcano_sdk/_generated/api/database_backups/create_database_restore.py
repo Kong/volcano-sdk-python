@@ -10,6 +10,7 @@ from ... import errors
 
 from ...models.create_database_restore_request import CreateDatabaseRestoreRequest
 from ...models.database_restore import DatabaseRestore
+from ...models.database_restore_conflict_error import DatabaseRestoreConflictError
 from ...models.error import Error
 from typing import cast
 from uuid import UUID
@@ -44,7 +45,7 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> DatabaseRestore | Error | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> DatabaseRestore | DatabaseRestoreConflictError | Error | None:
     if response.status_code == 202:
         response_202 = DatabaseRestore.from_dict(response.json())
 
@@ -74,7 +75,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return response_404
 
     if response.status_code == 409:
-        response_409 = Error.from_dict(response.json())
+        response_409 = DatabaseRestoreConflictError.from_dict(response.json())
 
 
 
@@ -93,7 +94,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[DatabaseRestore | Error]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[DatabaseRestore | DatabaseRestoreConflictError | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -109,7 +110,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: CreateDatabaseRestoreRequest,
 
-) -> Response[DatabaseRestore | Error]:
+) -> Response[DatabaseRestore | DatabaseRestoreConflictError | Error]:
     """ Restore a database
 
      Replaces the database's data, either with a named backup or with its
@@ -138,7 +139,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[DatabaseRestore | Error]
+        Response[DatabaseRestore | DatabaseRestoreConflictError | Error]
      """
 
 
@@ -162,7 +163,7 @@ def sync(
     client: AuthenticatedClient,
     body: CreateDatabaseRestoreRequest,
 
-) -> DatabaseRestore | Error | None:
+) -> DatabaseRestore | DatabaseRestoreConflictError | Error | None:
     """ Restore a database
 
      Replaces the database's data, either with a named backup or with its
@@ -191,7 +192,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        DatabaseRestore | Error
+        DatabaseRestore | DatabaseRestoreConflictError | Error
      """
 
 
@@ -210,7 +211,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: CreateDatabaseRestoreRequest,
 
-) -> Response[DatabaseRestore | Error]:
+) -> Response[DatabaseRestore | DatabaseRestoreConflictError | Error]:
     """ Restore a database
 
      Replaces the database's data, either with a named backup or with its
@@ -239,7 +240,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[DatabaseRestore | Error]
+        Response[DatabaseRestore | DatabaseRestoreConflictError | Error]
      """
 
 
@@ -263,7 +264,7 @@ async def asyncio(
     client: AuthenticatedClient,
     body: CreateDatabaseRestoreRequest,
 
-) -> DatabaseRestore | Error | None:
+) -> DatabaseRestore | DatabaseRestoreConflictError | Error | None:
     """ Restore a database
 
      Replaces the database's data, either with a named backup or with its
@@ -292,7 +293,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        DatabaseRestore | Error
+        DatabaseRestore | DatabaseRestoreConflictError | Error
      """
 
 

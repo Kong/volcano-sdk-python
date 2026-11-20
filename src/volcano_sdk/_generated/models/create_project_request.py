@@ -27,16 +27,16 @@ class CreateProjectRequest:
     """ Request to create a new project
 
         Attributes:
-            name (str): Project name (must be unique).
+            name (str): Project name. A name you already use is not refused: the project is
+                created with a short random suffix added to it.
                 Can only contain letters, numbers, underscores, and hyphens.
                  Example: my-awesome-app.
             template_id (CreateProjectRequestTemplateId | Unset): Optional trusted starter template identifier. The server
                 resolves immutable source and database initialization artifacts. Callers cannot supply artifact locations or
                 database credentials. Creation accepts an asynchronous installation; poll the individual project until
                 template_installation.status is ready before using the app. Use pixel-board, trellini, or collab-pad for the
-                configured starter bundles. The official-starter legacy identifier has environment-specific availability. Cannot
-                be combined with initialPrompt. Example: pixel-board.
-            initial_prompt (str | Unset): Optional initial builder prompt. Cannot be combined with template_id.
+                configured starter bundles. The official-starter legacy identifier has environment-specific availability.
+                Example: pixel-board.
             all_regions (bool | Unset): Optional region policy.
                 - `true` (default): project functions deploy to all configured regions
                 - `false`: project deploys only to `selected_regions`
@@ -48,7 +48,6 @@ class CreateProjectRequest:
 
     name: str
     template_id: CreateProjectRequestTemplateId | Unset = UNSET
-    initial_prompt: str | Unset = UNSET
     all_regions: bool | Unset = True
     selected_regions: list[str] | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -64,8 +63,6 @@ class CreateProjectRequest:
         if not isinstance(self.template_id, Unset):
             template_id = self.template_id
 
-
-        initial_prompt = self.initial_prompt
 
         all_regions = self.all_regions
 
@@ -83,8 +80,6 @@ class CreateProjectRequest:
         })
         if template_id is not UNSET:
             field_dict["template_id"] = template_id
-        if initial_prompt is not UNSET:
-            field_dict["initialPrompt"] = initial_prompt
         if all_regions is not UNSET:
             field_dict["all_regions"] = all_regions
         if selected_regions is not UNSET:
@@ -109,8 +104,6 @@ class CreateProjectRequest:
 
 
 
-        initial_prompt = d.pop("initialPrompt", UNSET)
-
         all_regions = d.pop("all_regions", UNSET)
 
         selected_regions = cast(list[str], d.pop("selected_regions", UNSET))
@@ -119,7 +112,6 @@ class CreateProjectRequest:
         create_project_request = cls(
             name=name,
             template_id=template_id,
-            initial_prompt=initial_prompt,
             all_regions=all_regions,
             selected_regions=selected_regions,
         )

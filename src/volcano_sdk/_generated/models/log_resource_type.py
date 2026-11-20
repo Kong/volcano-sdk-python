@@ -1,8 +1,8 @@
 from typing import Literal
 
-LogResourceType = Literal['database', 'frontend', 'function']
+LogResourceType = Literal['app', 'database', 'frontend', 'function']
 
-LOG_RESOURCE_TYPE_VALUES: set[LogResourceType] = { 'database', 'frontend', 'function',  }
+LOG_RESOURCE_TYPE_VALUES: set[LogResourceType] = { 'app', 'database', 'frontend', 'function',  }
 
 def check_log_resource_type(value: str) -> LogResourceType:
     if value in LOG_RESOURCE_TYPE_VALUES:

@@ -10,6 +10,7 @@ from ... import errors
 
 from ...models.anon_key import AnonKey
 from ...models.create_anon_key_body import CreateAnonKeyBody
+from ...models.error import Error
 from typing import cast
 from uuid import UUID
 
@@ -42,7 +43,7 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> AnonKey | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> AnonKey | Error | None:
     if response.status_code == 201:
         response_201 = AnonKey.from_dict(response.json())
 
@@ -50,13 +51,27 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_201
 
+    if response.status_code == 400:
+        response_400 = Error.from_dict(response.json())
+
+
+
+        return response_400
+
+    if response.status_code == 409:
+        response_409 = Error.from_dict(response.json())
+
+
+
+        return response_409
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[AnonKey]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[AnonKey | Error]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -71,7 +86,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: CreateAnonKeyBody,
 
-) -> Response[AnonKey]:
+) -> Response[AnonKey | Error]:
     """ Create anon key
 
     Args:
@@ -83,7 +98,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[AnonKey]
+        Response[AnonKey | Error]
      """
 
 
@@ -105,7 +120,7 @@ def sync(
     client: AuthenticatedClient,
     body: CreateAnonKeyBody,
 
-) -> AnonKey | None:
+) -> AnonKey | Error | None:
     """ Create anon key
 
     Args:
@@ -117,7 +132,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        AnonKey
+        AnonKey | Error
      """
 
 
@@ -134,7 +149,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: CreateAnonKeyBody,
 
-) -> Response[AnonKey]:
+) -> Response[AnonKey | Error]:
     """ Create anon key
 
     Args:
@@ -146,7 +161,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[AnonKey]
+        Response[AnonKey | Error]
      """
 
 
@@ -168,7 +183,7 @@ async def asyncio(
     client: AuthenticatedClient,
     body: CreateAnonKeyBody,
 
-) -> AnonKey | None:
+) -> AnonKey | Error | None:
     """ Create anon key
 
     Args:
@@ -180,7 +195,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        AnonKey
+        AnonKey | Error
      """
 
 

@@ -89,6 +89,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_409
 
+    if response.status_code == 413:
+        response_413 = Error.from_dict(response.json())
+
+
+
+        return response_413
+
     if response.status_code == 422:
         response_422 = ProjectConfigValidationErrorResponse.from_dict(response.json())
 
@@ -140,7 +147,11 @@ def sync_detailed(
     `missing`. Validation failures (including plan-gate violations) return
     422 and nothing is applied. Set `dry_run=true` to get the projected
     report without applying changes. Applies are serialized per project;
-    a concurrent apply returns 409.
+    a concurrent apply returns 409. A function a promoted preview serves
+    keeps the variables the preview was built with: when the apply's
+    variable changes would reach it, it is reported as `unchanged` with
+    `code: function_served_by_candidate` and a `notice`, while every other
+    resource is applied and synchronized. That entry is not an error.
 
     Args:
         id (UUID):
@@ -200,7 +211,11 @@ def sync(
     `missing`. Validation failures (including plan-gate violations) return
     422 and nothing is applied. Set `dry_run=true` to get the projected
     report without applying changes. Applies are serialized per project;
-    a concurrent apply returns 409.
+    a concurrent apply returns 409. A function a promoted preview serves
+    keeps the variables the preview was built with: when the apply's
+    variable changes would reach it, it is reported as `unchanged` with
+    `code: function_served_by_candidate` and a `notice`, while every other
+    resource is applied and synchronized. That entry is not an error.
 
     Args:
         id (UUID):
@@ -255,7 +270,11 @@ async def asyncio_detailed(
     `missing`. Validation failures (including plan-gate violations) return
     422 and nothing is applied. Set `dry_run=true` to get the projected
     report without applying changes. Applies are serialized per project;
-    a concurrent apply returns 409.
+    a concurrent apply returns 409. A function a promoted preview serves
+    keeps the variables the preview was built with: when the apply's
+    variable changes would reach it, it is reported as `unchanged` with
+    `code: function_served_by_candidate` and a `notice`, while every other
+    resource is applied and synchronized. That entry is not an error.
 
     Args:
         id (UUID):
@@ -315,7 +334,11 @@ async def asyncio(
     `missing`. Validation failures (including plan-gate violations) return
     422 and nothing is applied. Set `dry_run=true` to get the projected
     report without applying changes. Applies are serialized per project;
-    a concurrent apply returns 409.
+    a concurrent apply returns 409. A function a promoted preview serves
+    keeps the variables the preview was built with: when the apply's
+    variable changes would reach it, it is reported as `unchanged` with
+    `code: function_served_by_candidate` and a `notice`, while every other
+    resource is applied and synchronized. That entry is not an error.
 
     Args:
         id (UUID):
