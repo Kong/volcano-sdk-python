@@ -8,6 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.error import Error
 from ...models.storage_object import StorageObject
 from ...models.storage_visibility_request import StorageVisibilityRequest
 from typing import cast
@@ -42,7 +43,7 @@ def request_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | StorageObject | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | Error | StorageObject | None:
     if response.status_code == 200:
         response_200 = StorageObject.from_dict(response.json())
 
@@ -58,13 +59,20 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         response_404 = cast(Any, None)
         return response_404
 
+    if response.status_code == 413:
+        response_413 = Error.from_dict(response.json())
+
+
+
+        return response_413
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | StorageObject]:
+def build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | Error | StorageObject]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -80,7 +88,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: StorageVisibilityRequest,
 
-) -> Response[Any | StorageObject]:
+) -> Response[Any | Error | StorageObject]:
     """ Update file visibility (public/private)
 
      Change whether a file is publicly accessible. Only the file owner or a service key can change
@@ -101,7 +109,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | StorageObject]
+        Response[Any | Error | StorageObject]
      """
 
 
@@ -125,7 +133,7 @@ def sync(
     client: AuthenticatedClient,
     body: StorageVisibilityRequest,
 
-) -> Any | StorageObject | None:
+) -> Any | Error | StorageObject | None:
     """ Update file visibility (public/private)
 
      Change whether a file is publicly accessible. Only the file owner or a service key can change
@@ -146,7 +154,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | StorageObject
+        Any | Error | StorageObject
      """
 
 
@@ -165,7 +173,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: StorageVisibilityRequest,
 
-) -> Response[Any | StorageObject]:
+) -> Response[Any | Error | StorageObject]:
     """ Update file visibility (public/private)
 
      Change whether a file is publicly accessible. Only the file owner or a service key can change
@@ -186,7 +194,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | StorageObject]
+        Response[Any | Error | StorageObject]
      """
 
 
@@ -210,7 +218,7 @@ async def asyncio(
     client: AuthenticatedClient,
     body: StorageVisibilityRequest,
 
-) -> Any | StorageObject | None:
+) -> Any | Error | StorageObject | None:
     """ Update file visibility (public/private)
 
      Change whether a file is publicly accessible. Only the file owner or a service key can change
@@ -231,7 +239,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | StorageObject
+        Any | Error | StorageObject
      """
 
 

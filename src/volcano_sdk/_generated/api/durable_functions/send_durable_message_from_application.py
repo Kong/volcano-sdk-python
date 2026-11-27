@@ -159,7 +159,11 @@ def sync_detailed(
     Messages never decide an approval: a workflow waiting in
     `ctx.waitForApproval` is not resumed by one.
 
-    **With a service key:** any execution in the project.
+    **With a service key:** any execution in the project when the key holds
+    `*`, the default. A key scoped to a list without `*`, such as
+    `["functions.invoke"]`, reaches an execution whose
+    `X-Volcano-Client-Token` the request carries, as an anon key does; the
+    start returns that token.
 
     **With an auth user token:** an execution the user started, or one
     whose `X-Volcano-Client-Token` the request carries, of a durable
@@ -225,7 +229,11 @@ def sync(
     Messages never decide an approval: a workflow waiting in
     `ctx.waitForApproval` is not resumed by one.
 
-    **With a service key:** any execution in the project.
+    **With a service key:** any execution in the project when the key holds
+    `*`, the default. A key scoped to a list without `*`, such as
+    `["functions.invoke"]`, reaches an execution whose
+    `X-Volcano-Client-Token` the request carries, as an anon key does; the
+    start returns that token.
 
     **With an auth user token:** an execution the user started, or one
     whose `X-Volcano-Client-Token` the request carries, of a durable
@@ -286,7 +294,11 @@ async def asyncio_detailed(
     Messages never decide an approval: a workflow waiting in
     `ctx.waitForApproval` is not resumed by one.
 
-    **With a service key:** any execution in the project.
+    **With a service key:** any execution in the project when the key holds
+    `*`, the default. A key scoped to a list without `*`, such as
+    `["functions.invoke"]`, reaches an execution whose
+    `X-Volcano-Client-Token` the request carries, as an anon key does; the
+    start returns that token.
 
     **With an auth user token:** an execution the user started, or one
     whose `X-Volcano-Client-Token` the request carries, of a durable
@@ -352,7 +364,11 @@ async def asyncio(
     Messages never decide an approval: a workflow waiting in
     `ctx.waitForApproval` is not resumed by one.
 
-    **With a service key:** any execution in the project.
+    **With a service key:** any execution in the project when the key holds
+    `*`, the default. A key scoped to a list without `*`, such as
+    `["functions.invoke"]`, reaches an execution whose
+    `X-Volcano-Client-Token` the request carries, as an anon key does; the
+    start returns that token.
 
     **With an auth user token:** an execution the user started, or one
     whose `X-Volcano-Client-Token` the request carries, of a durable

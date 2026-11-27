@@ -117,9 +117,14 @@ def sync_detailed(
     """ Start a git provider connection
 
      Starts a first-party dashboard user's git provider connection flow and
-    returns the provider authorization URL. The response also sets a
-    short-lived HttpOnly callback binding cookie tied to the authenticated
-    user through the signed provider state.
+    returns the provider authorization URL. For a user with no GitHub
+    connection, or one whose expired token GitHub refuses to refresh, it is
+    GitHub's authorization page for the Volcano App; a connection whose
+    account reaches no installation of the App then continues to the App's
+    install page. For a user with a working connection, it is the App's
+    install page, where they change the App's access. The response also
+    sets a short-lived HttpOnly callback binding cookie tied to the
+    authenticated user through the signed provider state.
 
     Args:
         provider (StartGitConnectProvider | Unset):  Default: 'github'.
@@ -159,9 +164,14 @@ def sync(
     """ Start a git provider connection
 
      Starts a first-party dashboard user's git provider connection flow and
-    returns the provider authorization URL. The response also sets a
-    short-lived HttpOnly callback binding cookie tied to the authenticated
-    user through the signed provider state.
+    returns the provider authorization URL. For a user with no GitHub
+    connection, or one whose expired token GitHub refuses to refresh, it is
+    GitHub's authorization page for the Volcano App; a connection whose
+    account reaches no installation of the App then continues to the App's
+    install page. For a user with a working connection, it is the App's
+    install page, where they change the App's access. The response also
+    sets a short-lived HttpOnly callback binding cookie tied to the
+    authenticated user through the signed provider state.
 
     Args:
         provider (StartGitConnectProvider | Unset):  Default: 'github'.
@@ -196,9 +206,14 @@ async def asyncio_detailed(
     """ Start a git provider connection
 
      Starts a first-party dashboard user's git provider connection flow and
-    returns the provider authorization URL. The response also sets a
-    short-lived HttpOnly callback binding cookie tied to the authenticated
-    user through the signed provider state.
+    returns the provider authorization URL. For a user with no GitHub
+    connection, or one whose expired token GitHub refuses to refresh, it is
+    GitHub's authorization page for the Volcano App; a connection whose
+    account reaches no installation of the App then continues to the App's
+    install page. For a user with a working connection, it is the App's
+    install page, where they change the App's access. The response also
+    sets a short-lived HttpOnly callback binding cookie tied to the
+    authenticated user through the signed provider state.
 
     Args:
         provider (StartGitConnectProvider | Unset):  Default: 'github'.
@@ -238,9 +253,14 @@ async def asyncio(
     """ Start a git provider connection
 
      Starts a first-party dashboard user's git provider connection flow and
-    returns the provider authorization URL. The response also sets a
-    short-lived HttpOnly callback binding cookie tied to the authenticated
-    user through the signed provider state.
+    returns the provider authorization URL. For a user with no GitHub
+    connection, or one whose expired token GitHub refuses to refresh, it is
+    GitHub's authorization page for the Volcano App; a connection whose
+    account reaches no installation of the App then continues to the App's
+    install page. For a user with a working connection, it is the App's
+    install page, where they change the App's access. The response also
+    sets a short-lived HttpOnly callback binding cookie tied to the
+    authenticated user through the signed provider state.
 
     Args:
         provider (StartGitConnectProvider | Unset):  Default: 'github'.

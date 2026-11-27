@@ -35,8 +35,8 @@ class FunctionInvocationRequestPayload:
     }
     ```
 
-    The top-level `__volcano_auth` and `__volcano_http` keys are reserved;
-    Volcano removes caller-supplied values for both.
+    The top-level `__volcano_auth`, `__volcano_http` and `__volcano_mount`
+    keys are reserved; Volcano removes caller-supplied values for all three.
 
      """
 

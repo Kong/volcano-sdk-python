@@ -107,6 +107,16 @@ def sync_detailed(
     subject or a blank message. Also rejects with 400 if
     `email_enabled=false`, `smtp_host` is empty, or the saved
     `smtp_password` can't be read and must be set again.
+    Sender values with interior line breaks return 400 before SMTP delivery.
+    Rendered override subjects containing a line break have outer whitespace
+    trimmed; any remaining interior line break returns 400 before delivery.
+    Outside local mode, the email is sent only to a public `smtp_host`.
+    When the host is, or resolves to, a non-public address, or the server
+    cannot be reached or closes the connection before its greeting, the
+    502 carries a fixed message that does not include the network error.
+    In local mode, the 502 includes the network error.
+    Replies from the SMTP server itself, such as a refused greeting,
+    rejected credentials, or a rejected recipient, are included in the 502.
 
     Args:
         id (UUID):
@@ -162,6 +172,16 @@ def sync(
     subject or a blank message. Also rejects with 400 if
     `email_enabled=false`, `smtp_host` is empty, or the saved
     `smtp_password` can't be read and must be set again.
+    Sender values with interior line breaks return 400 before SMTP delivery.
+    Rendered override subjects containing a line break have outer whitespace
+    trimmed; any remaining interior line break returns 400 before delivery.
+    Outside local mode, the email is sent only to a public `smtp_host`.
+    When the host is, or resolves to, a non-public address, or the server
+    cannot be reached or closes the connection before its greeting, the
+    502 carries a fixed message that does not include the network error.
+    In local mode, the 502 includes the network error.
+    Replies from the SMTP server itself, such as a refused greeting,
+    rejected credentials, or a rejected recipient, are included in the 502.
 
     Args:
         id (UUID):
@@ -212,6 +232,16 @@ async def asyncio_detailed(
     subject or a blank message. Also rejects with 400 if
     `email_enabled=false`, `smtp_host` is empty, or the saved
     `smtp_password` can't be read and must be set again.
+    Sender values with interior line breaks return 400 before SMTP delivery.
+    Rendered override subjects containing a line break have outer whitespace
+    trimmed; any remaining interior line break returns 400 before delivery.
+    Outside local mode, the email is sent only to a public `smtp_host`.
+    When the host is, or resolves to, a non-public address, or the server
+    cannot be reached or closes the connection before its greeting, the
+    502 carries a fixed message that does not include the network error.
+    In local mode, the 502 includes the network error.
+    Replies from the SMTP server itself, such as a refused greeting,
+    rejected credentials, or a rejected recipient, are included in the 502.
 
     Args:
         id (UUID):
@@ -267,6 +297,16 @@ async def asyncio(
     subject or a blank message. Also rejects with 400 if
     `email_enabled=false`, `smtp_host` is empty, or the saved
     `smtp_password` can't be read and must be set again.
+    Sender values with interior line breaks return 400 before SMTP delivery.
+    Rendered override subjects containing a line break have outer whitespace
+    trimmed; any remaining interior line break returns 400 before delivery.
+    Outside local mode, the email is sent only to a public `smtp_host`.
+    When the host is, or resolves to, a non-public address, or the server
+    cannot be reached or closes the connection before its greeting, the
+    502 carries a fixed message that does not include the network error.
+    In local mode, the 502 includes the network error.
+    Replies from the SMTP server itself, such as a refused greeting,
+    rejected credentials, or a rejected recipient, are included in the 502.
 
     Args:
         id (UUID):

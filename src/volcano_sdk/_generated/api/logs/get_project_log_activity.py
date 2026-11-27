@@ -79,6 +79,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_404
 
+    if response.status_code == 413:
+        response_413 = Error.from_dict(response.json())
+
+
+
+        return response_413
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
@@ -104,11 +111,16 @@ def sync_detailed(
     """ Get project log activity
 
      Retrieve bucketed log counts for one resource type in the project. Set
-    `resource.type` to `function`, `frontend`, or `database`. Add
+    `resource.type` to `function`, `frontend`, `database`, or `app`. Add
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to count deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT feature; `resource.type=database`
+    databases or apps. `app` counts the entries a first-party app, such as
+    the Builder, wrote into the project; an app's ID is UUIDv5 of its slug
+    (see `LogResource.id`). With no entries it answers 200 with none; an unknown app in `resource.ids`
+    answers 404 `app not found`. The `app_logs` release gate controls new writes only: entries already
+    written stay readable when it closes. Database logs are a SUPERAGENT feature;
+    `resource.type=database`
     from a HOBBY project owner returns 403. The activity window is limited
     to the plan's retention window (HOBBY: 1 day, SUPERAGENT: 30 days); older start
     times are clamped to that window. Buckets are aligned to UTC clock
@@ -150,11 +162,16 @@ def sync(
     """ Get project log activity
 
      Retrieve bucketed log counts for one resource type in the project. Set
-    `resource.type` to `function`, `frontend`, or `database`. Add
+    `resource.type` to `function`, `frontend`, `database`, or `app`. Add
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to count deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT feature; `resource.type=database`
+    databases or apps. `app` counts the entries a first-party app, such as
+    the Builder, wrote into the project; an app's ID is UUIDv5 of its slug
+    (see `LogResource.id`). With no entries it answers 200 with none; an unknown app in `resource.ids`
+    answers 404 `app not found`. The `app_logs` release gate controls new writes only: entries already
+    written stay readable when it closes. Database logs are a SUPERAGENT feature;
+    `resource.type=database`
     from a HOBBY project owner returns 403. The activity window is limited
     to the plan's retention window (HOBBY: 1 day, SUPERAGENT: 30 days); older start
     times are clamped to that window. Buckets are aligned to UTC clock
@@ -191,11 +208,16 @@ async def asyncio_detailed(
     """ Get project log activity
 
      Retrieve bucketed log counts for one resource type in the project. Set
-    `resource.type` to `function`, `frontend`, or `database`. Add
+    `resource.type` to `function`, `frontend`, `database`, or `app`. Add
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to count deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT feature; `resource.type=database`
+    databases or apps. `app` counts the entries a first-party app, such as
+    the Builder, wrote into the project; an app's ID is UUIDv5 of its slug
+    (see `LogResource.id`). With no entries it answers 200 with none; an unknown app in `resource.ids`
+    answers 404 `app not found`. The `app_logs` release gate controls new writes only: entries already
+    written stay readable when it closes. Database logs are a SUPERAGENT feature;
+    `resource.type=database`
     from a HOBBY project owner returns 403. The activity window is limited
     to the plan's retention window (HOBBY: 1 day, SUPERAGENT: 30 days); older start
     times are clamped to that window. Buckets are aligned to UTC clock
@@ -237,11 +259,16 @@ async def asyncio(
     """ Get project log activity
 
      Retrieve bucketed log counts for one resource type in the project. Set
-    `resource.type` to `function`, `frontend`, or `database`. Add
+    `resource.type` to `function`, `frontend`, `database`, or `app`. Add
     `resource.ids` to filter to one or more resources, and add
     `resource.deployments.ids` to count deployment logs instead of runtime
     logs for functions and frontends. Deployment logs are not supported for
-    databases. Database logs are a SUPERAGENT feature; `resource.type=database`
+    databases or apps. `app` counts the entries a first-party app, such as
+    the Builder, wrote into the project; an app's ID is UUIDv5 of its slug
+    (see `LogResource.id`). With no entries it answers 200 with none; an unknown app in `resource.ids`
+    answers 404 `app not found`. The `app_logs` release gate controls new writes only: entries already
+    written stay readable when it closes. Database logs are a SUPERAGENT feature;
+    `resource.type=database`
     from a HOBBY project owner returns 403. The activity window is limited
     to the plan's retention window (HOBBY: 1 day, SUPERAGENT: 30 days); older start
     times are clamped to that window. Buckets are aligned to UTC clock

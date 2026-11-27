@@ -37,7 +37,8 @@ class ServiceKey:
                  Example: ['*'].
             project_id (UUID | Unset):
             key_value (str | Unset): Full JWT token for Authorization header.
-                Returned on create, get, and list (decrypted from storage).
+                Returned on create, get, and list (decrypted from storage). List
+                responses leave it out for a key that holds `ai.invoke` or `grants.mint`.
                 **Store securely - NEVER expose in frontend code!**
             created_at (datetime.datetime | Unset):
             updated_at (datetime.datetime | Unset):

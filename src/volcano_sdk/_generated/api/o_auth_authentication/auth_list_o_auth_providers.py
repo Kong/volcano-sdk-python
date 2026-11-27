@@ -70,7 +70,11 @@ def sync_detailed(
 ) -> Response[AuthListOAuthProvidersResponse200 | Error]:
     """ List user's linked providers
 
-     Get list of OAuth providers linked to current user
+     Lists the OAuth providers linked to the signed-in user, with the
+    user's own account ID at each provider. Match on `provider_user_id`,
+    which never changes, rather than on the login or email. For
+    GitHub, it is the numeric user ID that GitHub reports elsewhere, such
+    as a webhook's `sender.id`.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -98,7 +102,11 @@ def sync(
 ) -> AuthListOAuthProvidersResponse200 | Error | None:
     """ List user's linked providers
 
-     Get list of OAuth providers linked to current user
+     Lists the OAuth providers linked to the signed-in user, with the
+    user's own account ID at each provider. Match on `provider_user_id`,
+    which never changes, rather than on the login or email. For
+    GitHub, it is the numeric user ID that GitHub reports elsewhere, such
+    as a webhook's `sender.id`.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -121,7 +129,11 @@ async def asyncio_detailed(
 ) -> Response[AuthListOAuthProvidersResponse200 | Error]:
     """ List user's linked providers
 
-     Get list of OAuth providers linked to current user
+     Lists the OAuth providers linked to the signed-in user, with the
+    user's own account ID at each provider. Match on `provider_user_id`,
+    which never changes, rather than on the login or email. For
+    GitHub, it is the numeric user ID that GitHub reports elsewhere, such
+    as a webhook's `sender.id`.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -149,7 +161,11 @@ async def asyncio(
 ) -> AuthListOAuthProvidersResponse200 | Error | None:
     """ List user's linked providers
 
-     Get list of OAuth providers linked to current user
+     Lists the OAuth providers linked to the signed-in user, with the
+    user's own account ID at each provider. Match on `provider_user_id`,
+    which never changes, rather than on the login or email. For
+    GitHub, it is the numeric user ID that GitHub reports elsewhere, such
+    as a webhook's `sender.id`.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
