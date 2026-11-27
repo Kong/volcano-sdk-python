@@ -41,7 +41,9 @@ class ConnectProjectGitRequest:
                 a Git branch name only: it does not have to exist yet, so a project can be pointed at a branch about to be
                 pushed. Changing repository and naming a branch other than the new repository's default in one request is
                 refused with 400, because the branch named is almost always the previous repository's, echoed back — connect
-                first, then set the branch.
+                first, then set the branch. A repository that reports no default branch, as one with no commits can, is
+                connected only by naming a branch, and any branch is accepted for it, including on a rebind. An empty repository
+                that still reports a default follows the rule above.
      """
 
     connection_id: UUID

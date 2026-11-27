@@ -31,16 +31,23 @@ class DeploySandboxBody:
     """
         Attributes:
             name (str):
-            code (File): Source tar.gz archive, limited to 32 MiB compressed and expanded.
+            code (File | Unset): Source tar.gz archive, limited to 32 MiB compressed and expanded. Required for customer
+                templates. Omit for the managed Builder template.
             memory_mb (DeploySandboxBodyMemoryMb | Unset): Memory in MiB. Defaults to 1024 when omitted.
             ports (str | Unset): JSON array of application ports that must become ready before activation, for example
                 [8080].
+            containers (bool | Unset): Run a rootless container engine (Docker Engine with Compose) in every session of this
+                template. Commands reach it through `DOCKER_HOST` and keep the same privileges as in any other session. Disabled
+                by default. Only the operator-authorized Builder caller in local mode can deploy its reserved platform template,
+                with no code archive or ports. Disabled or unsupported opt-ins answer `400 feature_unavailable`. An unauthorized
+                caller receives 403; incompatible form fields receive 400.
      """
 
     name: str
-    code: File
+    code: File | Unset = UNSET
     memory_mb: DeploySandboxBodyMemoryMb | Unset = UNSET
     ports: str | Unset = UNSET
+    containers: bool | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -50,7 +57,9 @@ class DeploySandboxBody:
     def to_dict(self) -> dict[str, Any]:
         name = self.name
 
-        code = self.code.to_tuple()
+        code: FileTypes | Unset = UNSET
+        if not isinstance(self.code, Unset):
+            code = self.code.to_tuple()
 
 
         memory_mb: int | Unset = UNSET
@@ -60,17 +69,22 @@ class DeploySandboxBody:
 
         ports = self.ports
 
+        containers = self.containers
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
             "name": name,
-            "code": code,
         })
+        if code is not UNSET:
+            field_dict["code"] = code
         if memory_mb is not UNSET:
             field_dict["memory_mb"] = memory_mb
         if ports is not UNSET:
             field_dict["ports"] = ports
+        if containers is not UNSET:
+            field_dict["containers"] = containers
 
         return field_dict
 
@@ -82,7 +96,8 @@ class DeploySandboxBody:
 
 
 
-        files.append(("code", self.code.to_tuple()))
+        if not isinstance(self.code, Unset):
+            files.append(("code", self.code.to_tuple()))
 
 
 
@@ -93,6 +108,11 @@ class DeploySandboxBody:
 
         if not isinstance(self.ports, Unset):
             files.append(("ports", (None, str(self.ports).encode(), "text/plain")))
+
+
+
+        if not isinstance(self.containers, Unset):
+            files.append(("containers", (None, str(self.containers).encode(), "text/plain")))
 
 
 
@@ -110,8 +130,13 @@ class DeploySandboxBody:
         d = dict(src_dict)
         name = d.pop("name")
 
-        code = File(
-             payload = BytesIO(d.pop("code"))
+        _code = d.pop("code", UNSET)
+        code: File | Unset
+        if isinstance(_code,  Unset):
+            code = UNSET
+        else:
+            code = File(
+             payload = BytesIO(_code)
         )
 
 
@@ -129,11 +154,14 @@ class DeploySandboxBody:
 
         ports = d.pop("ports", UNSET)
 
+        containers = d.pop("containers", UNSET)
+
         deploy_sandbox_body = cls(
             name=name,
             code=code,
             memory_mb=memory_mb,
             ports=ports,
+            containers=containers,
         )
 
 

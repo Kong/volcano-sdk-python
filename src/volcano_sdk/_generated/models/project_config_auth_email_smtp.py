@@ -23,7 +23,9 @@ T = TypeVar("T", bound="ProjectConfigAuthEmailSMTP")
 class ProjectConfigAuthEmailSMTP:
     """ 
         Attributes:
-            host (str | Unset):
+            host (str | Unset): SMTP server host name or IP address. Outside local mode, Volcano connects only to public
+                internet addresses, and a host that is, or resolves to, a loopback, private, link-local, or other non-public
+                address fails delivery.
             port (int | Unset):
             username (str | Unset):
             password (str | Unset): Write-only; omitted from config export.

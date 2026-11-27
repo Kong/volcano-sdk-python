@@ -105,9 +105,10 @@ def sync_detailed(
 
     SDKs use this endpoint internally to invoke by function name while routing by function ID.
     Invoke the returned `invoke_url` as-is. It does not share a domain with the API, so a host
-    built from the API URL will not reach the function. When the deployment serves no public
-    invocation domain, as in local development, `invoke_url` is omitted and callers invoke
-    through `POST /functions/{functionId}/invoke`.
+    built from the API URL will not reach the function. In local development, and when the
+    deployment serves no public invocation domain, `invoke_url` is omitted and callers invoke
+    through `POST /functions/{functionId}/invoke`. A local function's own `invoke_url`, for
+    webhook testing, is on the function resource.
 
     **With Service Key**:
     - Allowed
@@ -155,9 +156,10 @@ def sync(
 
     SDKs use this endpoint internally to invoke by function name while routing by function ID.
     Invoke the returned `invoke_url` as-is. It does not share a domain with the API, so a host
-    built from the API URL will not reach the function. When the deployment serves no public
-    invocation domain, as in local development, `invoke_url` is omitted and callers invoke
-    through `POST /functions/{functionId}/invoke`.
+    built from the API URL will not reach the function. In local development, and when the
+    deployment serves no public invocation domain, `invoke_url` is omitted and callers invoke
+    through `POST /functions/{functionId}/invoke`. A local function's own `invoke_url`, for
+    webhook testing, is on the function resource.
 
     **With Service Key**:
     - Allowed
@@ -200,9 +202,10 @@ async def asyncio_detailed(
 
     SDKs use this endpoint internally to invoke by function name while routing by function ID.
     Invoke the returned `invoke_url` as-is. It does not share a domain with the API, so a host
-    built from the API URL will not reach the function. When the deployment serves no public
-    invocation domain, as in local development, `invoke_url` is omitted and callers invoke
-    through `POST /functions/{functionId}/invoke`.
+    built from the API URL will not reach the function. In local development, and when the
+    deployment serves no public invocation domain, `invoke_url` is omitted and callers invoke
+    through `POST /functions/{functionId}/invoke`. A local function's own `invoke_url`, for
+    webhook testing, is on the function resource.
 
     **With Service Key**:
     - Allowed
@@ -250,9 +253,10 @@ async def asyncio(
 
     SDKs use this endpoint internally to invoke by function name while routing by function ID.
     Invoke the returned `invoke_url` as-is. It does not share a domain with the API, so a host
-    built from the API URL will not reach the function. When the deployment serves no public
-    invocation domain, as in local development, `invoke_url` is omitted and callers invoke
-    through `POST /functions/{functionId}/invoke`.
+    built from the API URL will not reach the function. In local development, and when the
+    deployment serves no public invocation domain, `invoke_url` is omitted and callers invoke
+    through `POST /functions/{functionId}/invoke`. A local function's own `invoke_url`, for
+    webhook testing, is on the function resource.
 
     **With Service Key**:
     - Allowed

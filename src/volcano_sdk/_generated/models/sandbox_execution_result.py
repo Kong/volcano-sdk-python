@@ -23,12 +23,20 @@ T = TypeVar("T", bound="SandboxExecutionResult")
 class SandboxExecutionResult:
     """
         Attributes:
-            stdout (str):
-            stderr (str):
+            stdout (str): The first 1 MiB (1,048,576 bytes) the command wrote to stdout. Empty in a replay of a command that
+                kept no output.
+            stderr (str): The first 1 MiB (1,048,576 bytes) the command wrote to stderr. Empty in a replay of a command that
+                kept no output.
             exit_code (int):
-            stdout_truncated (bool):
-            stderr_truncated (bool):
+            stdout_truncated (bool): True when the command wrote more than 1 MiB to stdout. False in a replay of a command
+                that kept no output.
+            stderr_truncated (bool): True when the command wrote more than 1 MiB to stderr. False in a replay of a command
+                that kept no output.
             timed_out (bool):
+            output_kept (bool): False when the command kept no output. Its streams appear only in the response to the
+                request that ran it, and Volcano's control plane never stores them in the execution journal, database, logs or
+                traces. This does not cover the Sandbox's memory or a suspended session's snapshot. A retry with the same
+                Idempotency-Key returns them empty.
             session_id (UUID):
             region (str):
             duration_ms (int):
@@ -40,6 +48,7 @@ class SandboxExecutionResult:
     stdout_truncated: bool
     stderr_truncated: bool
     timed_out: bool
+    output_kept: bool
     session_id: UUID
     region: str
     duration_ms: int
@@ -61,6 +70,8 @@ class SandboxExecutionResult:
 
         timed_out = self.timed_out
 
+        output_kept = self.output_kept
+
         session_id = str(self.session_id)
 
         region = self.region
@@ -77,6 +88,7 @@ class SandboxExecutionResult:
             "stdout_truncated": stdout_truncated,
             "stderr_truncated": stderr_truncated,
             "timed_out": timed_out,
+            "output_kept": output_kept,
             "session_id": session_id,
             "region": region,
             "duration_ms": duration_ms,
@@ -101,6 +113,8 @@ class SandboxExecutionResult:
 
         timed_out = d.pop("timed_out")
 
+        output_kept = d.pop("output_kept")
+
         session_id = UUID(d.pop("session_id"))
 
 
@@ -117,6 +131,7 @@ class SandboxExecutionResult:
             stdout_truncated=stdout_truncated,
             stderr_truncated=stderr_truncated,
             timed_out=timed_out,
+            output_kept=output_kept,
             session_id=session_id,
             region=region,
             duration_ms=duration_ms,

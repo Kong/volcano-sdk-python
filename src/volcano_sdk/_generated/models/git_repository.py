@@ -22,8 +22,8 @@ T = TypeVar("T", bound="GitRepository")
 class GitRepository:
     """ 
         Attributes:
-            id (int): Stable GitHub repository id (repository.id), unchanged by renames.
-            full_name (str):
+            id (int): GitHub's repository id. It stays the same through a rename or a transfer.
+            full_name (str): The repository's owner and name, such as `acme/shop`.
             default_branch (str):
             private (bool):
             is_empty (bool): Whether the repository has no commits and can receive an initial source export.

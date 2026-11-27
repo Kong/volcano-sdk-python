@@ -86,6 +86,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_409
 
+    if response.status_code == 429:
+        response_429 = Error.from_dict(response.json())
+
+
+
+        return response_429
+
     if response.status_code == 500:
         response_500 = Error.from_dict(response.json())
 
@@ -128,8 +135,15 @@ def sync_detailed(
     to be pushed — the case a repository created empty depends on.
 
     Setting the branch here marks it as the project's own choice, so a later
-    default-branch rename on GitHub no longer moves it. Projects that never
+    default-branch rename on GitHub no longer moves it, and the response
+    reports `production_branch_follows_default: false`. Projects that never
     set one keep following the repository's default branch.
+
+    An empty string undoes that choice: the project deploys from the
+    repository's default branch again and follows later renames. Volcano
+    reads the default branch from GitHub through the project owner's
+    connection, and the response carries it with
+    `production_branch_follows_default: true`.
 
     Args:
         id (UUID):
@@ -176,8 +190,15 @@ def sync(
     to be pushed — the case a repository created empty depends on.
 
     Setting the branch here marks it as the project's own choice, so a later
-    default-branch rename on GitHub no longer moves it. Projects that never
+    default-branch rename on GitHub no longer moves it, and the response
+    reports `production_branch_follows_default: false`. Projects that never
     set one keep following the repository's default branch.
+
+    An empty string undoes that choice: the project deploys from the
+    repository's default branch again and follows later renames. Volcano
+    reads the default branch from GitHub through the project owner's
+    connection, and the response carries it with
+    `production_branch_follows_default: true`.
 
     Args:
         id (UUID):
@@ -219,8 +240,15 @@ async def asyncio_detailed(
     to be pushed — the case a repository created empty depends on.
 
     Setting the branch here marks it as the project's own choice, so a later
-    default-branch rename on GitHub no longer moves it. Projects that never
+    default-branch rename on GitHub no longer moves it, and the response
+    reports `production_branch_follows_default: false`. Projects that never
     set one keep following the repository's default branch.
+
+    An empty string undoes that choice: the project deploys from the
+    repository's default branch again and follows later renames. Volcano
+    reads the default branch from GitHub through the project owner's
+    connection, and the response carries it with
+    `production_branch_follows_default: true`.
 
     Args:
         id (UUID):
@@ -267,8 +295,15 @@ async def asyncio(
     to be pushed — the case a repository created empty depends on.
 
     Setting the branch here marks it as the project's own choice, so a later
-    default-branch rename on GitHub no longer moves it. Projects that never
+    default-branch rename on GitHub no longer moves it, and the response
+    reports `production_branch_follows_default: false`. Projects that never
     set one keep following the repository's default branch.
+
+    An empty string undoes that choice: the project deploys from the
+    repository's default branch again and follows later renames. Volcano
+    reads the default branch from GitHub through the project owner's
+    connection, and the response carries it with
+    `production_branch_follows_default: true`.
 
     Args:
         id (UUID):

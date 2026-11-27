@@ -106,6 +106,10 @@ def sync_detailed(
 ) -> Response[Any | Error]:
     """ Delete frontend custom domain
 
+     Deprecated: use `DELETE /projects/{id}/frontends/{frontendId}/domains/{domain}`.
+    Deletes the frontend's custom domain. A frontend with several domains
+    returns `409`; name the one to delete on the collection route.
+
     Args:
         id (UUID):
         frontend_id (UUID):
@@ -140,6 +144,10 @@ def sync(
 ) -> Any | Error | None:
     """ Delete frontend custom domain
 
+     Deprecated: use `DELETE /projects/{id}/frontends/{frontendId}/domains/{domain}`.
+    Deletes the frontend's custom domain. A frontend with several domains
+    returns `409`; name the one to delete on the collection route.
+
     Args:
         id (UUID):
         frontend_id (UUID):
@@ -168,6 +176,10 @@ async def asyncio_detailed(
 
 ) -> Response[Any | Error]:
     """ Delete frontend custom domain
+
+     Deprecated: use `DELETE /projects/{id}/frontends/{frontendId}/domains/{domain}`.
+    Deletes the frontend's custom domain. A frontend with several domains
+    returns `409`; name the one to delete on the collection route.
 
     Args:
         id (UUID):
@@ -202,6 +214,10 @@ async def asyncio(
 
 ) -> Any | Error | None:
     """ Delete frontend custom domain
+
+     Deprecated: use `DELETE /projects/{id}/frontends/{frontendId}/domains/{domain}`.
+    Deletes the frontend's custom domain. A frontend with several domains
+    returns `409`; name the one to delete on the collection route.
 
     Args:
         id (UUID):
